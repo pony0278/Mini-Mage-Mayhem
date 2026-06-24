@@ -1,0 +1,3525 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234f6cff'/%3E%3Ccircle cx='8' cy='6' r='2.4' fill='%23ffd36d'/%3E%3C/svg%3E" />
+  <title>Mini Mage Mayhem — Camera Sandbox</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #111018;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #f8f3e8;
+      user-select: none;
+    }
+    #wrap {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 50% 42%, #33213b 0%, #17141f 58%, #08070c 100%);
+    }
+    #stage {
+      position: relative;
+      width: min(100vw, calc(100vh * 1.5));
+      height: min(100vh, calc(100vw / 1.5));
+      box-shadow: 0 0 0 2px #6a4a77, 0 0 0 6px rgba(255,211,109,.08), 0 22px 60px rgba(0,0,0,.55);
+      background: #1d1723;
+      cursor: crosshair;
+    }
+    #stage canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    /* #game = 3D world (WebGL); #hud = crisp 2D overlay on top */
+    #hud { pointer-events: none; background: transparent; }
+    #cam-panel{position:absolute;top:14px;left:14px;z-index:30;width:248px;background:rgba(16,13,22,.92);
+      border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:10px 12px;color:#f3e9dc;
+      font:600 12px system-ui,sans-serif;pointer-events:auto;box-shadow:0 8px 26px rgba(0,0,0,.5)}
+    #cam-panel.hidden{display:none}
+    #cam-panel label{display:block;margin:9px 0 1px}
+    #cam-panel input[type=range]{width:100%;margin-top:2px;accent-color:#ffd36d}
+    #cam-panel .cp-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    #cam-panel .cp-readout{margin:9px 0;padding:7px 8px;background:rgba(0,0,0,.38);border-radius:6px;
+      font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:#bfead0;line-height:1.5}
+    #cam-panel button,#cp-show{background:#3a3147;color:#fff;border:1px solid #5a4f6a;border-radius:6px;
+      padding:5px 9px;cursor:pointer;font:600 12px system-ui,sans-serif}
+    #cam-panel button:hover,#cp-show:hover{background:#4a4057}
+    #cp-show{position:absolute;top:14px;left:14px;z-index:30;pointer-events:auto;display:none}
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="game" width="960" height="640"></canvas>
+    <canvas id="hud" width="960" height="640"></canvas>
+  </div>
+</div>
+<div id="cam-panel">
+  <div class="cp-row"><b>🎥 攝影機沙盒</b><button id="cp-hide">隱藏 (H)</button></div>
+  <label>FOV 視野：<span id="v-fov"></span><input id="s-fov" type="range" min="25" max="70" step="1"></label>
+  <label>角度 Angle：<span id="v-angle"></span>°<input id="s-angle" type="range" min="15" max="85" step="1"></label>
+  <label>距離 Distance：<span id="v-dist"></span><input id="s-dist" type="range" min="300" max="1400" step="10"></label>
+  <label>看向高度 Look：<span id="v-looky"></span><input id="s-looky" type="range" min="-50" max="220" step="5"></label>
+  <div class="cp-readout" id="cp-readout"></div>
+  <div class="cp-row"><button id="cp-copy">複製設定</button><button id="cp-reset">重設</button></div>
+</div>
+<button id="cp-show">🎥 調攝影機</button>
+<script src="vendor/three.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');   // WebGL (3D world) canvas
+  const hud = document.getElementById('hud');        // 2D overlay (HUD/text)
+  const W = canvas.width;
+  const H = canvas.height;
+  const screenCtx = hud.getContext('2d');
+  const TILE = 32;
+  const COLS = W / TILE;
+  const ROWS = H / TILE;
+
+  // `ctx` is the active 2D draw target (HUD overlay). The 3D world is drawn
+  // with WebGL/Three.js; only HUD/text/menus use this 2D context.
+  let ctx = screenCtx;
+
+  // --- Orthographic (Little Fighter 2 style) camera ---------------------
+  // The gameplay still happens on the flat (x, y) plane, but we now read the
+  // y axis as DEPTH (into the screen) instead of vertical screen position.
+  // A world point projects with the horizontal axis untouched (true ortho,
+  // no perspective convergence) and the depth axis compressed + lifted to a
+  // horizon line. wz is height above the ground (airborne / hover).
+  const VIEW = {
+    horizon: 150,   // screen-y where the back edge of the arena (world y=0) sits
+    depth: 0.7,     // depth compression ~cos(45deg): looking down at the arena
+    wallH: 26       // visual height of arena boundary walls
+  };
+  // Project a world point (wx along x, wy along depth, wz = height) to HUD
+  // screen pixels using the live 3D camera. Used for health bars / floating text.
+  function project(wx, wy, wz = 0) {
+    const v = _projV.set(wx, wz, wy).project(camera);
+    return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H, behind: v.z > 1 };
+  }
+
+  const keys = new Set();
+  const mouse = { x: W / 2, y: H / 2, down: false, right: false };
+
+  window.addEventListener('keydown', (e) => {
+    keys.add(e.key.toLowerCase());
+    if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
+    if (e.key.toLowerCase() === 'r' && (game.state === 'over' || game.state === 'win')) resetGame();
+    if (game.state === 'title' && e.key === 'Enter') startRun();
+  });
+  window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    // Store cursor in canvas pixels; converted to a world ground point each
+    // frame via a camera raycast (see updateMouseWorld), since the 3D camera moves.
+    mouseScreen.x = (e.clientX - rect.left) / rect.width * W;
+    mouseScreen.y = (e.clientY - rect.top) / rect.height * H;
+  });
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 2) mouse.right = true;
+    else mouse.down = true;
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 2) mouse.right = false;
+    else mouse.down = false;
+  });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  const rnd = (min, max) => min + Math.random() * (max - min);
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+  const norm = (x, y) => {
+    const len = Math.hypot(x, y) || 1;
+    return { x: x / len, y: y / len };
+  };
+  const circleRectOverlap = (cx, cy, r, rx, ry, rw, rh) => {
+    const px = clamp(cx, rx, rx + rw);
+    const py = clamp(cy, ry, ry + rh);
+    return Math.hypot(cx - px, cy - py) <= r;
+  };
+
+  const TILE_FLOOR = 0;
+  const TILE_WALL = 1;
+  const TILE_THIN = 2;
+  const TILE_GRASS = 3;
+  const TILE_BURNT = 4;
+  const TILE_WATER = 5;
+  const TILE_ICE = 6;
+
+  const game = {
+    state: 'title',
+    time: 0,
+    score: 0,
+    kills: 0,
+    biggestBoom: 0,
+    chainBooms: 0,
+    wave: 0,
+    waveClearTimer: 0,
+    screenShake: 0,
+    flash: 0,
+    message: '',
+    messageTimer: 0,
+    map: [],
+    player: null,
+    fireballs: [],
+    enemyProjectiles: [],
+    lightningBolts: [],
+    iceBolts: [],
+    enemies: [],
+    poisonClouds: [],
+    steamClouds: [],
+    fireZones: [],
+    electricZones: [],
+    explosions: [],
+    bossWarnings: [],
+    particles: [],
+    rings: [],
+    floatingTexts: [],
+    upgrades: [],
+    stats: null,
+    run: null,
+    waveMods: null,
+    fusionBanner: null,
+    bossPhaseBanner: null,
+    bossAttackLabel: '',
+    bossAttackTimer: 0,
+    bossStarted: false,
+    bossDefeated: false
+  };
+
+
+  const arenaTemplates = [
+    { id: 'garden', name: '失控溫室', desc: '草地很多，火焰會快速形成大片火場。' },
+    { id: 'toxic', name: '煉金毒液地窖', desc: '毒霧與毒蟲更多，火元素很容易引發連鎖爆炸。' },
+    { id: 'temple', name: '淹水魔法聖壇', desc: '水池很多，雷鏈很強；冰元素也能把水面凍成滑冰場。' },
+    { id: 'maze', name: '崩壞訓練場', desc: '薄牆很多，爆炸與衝鋒可以改變戰場路線。' }
+  ];
+
+  const waveEvents = [
+    {
+      id: 'overgrowth', name: '草地蔓延', desc: '本波開始前長出更多草地。',
+      apply: () => {
+        for (let i = 0; i < 5; i++) growGrassPatch();
+      }
+    },
+    {
+      id: 'toxic_supply', name: '毒霧補給', desc: '場上多出數團毒霧，可以被火元素引爆。',
+      apply: () => {
+        for (let i = 0; i < 3; i++) {
+          const p = randomOpenSpot(150);
+          addPoisonCloud(p.x, p.y, rnd(30, 44), 5.5);
+        }
+      }
+    },
+    {
+      id: 'leaking_floor', name: '地板滲水', desc: '場上生成新的水池，雷鏈導電與冰面機會增加。',
+      apply: () => {
+        for (let i = 0; i < 3; i++) addWaterPatch();
+      }
+    },
+    {
+      id: 'frost_cracks', name: '寒霜裂縫', desc: '場上出現冰面，衝鋒怪可能會滑倒。',
+      apply: () => {
+        for (let i = 0; i < 3; i++) addIcePatch();
+      }
+    },
+    {
+      id: 'frenzy', name: '暴走小怪', desc: '本波敵人更多、速度更快。',
+      apply: (mods) => {
+        mods.enemySpeedMul *= 1.18;
+        mods.enemyCountMul *= 1.18;
+      }
+    },
+    {
+      id: 'overload', name: '魔力過載', desc: '本波你的傷害提高，但自傷也提高。',
+      apply: (mods) => {
+        mods.damageMul *= 1.22;
+        mods.selfDamageMul *= 1.28;
+      }
+    },
+    {
+      id: 'elite_patrol', name: '菁英巡邏', desc: '本波額外出現一隻盾甲衝鋒怪。',
+      minWave: 3,
+      apply: (mods) => {
+        mods.extraChargers += 1;
+      }
+    }
+  ];
+
+
+  const upgradePool = [
+    { id: 'inject_fire', element: 'fire', name: '注入火焰', desc: '把目前魔法飛彈改造成火球；若已有冰，會融合成蒸氣彈。', apply: () => injectElement('fire') },
+    { id: 'inject_ice', element: 'ice', name: '注入寒冰', desc: '把目前魔法飛彈改造成冰箭；若已有火，會融合成蒸氣彈。', apply: () => injectElement('ice') },
+    { id: 'inject_lightning', element: 'lightning', name: '注入雷電', desc: '把目前魔法飛彈改造成雷彈；命中水池會導電。', apply: () => injectElement('lightning') },
+    { id: 'inject_poison', element: 'poison', name: '注入劇毒', desc: '把目前魔法飛彈改造成毒彈；若已有火，會融合成毒爆彈。', apply: () => injectElement('poison') },
+    { id: 'split', name: '分裂', desc: '目前魔法飛彈變成多發，適合擴大元素災難。', apply: () => { game.stats.split += 1; toast('魔法飛彈開始分裂！'); } },
+    { id: 'explode', name: '命中爆炸', desc: '目前魔法飛彈命中或撞牆時會爆炸。', apply: () => { game.stats.explosive += 1; toast('命中會爆炸！'); } },
+    { id: 'trail', name: '元素留痕', desc: '飛行路徑會留下目前元素的殘留區域。', apply: () => { game.stats.trail += 1; toast('飛彈開始留下元素痕跡！'); } },
+    { id: 'haste', name: '快速施法', desc: '主攻擊冷卻降低 25%。', apply: () => { game.stats.cooldownMul *= 0.75; toast('施法速度提升！'); } },
+    { id: 'big', name: '巨大飛彈', desc: '目前魔法飛彈半徑、傷害、反應範圍提高。', apply: () => { game.stats.size += 1; toast('魔法飛彈變大了！'); } },
+    { id: 'vamp', name: '災難回血', desc: '引爆毒霧或擊殺敵人時，少量回血。', apply: () => { game.stats.siphon += 1; toast('混亂正在餵養你！'); } },
+    { id: 'spread', name: '元素蔓延', desc: '火焰、毒霧、蒸氣等區域效果更大。', apply: () => { game.stats.fireSpread += 1; toast('元素區域開始失控！'); } },
+    { id: 'toxic_boom', name: '毒爆擴大', desc: '毒霧被點燃時，爆炸範圍與傷害提高。', apply: () => { game.stats.poisonBoom += 1; toast('毒霧變得更危險！'); } },
+    { id: 'shock', name: '導電麻痺', desc: '雷電導通水池時更容易打斷衝鋒怪。', apply: () => { game.stats.shockStun += 1; game.stats.storm += 1; toast('電流開始麻痺敵人！'); } },
+    { id: 'ice_lake', name: '大冰面', desc: '冰元素凍水範圍提高，緩速時間增加。', apply: () => { game.stats.iceRadius += 1; game.stats.iceSlow += 1; toast('水池開始結成大片冰面！'); } },
+    { id: 'ice_shatter', name: '寒冰碎裂', desc: '被冰系飛彈緩速的敵人死亡時會小範圍冰爆。', apply: () => { game.stats.iceShatter += 1; toast('冰凍敵人會碎裂！'); } },
+    { id: 'danger', name: '危險魔力', desc: '所有傷害大幅提高，但自傷也提高。', apply: () => { game.stats.damageMul *= 1.28; game.stats.selfDamageMul *= 1.24; toast('你變強了，也更危險了！'); } }
+  ];
+
+  function resetGame() {
+    game.state = 'title';
+    game.time = 0;
+    game.score = 0;
+    game.kills = 0;
+    game.biggestBoom = 0;
+    game.chainBooms = 0;
+    game.wave = 0;
+    game.waveClearTimer = 0;
+    game.screenShake = 0;
+    game.flash = 0;
+    game.message = '';
+    game.messageTimer = 0;
+    game.fireballs.length = 0;
+    game.enemyProjectiles.length = 0;
+    game.lightningBolts.length = 0;
+    game.iceBolts.length = 0;
+    game.enemies.length = 0;
+    game.poisonClouds.length = 0;
+    game.steamClouds.length = 0;
+    game.fireZones.length = 0;
+    game.electricZones.length = 0;
+    game.explosions.length = 0;
+    game.bossWarnings.length = 0;
+    game.particles.length = 0;
+    game.rings.length = 0;
+    game.floatingTexts.length = 0;
+    game.upgrades.length = 0;
+    game.run = {
+      arena: null,
+      events: [],
+      eventDescs: [],
+      started: false,
+      startTime: 0
+    };
+    game.waveMods = { enemySpeedMul: 1, enemyCountMul: 1, damageMul: 1, selfDamageMul: 1, extraChargers: 0 };
+    game.fusionBanner = null;
+    game.bossPhaseBanner = null;
+    game.bossAttackLabel = '';
+    game.bossAttackTimer = 0;
+    game.bossStarted = false;
+    game.bossDefeated = false;
+    game.stats = {
+      split: 0,
+      explosive: 0,
+      trail: 0,
+      cooldownMul: 1,
+      size: 0,
+      siphon: 0,
+      lightningChain: 0,
+      lightningCooldownMul: 1,
+      storm: 0,
+      shots: 0,
+      lightningCasts: 0,
+      iceCasts: 0,
+      frozenWater: 0,
+      iceFalls: 0,
+      iceKills: 0,
+      bossDamage: 0,
+      bossSummons: 0,
+      bossPhase: 1,
+      bossHazards: 0,
+      bossLastHit: '尚未命中 Boss',
+      bossKillSource: '',
+      deathSource: '',
+      bossPhaseTwo: false,
+      waterElectrocutes: 0,
+      burnedGrass: 0,
+      shatteredWalls: 0,
+      maxCombo: 0,
+      frontBlocks: 0,
+      backHits: 0,
+      chargerStuns: 0,
+      elitesKilled: 0,
+      damageMul: 1,
+      selfDamageMul: 1,
+      enemyCountMul: 1,
+      fireSpread: 0,
+      poisonBoom: 0,
+      shockStun: 0,
+      iceCooldownMul: 1,
+      iceRadius: 0,
+      iceSlow: 0,
+      iceShatter: 0,
+      selfHits: 0,
+      biggestDisaster: '尚未發生',
+      biggestDisasterScore: 0,
+      spellElements: [],
+      spellKind: 'neutral',
+      spellName: '魔法飛彈',
+      elementPicks: 0,
+      fusions: 0,
+      steamClouds: 0,
+      spellHistory: ['普通魔法飛彈'],
+      fusionLog: [],
+      upgradeNames: []
+    };
+    game.player = {
+      x: W / 2,
+      y: H / 2,
+      r: 13,
+      hp: 100,
+      maxHp: 100,
+      speed: 220,
+      cooldown: 0,
+      lightningCooldown: 0,
+      iceCooldown: 0,
+      dashCooldown: 0,
+      dashTime: 0,
+      invuln: 0,
+      hurtTimer: 0,
+      facing: 0,
+      vx: 0,
+      vy: 0
+    };
+    makeMap('garden');
+  }
+
+  function startRun() {
+    if (game.state !== 'title') return;
+    const arena = arenaTemplates[Math.floor(Math.random() * arenaTemplates.length)];
+    game.run.arena = arena;
+    game.run.started = true;
+    game.run.startTime = game.time;
+    makeMap(arena.id);
+    game.state = 'playing';
+    toast(`普通魔法飛彈 / ${arena.name}`);
+    spawnWave();
+  }
+
+  function makeMap(template = 'garden') {
+    game.map = [];
+    for (let y = 0; y < ROWS; y++) {
+      const row = [];
+      for (let x = 0; x < COLS; x++) {
+        let t = TILE_FLOOR;
+        if (x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1) t = TILE_WALL;
+        row.push(t);
+      }
+      game.map.push(row);
+    }
+
+    if (template === 'garden') {
+      fillRectTiles(2, 2, 7, 5, TILE_GRASS);
+      fillRectTiles(20, 2, 8, 5, TILE_GRASS);
+      fillRectTiles(2, 13, 8, 5, TILE_GRASS);
+      fillRectTiles(20, 13, 8, 5, TILE_GRASS);
+      fillRectTiles(12, 7, 6, 6, TILE_GRASS);
+      fillRectTiles(7, 8, 3, 2, TILE_WATER);
+      fillRectTiles(21, 10, 3, 2, TILE_WATER);
+      fillRectTiles(12, 4, 1, 5, TILE_THIN);
+      fillRectTiles(18, 11, 1, 5, TILE_THIN);
+    } else if (template === 'toxic') {
+      fillRectTiles(3, 3, 4, 3, TILE_GRASS);
+      fillRectTiles(22, 14, 5, 3, TILE_GRASS);
+      fillRectTiles(6, 7, 3, 2, TILE_WATER);
+      fillRectTiles(21, 7, 3, 2, TILE_WATER);
+      fillRectTiles(10, 4, 1, 12, TILE_THIN);
+      fillRectTiles(19, 4, 1, 12, TILE_THIN);
+      fillRectTiles(12, 4, 6, 1, TILE_THIN);
+      fillRectTiles(12, 15, 6, 1, TILE_THIN);
+      for (let i = 0; i < 5; i++) {
+        const p = randomOpenSpot(170);
+        addPoisonCloud(p.x, p.y, rnd(28, 42), 5.8);
+      }
+    } else if (template === 'temple') {
+      fillRectTiles(5, 4, 5, 3, TILE_WATER);
+      fillRectTiles(20, 4, 5, 3, TILE_WATER);
+      fillRectTiles(5, 13, 5, 3, TILE_WATER);
+      fillRectTiles(20, 13, 5, 3, TILE_WATER);
+      fillRectTiles(13, 8, 4, 4, TILE_WATER);
+      fillRectTiles(3, 3, 4, 3, TILE_GRASS);
+      fillRectTiles(23, 14, 4, 3, TILE_GRASS);
+      fillRectTiles(12, 3, 1, 5, TILE_THIN);
+      fillRectTiles(17, 12, 1, 5, TILE_THIN);
+    } else if (template === 'maze') {
+      fillRectTiles(5, 4, 20, 1, TILE_THIN);
+      fillRectTiles(5, 15, 20, 1, TILE_THIN);
+      fillRectTiles(7, 5, 1, 7, TILE_THIN);
+      fillRectTiles(22, 8, 1, 7, TILE_THIN);
+      fillRectTiles(13, 4, 1, 5, TILE_THIN);
+      fillRectTiles(16, 11, 1, 5, TILE_THIN);
+      fillRectTiles(3, 3, 5, 4, TILE_GRASS);
+      fillRectTiles(22, 13, 5, 4, TILE_GRASS);
+      fillRectTiles(7, 8, 3, 2, TILE_WATER);
+      fillRectTiles(20, 9, 3, 2, TILE_WATER);
+    }
+
+    // Keep player spawn clean.
+    fillRectTiles(13, 9, 4, 3, TILE_FLOOR);
+  }
+
+  function fillRectTiles(tx, ty, tw, th, tile) {
+    for (let y = ty; y < ty + th; y++) {
+      for (let x = tx; x < tx + tw; x++) {
+        if (x > 0 && y > 0 && x < COLS - 1 && y < ROWS - 1) game.map[y][x] = tile;
+      }
+    }
+  }
+
+
+  function randomOpenSpot(minDist = 120) {
+    for (let tries = 0; tries < 250; tries++) {
+      const tx = Math.floor(rnd(2, COLS - 2));
+      const ty = Math.floor(rnd(2, ROWS - 2));
+      const x = tx * TILE + TILE / 2;
+      const y = ty * TILE + TILE / 2;
+      if (isSolidTile(game.map[ty][tx])) continue;
+      if (game.player && Math.hypot(x - game.player.x, y - game.player.y) < minDist) continue;
+      return { x, y, tx, ty };
+    }
+    return { x: W / 2 + rnd(-160, 160), y: H / 2 + rnd(-120, 120), tx: 15, ty: 10 };
+  }
+
+  function growGrassPatch() {
+    const p = randomOpenSpot(145);
+    const w = Math.floor(rnd(2, 5));
+    const h = Math.floor(rnd(2, 4));
+    fillRectTiles(clamp(p.tx - Math.floor(w / 2), 1, COLS - w - 1), clamp(p.ty - Math.floor(h / 2), 1, ROWS - h - 1), w, h, TILE_GRASS);
+  }
+
+  function addWaterPatch() {
+    const p = randomOpenSpot(135);
+    const w = Math.floor(rnd(2, 4));
+    const h = Math.floor(rnd(1, 3));
+    fillRectTiles(clamp(p.tx - Math.floor(w / 2), 1, COLS - w - 1), clamp(p.ty - Math.floor(h / 2), 1, ROWS - h - 1), w, h, TILE_WATER);
+  }
+
+  function addIcePatch() {
+    const p = randomOpenSpot(135);
+    const w = Math.floor(rnd(2, 5));
+    const h = Math.floor(rnd(1, 3));
+    fillRectTiles(clamp(p.tx - Math.floor(w / 2), 1, COLS - w - 1), clamp(p.ty - Math.floor(h / 2), 1, ROWS - h - 1), w, h, TILE_ICE);
+  }
+
+
+  const ELEMENT_INFO = {
+    neutral: { name: '中性', color: '#f4e7ff', core: '#ffffff' },
+    fire: { name: '火', color: '#ff9d4d', core: '#fff0a3' },
+    ice: { name: '冰', color: '#9feeff', core: '#ffffff' },
+    lightning: { name: '雷', color: '#8fe8ff', core: '#eaffff' },
+    poison: { name: '毒', color: '#c07aff', core: '#f0c8ff' },
+    steam: { name: '蒸氣', color: '#d8f6ff', core: '#ffffff' },
+    toxic_boom: { name: '毒爆', color: '#d998ff', core: '#fff0a3' },
+    plasma: { name: '電漿', color: '#ffcf6f', core: '#eaffff' },
+    frost_shock: { name: '電霜', color: '#bff4ff', core: '#ffffff' },
+    toxic_shock: { name: '電毒', color: '#b794ff', core: '#eaffff' },
+    venom_frost: { name: '毒冰', color: '#b7ffd2', core: '#ffffff' }
+  };
+
+  function fusionKind(elements) {
+    const s = new Set(elements);
+    if (s.size === 0) return 'neutral';
+    if (s.size === 1) return [...s][0];
+    if (s.has('fire') && s.has('ice')) return 'steam';
+    if (s.has('fire') && s.has('poison')) return 'toxic_boom';
+    if (s.has('fire') && s.has('lightning')) return 'plasma';
+    if (s.has('lightning') && s.has('ice')) return 'frost_shock';
+    if (s.has('lightning') && s.has('poison')) return 'toxic_shock';
+    if (s.has('ice') && s.has('poison')) return 'venom_frost';
+    return [...s].join('_');
+  }
+
+  function spellDisplayName(kind) {
+    const names = {
+      neutral: '魔法飛彈', fire: '火球', ice: '冰箭', lightning: '雷彈', poison: '毒彈',
+      steam: '蒸氣彈', toxic_boom: '毒爆彈', plasma: '電漿彈', frost_shock: '電霜彈',
+      toxic_shock: '電毒彈', venom_frost: '毒冰刺'
+    };
+    return names[kind] || '融合飛彈';
+  }
+
+  function syncSpell() {
+    const kind = fusionKind(game.stats.spellElements || []);
+    game.stats.spellKind = kind;
+    game.stats.spellName = spellDisplayName(kind);
+  }
+
+  function spellDescription(kind) {
+    const desc = {
+      neutral: '中性傷害，穩定但不會觸發元素反應。',
+      fire: '點燃草地與敵人，可引爆毒霧。',
+      ice: '緩速敵人，命中水池會凍成冰面。',
+      lightning: '命中敵人會連鎖，打到水池會導電。',
+      poison: '命中後留下毒霧，適合佈置陷阱。',
+      steam: '命中產生蒸氣雲，緩速並融化冰面，能遮住戰場。',
+      toxic_boom: '火毒融合，毒霧更容易爆燃，命中會製造連鎖爆炸。',
+      plasma: '火雷融合，命中爆裂並導電，清場強但自傷危險。',
+      frost_shock: '雷冰融合，導電與緩速並存，適合控住衝鋒怪。',
+      toxic_shock: '雷毒融合，產生帶電毒雲，持續傷害與連鎖兼具。',
+      venom_frost: '冰毒融合，緩速並留下毒性冰刺，控場穩定。'
+    };
+    return desc[kind] || '未知融合，會造成不穩定的元素災難。';
+  }
+
+  function elementLabel(element) {
+    return (ELEMENT_INFO[element] && ELEMENT_INFO[element].name) || '無';
+  }
+
+  function previewSpellState(element) {
+    let next = [...(game.stats.spellElements || [])];
+    const before = [...next];
+    if (!next.includes(element)) {
+      if (next.length < 2) next.push(element);
+      else next = [next[1], element];
+    }
+    const kind = fusionKind(next);
+    const replaced = before.length >= 2 && !before.includes(element);
+    const fused = next.length >= 2;
+    return {
+      elements: next,
+      kind,
+      name: spellDisplayName(kind),
+      desc: spellDescription(kind),
+      fused,
+      replaced,
+      element
+    };
+  }
+
+  function previewSpellName(element) {
+    return previewSpellState(element).name;
+  }
+
+  function fusionEquation(elements, resultKind) {
+    const left = elements.length ? elements.map(elementLabel).join(' + ') : '中性';
+    return `${left} = ${spellDisplayName(resultKind)}`;
+  }
+
+  function injectElement(element) {
+    const before = game.stats.spellName || '魔法飛彈';
+    const preview = previewSpellState(element);
+    let elements = [...(game.stats.spellElements || [])];
+    if (!elements.includes(element)) {
+      if (elements.length < 2) elements.push(element);
+      else elements = [elements[1], element];
+    }
+    game.stats.spellElements = elements;
+    const oldKind = game.stats.spellKind;
+    syncSpell();
+    game.stats.elementPicks++;
+    const after = game.stats.spellName;
+    const isFusion = oldKind !== game.stats.spellKind && elements.length >= 2;
+    if (isFusion) game.stats.fusions++;
+    game.stats.spellHistory.push(after);
+    const equation = fusionEquation(elements, game.stats.spellKind);
+    if (isFusion) game.stats.fusionLog.push(equation);
+    addText(game.player.x, game.player.y - 42, `${before} → ${after}`, ELEMENT_INFO[game.stats.spellKind]?.color || '#fff1bb');
+    if (isFusion) {
+      game.fusionBanner = { title: 'FUSION!', equation, desc: spellDescription(game.stats.spellKind), life: 2.15, maxLife: 2.15, color: ELEMENT_INFO[game.stats.spellKind]?.color || '#fff1bb' };
+      toast(`融合完成：${equation}`);
+    } else {
+      game.fusionBanner = { title: 'SPELL SHIFT', equation, desc: spellDescription(game.stats.spellKind), life: 1.45, maxLife: 1.45, color: ELEMENT_INFO[game.stats.spellKind]?.color || '#fff1bb' };
+      toast(`目前主法術：${after}`);
+    }
+  }
+
+  function currentFlowName() {
+    const kind = game.stats.spellKind || 'neutral';
+    if (kind === 'steam') return '蒸氣控場流';
+    if (kind === 'toxic_boom') return '火毒爆燃流';
+    if (kind === 'plasma') return '電漿破壞流';
+    if (kind === 'frost_shock') return '電霜控場流';
+    if (kind === 'toxic_shock') return '電毒雲流';
+    if (kind === 'venom_frost') return '毒冰緩速流';
+    if (kind === 'fire') return '火焰燃燒流';
+    if (kind === 'ice') return '冰面控場流';
+    if (kind === 'lightning') return '雷池清場流';
+    if (kind === 'poison') return '毒霧消耗流';
+    const chaos = Math.max(0, game.stats.damageMul - 1) * 4 + Math.max(0, game.stats.selfDamageMul - 1) * 2;
+    if (chaos > 1) return '危險混沌流';
+    return '中性飛彈流';
+  }
+
+  function tileAtPixel(x, y) {
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(y / TILE);
+    if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return TILE_WALL;
+    return game.map[ty][tx];
+  }
+
+  function isSolidTile(t) { return t === TILE_WALL || t === TILE_THIN; }
+
+  function circleHitsSolid(x, y, r) {
+    const minX = Math.floor((x - r) / TILE);
+    const maxX = Math.floor((x + r) / TILE);
+    const minY = Math.floor((y - r) / TILE);
+    const maxY = Math.floor((y + r) / TILE);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return true;
+        if (isSolidTile(game.map[ty][tx]) && circleRectOverlap(x, y, r, tx * TILE, ty * TILE, TILE, TILE)) return true;
+      }
+    }
+    return false;
+  }
+
+  function damagePlayer(amount, source = '災難') {
+    const p = game.player;
+    if (p.invuln > 0 || game.state !== 'playing') return;
+    const hazard = /爆|火焰地板|毒霧|水池導電/.test(source);
+    if (hazard) {
+      amount *= (game.stats.selfDamageMul || 1) * ((game.waveMods && game.waveMods.selfDamageMul) || 1);
+      game.stats.selfHits++;
+    }
+    p.hp -= amount;
+    p.hurtTimer = 0.22;
+    p.invuln = 0.35;
+    game.screenShake = Math.max(game.screenShake, 7.5);
+    game.flash = Math.max(game.flash, 0.07);
+    addRing(p.x, p.y, 24, '#ffb3a1', 0.28, 3);
+    addText(p.x, p.y - 26, '-' + Math.round(amount), '#ffb3a1');
+    if (p.hp <= 0) {
+      p.hp = 0;
+      game.state = 'over';
+      game.stats.deathSource = source;
+      game.message = makeDeathMessage(source);
+    }
+  }
+
+  function healPlayer(amount) {
+    const p = game.player;
+    const old = p.hp;
+    p.hp = Math.min(p.maxHp, p.hp + amount);
+    if (p.hp > old) addText(p.x, p.y - 40, '+' + Math.round(p.hp - old), '#9dffb5');
+  }
+
+  function spawnWave() {
+    game.wave += 1;
+    game.waveClearTimer = 0;
+    game.fireballs.length = 0;
+    game.enemyProjectiles.length = 0;
+    game.waveMods = { enemySpeedMul: 1, enemyCountMul: 1, damageMul: 1, selfDamageMul: 1, extraChargers: 0 };
+    game.fusionBanner = null;
+
+    const validEvents = waveEvents.filter(ev => !ev.minWave || game.wave >= ev.minWave);
+    const ev = validEvents[Math.floor(Math.random() * validEvents.length)];
+    if (ev) {
+      ev.apply(game.waveMods);
+      game.run.events.push(ev.name);
+      game.run.eventDescs.push(ev.desc);
+      game.message = `第 ${game.wave} 波：${ev.name}`;
+      game.messageTimer = 1.7;
+    } else {
+      game.message = `第 ${game.wave} 波開始！`;
+      game.messageTimer = 1.4;
+    }
+
+    const wave = game.wave;
+    const add = (type, n) => {
+      const total = Math.max(1, Math.round(n * game.stats.enemyCountMul * game.waveMods.enemyCountMul));
+      for (let i = 0; i < total; i++) spawnEnemy(type);
+    };
+    if (wave === 1) { add('slime', 6); }
+    if (wave === 2) { add('slime', 6); add('bug', 3); }
+    if (wave === 3) { add('slime', 6); add('bug', 4); add('charger', 1); }
+    if (wave === 4) { add('slime', 7); add('bug', 4); add('imp', 3); add('charger', 1); }
+    if (wave === 5) { add('slime', 7); add('bug', 5); add('imp', 3); add('charger', 1); }
+    for (let i = 0; i < game.waveMods.extraChargers; i++) spawnEnemy('charger');
+  }
+
+  function spawnEnemy(type) {
+    let x, y;
+    for (let tries = 0; tries < 100; tries++) {
+      const side = Math.floor(Math.random() * 4);
+      if (side === 0) { x = rnd(80, W - 80); y = 70; }
+      if (side === 1) { x = rnd(80, W - 80); y = H - 70; }
+      if (side === 2) { x = 70; y = rnd(80, H - 80); }
+      if (side === 3) { x = W - 70; y = rnd(80, H - 80); }
+      if (!circleHitsSolid(x, y, 15) && Math.hypot(x - game.player.x, y - game.player.y) > 220) break;
+    }
+    const presets = {
+      slime: { hp: 28, r: 14, speed: rnd(72, 94), color: '#75d56b', touch: 9, value: 10 },
+      bug: { hp: 20, r: 12, speed: rnd(98, 125), color: '#9b5fd1', touch: 7, value: 14 },
+      imp: { hp: 34, r: 13, speed: rnd(64, 82), color: '#ff8b47', touch: 10, value: 20 },
+      charger: { hp: 92, r: 18, speed: rnd(66, 78), color: '#c2a66e', touch: 16, value: 55 }
+    };
+    const e = Object.assign({
+      type, x, y, vx: 0, vy: 0, hurt: 0, shootCd: rnd(0.4, 1.6),
+      state: 'pursue', stateTimer: 0, chargeCooldown: rnd(0.6, 1.4), facing: angleTo({ x, y }, game.player),
+      stunTimer: 0, blockTextCd: 0, slowTimer: 0, chilled: false
+    }, presets[type]);
+    e.speed *= ((game.waveMods && game.waveMods.enemySpeedMul) || 1);
+    if (game.wave >= 4) e.hp *= 1.08;
+    e.maxHp = e.hp;
+    game.enemies.push(e);
+  }
+
+  function spawnBoss() {
+    game.bossStarted = true;
+    game.bossDefeated = false;
+    game.bossWarnings.length = 0;
+    game.enemyProjectiles.length = 0;
+    const e = {
+      type: 'boss',
+      x: W / 2,
+      y: 96,
+      vx: 0,
+      vy: 0,
+      hp: 660,
+      maxHp: 660,
+      r: 30,
+      speed: 78,
+      color: '#66e0a6',
+      touch: 15,
+      value: 500,
+      hurt: 0,
+      shootCd: 0,
+      state: 'boss',
+      stateTimer: 0,
+      facing: Math.PI / 2,
+      slowTimer: 0,
+      chilled: false,
+      attackCd: 2.25,
+      summonCd: 7.2,
+      phase: 1,
+      bossName: '元素哥布林法師'
+    };
+    game.enemies.push(e);
+    game.message = 'Boss 登場：元素哥布林法師！';
+    game.messageTimer = 2.6;
+    game.bossAttackLabel = '觀察 Boss 預警圈';
+    game.bossAttackTimer = 3.2;
+    game.fusionBanner = { title: 'BOSS!', equation: '元素哥布林法師', desc: '先看地上的預警圈：毒、火、雷、水會連續改變戰場。', life: 2.8, maxLife: 2.8, color: '#66e0a6' };
+    addText(W / 2, 140, 'BOSS FIGHT', '#66e0a6');
+    addRing(e.x, e.y, 96, '#66e0a6', 0.75, 5);
+    game.screenShake = Math.max(game.screenShake, 8);
+  }
+
+  function spawnEnemyNear(type, x, y) {
+    const presets = {
+      slime: { hp: 28, r: 14, speed: rnd(72, 94), color: '#75d56b', touch: 9, value: 10 },
+      bug: { hp: 20, r: 12, speed: rnd(98, 125), color: '#9b5fd1', touch: 7, value: 14 },
+      imp: { hp: 34, r: 13, speed: rnd(64, 82), color: '#ff8b47', touch: 10, value: 20 },
+      charger: { hp: 92, r: 18, speed: rnd(66, 78), color: '#c2a66e', touch: 16, value: 55 }
+    };
+    const p = presets[type];
+    if (!p) return;
+    let sx = x, sy = y;
+    for (let tries = 0; tries < 40; tries++) {
+      const a = rnd(0, Math.PI * 2);
+      const d = rnd(42, 88);
+      sx = clamp(x + Math.cos(a) * d, 48, W - 48);
+      sy = clamp(y + Math.sin(a) * d, 48, H - 48);
+      if (!circleHitsSolid(sx, sy, p.r)) break;
+    }
+    const e = Object.assign({
+      type, x: sx, y: sy, vx: 0, vy: 0, hurt: 0, shootCd: rnd(0.6, 1.6),
+      state: 'pursue', stateTimer: 0, chargeCooldown: rnd(0.8, 1.5), facing: angleTo({ x: sx, y: sy }, game.player),
+      stunTimer: 0, blockTextCd: 0, slowTimer: 0, chilled: false
+    }, p);
+    if (game.bossStarted) e.hp *= 0.85;
+    e.maxHp = e.hp;
+    game.enemies.push(e);
+  }
+
+  function openUpgrade() {
+    game.state = 'upgrade';
+    const pool = [...upgradePool];
+    game.upgrades = [];
+    for (let i = 0; i < 3; i++) {
+      if (!pool.length) break;
+      const pick = Math.floor(Math.random() * pool.length);
+      game.upgrades.push(pool.splice(pick, 1)[0]);
+    }
+  }
+
+  function applyUpgrade(index) {
+    const up = game.upgrades[index];
+    if (!up) return;
+    game.stats.upgradeNames.push(up.name);
+    up.apply();
+    game.state = 'playing';
+    if (game.wave >= 5 && !game.bossStarted) {
+      healPlayer(18);
+      addText(game.player.x, game.player.y - 46, 'Boss 前恢復', '#afff9d');
+      spawnBoss();
+    } else if (game.bossStarted && game.bossDefeated) {
+      game.state = 'win';
+      game.message = '你擊敗了元素哥布林法師！';
+    } else {
+      spawnWave();
+    }
+  }
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width * W;
+    const y = (e.clientY - rect.top) / rect.height * H;
+    if (game.state === 'title') { startRun(); return; }
+    if (game.state !== 'upgrade') return;
+    for (let i = 0; i < game.upgrades.length; i++) {
+      const bx = 210 + i * 185;
+      const by = 220;
+      if (x >= bx && x <= bx + 165 && y >= by && y <= by + 170) applyUpgrade(i);
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (game.state === 'upgrade') {
+      if (e.key === '1') applyUpgrade(0);
+      if (e.key === '2') applyUpgrade(1);
+      if (e.key === '3') applyUpgrade(2);
+    }
+  });
+
+
+  function shoot(angle) {
+    const p = game.player;
+    const baseCount = 1 + Math.min(game.stats.split, 2) * 2;
+    const spread = baseCount === 1 ? 0 : 0.16 + game.stats.split * 0.045;
+    for (let i = 0; i < baseCount; i++) {
+      const offset = (i - (baseCount - 1) / 2) * spread;
+      spawnSpellProjectile(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, angle + offset);
+    }
+    game.stats.shots++;
+  }
+
+  function spawnSpellProjectile(x, y, angle) {
+    const sizeLevel = game.stats.size;
+    const kind = game.stats.spellKind || 'neutral';
+    const info = ELEMENT_INFO[kind] || ELEMENT_INFO.neutral;
+    const speedByKind = { neutral: 510, fire: 480, ice: 440, lightning: 570, poison: 430, steam: 390, toxic_boom: 420, plasma: 520, frost_shock: 500, toxic_shock: 480, venom_frost: 440 };
+    const r = (kind === 'steam' ? 10 : 7) + sizeLevel * 2;
+    const baseDamage = { neutral: 15, fire: 17, ice: 12, lightning: 15, poison: 10, steam: 11, toxic_boom: 14, plasma: 18, frost_shock: 14, toxic_shock: 13, venom_frost: 12 }[kind] || 14;
+    const speed = speedByKind[kind] || 480;
+    game.fireballs.push({
+      x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      r, kind, color: info.color, coreColor: info.core,
+      damage: baseDamage + sizeLevel * 5,
+      life: kind === 'steam' ? 1.25 : 1.45,
+      trailTick: 0,
+      explosive: game.stats.explosive > 0 || kind === 'toxic_boom' || kind === 'plasma',
+      trail: game.stats.trail > 0,
+      boomRadius: 42 + game.stats.explosive * 15 + sizeLevel * 8,
+      fromPlayer: true
+    });
+    game.screenShake = Math.max(game.screenShake, 1.1);
+    for (let i = 0; i < 5; i++) {
+      const a = angle + rnd(-0.9, 0.9);
+      game.particles.push({ x, y, vx: Math.cos(a) * rnd(-60, 40), vy: Math.sin(a) * rnd(-60, 40), r: rnd(1.5, 3), life: rnd(0.12, 0.28), maxLife: 0.28, color: info.color });
+    }
+  }
+
+  function castIce(angle) {
+    const p = game.player;
+    game.stats.iceCasts++;
+    const speed = 430;
+    game.iceBolts.push({
+      x: p.x + Math.cos(angle) * 18,
+      y: p.y + Math.sin(angle) * 18,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: 7,
+      damage: 9 + game.stats.iceSlow * 2,
+      life: 1.25,
+      freezeRadius: 48 + game.stats.iceRadius * 18,
+      slowTime: 1.25 + game.stats.iceSlow * 0.55
+    });
+    game.screenShake = Math.max(game.screenShake, 1.1);
+    for (let i = 0; i < 8; i++) {
+      const a = angle + rnd(-0.75, 0.75);
+      game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * rnd(70, 210), vy: Math.sin(a) * rnd(70, 210), r: rnd(1.5, 3), life: rnd(0.18, 0.42), maxLife: 0.42, color: '#bff4ff' });
+    }
+  }
+
+  function freezeWaterAt(x, y, radius) {
+    let count = 0;
+    const minX = Math.floor((x - radius) / TILE);
+    const maxX = Math.floor((x + radius) / TILE);
+    const minY = Math.floor((y - radius) / TILE);
+    const maxY = Math.floor((y + radius) / TILE);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) continue;
+        if (game.map[ty][tx] === TILE_WATER) {
+          const cx = tx * TILE + TILE / 2;
+          const cy = ty * TILE + TILE / 2;
+          if (Math.hypot(cx - x, cy - y) <= radius + 18) {
+            game.map[ty][tx] = TILE_ICE;
+            count++;
+            if (Math.random() < 0.5) game.particles.push({ x: cx, y: cy, vx: rnd(-35,35), vy: rnd(-45,10), r: rnd(2,4), life: rnd(0.35,0.75), maxLife: 0.75, color: '#bff4ff' });
+          }
+        }
+      }
+    }
+    if (count > 0) {
+      game.stats.frozenWater += count;
+      addRing(x, y, radius, '#bff4ff', 0.42, 3);
+      addText(x, y - 28, '水池結冰！', '#bff4ff');
+      recordDisaster('冰凍水池', 0, radius);
+    }
+    return count;
+  }
+
+  function chillEnemy(e, time, sourceX, sourceY) {
+    e.slowTimer = Math.max(e.slowTimer || 0, time);
+    e.chilled = true;
+    damageEnemy(e, 9 + game.stats.iceSlow * 2, sourceX, sourceY);
+    addText(e.x, e.y - e.r - 12, '緩速', '#bff4ff');
+    addRing(e.x, e.y, e.r + 10, '#bff4ff', 0.25, 2);
+  }
+
+  function addIceBurst(x, y, r = 52, damage = 18) {
+    addRing(x, y, r, '#bff4ff', 0.44, 4);
+    game.screenShake = Math.max(game.screenShake, 4.5);
+    game.stats.iceKills++;
+    for (const e of game.enemies) {
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d < r + e.r && e.hp > 0) {
+        e.slowTimer = Math.max(e.slowTimer || 0, 1.15 + game.stats.iceSlow * 0.35);
+        damageEnemy(e, damage * (1 - d / (r + e.r) * 0.4), x, y);
+      }
+    }
+    for (let i = 0; i < 18; i++) {
+      const a = rnd(0, Math.PI * 2);
+      game.particles.push({ x, y, vx: Math.cos(a) * rnd(70, 240), vy: Math.sin(a) * rnd(70, 240), r: rnd(1.5, 4), life: rnd(0.35,0.75), maxLife: 0.75, color: Math.random() < 0.5 ? '#bff4ff' : '#e8fbff' });
+    }
+  }
+
+
+
+  function chainLightningFrom(x, y, firstTarget = null, damage = 14) {
+    let current = firstTarget || nearestEnemy(x, y, 180);
+    const hit = new Set();
+    let fromX = x, fromY = y;
+    const jumps = 1 + Math.min(4, game.stats.storm + game.stats.shockStun + (game.stats.spellKind === 'lightning' ? 1 : 0));
+    for (let i = 0; i <= jumps && current; i++) {
+      hit.add(current);
+      game.lightningBolts.push({ x1: fromX, y1: fromY, x2: current.x, y2: current.y, life: 0.14, maxLife: 0.14 });
+      damageEnemy(current, damage, fromX, fromY);
+      fromX = current.x; fromY = current.y;
+      current = nearestEnemy(fromX, fromY, 145 + game.stats.storm * 18, hit);
+    }
+  }
+
+  function castLightning(angle) {
+    const p = game.player;
+    game.stats.lightningCasts++;
+    const target = findLightningTarget(angle);
+    const waterTarget = findWaterTarget(angle);
+    let x2 = p.x + Math.cos(angle) * 320;
+    let y2 = p.y + Math.sin(angle) * 320;
+    let hitSomething = false;
+
+    if (target) {
+      x2 = target.x;
+      y2 = target.y;
+      let current = target;
+      const hit = new Set();
+      const jumps = 2 + game.stats.lightningChain * 2;
+      for (let i = 0; i <= jumps && current; i++) {
+        hit.add(current);
+        const fromX = i === 0 ? p.x : x2;
+        const fromY = i === 0 ? p.y : y2;
+        game.lightningBolts.push({ x1: fromX, y1: fromY, x2: current.x, y2: current.y, life: 0.16, maxLife: 0.16 });
+        damageEnemy(current, 18 + game.stats.lightningChain * 4, fromX, fromY);
+        x2 = current.x;
+        y2 = current.y;
+        current = nearestEnemy(current.x, current.y, 135 + game.stats.lightningChain * 22, hit);
+        hitSomething = true;
+      }
+    }
+
+    if (waterTarget) {
+      game.lightningBolts.push({ x1: p.x, y1: p.y, x2: waterTarget.x, y2: waterTarget.y, life: 0.18, maxLife: 0.18 });
+      addElectricZone(waterTarget.x, waterTarget.y, 62 + game.stats.storm * 26, 0.9 + game.stats.storm * 0.12);
+      addText(waterTarget.x, waterTarget.y - 28, '水池導電！', '#9fe7ff');
+      hitSomething = true;
+    }
+
+    if (!hitSomething) {
+      game.lightningBolts.push({ x1: p.x, y1: p.y, x2, y2, life: 0.12, maxLife: 0.12 });
+      addText(p.x + Math.cos(angle) * 70, p.y + Math.sin(angle) * 70, '雷鏈落空', '#a9c7ff');
+    }
+    game.screenShake = Math.max(game.screenShake, 2.6);
+    for (let i = 0; i < 12; i++) {
+      const a = angle + rnd(-0.8, 0.8);
+      game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * rnd(80, 240), vy: Math.sin(a) * rnd(80, 240), r: rnd(1.5, 3.5), life: rnd(0.16, 0.38), maxLife: 0.38, color: '#9fe7ff' });
+    }
+  }
+
+  function findLightningTarget(angle) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const e of game.enemies) {
+      const dx = e.x - game.player.x;
+      const dy = e.y - game.player.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 390) continue;
+      const da = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - angle), Math.cos(Math.atan2(dy, dx) - angle)));
+      if (da > 0.62) continue;
+      const mouseBias = Math.hypot(e.x - mouse.x, e.y - mouse.y) * 0.45;
+      const score = d + mouseBias + da * 120;
+      if (score < bestScore) { bestScore = score; best = e; }
+    }
+    return best;
+  }
+
+  function nearestEnemy(x, y, range, exclude = new Set()) {
+    let best = null;
+    let bestD = Infinity;
+    for (const e of game.enemies) {
+      if (exclude.has(e) || e.dead || e.hp <= 0) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d < range && d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+  }
+
+  function findWaterTarget(angle) {
+    if (tileAtPixel(mouse.x, mouse.y) === TILE_WATER) return { x: mouse.x, y: mouse.y };
+    for (let d = 24; d <= 380; d += 16) {
+      const x = game.player.x + Math.cos(angle) * d;
+      const y = game.player.y + Math.sin(angle) * d;
+      if (tileAtPixel(x, y) === TILE_WATER) return { x, y };
+      if (isSolidTile(tileAtPixel(x, y))) return null;
+    }
+    return null;
+  }
+
+  function addElectricZone(x, y, r, life = 0.8) {
+    game.electricZones.push({ x, y, r, life, maxLife: life, tick: 0, pulse: 0 });
+    game.stats.waterElectrocutes++;
+    game.flash = Math.max(game.flash, 0.08);
+    game.screenShake = Math.max(game.screenShake, 5);
+    addRing(x, y, r, '#9fe7ff', 0.42, 4);
+  }
+
+  function spawnEnemyBolt(enemy) {
+    const a = angleTo(enemy, game.player);
+    const speed = 230;
+    game.enemyProjectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(a) * speed,
+      vy: Math.sin(a) * speed,
+      r: 6,
+      damage: 9,
+      life: 2.5,
+      color: '#ff945a'
+    });
+  }
+
+
+  function addSteamCloud(x, y, r, life = 3.2) {
+    game.steamClouds.push({ x, y, r: r + game.stats.fireSpread * 4, life, maxLife: life, pulse: rnd(0, 6.28), tick: 0 });
+    game.stats.steamClouds++;
+    addRing(x, y, r, '#d8f6ff', 0.34, 3);
+    meltIceAt(x, y, r * 0.8);
+    for (const fz of game.fireZones) {
+      if (Math.hypot(fz.x - x, fz.y - y) < fz.r + r) fz.life *= 0.45;
+    }
+    recordDisaster('蒸氣雲', 0, r);
+  }
+
+  function meltIceAt(x, y, radius) {
+    const minX = Math.floor((x - radius) / TILE);
+    const maxX = Math.floor((x + radius) / TILE);
+    const minY = Math.floor((y - radius) / TILE);
+    const maxY = Math.floor((y + radius) / TILE);
+    let melted = 0;
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) continue;
+        if (game.map[ty][tx] === TILE_ICE) {
+          const cx = tx * TILE + TILE / 2;
+          const cy = ty * TILE + TILE / 2;
+          if (Math.hypot(cx - x, cy - y) <= radius + 16) { game.map[ty][tx] = TILE_WATER; melted++; }
+        }
+      }
+    }
+    if (melted > 0) addText(x, y - 26, '冰面融化', '#d8f6ff');
+    return melted;
+  }
+
+  function addFireZone(x, y, r, life = 2.2, friendly = false) {
+    const rr = r + (friendly ? game.stats.fireSpread * 4 : 0);
+    game.fireZones.push({ x, y, r: rr, life, maxLife: life, dps: friendly ? 10 + game.stats.fireSpread * 1.5 : 14, tick: 0, friendly });
+    igniteGrass(x, y, rr + 8 + game.stats.fireSpread * 5);
+  }
+
+  function addPoisonCloud(x, y, r, life = 5.0) {
+    game.poisonClouds.push({ x, y, r, life, maxLife: life, dps: 9, pulse: rnd(0, 6.28) });
+  }
+
+  function addExplosion(x, y, r, damage = 42, source = '爆炸') {
+    game.explosions.push({ x, y, r, life: 0.32, maxLife: 0.32 });
+    addRing(x, y, r, '#ffeea1', 0.42, 5);
+    game.screenShake = Math.max(game.screenShake, Math.min(19, r * 0.16));
+    game.flash = Math.max(game.flash, 0.12);
+    igniteGrass(x, y, r);
+    breakThinWalls(x, y, r);
+    addFireZone(x, y, r * 0.35, 1.35, true);
+
+    let killsInBoom = 0;
+    for (const e of game.enemies) {
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d < r + e.r) {
+        const falloff = 1 - d / (r + e.r);
+        damageEnemy(e, damage * (0.45 + falloff), x, y, source);
+        e.vx += (e.x - x) / Math.max(1, d) * 230 * falloff;
+        e.vy += (e.y - y) / Math.max(1, d) * 230 * falloff;
+        if (e.hp <= 0) killsInBoom++;
+      }
+    }
+    game.biggestBoom = Math.max(game.biggestBoom, killsInBoom);
+    if (killsInBoom >= 2) {
+      game.stats.maxCombo = Math.max(game.stats.maxCombo, killsInBoom);
+      addText(x, y - r * 0.55, `${killsInBoom} COMBO!`, '#fff08a');
+    }
+    recordDisaster(source, killsInBoom, r);
+
+    const dp = Math.hypot(game.player.x - x, game.player.y - y);
+    if (dp < r + game.player.r) {
+      damagePlayer(14 * (1 - dp / (r + game.player.r)) + 5, source);
+    }
+
+    for (let i = 0; i < 28; i++) {
+      const a = rnd(0, Math.PI * 2);
+      const sp = rnd(80, 340);
+      game.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        r: rnd(2, 5),
+        life: rnd(0.35, 0.75),
+        maxLife: 0.75,
+        color: Math.random() < 0.55 ? '#ffcf5a' : '#ff654f'
+      });
+    }
+  }
+
+  function igniteGrass(x, y, radius) {
+    const minX = Math.floor((x - radius) / TILE);
+    const maxX = Math.floor((x + radius) / TILE);
+    const minY = Math.floor((y - radius) / TILE);
+    const maxY = Math.floor((y + radius) / TILE);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) continue;
+        if (game.map[ty][tx] === TILE_GRASS) {
+          const cx = tx * TILE + TILE / 2;
+          const cy = ty * TILE + TILE / 2;
+          if (Math.hypot(cx - x, cy - y) <= radius + 18) {
+            game.map[ty][tx] = TILE_BURNT;
+            game.stats.burnedGrass++;
+            addFireZone(cx, cy, 18, rnd(2.0, 3.4), true);
+            if (Math.random() < 0.16) addText(cx, cy, '燃燒', '#ffb356');
+            if (Math.random() < 0.35) game.particles.push({ x: cx, y: cy, vx: rnd(-18,18), vy: rnd(-42,-12), r: rnd(2,4), life: rnd(0.35,0.7), maxLife: 0.7, color: '#ff9a4d' });
+          }
+        }
+      }
+    }
+  }
+
+  function breakThinWalls(x, y, radius) {
+    const minX = Math.floor((x - radius) / TILE);
+    const maxX = Math.floor((x + radius) / TILE);
+    const minY = Math.floor((y - radius) / TILE);
+    const maxY = Math.floor((y + radius) / TILE);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) continue;
+        if (game.map[ty][tx] === TILE_THIN) {
+          const cx = tx * TILE + TILE / 2;
+          const cy = ty * TILE + TILE / 2;
+          if (Math.hypot(cx - x, cy - y) <= radius + 20) {
+            game.map[ty][tx] = TILE_FLOOR;
+            game.stats.shatteredWalls++;
+            if (Math.random() < 0.65) addText(cx, cy - 10, '破牆', '#d8c0a0');
+            for (let i = 0; i < 10; i++) game.particles.push({
+              x: cx, y: cy,
+              vx: rnd(-120, 120), vy: rnd(-120, 120),
+              r: rnd(2, 5), life: rnd(0.35, 0.8), maxLife: 0.8,
+              color: '#9e8c76'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  function damageEnemy(e, amount, sourceX = null, sourceY = null, sourceName = '攻擊') {
+    if (e.hp <= 0) return;
+
+    let finalAmount = amount * (game.stats.damageMul || 1) * ((game.waveMods && game.waveMods.damageMul) || 1);
+    if (e.type === 'charger' && sourceX !== null && sourceY !== null) {
+      const sourceAngle = Math.atan2(sourceY - e.y, sourceX - e.x);
+      const diff = Math.abs(Math.atan2(Math.sin(sourceAngle - e.facing), Math.cos(sourceAngle - e.facing)));
+      const isStunned = e.state === 'stunned' || e.stunTimer > 0;
+      if (isStunned) {
+        finalAmount *= 1.2;
+        if (amount >= 6 && e.blockTextCd <= 0) {
+          addText(e.x, e.y - e.r - 18, 'STUN HIT!', '#d7ff8c');
+          e.blockTextCd = 0.28;
+        }
+      } else if (diff < Math.PI * 0.38) {
+        finalAmount *= 0.2;
+        game.stats.frontBlocks++;
+        if (amount >= 6 && e.blockTextCd <= 0) {
+          addText(e.x, e.y - e.r - 18, 'BLOCK', '#bfe7ff');
+          e.blockTextCd = 0.28;
+        }
+      } else if (diff > Math.PI * 0.68) {
+        finalAmount *= 1.5;
+        game.stats.backHits++;
+        if (amount >= 6 && e.blockTextCd <= 0) {
+          addText(e.x, e.y - e.r - 18, 'BACK HIT!', '#fff08a');
+          e.blockTextCd = 0.28;
+        }
+      }
+    }
+
+    if (e.type === 'boss') {
+      game.stats.bossDamage += finalAmount;
+      game.stats.bossLastHit = sourceName;
+    }
+    e.hp -= finalAmount;
+    e.hurt = 0.18;
+    if (finalAmount >= 20) addText(e.x, e.y - e.r - 10, Math.round(finalAmount), '#fff3e2');
+    if (finalAmount >= 28) addRing(e.x, e.y, e.r + 10, '#fff3e2', 0.18, 2);
+    if (sourceX !== null) {
+      const d = Math.hypot(e.x - sourceX, e.y - sourceY) || 1;
+      const knock = e.type === 'charger' ? 42 : 75;
+      e.vx += (e.x - sourceX) / d * knock;
+      e.vy += (e.y - sourceY) / d * knock;
+    }
+    if (e.hp <= 0) {
+      if (e.type === 'boss') game.stats.bossKillSource = sourceName;
+      killEnemy(e);
+    }
+  }
+
+  function killEnemy(e) {
+    if (e.dead) return;
+    e.dead = true;
+    game.kills++;
+    game.score += e.value;
+    addText(e.x, e.y - 16, '+' + e.value, '#ffe28a');
+    addRing(e.x, e.y, e.r + 18, e.color, 0.32, 2.5);
+    if (e.type === 'bug') {
+      addPoisonCloud(e.x, e.y, rnd(34, 48), 5.2);
+      addText(e.x, e.y - 32, '毒霧', '#c07aff');
+    }
+    if (e.type === 'boss') {
+      game.bossDefeated = true;
+      game.stats.bossPhase = Math.max(game.stats.bossPhase || 1, 2);
+      game.score += 1000;
+      game.message = '你擊敗了元素哥布林法師！';
+      game.state = 'win';
+      game.fusionBanner = { title: 'VICTORY!', equation: 'Boss 已擊敗', desc: `主法術 ${game.stats.spellName} 完成最後一擊。`, life: 2.6, maxLife: 2.6, color: '#afff9d' };
+      addText(e.x, e.y - 62, 'BOSS 擊破！', '#afff9d');
+      addExplosion(e.x, e.y, 112, 0, 'Boss 爆散');
+      game.screenShake = Math.max(game.screenShake, 18);
+    }
+    if (e.type === 'charger') {
+      game.stats.elitesKilled++;
+      addText(e.x, e.y - 42, '菁英擊破！', '#ffd36d');
+      game.screenShake = Math.max(game.screenShake, 7);
+      for (let i = 0; i < 18; i++) {
+        const a = rnd(0, Math.PI * 2);
+        game.particles.push({
+          x: e.x, y: e.y,
+          vx: Math.cos(a) * rnd(60, 190),
+          vy: Math.sin(a) * rnd(60, 190),
+          r: rnd(2, 5), life: rnd(0.35, 0.75), maxLife: 0.75,
+          color: Math.random() < 0.5 ? '#ffd36d' : '#bfe7ff'
+        });
+      }
+    }
+    if (game.stats.iceShatter > 0 && e.chilled) {
+      addIceBurst(e.x, e.y, 46 + game.stats.iceShatter * 10, 14 + game.stats.iceShatter * 5);
+      addText(e.x, e.y - 52, '冰爆！', '#bff4ff');
+    }
+    if (game.stats.siphon > 0) healPlayer(2 + game.stats.siphon * 2);
+    for (let i = 0; i < 12; i++) {
+      const a = rnd(0, Math.PI * 2);
+      game.particles.push({
+        x: e.x, y: e.y,
+        vx: Math.cos(a) * rnd(30, 130),
+        vy: Math.sin(a) * rnd(30, 130),
+        r: rnd(2, 4), life: rnd(0.35, 0.65), maxLife: 0.65,
+        color: e.color
+      });
+    }
+  }
+
+  function addText(x, y, text, color = '#fff') {
+    game.floatingTexts.push({ x, y, text, color, life: 0.82, maxLife: 0.82, vy: -34 });
+  }
+
+  function addRing(x, y, r, color = '#fff', life = 0.35, width = 3) {
+    game.rings.push({ x, y, r, color, life, maxLife: life, width });
+  }
+
+  function recordDisaster(source, kills, radius) {
+    const score = kills * 100 + Math.round(radius) + (source.includes('毒') ? 55 : 0) + (source.includes('水池') ? 35 : 0);
+    if (score > game.stats.biggestDisasterScore) {
+      game.stats.biggestDisasterScore = score;
+      const killText = kills > 0 ? `，炸死 ${kills} 隻敵人` : '，場面一片混亂';
+      game.stats.biggestDisaster = `${source}${killText}`;
+    }
+  }
+
+
+  function makeDeathMessage(source) {
+    if (/Boss|哥布林|雷擊|火圈|毒瓶/.test(source)) return '你倒在元素哥布林法師的元素連招中。死因：' + source;
+    if (/爆|火焰地板|毒霧|水池導電/.test(source)) return '你被自己的魔法災難吞掉了。死因：' + source;
+    if (/衝撞|撞擊/.test(source)) return '你被怪物逼入混亂地形後擊倒。死因：' + source;
+    return '魔法失控，地牢吞沒了你。死因：' + source;
+  }
+
+  function makeRunStory(win) {
+    const spell = game.stats.spellName || '魔法飛彈';
+    const arena = game.run && game.run.arena ? game.run.arena.name : '未知競技場';
+    if (win) {
+      const source = game.stats.bossKillSource || game.stats.bossLastHit || spell;
+      return `你在${arena}用「${spell}」擊敗元素哥布林法師，最後一擊來自：${source}。`;
+    }
+    const death = game.stats.deathSource || '未知災難';
+    if (game.bossStarted) return `你帶著「${spell}」打進 Boss 戰，但被 ${death} 終結。`;
+    return `你在${arena}把「${spell}」改造到失控，但被 ${death} 終結。`;
+  }
+
+  function toast(message) {
+    game.message = message;
+    game.messageTimer = 1.5;
+  }
+
+  function update(dt) {
+    game.time += dt;
+    updateMouseWorld(); // map cursor onto the ground plane for aiming
+    game.screenShake = Math.max(0, game.screenShake - dt * 28);
+    game.flash = Math.max(0, game.flash - dt * 1.7);
+    if (game.messageTimer > 0) game.messageTimer -= dt;
+    if (game.bossAttackTimer > 0) game.bossAttackTimer -= dt;
+    if (game.bossPhaseBanner) {
+      game.bossPhaseBanner.life -= dt;
+      if (game.bossPhaseBanner.life <= 0) game.bossPhaseBanner = null;
+    }
+    if (game.fusionBanner) {
+      game.fusionBanner.life -= dt;
+      if (game.fusionBanner.life <= 0) game.fusionBanner = null;
+    }
+
+    updateParticles(dt);
+    updateRings(dt);
+    updateFloatingTexts(dt);
+
+    if (game.state !== 'playing') return;
+    updatePlayer(dt);
+    updateProjectiles(dt);
+    updateEnemies(dt);
+    updateBossWarnings(dt);
+    updateZones(dt);
+
+    game.enemies = game.enemies.filter(e => !e.dead);
+
+    if (game.enemies.length === 0 && game.wave > 0) {
+      game.waveClearTimer += dt;
+      if (game.waveClearTimer > 0.9) {
+        if (game.bossStarted && game.bossDefeated) {
+          game.state = 'win';
+          game.message = '你擊敗了元素哥布林法師！';
+        } else if (game.wave >= 5 && !game.bossStarted) {
+          openUpgrade();
+        } else if (!game.bossStarted) {
+          openUpgrade();
+        }
+      }
+    }
+  }
+
+  function updatePlayer(dt) {
+    const p = game.player;
+    p.cooldown = Math.max(0, p.cooldown - dt);
+    p.lightningCooldown = Math.max(0, p.lightningCooldown - dt);
+    p.iceCooldown = Math.max(0, p.iceCooldown - dt);
+    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    p.dashTime = Math.max(0, p.dashTime - dt);
+    p.invuln = Math.max(0, p.invuln - dt);
+    p.hurtTimer = Math.max(0, p.hurtTimer - dt);
+    p.facing = Math.atan2(mouse.y - p.y, mouse.x - p.x);
+
+    let mx = 0, my = 0;
+    if (keys.has('w') || keys.has('arrowup')) my -= 1;
+    if (keys.has('s') || keys.has('arrowdown')) my += 1;
+    if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
+    if (keys.has('d') || keys.has('arrowright')) mx += 1;
+    const n = norm(mx, my);
+    let speed = p.speed;
+
+    if ((keys.has(' ') || keys.has('shift')) && p.dashCooldown <= 0) {
+      p.dashTime = 0.13;
+      p.dashCooldown = 1.1;
+      p.invuln = Math.max(p.invuln, 0.18);
+      game.screenShake = Math.max(game.screenShake, 2);
+      if (Math.abs(n.x) + Math.abs(n.y) > 0) { p.vx = n.x * 560; p.vy = n.y * 560; }
+      for (let i = 0; i < 12; i++) {
+        game.particles.push({ x: p.x, y: p.y, vx: rnd(-90, 90), vy: rnd(-90, 90), r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#b7d8ff' });
+      }
+    }
+    if (p.dashTime > 0) speed = 520;
+
+    const onIce = tileAtPixel(p.x, p.y) === TILE_ICE;
+    if (onIce) {
+      p.vx += n.x * speed * 4.4 * dt;
+      p.vy += n.y * speed * 4.4 * dt;
+      const maxSp = p.dashTime > 0 ? 620 : 340;
+      const sp = Math.hypot(p.vx, p.vy);
+      if (sp > maxSp) { p.vx = p.vx / sp * maxSp; p.vy = p.vy / sp * maxSp; }
+      p.vx *= Math.pow(0.16, dt);
+      p.vy *= Math.pow(0.16, dt);
+      if (Math.random() < 0.08) game.particles.push({ x: p.x, y: p.y + 10, vx: rnd(-45, 45), vy: rnd(-20, 25), r: rnd(1.5, 3), life: rnd(0.15, 0.32), maxLife: 0.32, color: '#d8fbff' });
+    } else {
+      p.vx = n.x * speed;
+      p.vy = n.y * speed;
+    }
+    const nx = p.x + p.vx * dt;
+    const ny = p.y + p.vy * dt;
+    if (!circleHitsSolid(nx, p.y, p.r)) p.x = nx; else p.vx *= -0.15;
+    if (!circleHitsSolid(p.x, ny, p.r)) p.y = ny; else p.vy *= -0.15;
+
+    if (mouse.down && p.cooldown <= 0) {
+      shoot(p.facing);
+      p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
+    }
+  }
+
+
+  function updateProjectiles(dt) {
+    for (const lb of game.lightningBolts) lb.life -= dt;
+    game.lightningBolts = game.lightningBolts.filter(lb => lb.life > 0);
+
+    for (const fb of game.fireballs) {
+      fb.life -= dt;
+      fb.x += fb.vx * dt;
+      fb.y += fb.vy * dt;
+      fb.trailTick -= dt;
+      if (fb.trail && fb.trailTick <= 0) {
+        fb.trailTick = 0.09;
+        leaveSpellTrail(fb);
+      }
+
+      let hit = false;
+      const tile = tileAtPixel(fb.x, fb.y);
+      if (circleHitsSolid(fb.x, fb.y, fb.r)) hit = true;
+      if (!hit) hit = reactProjectileWithTerrain(fb, tile);
+      if (!hit) hit = reactProjectileWithClouds(fb);
+      if (!hit) {
+        for (const e of game.enemies) {
+          if (Math.hypot(fb.x - e.x, fb.y - e.y) < fb.r + e.r) {
+            applySpellHit(fb, e);
+            hit = true;
+            break;
+          }
+        }
+      }
+      if (hit || fb.life <= 0) {
+        fb.dead = true;
+        finishSpellProjectile(fb);
+      }
+    }
+    game.fireballs = game.fireballs.filter(fb => !fb.dead && fb.life > 0);
+
+    for (const b of game.enemyProjectiles) {
+      b.life -= dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (circleHitsSolid(b.x, b.y, b.r)) b.dead = true;
+      if (Math.hypot(b.x - game.player.x, b.y - game.player.y) < b.r + game.player.r) {
+        b.dead = true;
+        damagePlayer(b.damage, '火焰小鬼');
+        addFireZone(b.x, b.y, 16, 1.2, false);
+      }
+    }
+    game.enemyProjectiles = game.enemyProjectiles.filter(b => !b.dead && b.life > 0);
+  }
+
+  function isFireKind(kind) { return ['fire','toxic_boom','plasma'].includes(kind); }
+  function isIceKind(kind) { return ['ice','frost_shock','venom_frost'].includes(kind); }
+  function isLightningKind(kind) { return ['lightning','plasma','frost_shock','toxic_shock'].includes(kind); }
+  function isPoisonKind(kind) { return ['poison','toxic_boom','toxic_shock','venom_frost'].includes(kind); }
+
+  function leaveSpellTrail(fb) {
+    const k = fb.kind;
+    if (isFireKind(k)) addFireZone(fb.x, fb.y, 12 + game.stats.size * 2, 0.75, true);
+    else if (isPoisonKind(k)) addPoisonCloud(fb.x, fb.y, 13 + game.stats.size * 2, 1.05);
+    else if (k === 'steam') addSteamCloud(fb.x, fb.y, 16 + game.stats.size * 2, 0.85);
+    else if (isIceKind(k)) addRing(fb.x, fb.y, 13, '#bff4ff', 0.12, 1.5);
+    else if (isLightningKind(k) && Math.random() < 0.35) game.lightningBolts.push({ x1: fb.x - fb.vx * 0.018, y1: fb.y - fb.vy * 0.018, x2: fb.x, y2: fb.y, life: 0.08, maxLife: 0.08 });
+  }
+
+  function reactProjectileWithTerrain(fb, tile) {
+    if (isLightningKind(fb.kind) && tile === TILE_WATER) {
+      addElectricZone(fb.x, fb.y, 62 + game.stats.storm * 26, 0.85 + game.stats.storm * 0.12);
+      addText(fb.x, fb.y - 28, 'CONDUCT', '#9fe7ff');
+      return true;
+    }
+    if (isIceKind(fb.kind) && tile === TILE_WATER) {
+      freezeWaterAt(fb.x, fb.y, 52 + game.stats.iceRadius * 18);
+      return true;
+    }
+    if ((fb.kind === 'steam' || isFireKind(fb.kind)) && tile === TILE_ICE) {
+      addSteamCloud(fb.x, fb.y, 48 + game.stats.size * 8, 2.8);
+      addText(fb.x, fb.y - 28, 'STEAM', '#d8f6ff');
+      return true;
+    }
+    return false;
+  }
+
+  function reactProjectileWithClouds(fb) {
+    for (const cloud of game.poisonClouds) {
+      if (cloud.life > 0 && Math.hypot(fb.x - cloud.x, fb.y - cloud.y) < cloud.r + fb.r) {
+        if (isFireKind(fb.kind) || fb.kind === 'steam') {
+          cloud.life = -1;
+          game.chainBooms++;
+          addExplosion(cloud.x, cloud.y, Math.max(70, cloud.r + fb.boomRadius * 0.55) + game.stats.poisonBoom * 18, 50 + game.stats.size * 8 + game.stats.poisonBoom * 12, '毒霧爆燃');
+          addText(cloud.x, cloud.y - cloud.r, 'TOXIC BOOM!', '#ffeb82');
+          if (game.stats.siphon > 0) healPlayer(4 + game.stats.siphon * 3);
+          return true;
+        }
+        if (isLightningKind(fb.kind)) {
+          addElectricZone(cloud.x, cloud.y, Math.max(50, cloud.r + 18), 0.65);
+          addText(cloud.x, cloud.y - cloud.r, '電毒雲！', '#c9b6ff');
+          return true;
+        }
+      }
+    }
+    for (const sc of game.steamClouds) {
+      if (sc.life > 0 && Math.hypot(fb.x - sc.x, fb.y - sc.y) < sc.r + fb.r && isLightningKind(fb.kind)) {
+        addElectricZone(sc.x, sc.y, sc.r + 12, 0.72);
+        addText(sc.x, sc.y - sc.r, '電霧！', '#d8f6ff');
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function applySpellHit(fb, e) {
+    damageEnemy(e, fb.damage, fb.x, fb.y, spellDisplayName(fb.kind));
+    if (isIceKind(fb.kind)) chillEnemy(e, 1.1 + game.stats.iceSlow * 0.5, fb.x, fb.y);
+    if (isLightningKind(fb.kind)) chainLightningFrom(fb.x, fb.y, e, 10 + game.stats.storm * 3);
+    if (isPoisonKind(fb.kind)) addPoisonCloud(e.x, e.y, 26 + game.stats.size * 4, 3.6);
+    if (fb.kind === 'steam') addSteamCloud(e.x, e.y, 48 + game.stats.size * 8, 3.0);
+    if (fb.kind === 'toxic_boom') addExplosion(e.x, e.y, 52 + game.stats.poisonBoom * 14 + game.stats.size * 6, 28 + game.stats.poisonBoom * 7, '毒爆彈');
+    if (fb.kind === 'plasma') addExplosion(e.x, e.y, 48 + game.stats.size * 8, 32 + game.stats.size * 6, '電漿爆炸');
+    if (fb.kind === 'frost_shock') {
+      addElectricZone(e.x, e.y, 44 + game.stats.storm * 12, 0.52);
+      e.slowTimer = Math.max(e.slowTimer || 0, 1.0 + game.stats.iceSlow * 0.35);
+    }
+  }
+
+  function finishSpellProjectile(fb) {
+    const k = fb.kind;
+    if (isFireKind(k)) { igniteGrass(fb.x, fb.y, fb.r + 14 + game.stats.fireSpread * 4); addFireZone(fb.x, fb.y, 18 + game.stats.size * 2, 1.2, true); }
+    if (isIceKind(k)) freezeWaterAt(fb.x, fb.y, 42 + game.stats.iceRadius * 14);
+    if (isPoisonKind(k)) addPoisonCloud(fb.x, fb.y, 28 + game.stats.size * 5, 4.0);
+    if (k === 'steam') addSteamCloud(fb.x, fb.y, 52 + game.stats.size * 8, 3.0);
+    if (isLightningKind(k) && tileAtPixel(fb.x, fb.y) === TILE_WATER) addElectricZone(fb.x, fb.y, 58 + game.stats.storm * 20, 0.8);
+    if (fb.explosive || fb.life <= 0) addExplosion(fb.x, fb.y, fb.boomRadius, 26 + game.stats.size * 7, spellDisplayName(k));
+    else addRing(fb.x, fb.y, fb.r * 3.2, fb.color, 0.18, 2);
+  }
+
+  function updateEnemies(dt) {
+    const p = game.player;
+    for (const e of game.enemies) {
+      e.hurt = Math.max(0, e.hurt - dt);
+      e.blockTextCd = Math.max(0, (e.blockTextCd || 0) - dt);
+      e.slowTimer = Math.max(0, (e.slowTimer || 0) - dt);
+
+      if (e.type === 'boss') {
+        updateBoss(e, dt);
+      } else if (e.type === 'charger') {
+        updateCharger(e, dt);
+      } else {
+        const a = angleTo(e, p);
+        let desiredX = Math.cos(a);
+        let desiredY = Math.sin(a);
+
+        if (e.type === 'imp') {
+          const d = Math.hypot(p.x - e.x, p.y - e.y);
+          if (d < 210) { desiredX = -desiredX; desiredY = -desiredY; }
+          if (d > 310) { desiredX = Math.cos(a); desiredY = Math.sin(a); }
+          if (d >= 210 && d <= 310) { desiredX = 0; desiredY = 0; }
+          e.shootCd -= dt;
+          if (e.shootCd <= 0 && d < 430) {
+            e.shootCd = rnd(1.2, 2.0);
+            spawnEnemyBolt(e);
+          }
+        }
+
+        const n = norm(desiredX, desiredY);
+        const onIce = tileAtPixel(e.x, e.y) === TILE_ICE;
+        const speedMul = e.slowTimer > 0 ? 0.48 : 1;
+        e.vx += n.x * e.speed * speedMul * 7 * dt;
+        e.vy += n.y * e.speed * speedMul * 7 * dt;
+        e.vx *= Math.pow(onIce ? 0.18 : 0.001, dt);
+        e.vy *= Math.pow(onIce ? 0.18 : 0.001, dt);
+        if (onIce && Math.random() < 0.04) game.particles.push({ x: e.x, y: e.y + e.r * 0.5, vx: rnd(-35, 35), vy: rnd(-20, 25), r: rnd(1.5, 3), life: rnd(0.15, 0.32), maxLife: 0.32, color: '#d8fbff' });
+        moveEnemyWithCollision(e, dt);
+      }
+
+      if (Math.hypot(e.x - p.x, e.y - p.y) < e.r + p.r) {
+        const source = e.type === 'bug' ? '毒蟲撞擊' : e.type === 'imp' ? '火焰小鬼撞擊' : e.type === 'charger' ? '盾甲衝撞' : e.type === 'boss' ? '元素哥布林撞擊' : '史萊姆撞擊';
+        damagePlayer(e.type === 'charger' && e.state === 'charging' ? e.touch + 10 : e.touch, source);
+        const d = Math.hypot(e.x - p.x, e.y - p.y) || 1;
+        e.vx += (e.x - p.x) / d * (e.type === 'charger' ? 260 : 190);
+        e.vy += (e.y - p.y) / d * (e.type === 'charger' ? 260 : 190);
+      }
+    }
+  }
+
+
+  function updateBoss(e, dt) {
+    const p = game.player;
+    e.hurt = Math.max(0, e.hurt - dt);
+    e.slowTimer = Math.max(0, (e.slowTimer || 0) - dt);
+    const d = Math.hypot(p.x - e.x, p.y - e.y);
+    const a = angleTo(e, p);
+    e.facing = turnToward(e.facing || a, a, 2.4 * dt);
+    const phase = e.hp < e.maxHp * 0.45 ? 2 : 1;
+    if (phase !== e.phase) {
+      e.phase = phase;
+      game.stats.bossPhase = phase;
+      game.message = 'Boss 進入第二階段：元素失控！';
+      game.messageTimer = 2.4;
+      game.stats.bossPhaseTwo = true;
+      game.bossAttackLabel = '第二階段：連續元素災難';
+      game.bossAttackTimer = 3.0;
+      game.bossPhaseBanner = { life: 2.2, maxLife: 2.2, text: 'PHASE 2', sub: '元素失控：預警更短、連招更多', color: '#ffdf7a' };
+      addText(e.x, e.y - 54, 'PHASE 2', '#ffdf7a');
+      addRing(e.x, e.y, 128, '#ffdf7a', 0.95, 6);
+      game.screenShake = Math.max(game.screenShake, 12);
+      for (let i = 0; i < 2; i++) spawnEnemyNear(i === 0 ? 'bug' : 'imp', e.x, e.y);
+    }
+
+    const away = d < 210 ? -1 : (d > 310 ? 1 : 0);
+    const orbit = e.phase === 2 ? 0.55 : 0.35;
+    let dx = Math.cos(a) * away + Math.cos(a + Math.PI / 2) * orbit;
+    let dy = Math.sin(a) * away + Math.sin(a + Math.PI / 2) * orbit;
+    const n = norm(dx, dy);
+    const speedMul = e.slowTimer > 0 ? 0.55 : 1;
+    e.vx += n.x * e.speed * speedMul * 5.2 * dt;
+    e.vy += n.y * e.speed * speedMul * 5.2 * dt;
+    e.vx *= Math.pow(0.006, dt);
+    e.vy *= Math.pow(0.006, dt);
+    moveEnemyWithCollision(e, dt);
+
+    e.attackCd -= dt;
+    e.summonCd -= dt;
+    if (e.summonCd <= 0) {
+      e.summonCd = e.phase === 2 ? rnd(5.0, 6.2) : rnd(6.8, 8.2);
+      const choices = e.phase === 2 ? ['slime', 'bug', 'imp', 'charger'] : ['slime', 'bug', 'imp'];
+      const count = e.phase === 2 ? 2 : 1;
+      for (let i = 0; i < count; i++) spawnEnemyNear(choices[Math.floor(Math.random() * choices.length)], e.x, e.y);
+      game.stats.bossSummons += count;
+      addText(e.x, e.y - 48, '召喚小怪！', '#d7ff8c');
+    }
+
+    if (e.attackCd <= 0) {
+      e.attackCd = e.phase === 2 ? rnd(1.15, 1.62) : rnd(1.65, 2.15);
+      const targetX = clamp(p.x + rnd(-44, 44), 54, W - 54);
+      const targetY = clamp(p.y + rnd(-44, 44), 54, H - 54);
+      const roll = Math.random();
+      if (e.phase === 1) {
+        if (roll < 0.34) {
+          game.bossAttackLabel = '毒瓶：離開紫色落點'; game.bossAttackTimer = 1.2;
+          addBossWarning('poison', targetX, targetY, 46, 0.88, '#d998ff');
+          addText(e.x, e.y - 44, '毒瓶預備', '#d998ff');
+        } else if (roll < 0.62) {
+          game.bossAttackLabel = '火圈：不要站在橘色圈內'; game.bossAttackTimer = 1.3;
+          addBossWarning('fire', targetX, targetY, 48, 1.02, '#ffbd66');
+          addText(e.x, e.y - 44, '火圈預備', '#ffbd66');
+        } else {
+          game.bossAttackLabel = '水雷連招：水池會被雷擊導電'; game.bossAttackTimer = 1.5;
+          addWaterPoolAt(targetX, targetY, 48);
+          addBossWarning('lightning', targetX, targetY, 62, 1.08, '#9fe7ff');
+          addText(e.x, e.y - 44, '水雷連招', '#9fe7ff');
+        }
+      } else {
+        if (roll < 0.26) {
+          game.bossAttackLabel = '毒火連爆：紫圈後面接火圈'; game.bossAttackTimer = 1.4;
+          addBossWarning('poison', targetX, targetY, 54, 0.70, '#d998ff');
+          addBossWarning('fire', targetX + rnd(-26, 26), targetY + rnd(-26, 26), 50, 1.04, '#ffbd66');
+        } else if (roll < 0.55) {
+          game.bossAttackLabel = '大範圍導電：離開水池'; game.bossAttackTimer = 1.35;
+          addWaterPoolAt(targetX, targetY, 58);
+          addBossWarning('lightning', targetX, targetY, 76, 0.82, '#9fe7ff');
+        } else if (roll < 0.78) {
+          game.bossAttackLabel = '大火圈：橘圈會燃燒地板'; game.bossAttackTimer = 1.25;
+          addBossWarning('fire', targetX, targetY, 66, 0.84, '#ffbd66');
+        } else {
+          game.bossAttackLabel = '電霧：蒸氣後接雷擊'; game.bossAttackTimer = 1.6;
+          addBossWarning('steam', targetX, targetY, 58, 0.86, '#d8f6ff');
+          addBossWarning('lightning', targetX, targetY, 64, 1.22, '#9fe7ff');
+        }
+      }
+    }
+  }
+
+  function updateCharger(e, dt) {
+    const p = game.player;
+    const d = Math.hypot(p.x - e.x, p.y - e.y);
+    const a = angleTo(e, p);
+    const speedMul = e.slowTimer > 0 ? 0.55 : 1;
+    const onIce = tileAtPixel(e.x, e.y) === TILE_ICE;
+    if (onIce && e.state === 'charging') {
+      game.stats.iceFalls++;
+      stunCharger(e, '冰面滑倒！');
+      recordDisaster('盾甲怪冰面滑倒', 0, 72);
+      return;
+    }
+
+    if (e.state === 'pursue') {
+      e.facing = turnToward(e.facing, a, 4.2 * dt);
+      e.chargeCooldown -= dt;
+      const n = norm(Math.cos(e.facing), Math.sin(e.facing));
+      e.vx += n.x * e.speed * speedMul * 6.2 * dt;
+      e.vy += n.y * e.speed * speedMul * 6.2 * dt;
+      e.vx *= Math.pow(onIce ? 0.2 : 0.0015, dt);
+      e.vy *= Math.pow(onIce ? 0.2 : 0.0015, dt);
+      moveEnemyWithCollision(e, dt);
+      if (e.chargeCooldown <= 0 && d > 95 && d < 340 && hasLineOfSight(e.x, e.y, p.x, p.y)) {
+        e.state = 'windup';
+        e.stateTimer = 0.72;
+        e.vx *= 0.2;
+        e.vy *= 0.2;
+        e.facing = a;
+        addText(e.x, e.y - 36, '蓄力！', '#ff8f6e');
+      }
+      return;
+    }
+
+    if (e.state === 'windup') {
+      e.stateTimer -= dt;
+      e.facing = turnToward(e.facing, a, 2.1 * dt);
+      e.vx *= Math.pow(0.02, dt);
+      e.vy *= Math.pow(0.02, dt);
+      if (e.stateTimer <= 0) {
+        e.state = 'charging';
+        e.stateTimer = 0.58;
+        const n = norm(Math.cos(e.facing), Math.sin(e.facing));
+        e.vx = n.x * 520 * speedMul;
+        e.vy = n.y * 520 * speedMul;
+        game.screenShake = Math.max(game.screenShake, 3);
+      }
+      return;
+    }
+
+    if (e.state === 'charging') {
+      e.stateTimer -= dt;
+      const hitWall = moveEnemyWithCollision(e, dt, true);
+      if (hitWall) {
+        stunCharger(e, '撞牆暈眩！');
+        breakThinWalls(e.x, e.y, 48);
+      } else if (e.stateTimer <= 0) {
+        e.state = 'recover';
+        e.stateTimer = 0.34;
+        e.vx *= 0.45;
+        e.vy *= 0.45;
+      }
+      return;
+    }
+
+    if (e.state === 'recover') {
+      e.stateTimer -= dt;
+      e.vx *= Math.pow(0.01, dt);
+      e.vy *= Math.pow(0.01, dt);
+      moveEnemyWithCollision(e, dt);
+      if (e.stateTimer <= 0) {
+        e.state = 'pursue';
+        e.chargeCooldown = rnd(1.0, 1.8);
+      }
+      return;
+    }
+
+    if (e.state === 'stunned') {
+      e.stunTimer -= dt;
+      e.vx *= Math.pow(0.04, dt);
+      e.vy *= Math.pow(0.04, dt);
+      moveEnemyWithCollision(e, dt);
+      if (e.stunTimer <= 0) {
+        e.state = 'pursue';
+        e.chargeCooldown = rnd(1.1, 1.9);
+      }
+    }
+  }
+
+  function moveEnemyWithCollision(e, dt, charging = false) {
+    const nx = e.x + e.vx * dt;
+    const ny = e.y + e.vy * dt;
+    let hit = false;
+    if (!circleHitsSolid(nx, e.y, e.r)) e.x = nx; else { e.vx *= charging ? -0.15 : -0.25; hit = true; }
+    if (!circleHitsSolid(e.x, ny, e.r)) e.y = ny; else { e.vy *= charging ? -0.15 : -0.25; hit = true; }
+    return hit;
+  }
+
+  function stunCharger(e, text) {
+    e.state = 'stunned';
+    e.stunTimer = 1.15;
+    e.vx *= -0.22;
+    e.vy *= -0.22;
+    game.stats.chargerStuns++;
+    game.screenShake = Math.max(game.screenShake, 8);
+    addText(e.x, e.y - 36, text, '#d7ff8c');
+    for (let i = 0; i < 12; i++) {
+      game.particles.push({
+        x: e.x, y: e.y,
+        vx: rnd(-160, 160), vy: rnd(-160, 160),
+        r: rnd(2, 4), life: rnd(0.3, 0.65), maxLife: 0.65,
+        color: '#ffd36d'
+      });
+    }
+  }
+
+  function turnToward(current, target, maxStep) {
+    const diff = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+    return current + clamp(diff, -maxStep, maxStep);
+  }
+
+  function hasLineOfSight(x1, y1, x2, y2) {
+    const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 18);
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const x = x1 + (x2 - x1) * t;
+      const y = y1 + (y2 - y1) * t;
+      if (isSolidTile(tileAtPixel(x, y))) return false;
+    }
+    return true;
+  }
+
+
+
+  function bossWarningLabel(type) {
+    if (type === 'poison') return '毒瓶';
+    if (type === 'lightning') return '雷擊';
+    if (type === 'fire') return '火圈';
+    if (type === 'steam') return '蒸氣';
+    return '危險';
+  }
+
+  function addBossWarning(type, x, y, r, delay, color = '#ffdf7a') {
+    game.bossWarnings.push({ type, x, y, r, life: delay, maxLife: delay, color, pulse: 0, label: bossWarningLabel(type) });
+    game.stats.bossHazards++;
+  }
+
+  function addWaterPoolAt(x, y, radius = 56) {
+    let made = 0;
+    const minX = Math.floor((x - radius) / TILE);
+    const maxX = Math.floor((x + radius) / TILE);
+    const minY = Math.floor((y - radius) / TILE);
+    const maxY = Math.floor((y + radius) / TILE);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        if (tx <= 0 || ty <= 0 || tx >= COLS - 1 || ty >= ROWS - 1) continue;
+        const t = game.map[ty][tx];
+        if (t === TILE_WALL || t === TILE_THIN) continue;
+        const cx = tx * TILE + TILE / 2;
+        const cy = ty * TILE + TILE / 2;
+        if (Math.hypot(cx - x, cy - y) <= radius) { game.map[ty][tx] = TILE_WATER; made++; }
+      }
+    }
+    addRing(x, y, radius, '#79d3ff', 0.42, 3);
+    if (made > 0) addText(x, y - 28, '召喚水池', '#9fe7ff');
+    return made;
+  }
+
+  function updateBossWarnings(dt) {
+    for (const w of game.bossWarnings) {
+      w.life -= dt;
+      w.pulse += dt * 8;
+      if (w.life > 0) continue;
+      w.dead = true;
+      if (w.type === 'poison') {
+        addPoisonCloud(w.x, w.y, w.r, 5.2);
+        addText(w.x, w.y - w.r, '毒瓶！', '#d998ff');
+        addRing(w.x, w.y, w.r, '#d998ff', 0.36, 3);
+      } else if (w.type === 'lightning') {
+        addElectricZone(w.x, w.y, w.r, 0.82);
+        addText(w.x, w.y - w.r, '雷擊！', '#9fe7ff');
+      } else if (w.type === 'fire') {
+        addFireZone(w.x, w.y, w.r, 2.1, false);
+        addText(w.x, w.y - w.r, '火圈！', '#ffbd66');
+        game.screenShake = Math.max(game.screenShake, 4);
+      } else if (w.type === 'steam') {
+        addSteamCloud(w.x, w.y, w.r, 3.0);
+        addText(w.x, w.y - w.r, '蒸氣！', '#d8f6ff');
+      }
+    }
+    game.bossWarnings = game.bossWarnings.filter(w => !w.dead);
+  }
+
+  function updateZones(dt) {
+    for (const fz of game.fireZones) {
+      fz.life -= dt;
+      fz.tick -= dt;
+      if (fz.tick <= 0) {
+        fz.tick = 0.25;
+        igniteGrass(fz.x, fz.y, fz.r + 4);
+        if (Math.hypot(game.player.x - fz.x, game.player.y - fz.y) < game.player.r + fz.r) damagePlayer(fz.dps * 0.25, '火焰地板');
+        for (const e of game.enemies) {
+          if (Math.hypot(e.x - fz.x, e.y - fz.y) < e.r + fz.r) damageEnemy(e, fz.dps * 0.25, fz.x, fz.y, fz.friendly ? '友方火焰區' : 'Boss火圈');
+        }
+      }
+    }
+    game.fireZones = game.fireZones.filter(fz => fz.life > 0);
+
+    for (const ez of game.electricZones) {
+      ez.life -= dt;
+      ez.pulse += dt * 18;
+      ez.tick -= dt;
+      if (ez.tick <= 0) {
+        ez.tick = 0.18;
+        if (Math.hypot(game.player.x - ez.x, game.player.y - ez.y) < game.player.r + ez.r) damagePlayer(10, '水池導電');
+        for (const e of game.enemies) {
+          if (Math.hypot(e.x - ez.x, e.y - ez.y) < e.r + ez.r) {
+            damageEnemy(e, 16 + game.stats.storm * 4 + game.stats.shockStun * 3, ez.x, ez.y);
+            if (game.stats.shockStun > 0 && e.type === 'charger' && e.state === 'charging') stunCharger(e, '雷擊麻痺！');
+            e.vx *= 0.65; e.vy *= 0.65;
+          }
+        }
+      }
+    }
+    game.electricZones = game.electricZones.filter(ez => ez.life > 0);
+
+    for (const pc of game.poisonClouds) {
+      pc.life -= dt;
+      pc.pulse += dt * 4;
+      if (Math.hypot(game.player.x - pc.x, game.player.y - pc.y) < game.player.r + pc.r) damagePlayer(pc.dps * dt, '毒霧');
+      for (const e of game.enemies) {
+        if (e.type !== 'bug' && Math.hypot(e.x - pc.x, e.y - pc.y) < e.r + pc.r) damageEnemy(e, pc.dps * 0.35 * dt, pc.x, pc.y);
+      }
+    }
+    game.poisonClouds = game.poisonClouds.filter(pc => pc.life > 0);
+
+    for (const sc of game.steamClouds) {
+      sc.life -= dt;
+      sc.pulse += dt * 3.4;
+      sc.tick -= dt;
+      if (sc.tick <= 0) {
+        sc.tick = 0.22;
+        for (const e of game.enemies) {
+          if (Math.hypot(e.x - sc.x, e.y - sc.y) < e.r + sc.r) {
+            e.slowTimer = Math.max(e.slowTimer || 0, 0.35);
+            e.vx *= 0.82; e.vy *= 0.82;
+          }
+        }
+      }
+    }
+    game.steamClouds = game.steamClouds.filter(sc => sc.life > 0);
+
+    for (const ex of game.explosions) ex.life -= dt;
+    game.explosions = game.explosions.filter(ex => ex.life > 0);
+  }
+
+  function updateParticles(dt) {
+    for (const p of game.particles) {
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= Math.pow(0.05, dt);
+      p.vy *= Math.pow(0.05, dt);
+    }
+    game.particles = game.particles.filter(p => p.life > 0);
+  }
+
+  function updateRings(dt) {
+    for (const r of game.rings) r.life -= dt;
+    game.rings = game.rings.filter(r => r.life > 0);
+  }
+
+  function updateFloatingTexts(dt) {
+    for (const t of game.floatingTexts) {
+      t.life -= dt;
+      t.y += t.vy * dt;
+    }
+    game.floatingTexts = game.floatingTexts.filter(t => t.life > 0);
+  }
+
+  // ===================================================================
+  //  3D RENDERER (Three.js) — voxel world, fixed 45° follow camera.
+  //  Game logic is unchanged; this replaces the old 2D world drawing.
+  // ===================================================================
+  const mouseScreen = { x: W / 2, y: H / 2 };
+  const _projV = new THREE.Vector3();
+
+  let renderer = null, gl3dOk = false;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(W, H, false);
+    renderer.shadowMap.enabled = false;
+    gl3dOk = true;
+  } catch (err) {
+    console.warn('WebGL unavailable:', err);
+  }
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x100e18);
+  scene.fog = new THREE.Fog(0x100e18, 820, 1580);
+
+  // Sandbox-tunable camera: angle (deg from ground), distance, fov, look height.
+  const CAM = { fov: 43, angle: 46, dist: 849, lookY: 0 };
+  const camera = new THREE.PerspectiveCamera(CAM.fov, W / H, 1, 5000);
+  // --- on-screen camera control panel ---
+  (function camPanel() {
+    const $ = (id) => document.getElementById(id);
+    const sFov = $('s-fov'), sAng = $('s-angle'), sDist = $('s-dist'), sLook = $('s-looky');
+    if (!sFov) return;
+    const DEFAULT = { fov: 43, angle: 46, dist: 849, lookY: 0 };
+    function refresh() {
+      sFov.value = CAM.fov; sAng.value = CAM.angle; sDist.value = CAM.dist; sLook.value = CAM.lookY;
+      $('v-fov').textContent = CAM.fov; $('v-angle').textContent = CAM.angle;
+      $('v-dist').textContent = CAM.dist; $('v-looky').textContent = CAM.lookY;
+      const rad = CAM.angle * Math.PI / 180;
+      const h = Math.round(Math.sin(rad) * CAM.dist), b = Math.round(Math.cos(rad) * CAM.dist);
+      $('cp-readout').textContent =
+        'CAM = { fov:' + CAM.fov + ', angle:' + CAM.angle + ', dist:' + CAM.dist + ', lookY:' + CAM.lookY + ' }\n'
+        + '\u2192 height:' + h + '  back:' + b + '   (貼這行給我也可)';
+    }
+    sFov.oninput = (e) => { CAM.fov = +e.target.value; refresh(); };
+    sAng.oninput = (e) => { CAM.angle = +e.target.value; refresh(); };
+    sDist.oninput = (e) => { CAM.dist = +e.target.value; refresh(); };
+    sLook.oninput = (e) => { CAM.lookY = +e.target.value; refresh(); };
+    $('cp-copy').onclick = () => {
+      const rad = CAM.angle * Math.PI / 180;
+      const h = Math.round(Math.sin(rad) * CAM.dist), b = Math.round(Math.cos(rad) * CAM.dist);
+      const txt = 'CAM fov:' + CAM.fov + ' angle:' + CAM.angle + ' dist:' + CAM.dist
+        + ' lookY:' + CAM.lookY + '  (height:' + h + ' back:' + b + ')';
+      if (navigator.clipboard) navigator.clipboard.writeText(txt);
+      $('cp-copy').textContent = '已複製!'; setTimeout(() => { $('cp-copy').textContent = '複製設定'; }, 1200);
+    };
+    $('cp-reset').onclick = () => { Object.assign(CAM, DEFAULT); refresh(); };
+    function toggle(hide) {
+      $('cam-panel').classList.toggle('hidden', hide);
+      $('cp-show').style.display = hide ? 'block' : 'none';
+    }
+    $('cp-hide').onclick = () => toggle(true);
+    $('cp-show').onclick = () => toggle(false);
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'h') toggle(!$('cam-panel').classList.contains('hidden'));
+    });
+    refresh();
+  })();
+
+  const hemi = new THREE.HemisphereLight(0xfff2d2, 0x1c1630, 0.92);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffd88a, 1.18);
+  sun.position.set(-0.6, 1.25, 0.55);
+  scene.add(sun);
+  const rim = new THREE.DirectionalLight(0x7ddcff, 0.42);
+  rim.position.set(0.55, 0.6, -0.75);
+  scene.add(rim);
+  const magicFill = new THREE.PointLight(0xaa72ff, 0.52, 980);
+  magicFill.position.set(W / 2, 260, H / 2);
+  scene.add(magicFill);
+
+  const ART = {
+    ink: '#15101c', parchment: '#f1d8aa', gold: '#ffd36d', violet: '#9b6cff', cyan: '#9fe7ff',
+    floorA: '#4b3b45', floorB: '#40313d', floorEdge: '#6a5463', grass: '#416e38', grassHi: '#94df62',
+    burnt: '#2a1c18', water: '#1d5771', ice: '#bdf5ff', wall: 0x625563, wallTop: 0x887780,
+    thin: 0xa77b4e, thinTop: 0xd1a06a
+  };
+
+  // --- shared geometry / material caches ---
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+  const sphereGeo = new THREE.SphereGeometry(1, 14, 12);
+  const circleGeo = new THREE.CircleGeometry(1, 36);
+  const coneGeo = new THREE.ConeGeometry(1, 2, 4);
+  const octaGeo = new THREE.OctahedronGeometry(1, 0);
+  const tetraGeo = new THREE.TetrahedronGeometry(1, 0);
+  const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
+  const torusGeo = new THREE.TorusGeometry(1, 0.08, 6, 24);
+  const colorHex = (s) => {
+    if (typeof s === 'number') return s;
+    if (!s) return 0xffffff;
+    if (s[0] === '#') return parseInt(s.slice(1), 16);
+    return 0xffffff;
+  };
+  const _matCache = new Map();
+  const basicMat = (hex) => {
+    let m = _matCache.get(hex);
+    if (!m) { m = new THREE.MeshBasicMaterial({ color: hex }); _matCache.set(hex, m); }
+    return m;
+  };
+  const lightMat = new THREE.LineBasicMaterial({ color: 0xe5fcff });
+
+  function matLambert(color, emissive = 0x000000, intensity = 0) {
+    return new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: intensity });
+  }
+  function makeBox(w, h, d, color, emissive = 0x000000, intensity = 0) {
+    const m = new THREE.Mesh(boxGeo, matLambert(color, emissive, intensity));
+    m.scale.set(w, h, d);
+    return m;
+  }
+  function makeGlowSphere(r, color, opacity = 0.32) {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending });
+    const m = new THREE.Mesh(sphereGeo, mat);
+    m.scale.setScalar(r);
+    return m;
+  }
+  function tmpMat(color, opacity = 1, additive = false) {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 });
+    if (additive) mat.blending = THREE.AdditiveBlending;
+    mat.__tmp = true;
+    return mat;
+  }
+
+  // --- ground (tilemap drawn to a texture on a flat plane) ---
+  const groundCanvas = document.createElement('canvas');
+  groundCanvas.width = COLS * 16; groundCanvas.height = ROWS * 16;
+  const gtx = groundCanvas.getContext('2d');
+  const groundTex = new THREE.CanvasTexture(groundCanvas);
+  groundTex.magFilter = THREE.NearestFilter;
+  groundTex.minFilter = THREE.NearestFilter;
+  const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshLambertMaterial({ map: groundTex }));
+  groundMesh.rotation.x = -Math.PI / 2;
+  groundMesh.position.set(W / 2, 0, H / 2);
+  scene.add(groundMesh);
+
+  function tileNoise(x, y) { return ((x * 1103515245 + y * 12345 + 97) >>> 0) % 1000 / 1000; }
+
+  function drawGroundTexture() {
+    const s = 16;
+    gtx.clearRect(0, 0, groundCanvas.width, groundCanvas.height);
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = game.map[y][x];
+      const px = x * s, py = y * s;
+      let c;
+      if (t === TILE_GRASS) c = ART.grass;
+      else if (t === TILE_BURNT) c = ART.burnt;
+      else if (t === TILE_WATER) c = ART.water;
+      else if (t === TILE_ICE) c = ART.ice;
+      else if (t === TILE_WALL) c = '#2b2630';
+      else if (t === TILE_THIN) c = '#43342e';
+      else c = ((x + y) % 2 === 0) ? ART.floorA : ART.floorB;
+      gtx.fillStyle = c;
+      gtx.fillRect(px, py, s, s);
+      if (t === TILE_FLOOR) {
+        gtx.strokeStyle = ART.floorEdge;
+        gtx.globalAlpha = 0.36;
+        gtx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+        gtx.globalAlpha = 1;
+        if ((x * 7 + y * 11) % 23 === 0) {
+          gtx.strokeStyle = 'rgba(174,116,255,.42)';
+          gtx.lineWidth = 1;
+          gtx.beginPath();
+          gtx.moveTo(px + 5, py + 5); gtx.lineTo(px + 11, py + 5); gtx.lineTo(px + 8, py + 11); gtx.closePath(); gtx.stroke();
+        }
+      } else if (t === TILE_GRASS) {
+        gtx.fillStyle = ART.grassHi;
+        for (let i = 0; i < 5; i++) {
+          const ox = 2 + ((x * 5 + y * 3 + i * 4) % 12);
+          const oy = 3 + ((x * 2 + y * 7 + i * 5) % 10);
+          gtx.fillRect(px + ox, py + oy, 1.5, 5);
+        }
+      } else if (t === TILE_BURNT) {
+        gtx.fillStyle = 'rgba(255,118,55,.20)';
+        gtx.fillRect(px + 3, py + 4, s - 6, 2);
+        gtx.fillStyle = 'rgba(0,0,0,.35)';
+        gtx.fillRect(px + 4, py + 8, s - 8, 3);
+      } else if (t === TILE_WATER) {
+        gtx.fillStyle = 'rgba(122,224,255,.30)';
+        gtx.beginPath();
+        gtx.ellipse(px + 8, py + 8, 6, 3 + Math.sin(game.time * 2 + x) * 1.1, 0, 0, Math.PI * 2);
+        gtx.fill();
+        gtx.strokeStyle = 'rgba(173,245,255,.28)';
+        gtx.beginPath(); gtx.moveTo(px + 2, py + 5); gtx.lineTo(px + 14, py + 4); gtx.stroke();
+      } else if (t === TILE_ICE) {
+        gtx.fillStyle = 'rgba(255,255,255,.46)';
+        gtx.fillRect(px + 2, py + 2, 12, 4);
+        gtx.strokeStyle = 'rgba(73,148,180,.55)';
+        gtx.beginPath();
+        gtx.moveTo(px + 4, py + 5); gtx.lineTo(px + 12, py + 11);
+        gtx.moveTo(px + 12, py + 4); gtx.lineTo(px + 5, py + 12);
+        gtx.stroke();
+      } else if (t === TILE_WALL || t === TILE_THIN) {
+        gtx.strokeStyle = 'rgba(255,211,109,.18)';
+        gtx.strokeRect(px + 2, py + 2, s - 4, s - 4);
+      }
+    }
+    groundTex.needsUpdate = true;
+  }
+
+  // --- raised walls (rebuilt only when the tile map changes) ---
+  const wallGroup = new THREE.Group(); scene.add(wallGroup);
+  const wallMat = new THREE.MeshLambertMaterial({ color: ART.wall });
+  const wallTopMat = new THREE.MeshLambertMaterial({ color: ART.wallTop });
+  const thinMat = new THREE.MeshLambertMaterial({ color: ART.thin });
+  const thinTopMat = new THREE.MeshLambertMaterial({ color: ART.thinTop });
+  let wallSig = '';
+  function syncWalls() {
+    let sig = '';
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = game.map[y][x];
+      if (t === TILE_WALL || t === TILE_THIN) sig += x + '.' + y + '.' + t + ';';
+    }
+    if (sig === wallSig) return;
+    wallSig = sig;
+    wallGroup.clear();
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = game.map[y][x];
+      if (t !== TILE_WALL && t !== TILE_THIN) continue;
+      const h = t === TILE_WALL ? 48 : 30;
+      const body = new THREE.Mesh(boxGeo, t === TILE_WALL ? wallMat : thinMat);
+      body.scale.set(TILE, h, TILE);
+      body.position.set(x * TILE + TILE / 2, h / 2, y * TILE + TILE / 2);
+      wallGroup.add(body);
+      const cap = new THREE.Mesh(boxGeo, t === TILE_WALL ? wallTopMat : thinTopMat);
+      cap.scale.set(TILE * 0.94, 4, TILE * 0.94);
+      cap.position.set(x * TILE + TILE / 2, h + 2, y * TILE + TILE / 2);
+      wallGroup.add(cap);
+      if ((x + y) % 5 === 0) {
+        const rune = new THREE.Mesh(boxGeo, matLambert(0x9b6cff, 0x9b6cff, 0.7));
+        rune.scale.set(5, 1.2, 5);
+        rune.position.set(x * TILE + TILE / 2, h + 4.5, y * TILE + TILE / 2);
+        wallGroup.add(rune);
+      }
+    }
+  }
+
+  const decorGroup = new THREE.Group(); scene.add(decorGroup);
+  function buildToyboxDecor() {
+    decorGroup.clear();
+    const spots = [
+      {x: 74, z: 70}, {x: W - 82, z: 78}, {x: 86, z: H - 82}, {x: W - 96, z: H - 92},
+      {x: 210, z: 84}, {x: W - 216, z: H - 74}
+    ];
+    for (let i = 0; i < spots.length; i++) {
+      const s = spots[i];
+      const base = makeBox(34, 8, 22, i % 2 ? 0x6f4d33 : 0x3a2d3a); base.position.set(s.x, 4, s.z); decorGroup.add(base);
+      const vial = new THREE.Mesh(cylGeo, matLambert(i % 3 === 0 ? 0x7ee7ff : i % 3 === 1 ? 0xd998ff : 0xffbd66, i % 3 === 0 ? 0x7ee7ff : i % 3 === 1 ? 0xd998ff : 0xffbd66, 0.5));
+      vial.scale.set(4, 13, 4); vial.position.set(s.x - 8, 17, s.z); decorGroup.add(vial);
+      const cork = makeBox(5, 3, 5, 0x7a5535); cork.position.set(s.x - 8, 31, s.z); decorGroup.add(cork);
+      const crystal = new THREE.Mesh(octaGeo, matLambert(0x9b6cff, 0x9b6cff, 0.65));
+      crystal.scale.set(7, 10, 7); crystal.position.set(s.x + 10, 19, s.z + 2); decorGroup.add(crystal);
+    }
+  }
+  buildToyboxDecor();
+
+  // --- actor (player + enemy) voxel meshes ---
+  const actorMeshes = new Map();
+  let playerMesh = null;
+
+  function tintable(group, list, m) { group.add(m); list.push({ mesh: m, base: m.material.color.getHex() }); return m; }
+
+  function buildPlayer() {
+    const g = new THREE.Group();
+    const shadow = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.7; shadow.scale.set(17, 11, 1); g.add(shadow);
+    const bootL = makeBox(6, 5, 8, 0x1d1826); bootL.position.set(-5, 3, 0); g.add(bootL);
+    const bootR = makeBox(6, 5, 8, 0x1d1826); bootR.position.set(5, 3, 0); g.add(bootR);
+    const body = makeBox(22, 24, 16, 0x6c45ff, 0x22134a, 0.18); body.position.y = 16; g.add(body);
+    const robeGlow = makeBox(24, 4, 17, 0xffd36d, 0xff9a4d, 0.18); robeGlow.position.y = 19; g.add(robeGlow);
+    const scarf = makeBox(25, 5, 18, 0xffcc56); scarf.position.y = 27; g.add(scarf);
+    const head = makeBox(15, 13, 13, 0xffd7b0); head.position.y = 35; g.add(head);
+    const eyeL = makeBox(3, 3.5, 1.2, 0x76e7ff, 0x76e7ff, 0.55); eyeL.position.set(-4, 36, 6.8); g.add(eyeL);
+    const eyeR = makeBox(3, 3.5, 1.2, 0x76e7ff, 0x76e7ff, 0.55); eyeR.position.set(4, 36, 6.8); g.add(eyeR);
+    const brim = makeBox(34, 5, 30, 0x321b77, 0x160a38, 0.14); brim.position.y = 44; g.add(brim);
+    const band = makeBox(25, 4, 23, 0xffc85a, 0xff9a4d, 0.15); band.position.y = 47; g.add(band);
+    const hat2 = makeBox(20, 9, 20, 0x4c25bd, 0x160a38, 0.12); hat2.position.y = 53; g.add(hat2);
+    const hat3 = makeBox(12, 10, 12, 0x6b35df, 0x260c54, 0.15); hat3.position.y = 63; g.add(hat3);
+    const hat4 = makeBox(6, 7, 6, 0x9b6cff, 0x5c35d8, 0.18); hat4.position.y = 72; g.add(hat4);
+    const orb = makeGlowSphere(10, 0xffcc56, 0.28); orb.position.y = 78; g.add(orb);
+    const orbCore = new THREE.Mesh(octaGeo, matLambert(0xffcc56, 0xffcc56, 0.9)); orbCore.scale.set(5.5, 5.5, 5.5); orbCore.position.y = 78; g.add(orbCore);
+    const staff = makeBox(3.2, 48, 3.2, 0x8a5f35); staff.position.set(15, 28, 9); g.add(staff);
+    const sOrb = makeGlowSphere(11, 0xffcc56, 0.34); sOrb.position.set(15, 55, 9); g.add(sOrb);
+    const sCore = new THREE.Mesh(octaGeo, matLambert(0xffcc56, 0xffcc56, 1)); sCore.scale.set(6.5, 6.5, 6.5); sCore.position.set(15, 55, 9); g.add(sCore);
+    const familiar = new THREE.Mesh(octaGeo, matLambert(0x9fe7ff, 0x9fe7ff, 0.75)); familiar.scale.set(7, 7, 7); g.add(familiar);
+    g.userData.orb = orb; g.userData.orbCore = orbCore; g.userData.sOrb = sOrb; g.userData.sCore = sCore; g.userData.familiar = familiar;
+    return g;
+  }
+  function updatePlayerMesh() {
+    const p = game.player;
+    playerMesh.position.set(p.x, 0, p.y);
+    playerMesh.rotation.y = Math.atan2(mouse.x - p.x, mouse.y - p.y);
+    const col = colorHex((ELEMENT_INFO[game.stats.spellKind] && ELEMENT_INFO[game.stats.spellKind].color) || '#ffcc56');
+    for (const k of ['orb','orbCore','sOrb','sCore']) {
+      const m = playerMesh.userData[k];
+      if (m && m.material) {
+        m.material.color.setHex(col);
+        if (m.material.emissive) m.material.emissive.setHex(col);
+      }
+    }
+    const fam = playerMesh.userData.familiar;
+    if (fam) {
+      const a = game.time * 2.2;
+      fam.position.set(Math.cos(a) * 24, 31 + Math.sin(a * 1.7) * 5, Math.sin(a) * 18);
+      fam.rotation.y += 0.05; fam.rotation.x += 0.035;
+    }
+    const blink = p.invuln > 0 && Math.floor(game.time * 20) % 2 === 0;
+    playerMesh.visible = !blink;
+  }
+  function buildEnemy(e) {
+    const g = new THREE.Group(); const r = e.r; const tints = [];
+    const base = colorHex(e.color);
+    const black = 0x17101c;
+    if (e.type === 'slime') {
+      const b = tintable(g, tints, makeBox(r * 2.05, r * 1.35, r * 2.05, base, base, 0.05)); b.position.y = r * 0.72;
+      const shine = makeBox(r * 0.7, 3, r * 0.6, 0xb5ffb0); shine.position.set(-r * .25, r * 1.23, r * .35); g.add(shine);
+      const eL = makeBox(3.8, 4.5, 1.3, black); eL.position.set(-r * 0.4, r * 1.0, r * 1.05); g.add(eL);
+      const eR = makeBox(3.8, 4.5, 1.3, black); eR.position.set(r * 0.4, r * 1.0, r * 1.05); g.add(eR);
+    } else if (e.type === 'bug') {
+      const b = tintable(g, tints, makeBox(r * 1.65, r * 1.25, r * 2.05, base, 0x552a88, 0.14)); b.position.y = r * 0.9;
+      const shell = makeBox(r * 1.25, 4, r * 1.7, 0x3c2855); shell.position.y = r * 1.55; g.add(shell);
+      for (let i = -1; i <= 1; i++) { const legL = makeBox(3, 3, r * .7, 0x2a1a3d); legL.position.set(-r * .95, r * .55, i * r * .55); g.add(legL); const legR = makeBox(3, 3, r * .7, 0x2a1a3d); legR.position.set(r * .95, r * .55, i * r * .55); g.add(legR); }
+      const eL = makeBox(4, 4, 1.2, 0xff7aff, 0xff7aff, 0.6); eL.position.set(-r * 0.42, r * 1.18, r * 1.05); g.add(eL);
+      const eR = makeBox(4, 4, 1.2, 0xff7aff, 0xff7aff, 0.6); eR.position.set(r * 0.42, r * 1.18, r * 1.05); g.add(eR);
+    } else if (e.type === 'imp') {
+      const b = tintable(g, tints, makeBox(r * 1.55, r * 1.85, r * 1.55, base, 0x66220c, 0.12)); b.position.y = r * 0.95;
+      const belly = makeBox(r * .75, r * .65, 2, 0xffbd66); belly.position.set(0, r * 0.95, r * .8); g.add(belly);
+      const hornL = makeBox(3.4, r * 0.85, 3.4, 0xffe0a3); hornL.position.set(-r * 0.45, r * 2.02, 0); g.add(hornL);
+      const hornR = makeBox(3.4, r * 0.85, 3.4, 0xffe0a3); hornR.position.set(r * 0.45, r * 2.02, 0); g.add(hornR);
+      const eL = makeBox(3.7, 3.7, 1.2, 0xfff0a3, 0xffdf7a, 0.5); eL.position.set(-r * 0.35, r * 1.3, r * 0.75); g.add(eL);
+      const eR = makeBox(3.7, 3.7, 1.2, 0xfff0a3, 0xffdf7a, 0.5); eR.position.set(r * 0.35, r * 1.3, r * 0.75); g.add(eR);
+    } else if (e.type === 'charger') {
+      const b = tintable(g, tints, makeBox(r * 1.75, r * 1.65, r * 1.5, 0xb9925e)); b.position.y = r * 0.8;
+      const helm = makeBox(r * 1.55, r * 0.75, r * 1.35, 0x81716b); helm.position.y = r * 1.88; g.add(helm);
+      const crest = makeBox(r * .25, r * .65, r * 1.45, 0xffd36d, 0xff9a4d, 0.12); crest.position.y = r * 2.3; g.add(crest);
+      const visor = makeBox(r * 1.05, 4.2, 1.4, 0xffd36d, 0xffd36d, 0.45); visor.position.set(0, r * 1.88, r * 0.76); g.add(visor);
+      const shield = makeBox(r * 1.58, r * 1.65, 5, 0x9c7a4f); shield.position.set(0, r * 0.98, r * 0.98); g.add(shield);
+    } else if (e.type === 'boss') {
+      const robe = tintable(g, tints, makeBox(30, 32, 24, 0x33694f, 0x10261c, 0.1)); robe.position.y = 16;
+      const head = makeBox(27, 22, 22, 0x66e0a6, 0x224b3a, 0.15); head.position.y = 42; g.add(head);
+      const eL = makeBox(5.5, 6.5, 1.4, 0x2b1f34); eL.position.set(-8, 44, 11); g.add(eL);
+      const eR = makeBox(5.5, 6.5, 1.4, 0x2b1f34); eR.position.set(8, 44, 11); g.add(eR);
+      const hat = makeBox(38, 7, 35, 0x47228d, 0x1d0e38, 0.2); hat.position.y = 57; g.add(hat);
+      const crown = makeBox(18, 7, 18, 0xffcc56, 0xff9a4d, 0.16); crown.position.y = 65; g.add(crown);
+      const staff = makeBox(4, 54, 4, 0x8a5f35); staff.position.set(23, 31, 9); g.add(staff);
+      const staffOrb = new THREE.Mesh(octaGeo, matLambert(0xd998ff, 0xd998ff, 0.9)); staffOrb.scale.set(8, 8, 8); staffOrb.position.set(23, 63, 9); g.add(staffOrb);
+      const orbs = [];
+      const oc = [0xffbd66, 0xbff4ff, 0x9fe7ff, 0xd998ff];
+      for (let i = 0; i < 4; i++) { const o = new THREE.Mesh(octaGeo, matLambert(oc[i], oc[i], 0.85)); o.scale.set(7, 7, 7); g.add(o); orbs.push(o); }
+      g.userData.orbs = orbs;
+    }
+    g.userData.tints = tints;
+    return g;
+  }
+  function updateActor(e, g) {
+    g.position.set(e.x, 0, e.y);
+    if (e.type === 'slime') g.position.y = Math.abs(Math.sin(game.time * 4 + e.x * 0.1)) * 4;
+    if (e.type === 'boss') {
+      g.position.y = 28 + Math.sin(game.time * 2) * 4;
+      const orbs = g.userData.orbs || [];
+      for (let i = 0; i < orbs.length; i++) {
+        const a = game.time * (e.phase === 2 ? 2.8 : 1.8) + i * Math.PI / 2;
+        orbs[i].position.set(Math.cos(a) * 42, 18 + Math.sin(a) * 12, Math.sin(a) * 42);
+      }
+    }
+    if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
+    else g.rotation.y = Math.atan2((game.player ? game.player.x - e.x : 0), (game.player ? game.player.y - e.y : 1));
+    const tintHex = e.hurt > 0 ? 0xffffff : (e.slowTimer > 0 ? 0xd8fbff : null);
+    for (const t of g.userData.tints) t.mesh.material.color.setHex(tintHex != null ? tintHex : t.base);
+  }
+
+  function syncActors() {
+    const seen = new Set();
+    for (const e of game.enemies) {
+      seen.add(e);
+      let g = actorMeshes.get(e);
+      if (!g) { g = buildEnemy(e); scene.add(g); actorMeshes.set(e, g); }
+      updateActor(e, g);
+    }
+    for (const [e, g] of actorMeshes) {
+      if (!seen.has(e)) { scene.remove(g); actorMeshes.delete(e); }
+    }
+    if (game.player) {
+      if (!playerMesh) { playerMesh = buildPlayer(); scene.add(playerMesh); }
+      updatePlayerMesh();
+    }
+  }
+
+  // --- projectiles + ground effect discs (rebuilt each frame) ---
+  const PROJZ = 18;
+  const projGroup = new THREE.Group(); scene.add(projGroup);
+  const zoneGroup = new THREE.Group(); scene.add(zoneGroup);
+  function clearDynamic(grp) {
+    for (const c of grp.children) {
+      if (c.geometry && c.geometry.__tmp) c.geometry.dispose();
+      if (c.material && c.material.__tmp) c.material.dispose();
+    }
+    grp.clear();
+  }
+  function ball(x, y, r, hex) {
+    const m = new THREE.Mesh(sphereGeo, basicMat(hex));
+    m.position.set(x, PROJZ, y); m.scale.setScalar(r);
+    projGroup.add(m);
+  }
+  function addProjectileModel(kind, x, y, r, hex, vx = 0, vy = 1) {
+    const a = Math.atan2(vx, vy);
+    let m;
+    if (kind === 'ice' || kind === 'frost_shock' || kind === 'venom_frost') {
+      m = new THREE.Mesh(octaGeo, tmpMat(hex, 1));
+      m.scale.set(r * 1.05, r * 1.05, r * 2.2);
+      m.rotation.y = a;
+    } else if (kind === 'lightning' || kind === 'toxic_shock') {
+      m = new THREE.Mesh(tetraGeo, tmpMat(hex, 1, true));
+      m.scale.set(r * 1.0, r * 1.0, r * 1.8);
+      m.rotation.y = a + game.time * 7;
+    } else if (kind === 'steam') {
+      m = new THREE.Mesh(sphereGeo, tmpMat(0xeaffff, 0.42, true));
+      m.scale.set(r * 2.1, r * 1.25, r * 2.1);
+    } else if (kind === 'poison' || kind === 'toxic_boom') {
+      m = new THREE.Mesh(sphereGeo, tmpMat(hex, 0.82, true));
+      m.scale.setScalar(r * 1.35);
+    } else {
+      m = new THREE.Mesh(sphereGeo, tmpMat(hex, 1, kind === 'plasma' || kind === 'fire'));
+      m.scale.setScalar(r * 1.25);
+    }
+    m.position.set(x, PROJZ, y);
+    projGroup.add(m);
+    const glow = new THREE.Mesh(sphereGeo, tmpMat(hex, 0.18, true));
+    glow.scale.setScalar(r * (kind === 'steam' ? 3.1 : 2.35));
+    glow.position.set(x, PROJZ, y);
+    projGroup.add(glow);
+  }
+  function syncProjectiles() {
+    clearDynamic(projGroup);
+    for (const fb of game.fireballs) addProjectileModel(fb.kind, fb.x, fb.y, (fb.r || 7) * 1.25, colorHex(fb.color || '#ffffff'), fb.vx, fb.vy);
+    for (const b of game.enemyProjectiles) addProjectileModel('fire', b.x, b.y, (b.r || 6) * 1.15, colorHex(b.color || '#ff8c4d'), b.vx, b.vy);
+    for (const ib of game.iceBolts) addProjectileModel('ice', ib.x, ib.y, (ib.r || 6) * 1.3, 0xbff4ff, ib.vx, ib.vy);
+    for (const lb of game.lightningBolts) {
+      const midX = (lb.x1 + lb.x2) / 2 + Math.sin(game.time * 24 + lb.x1) * 8;
+      const midY = (lb.y1 + lb.y2) / 2 + Math.cos(game.time * 21 + lb.y1) * 8;
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(lb.x1, PROJZ + 3, lb.y1),
+        new THREE.Vector3(midX, PROJZ + 10, midY),
+        new THREE.Vector3(lb.x2, PROJZ + 3, lb.y2)]);
+      geo.__tmp = true;
+      const mat = new THREE.LineBasicMaterial({ color: 0xe5fcff, transparent: true, opacity: clamp(lb.life / lb.maxLife, 0, 1) }); mat.__tmp = true;
+      projGroup.add(new THREE.Line(geo, mat));
+    }
+  }
+  function disc(x, y, r, hex, op) {
+    const mat = tmpMat(hex, op, true);
+    mat.depthWrite = false;
+    const m = new THREE.Mesh(circleGeo, mat);
+    m.rotation.x = -Math.PI / 2; m.position.set(x, 1.5, y); m.scale.setScalar(Math.max(1, r));
+    zoneGroup.add(m);
+  }
+  function puff(x, y, r, hex, op, n = 5, height = 14) {
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + game.time * 0.25;
+      const d = r * (0.12 + (i % 3) * 0.13);
+      const m = new THREE.Mesh(sphereGeo, tmpMat(hex, op, true));
+      const s = r * (0.16 + (i % 2) * 0.05);
+      m.scale.set(s * 1.25, s * 0.75, s * 1.25);
+      m.position.set(x + Math.cos(a) * d, height + Math.sin(game.time * 2 + i) * 3, y + Math.sin(a) * d);
+      zoneGroup.add(m);
+    }
+  }
+  function syncZones() {
+    clearDynamic(zoneGroup);
+    for (const pc of game.poisonClouds) {
+      const a = 0.32 * clamp(pc.life / pc.maxLife, 0, 1);
+      disc(pc.x, pc.y, pc.r, 0x8a36c8, a);
+      puff(pc.x, pc.y, pc.r, 0xa7ff45, a * 0.75, 5, 18);
+      if (Math.floor(game.time * 8 + pc.x) % 3 === 0) disc(pc.x, pc.y, pc.r * 0.42, 0xcfff6f, a * 0.5);
+    }
+    for (const sc of game.steamClouds) {
+      const a = 0.28 * clamp(sc.life / sc.maxLife, 0, 1);
+      disc(sc.x, sc.y, sc.r, 0xeaffff, a * 0.65);
+      puff(sc.x, sc.y, sc.r, 0xf4ffff, a, 8, 24);
+    }
+    for (const fz of game.fireZones) {
+      const a = 0.40 * clamp(fz.life / fz.maxLife, 0, 1);
+      disc(fz.x, fz.y, fz.r, 0xff7a3e, a);
+      for (let i = 0; i < 3; i++) {
+        const flame = new THREE.Mesh(coneGeo, tmpMat(i % 2 ? 0xffd36d : 0xff673a, a * 1.2, true));
+        const ang = game.time * 3 + i * 2.1;
+        flame.scale.set(fz.r * .10, fz.r * .28, fz.r * .10);
+        flame.position.set(fz.x + Math.cos(ang) * fz.r * .28, 9 + i * 2, fz.y + Math.sin(ang) * fz.r * .18);
+        zoneGroup.add(flame);
+      }
+    }
+    for (const ez of game.electricZones) {
+      const a = 0.30 * clamp(ez.life / ez.maxLife, 0, 1);
+      disc(ez.x, ez.y, ez.r, 0x79dcff, a);
+      const ring = new THREE.Mesh(torusGeo, tmpMat(0xbdf5ff, a * 1.5, true));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(ez.x, 4, ez.y); ring.scale.set(ez.r, ez.r, ez.r);
+      zoneGroup.add(ring);
+    }
+    for (const w of game.bossWarnings) {
+      disc(w.x, w.y, w.r, 0xffd36d, 0.20);
+      const ring = new THREE.Mesh(torusGeo, tmpMat(0xffd36d, 0.62, true));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(w.x, 5, w.y); ring.scale.set(w.r, w.r, w.r); zoneGroup.add(ring);
+    }
+    for (const ex of game.explosions) {
+      const t = 1 - ex.life / ex.maxLife;
+      disc(ex.x, ex.y, ex.r * (0.45 + t * 0.75), 0xffd36d, 0.28 * (ex.life / ex.maxLife));
+      puff(ex.x, ex.y, ex.r, 0xff7640, 0.22 * (ex.life / ex.maxLife), 6, 30);
+    }
+    for (const rg of game.rings) disc(rg.x, rg.y, rg.r * (0.5 + (1 - rg.life / rg.maxLife) * 0.7), 0xffffff, 0.14 * clamp(rg.life / rg.maxLife, 0, 1));
+  }
+
+  // --- mouse -> world ground point via camera raycast ---
+  const raycaster = new THREE.Raycaster();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const _ndc = new THREE.Vector2();
+  const _hit = new THREE.Vector3();
+  function updateMouseWorld() {
+    _ndc.set(mouseScreen.x / W * 2 - 1, -(mouseScreen.y / H * 2 - 1));
+    raycaster.setFromCamera(_ndc, camera);
+    if (raycaster.ray.intersectPlane(groundPlane, _hit)) {
+      mouse.x = clamp(_hit.x, 0, W);
+      mouse.y = clamp(_hit.z, 0, H);
+    }
+  }
+
+  function render3D() {
+    if (!gl3dOk) return;
+    drawGroundTexture();
+    syncWalls();
+    const px = game.player ? game.player.x : W / 2;
+    const pz = game.player ? game.player.y : H / 2;
+    let shx = 0, shz = 0;
+    if (game.screenShake > 0) { shx = rnd(-game.screenShake, game.screenShake); shz = rnd(-game.screenShake, game.screenShake); }
+    const _rad = CAM.angle * Math.PI / 180;
+    camera.position.set(px + shx, Math.sin(_rad) * CAM.dist, pz + Math.cos(_rad) * CAM.dist + shz);
+    camera.lookAt(px, CAM.lookY, pz);
+    if (camera.fov !== CAM.fov) { camera.fov = CAM.fov; camera.updateProjectionMatrix(); }
+    syncActors();
+    syncProjectiles();
+    syncZones();
+    renderer.render(scene, camera);
+  }
+
+  // Enemy health bars, billboarded onto the HUD overlay.
+  function drawEnemyBars() {
+    for (const e of game.enemies) {
+      if (e.type === 'boss') continue;
+      if (!(e.maxHp && (e.type === 'charger' || e.hurt > 0 || e.hp < e.maxHp))) continue;
+      const s = project(e.x, e.y, e.r * 2.4 + 22);
+      if (s.behind) continue;
+      const bw = e.type === 'charger' ? 42 : 28;
+      const pct = clamp(e.hp / e.maxHp, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(s.x - bw / 2, s.y, bw, 4);
+      ctx.fillStyle = e.type === 'charger' ? '#ffd36d' : '#ff7b72'; ctx.fillRect(s.x - bw / 2, s.y, bw * pct, 4);
+    }
+  }
+
+
+  function draw() {
+    // 3D world (WebGL) ...
+    render3D();
+    // ... then the crisp 2D HUD overlay on top.
+    ctx = screenCtx;
+    ctx.clearRect(0, 0, W, H);
+    if (!gl3dOk) {
+      ctx.fillStyle = '#1a1722'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff1bb'; ctx.textAlign = 'center';
+      ctx.font = '800 22px system-ui, sans-serif';
+      ctx.fillText('此瀏覽器未啟用 WebGL，無法顯示 3D 畫面', W / 2, H / 2 - 10);
+      ctx.font = '600 15px system-ui, sans-serif';
+      ctx.fillText('請改用較新的瀏覽器，或在設定中開啟硬體加速 / WebGL', W / 2, H / 2 + 22);
+      return;
+    }
+    if (game.flash > 0) {
+      ctx.fillStyle = `rgba(255, 221, 148, ${game.flash * 0.22})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    drawEnemyBars();
+    drawFloatingTexts();
+    drawReticle();
+    drawUi();
+    drawFusionBanner();
+    drawBossPhaseBanner();
+
+    if (game.state === 'title') drawTitle();
+    if (game.state === 'upgrade') drawUpgrade();
+    if (game.state === 'over') drawEnd(false);
+    if (game.state === 'win') drawEnd(true);
+  }
+
+  const TH = TILE * VIEW.depth; // projected (compressed) tile height in screen px
+
+  function drawMap() {
+    // Back wall / sky behind the arena (everything above the horizon line).
+    const wall = ctx.createLinearGradient(0, 0, 0, VIEW.horizon);
+    wall.addColorStop(0, '#211b29');
+    wall.addColorStop(1, '#322a3c');
+    ctx.fillStyle = wall;
+    ctx.fillRect(0, 0, W, VIEW.horizon + 4);
+
+    // Floor backdrop (everything from the horizon down).
+    const floorBg = ctx.createLinearGradient(0, VIEW.horizon, 0, H);
+    floorBg.addColorStop(0, '#2c2733');
+    floorBg.addColorStop(1, '#221d28');
+    ctx.fillStyle = floorBg;
+    ctx.fillRect(0, VIEW.horizon, W, H - VIEW.horizon);
+
+    // Subtle skirting where the back wall meets the floor.
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.fillRect(0, VIEW.horizon, W, 3);
+
+    // Iterate back-to-front so raised walls correctly overlap what is behind.
+    for (let y = 0; y < ROWS; y++) {
+      const sy = VIEW.horizon + y * TH;
+      for (let x = 0; x < COLS; x++) {
+        const t = game.map[y][x];
+        const px = x * TILE;
+        if (t === TILE_FLOOR) {
+          ctx.fillStyle = ((x + y) % 2 === 0) ? '#2d2732' : '#2a2430';
+          ctx.fillRect(px, sy, TILE, TH + 0.5);
+        } else if (t === TILE_GRASS) {
+          ctx.fillStyle = '#355431';
+          ctx.fillRect(px, sy, TILE, TH + 0.5);
+          ctx.fillStyle = 'rgba(142, 210, 90, .28)';
+          for (let i = 0; i < 4; i++) ctx.fillRect(px + 5 + i * 7, sy + 3 + ((x * y + i) % 5), 2.5, 6);
+        } else if (t === TILE_BURNT) {
+          ctx.fillStyle = '#30221d';
+          ctx.fillRect(px, sy, TILE, TH + 0.5);
+          ctx.fillStyle = 'rgba(40, 20, 16, .55)';
+          ctx.fillRect(px + 5, sy + 3, TILE - 10, TH - 6);
+        } else if (t === TILE_WATER) {
+          ctx.fillStyle = '#24485b';
+          ctx.fillRect(px, sy, TILE, TH + 0.5);
+          ctx.fillStyle = 'rgba(121, 211, 255, .22)';
+          ctx.beginPath();
+          ctx.ellipse(px + 16, sy + TH / 2, 12, (4 + Math.sin(game.time * 2 + x) * 1.2), 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (t === TILE_ICE) {
+          ctx.fillStyle = '#c7f6ff';
+          ctx.fillRect(px, sy, TILE, TH + 0.5);
+          ctx.strokeStyle = 'rgba(70, 142, 170, .55)'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(px + 5, sy + 5); ctx.lineTo(px + 26, sy + 3); ctx.moveTo(px + 7, sy + TH - 4); ctx.lineTo(px + 25, sy + TH - 7); ctx.stroke();
+          ctx.fillStyle = 'rgba(125, 207, 235, .25)';
+          ctx.beginPath(); ctx.ellipse(px + 16, sy + TH / 2, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+
+    // Faint floor grid (projected).
+    ctx.strokeStyle = 'rgba(0,0,0,.16)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= W; x += TILE) { ctx.beginPath(); ctx.moveTo(x, VIEW.horizon); ctx.lineTo(x, VIEW.horizon + ROWS * TH); ctx.stroke(); }
+    for (let y = 0; y <= ROWS; y++) { const gy = VIEW.horizon + y * TH; ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+
+    // Raised blocks (boundary walls + breakable thin walls), back-to-front.
+    for (let y = 0; y < ROWS; y++) {
+      const gy = VIEW.horizon + y * TH;
+      for (let x = 0; x < COLS; x++) {
+        const t = game.map[y][x];
+        if (t !== TILE_WALL && t !== TILE_THIN) continue;
+        const px = x * TILE;
+        const h = t === TILE_WALL ? VIEW.wallH : VIEW.wallH * 0.7;
+        const inset = t === TILE_THIN ? 3 : 0;
+        const fx = px + inset, fw = TILE - inset * 2;
+        // Front face.
+        ctx.fillStyle = t === TILE_WALL ? '#463f4f' : '#6b573f';
+        ctx.fillRect(fx, gy - h, fw, h + TH);
+        // Top cap (catches the light).
+        ctx.fillStyle = t === TILE_WALL ? '#6a6270' : '#9a805f';
+        ctx.fillRect(fx, gy - h, fw, TH);
+        // Highlight + base shadow.
+        ctx.fillStyle = 'rgba(255,255,255,.10)';
+        ctx.fillRect(fx, gy - h, fw, 2);
+        ctx.fillStyle = 'rgba(0,0,0,.30)';
+        ctx.fillRect(fx, gy + TH - 2, fw, 2);
+      }
+    }
+  }
+
+  // Run a draw callback in the flattened ground plane at a projected world
+  // position, so circular ground effects read as ellipses lying on the floor.
+  function onGround(wx, wy, fn) {
+    const c = project(wx, wy);
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.scale(1, VIEW.depth);
+    fn();
+    ctx.restore();
+  }
+
+  function drawZones() {
+    for (const pc of game.poisonClouds) {
+      const alpha = clamp(pc.life / pc.maxLife, 0, 1);
+      const r = pc.r + Math.sin(pc.pulse) * 4;
+      onGround(pc.x, pc.y, () => {
+        const g = ctx.createRadialGradient(0, 0, 4, 0, 0, r);
+        g.addColorStop(0, `rgba(160, 77, 210, ${0.42 * alpha})`);
+        g.addColorStop(1, `rgba(91, 255, 126, ${0.05 * alpha})`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(222, 149, 255, ${0.62 * alpha})`;
+        ctx.stroke();
+        ctx.setLineDash([6, 6]);
+        ctx.strokeStyle = `rgba(255, 231, 105, ${0.28 * alpha})`;
+        ctx.beginPath(); ctx.arc(0, 0, r + 5, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      });
+    }
+
+    for (const sc of game.steamClouds) {
+      const alpha = clamp(sc.life / sc.maxLife, 0, 1);
+      const r = sc.r + Math.sin(sc.pulse) * 6;
+      onGround(sc.x, sc.y, () => {
+        const g = ctx.createRadialGradient(0, 0, 3, 0, 0, r);
+        g.addColorStop(0, `rgba(245, 255, 255, ${0.36 * alpha})`);
+        g.addColorStop(1, `rgba(210, 240, 255, ${0.04 * alpha})`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `rgba(230, 255, 255, ${0.42 * alpha})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, r + 3, 0, Math.PI * 2); ctx.stroke();
+      });
+    }
+    for (const fz of game.fireZones) {
+      const alpha = clamp(fz.life / fz.maxLife, 0, 1);
+      onGround(fz.x, fz.y, () => {
+        const g = ctx.createRadialGradient(0, 0, 4, 0, 0, fz.r);
+        g.addColorStop(0, `rgba(255, 218, 94, ${0.58 * alpha})`);
+        g.addColorStop(0.45, `rgba(255, 111, 62, ${0.38 * alpha})`);
+        g.addColorStop(1, `rgba(176, 34, 23, ${0.02 * alpha})`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, fz.r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `rgba(255, 190, 79, ${0.55 * alpha})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, fz.r + 2, 0, Math.PI * 2); ctx.stroke();
+      });
+    }
+    for (const ez of game.electricZones) {
+      const alpha = clamp(ez.life / ez.maxLife, 0, 1);
+      onGround(ez.x, ez.y, () => {
+        ctx.fillStyle = `rgba(121, 220, 255, ${0.18 * alpha})`;
+        ctx.beginPath(); ctx.arc(0, 0, ez.r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `rgba(180, 242, 255, ${0.9 * alpha})`;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 5; i++) {
+          const a = game.time * 5 + i * 1.256;
+          ctx.beginPath();
+          ctx.arc(0, 0, ez.r * (0.36 + i * 0.11), a, a + 0.75);
+          ctx.stroke();
+        }
+      });
+    }
+    for (const ex of game.explosions) {
+      const t = 1 - ex.life / ex.maxLife;
+      onGround(ex.x, ex.y, () => {
+        ctx.strokeStyle = `rgba(255, 238, 161, ${1 - t})`;
+        ctx.lineWidth = 5 * (1 - t) + 1;
+        ctx.beginPath(); ctx.arc(0, 0, ex.r * (0.3 + t * 0.7), 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = `rgba(255, 112, 55, ${(1 - t) * 0.16})`;
+        ctx.beginPath(); ctx.arc(0, 0, ex.r * (0.2 + t), 0, Math.PI * 2); ctx.fill();
+      });
+    }
+  }
+
+
+  function drawBossWarnings() {
+    for (const w of game.bossWarnings) {
+      const alpha = clamp(w.life / w.maxLife, 0, 1);
+      const t = 1 - alpha;
+      // Warning ring lies flat on the floor.
+      onGround(w.x, w.y, () => {
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = w.color;
+        ctx.lineWidth = 4 + Math.sin(game.time * 16) * 1.8;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath(); ctx.arc(0, 0, w.r * (0.72 + t * 0.28), 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = w.color.replace(')', ', .12)').replace('rgb', 'rgba');
+        if (!w.color.startsWith('rgb')) ctx.fillStyle = 'rgba(255, 215, 110, .10)';
+        ctx.beginPath(); ctx.arc(0, 0, w.r, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      });
+      // Label drawn upright (not skewed) just above the marked spot.
+      const c = project(w.x, w.y);
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = w.color;
+      ctx.font = '900 14px system-ui, sans-serif';
+      const label = w.label || (w.type === 'poison' ? '毒瓶' : w.type === 'lightning' ? '雷擊' : w.type === 'fire' ? '火圈' : '蒸氣');
+      ctx.fillText(label, c.x, c.y - 3);
+      ctx.font = '900 11px system-ui, sans-serif';
+      ctx.fillText(Math.max(0, w.life).toFixed(1), c.x, c.y + 14);
+      ctx.restore();
+    }
+  }
+
+  const PROJ_Z = 20; // height above the floor that flying things travel at
+
+  function drawProjectiles() {
+    for (const lb of game.lightningBolts) {
+      const alpha = clamp(lb.life / lb.maxLife, 0, 1);
+      const p1 = project(lb.x1, lb.y1, PROJ_Z);
+      const p2 = project(lb.x2, lb.y2, PROJ_Z);
+      ctx.strokeStyle = `rgba(229, 252, 255, ${alpha})`;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      const midX = (p1.x + p2.x) / 2 + rnd(-10, 10);
+      const midY = (p1.y + p2.y) / 2 + rnd(-10, 10);
+      ctx.lineTo(midX, midY);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(92, 198, 255, ${alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    for (const fb of game.fireballs) {
+      const s = project(fb.x, fb.y, PROJ_Z);
+      const outer = fb.color || '#f4e7ff';
+      const core = fb.coreColor || '#ffffff';
+      const g = ctx.createRadialGradient(s.x - fb.r * .3, s.y - fb.r * .3, 2, s.x, s.y, fb.r * 2.4);
+      g.addColorStop(0, core);
+      g.addColorStop(0.35, outer);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(s.x, s.y, fb.r * 2.25, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = core;
+      ctx.beginPath(); ctx.arc(s.x, s.y, fb.r, 0, Math.PI * 2); ctx.fill();
+      if (fb.kind === 'steam') {
+        ctx.strokeStyle = 'rgba(255,255,255,.55)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(s.x, s.y, fb.r * 1.7 + Math.sin(game.time * 12) * 2, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    for (const b of game.enemyProjectiles) {
+      const s = project(b.x, b.y, PROJ_Z);
+      ctx.fillStyle = 'rgba(255, 140, 77, .25)';
+      ctx.beginPath(); ctx.arc(s.x, s.y, b.r * 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = b.color;
+      ctx.beginPath(); ctx.arc(s.x, s.y, b.r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // ---- Actors: upright side-view sprites, drawn back-to-front by depth ----
+  function actorHeight(e) {
+    if (e.type === 'boss') return 96;
+    if (e.type === 'charger') return 58;
+    if (e === game.player) return 50;
+    return e.r * 2.2 + 18;
+  }
+
+  function drawActors() {
+    const actors = game.enemies.slice();
+    if (game.player) actors.push(game.player);
+    // Smaller world-y = further back = drawn first.
+    actors.sort((a, b) => a.y - b.y);
+    for (const a of actors) {
+      if (a === game.player) drawPlayerSprite();
+      else drawEnemySprite(a);
+    }
+  }
+
+  function drawActorBar(e, f) {
+    if (!(e.maxHp && (e.type === 'boss' || e.type === 'charger' || e.hurt > 0 || e.hp < e.maxHp))) return;
+    const bw = e.type === 'boss' ? 70 : (e.type === 'charger' ? 42 : 28);
+    const pct = clamp(e.hp / e.maxHp, 0, 1);
+    const by = f.y - actorHeight(e) - 8;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(f.x - bw / 2, by, bw, 4);
+    ctx.fillStyle = e.type === 'boss' ? '#66e0a6' : (e.type === 'charger' ? '#ffd36d' : '#ff7b72');
+    ctx.fillRect(f.x - bw / 2, by, bw * pct, 4);
+  }
+
+  function drawEnemySprite(e) {
+    const f = project(e.x, e.y);
+    const tint = e.hurt > 0 ? '#fff3e2' : (e.slowTimer > 0 ? '#d8fbff' : null);
+    const faceDir = e.type === 'charger'
+      ? (Math.cos(e.facing) >= 0 ? 1 : -1)
+      : ((game.player && game.player.x >= e.x) ? 1 : -1);
+
+    if (e.type === 'boss') {
+      // Floating mage, facing the camera.
+      const hover = 30 + Math.sin(game.time * 2) * 4;
+      groundShadow(e.x, e.y, e.r * 1.1, e.r * 0.5, 0.3);
+      const bf = project(e.x, e.y, hover);
+      const phase2 = e.phase === 2;
+      ctx.save();
+      ctx.translate(bf.x, bf.y);
+      // robe
+      ctx.fillStyle = '#34283d';
+      ctx.beginPath(); ctx.moveTo(-16, 30); ctx.lineTo(16, 30); ctx.lineTo(10, -6); ctx.lineTo(-10, -6); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = phase2 ? '#ff8b47' : '#4fae86';
+      ctx.fillRect(-16, 22, 32, 4);
+      // head
+      ctx.fillStyle = phase2 ? '#ffdf7a' : (e.hurt > 0 ? '#fff3e2' : '#66e0a6');
+      ctx.beginPath(); ctx.arc(0, -16, e.r, 0, Math.PI * 2); ctx.fill();
+      // eyes (front)
+      ctx.fillStyle = '#2b1f34';
+      ctx.fillRect(-10, -20, 6, 6); ctx.fillRect(4, -20, 6, 6);
+      // pointed hat
+      ctx.fillStyle = phase2 ? '#ff8b47' : '#3f8f6c';
+      ctx.beginPath(); ctx.moveTo(-e.r, -24); ctx.lineTo(e.r, -24); ctx.lineTo(0, -24 - e.r * 1.7); ctx.closePath(); ctx.fill();
+      // aura ring
+      ctx.strokeStyle = phase2 ? '#ff8b47' : '#d998ff';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(0, -16, e.r + 8 + Math.sin(game.time * 6) * 2, 0, Math.PI * 2); ctx.stroke();
+      // orbiting elements
+      const colors = ['#ffbd66', '#bff4ff', '#9fe7ff', '#d998ff'];
+      for (let i = 0; i < 4; i++) {
+        const a = game.time * (phase2 ? 2.8 : 1.8) + i * Math.PI / 2;
+        ctx.fillStyle = colors[i];
+        ctx.beginPath(); ctx.arc(Math.cos(a) * 34, -16 + Math.sin(a) * 16, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      drawActorBar(e, project(e.x, e.y, hover));
+      return;
+    }
+
+    groundShadow(e.x, e.y, e.r * 1.05, e.r * 0.45, 0.28);
+
+    // Charge windup telegraph lies flat on the floor, aimed along e.facing.
+    if (e.type === 'charger' && e.state === 'windup') {
+      onGround(e.x, e.y, () => {
+        ctx.rotate(e.facing);
+        const warnPulse = 0.65 + Math.sin(game.time * 18) * 0.25;
+        ctx.fillStyle = 'rgba(255, 87, 68, .16)';
+        ctx.beginPath(); ctx.moveTo(e.r, -22); ctx.lineTo(178, 0); ctx.lineTo(e.r, 22); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = `rgba(255, 87, 68, ${warnPulse})`;
+        ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(e.r + 8, 0); ctx.lineTo(170, 0); ctx.stroke();
+      });
+    }
+
+    ctx.save();
+    ctx.translate(f.x, f.y);
+
+    if (e.type === 'slime') {
+      const r = e.r;
+      const bob = Math.sin(game.time * 4 + e.x * 0.1) * 2;
+      // dome body facing camera
+      ctx.fillStyle = tint || e.color;
+      ctx.beginPath();
+      ctx.moveTo(-r, 0);
+      ctx.quadraticCurveTo(-r, -r * 1.6 + bob, 0, -r * 1.6 + bob);
+      ctx.quadraticCurveTo(r, -r * 1.6 + bob, r, 0);
+      ctx.quadraticCurveTo(r * 0.6, 3, 0, 3);
+      ctx.quadraticCurveTo(-r * 0.6, 3, -r, 0);
+      ctx.fill();
+      // highlight
+      ctx.fillStyle = 'rgba(255,255,255,.25)';
+      ctx.fillRect(-r * 0.5, -r * 1.2 + bob, 4, 4);
+      // big front eyes
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-r * 0.55, -r * 0.9 + bob, 6, 7); ctx.fillRect(r * 0.2, -r * 0.9 + bob, 6, 7);
+      ctx.fillStyle = '#10241a';
+      ctx.fillRect(-r * 0.55 + (faceDir > 0 ? 2 : 0), -r * 0.6 + bob, 4, 4);
+      ctx.fillRect(r * 0.2 + (faceDir > 0 ? 2 : 0), -r * 0.6 + bob, 4, 4);
+    } else if (e.type === 'bug') {
+      const r = e.r;
+      // legs out to both sides
+      ctx.strokeStyle = '#cfb5ff'; ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const yy = -r * 0.4 - i * 4;
+        ctx.beginPath(); ctx.moveTo(-r * 0.6, yy); ctx.lineTo(-r * 1.25, yy + 4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(r * 0.6, yy); ctx.lineTo(r * 1.25, yy + 4); ctx.stroke();
+      }
+      // body
+      ctx.fillStyle = tint || e.color;
+      ctx.beginPath(); ctx.ellipse(0, -r * 1.0, r * 0.95, r * 1.05, 0, 0, Math.PI * 2); ctx.fill();
+      // front eyes
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-r * 0.5, -r * 1.4, 5, 5); ctx.fillRect(r * 0.1, -r * 1.4, 5, 5);
+      ctx.fillStyle = '#2b153d';
+      ctx.fillRect(-r * 0.5 + 1, -r * 1.4 + 1, 3, 3); ctx.fillRect(r * 0.1 + 1, -r * 1.4 + 1, 3, 3);
+    } else if (e.type === 'imp') {
+      const r = e.r;
+      // teardrop body
+      ctx.fillStyle = tint || e.color;
+      ctx.beginPath(); ctx.moveTo(0, -r * 2.2); ctx.lineTo(r * 1.0, 0); ctx.lineTo(-r * 1.0, 0); ctx.closePath(); ctx.fill();
+      // horns
+      ctx.beginPath(); ctx.moveTo(-r * 0.5, -r * 1.9); ctx.lineTo(-r * 0.9, -r * 2.6); ctx.lineTo(-r * 0.15, -r * 2.0); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(r * 0.5, -r * 1.9); ctx.lineTo(r * 0.9, -r * 2.6); ctx.lineTo(r * 0.15, -r * 2.0); ctx.closePath(); ctx.fill();
+      // glowing eyes
+      ctx.fillStyle = '#fff0a3';
+      ctx.fillRect(-r * 0.55, -r * 1.5, 5, 5); ctx.fillRect(r * 0.1, -r * 1.5, 5, 5);
+    } else if (e.type === 'charger') {
+      const r = e.r;
+      // bulky armored body, facing camera
+      ctx.fillStyle = tint || '#b9925e';
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-r * 0.95, -r * 2.0, r * 1.9, r * 2.0, 6); ctx.fill(); }
+      else ctx.fillRect(-r * 0.95, -r * 2.0, r * 1.9, r * 2.0);
+      // helmet
+      ctx.fillStyle = tint || '#8f6f48';
+      ctx.fillRect(-r * 0.7, -r * 2.5, r * 1.4, r * 0.7);
+      ctx.fillStyle = e.state === 'stunned' ? '#d7ff8c' : '#ffd36d';
+      ctx.fillRect(-r * 0.5, -r * 2.15, r * 1.0, 5); // eye visor slit
+      // big shield held in front
+      ctx.fillStyle = e.state === 'stunned' ? '#d7ff8c' : '#9c7a4f';
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(faceDir * r * 0.2 - r * 0.7, -r * 1.7, r * 1.4, r * 1.7, 5); ctx.fill(); }
+      else ctx.fillRect(faceDir * r * 0.2 - r * 0.7, -r * 1.7, r * 1.4, r * 1.7);
+      ctx.strokeStyle = 'rgba(210, 240, 255, .85)'; ctx.lineWidth = 3;
+      ctx.strokeRect(faceDir * r * 0.2 - r * 0.5, -r * 1.45, r * 1.0, r * 1.2);
+      if (e.state === 'stunned') {
+        ctx.fillStyle = '#fff08a';
+        for (let i = 0; i < 3; i++) {
+          const a = game.time * 5 + i * Math.PI * 2 / 3;
+          ctx.beginPath(); ctx.arc(Math.cos(a) * 14, -r * 2.9 + Math.sin(a) * 4, 3, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+    drawActorBar(e, f);
+  }
+
+  function drawPlayerSprite() {
+    const p = game.player;
+    const f = project(p.x, p.y);
+    groundShadow(p.x, p.y, 15, 7, 0.28);
+    const faceDir = Math.cos(p.facing) >= 0 ? 1 : -1;
+    const orb = (ELEMENT_INFO[game.stats.spellKind] && ELEMENT_INFO[game.stats.spellKind].color) || '#ffcc56';
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    if (p.hurtTimer > 0) ctx.globalAlpha = 0.65;
+    if (p.invuln > 0 && Math.floor(game.time * 20) % 2 === 0) ctx.globalAlpha = 0.62;
+    ctx.scale(faceDir, 1);
+    // staff behind the body, on the facing side
+    ctx.fillStyle = '#8a6a3c';
+    ctx.fillRect(12, -42, 3, 42);
+    ctx.fillStyle = orb;
+    ctx.beginPath(); ctx.arc(13, -46, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(11, -49, 3, 3);
+    // robe (front)
+    ctx.fillStyle = '#4f6cff';
+    ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(12, 0); ctx.lineTo(8, -24); ctx.lineTo(-8, -24); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffcc56'; ctx.fillRect(-12, -7, 24, 4); // belt
+    // head
+    ctx.fillStyle = '#ffe0bd';
+    ctx.beginPath(); ctx.arc(0, -30, 8, 0, Math.PI * 2); ctx.fill();
+    // eyes (front)
+    ctx.fillStyle = '#23304f';
+    ctx.fillRect(-5, -32, 3, 4); ctx.fillRect(2, -32, 3, 4);
+    // wizard hat
+    ctx.fillStyle = '#3344c0';
+    ctx.beginPath(); ctx.moveTo(-13, -33); ctx.lineTo(13, -33); ctx.lineTo(2, -54); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2a37a0'; ctx.fillRect(-13, -35, 26, 4); // brim
+    ctx.fillStyle = orb; ctx.beginPath(); ctx.arc(2, -54, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of game.particles) {
+      const alpha = clamp(p.life / p.maxLife, 0, 1);
+      const s = project(p.x, p.y, PROJ_Z * 0.5);
+      ctx.fillStyle = p.color.replace(')', `, ${alpha})`).replace('rgb', 'rgba');
+      if (!p.color.startsWith('rgb')) ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath(); ctx.arc(s.x, s.y, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawRings() {
+    // Impact rings sit on the ground -> flatten into the floor plane.
+    for (const rg of game.rings) {
+      const t = 1 - rg.life / rg.maxLife;
+      const alpha = clamp(rg.life / rg.maxLife, 0, 1);
+      onGround(rg.x, rg.y, () => {
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = rg.color;
+        ctx.lineWidth = Math.max(1, rg.width * alpha);
+        ctx.beginPath();
+        ctx.arc(0, 0, rg.r * (0.45 + t * 0.75), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      });
+    }
+  }
+
+  function drawFloatingTexts() {
+    ctx.font = '700 15px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    for (const t of game.floatingTexts) {
+      const alpha = clamp(t.life / t.maxLife, 0, 1);
+      const s = project(t.x, t.y, 30);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.fillText(t.text, s.x + 1, s.y + 1);
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.text, s.x, s.y);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawReticle() {
+    if (game.state !== 'playing') return;
+    const s = project(mouse.x, mouse.y);
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.strokeStyle = 'rgba(255, 241, 187, .75)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 9 + Math.sin(game.time * 8) * 1.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-7, 0); ctx.moveTo(7, 0); ctx.lineTo(16, 0); ctx.moveTo(0, -16); ctx.lineTo(0, -7); ctx.moveTo(0, 7); ctx.lineTo(0, 16); ctx.stroke();
+    ctx.restore();
+  }
+
+
+  function drawBossPhaseBanner() {
+    const b = game.bossPhaseBanner;
+    if (!b) return;
+    const alpha = clamp(b.life / b.maxLife, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, alpha * 1.4);
+    ctx.fillStyle = 'rgba(0, 0, 0, .46)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = b.color || '#ffdf7a';
+    ctx.font = '900 58px system-ui, sans-serif';
+    ctx.fillText(b.text, W / 2, H / 2 - 20);
+    ctx.fillStyle = '#fff1bb';
+    ctx.font = '900 20px system-ui, sans-serif';
+    ctx.fillText(b.sub, W / 2, H / 2 + 20);
+    ctx.restore();
+  }
+
+  function drawFusionBanner() {
+    const fb = game.fusionBanner;
+    if (!fb) return;
+    const alpha = clamp(fb.life / fb.maxLife, 0, 1);
+    const pop = 1 + Math.sin((1 - alpha) * Math.PI) * 0.075;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, alpha * 1.35);
+    ctx.translate(W / 2, 104);
+    ctx.scale(pop, pop);
+    const grad = ctx.createLinearGradient(-270, -54, 270, 54);
+    grad.addColorStop(0, 'rgba(29,18,42,.92)');
+    grad.addColorStop(0.5, 'rgba(49,27,70,.92)');
+    grad.addColorStop(1, 'rgba(23,17,34,.92)');
+    ctx.fillStyle = grad;
+    roundRectPath(ctx, -276, -58, 552, 112, 18); ctx.fill();
+    ctx.strokeStyle = fb.color;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,211,109,.55)'; ctx.lineWidth = 1.5;
+    roundRectPath(ctx, -260, -44, 520, 84, 12); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.shadowColor = fb.color; ctx.shadowBlur = 16;
+    ctx.fillStyle = '#ffd36d';
+    ctx.font = '900 34px system-ui, sans-serif';
+    ctx.fillText(fb.title === 'FUSION!' ? 'FUSION!' : 'SPELL SHIFT', 0, -22);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = fb.color;
+    ctx.font = '900 20px system-ui, sans-serif';
+    ctx.fillText(fb.equation, 0, 8);
+    ctx.fillStyle = '#fff2cf';
+    ctx.font = '800 12px system-ui, sans-serif';
+    ctx.fillText(fb.desc, 0, 33);
+    ctx.restore();
+  }
+
+  function roundRectPath(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+  }
+
+  function elementIconInfo(el) {
+    const map = {
+      fire: ['🔥', '#ff8b47'], ice: ['❄', '#9feeff'], lightning: ['⚡', '#8fe8ff'], poison: ['☠', '#c07aff'],
+      steam: ['☁', '#d8f6ff'], toxic_boom: ['☣', '#d998ff'], plasma: ['✦', '#ffcf6f'], frost_shock: ['✹', '#bff4ff'],
+      toxic_shock: ['☠', '#b794ff'], venom_frost: ['◆', '#b7ffd2'], neutral: ['✦', '#f4e7ff']
+    };
+    return map[el] || map.neutral;
+  }
+
+  function drawSpellFormulaCard(x, y, w, h) {
+    const spellColor = ELEMENT_INFO[game.stats.spellKind]?.color || '#ffe6a7';
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, 14);
+    ctx.fillStyle = 'rgba(241,216,170,.92)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(82,52,35,.75)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = '#3b2530'; ctx.font = '900 15px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('SPELL FORMULA', x + w / 2, y + 23);
+    const elems = (game.stats.spellElements && game.stats.spellElements.length) ? game.stats.spellElements : ['neutral'];
+    for (let i = 0; i < 2; i++) {
+      const ex = x + 22 + i * 54, ey = y + 38;
+      const el = elems[i] || null;
+      roundRectPath(ctx, ex, ey, 42, 42, 8);
+      ctx.fillStyle = el ? elementIconInfo(el)[1] : 'rgba(60,40,35,.18)'; ctx.fill();
+      ctx.strokeStyle = el ? '#5a3326' : 'rgba(60,40,35,.25)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = el ? '#fff' : 'rgba(60,40,35,.35)'; ctx.font = '900 23px system-ui, sans-serif';
+      ctx.fillText(el ? elementIconInfo(el)[0] : '+', ex + 21, ey + 28);
+    }
+    ctx.fillStyle = '#5a3326'; ctx.font = '900 18px system-ui, sans-serif'; ctx.fillText('=', x + 128, y + 66);
+    roundRectPath(ctx, x + 146, y + 38, 62, 42, 9); ctx.fillStyle = spellColor; ctx.fill(); ctx.strokeStyle = '#5a3326'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '900 22px system-ui, sans-serif'; ctx.fillText(elementIconInfo(game.stats.spellKind)[0], x + 177, y + 66);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#3b2530'; ctx.font = '900 13px system-ui, sans-serif';
+    ctx.fillText(game.stats.spellName, x + w - 16, y + h - 16);
+    ctx.restore();
+  }
+
+  function drawUi() {
+    const p = game.player;
+    ctx.save();
+    // left toy-card HUD
+    roundRectPath(ctx, 12, 12, 306, 92, 14);
+    ctx.fillStyle = 'rgba(16, 12, 23, .74)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,211,109,.30)'; ctx.lineWidth = 2; ctx.stroke();
+    // portrait frame
+    roundRectPath(ctx, 24, 23, 52, 64, 10); ctx.fillStyle = '#2b1843'; ctx.fill(); ctx.strokeStyle = '#ffd36d'; ctx.stroke();
+    ctx.fillStyle = '#6b35df'; ctx.beginPath(); ctx.moveTo(34, 50); ctx.lineTo(66, 50); ctx.lineTo(58, 30); ctx.lineTo(42, 30); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffd36d'; ctx.fillRect(35, 51, 30, 4);
+    ctx.fillStyle = '#76e7ff'; ctx.fillRect(42, 63, 5, 5); ctx.fillRect(53, 63, 5, 5);
+    // hp bar
+    ctx.fillStyle = '#311922'; ctx.fillRect(88, 30, 182, 18);
+    const hpGrad = ctx.createLinearGradient(88, 30, 270, 30); hpGrad.addColorStop(0, '#ff554e'); hpGrad.addColorStop(1, '#ff9f45');
+    ctx.fillStyle = hpGrad; ctx.fillRect(88, 30, 182 * clamp(p.hp / p.maxHp, 0, 1), 18);
+    ctx.strokeStyle = '#ffd7bd'; ctx.strokeRect(88, 30, 182, 18);
+    ctx.fillStyle = '#fff4db'; ctx.font = '900 14px system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(`${Math.ceil(p.hp)} / ${p.maxHp}`, 278, 44);
+    ctx.fillStyle = '#9fe7ff'; ctx.fillRect(88, 54, 148 * (1 - clamp(p.cooldown / Math.max(0.05, 0.18 * game.stats.cooldownMul), 0, 1)), 7);
+    ctx.fillStyle = '#fff2cf'; ctx.font = '800 13px system-ui, sans-serif';
+    ctx.fillText(`${game.bossStarted ? 'BOSS FIGHT' : 'WAVE ' + (game.wave || 0) + '/5'}   ☠ ${game.kills}   ✦ ${game.score}`, 88, 82);
+
+    const boss = game.enemies.find(e => e.type === 'boss' && !e.dead);
+    if (boss) {
+      const pct = clamp(boss.hp / boss.maxHp, 0, 1);
+      roundRectPath(ctx, 292, 16, 376, 34, 12); ctx.fillStyle = 'rgba(16, 12, 23, .76)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.stroke();
+      ctx.fillStyle = '#173025'; ctx.fillRect(310, 30, 244, 10);
+      ctx.fillStyle = boss.phase === 2 ? '#ffdf7a' : '#66e0a6'; ctx.fillRect(310, 30, 244 * pct, 10);
+      ctx.strokeStyle = '#e8ffe8'; ctx.strokeRect(310, 30, 244, 10);
+      ctx.fillStyle = '#e8ffe8'; ctx.font = '900 13px system-ui, sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`元素哥布林法師  P${boss.phase}`, 562, 39);
+      if (game.bossAttackTimer > 0 && game.bossAttackLabel) {
+        roundRectPath(ctx, 328, 56, 304, 26, 10); ctx.fillStyle = 'rgba(10, 8, 14, .78)'; ctx.fill();
+        ctx.strokeStyle = boss.phase === 2 ? '#ffdf7a' : '#9fe7ff'; ctx.stroke();
+        ctx.fillStyle = boss.phase === 2 ? '#ffdf7a' : '#d8f6ff'; ctx.textAlign = 'center'; ctx.font = '900 13px system-ui, sans-serif';
+        ctx.fillText(game.bossAttackLabel, 480, 74);
+      }
+    }
+
+    drawSpellFormulaCard(704, 14, 244, 104);
+    const runLine = `${game.run && game.run.arena ? game.run.arena.name : '未選場'}｜${currentFlowName()}`;
+    ctx.textAlign = 'right'; ctx.fillStyle = '#d7c7ff'; ctx.font = '800 12px system-ui, sans-serif';
+    ctx.fillText(runLine, 936, 132);
+
+    if (game.messageTimer > 0 && game.message) {
+      ctx.textAlign = 'center';
+      ctx.font = '900 26px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,.52)'; ctx.fillText(game.message, W / 2 + 2, 154 + 2);
+      ctx.fillStyle = '#fff1bb'; ctx.fillText(game.message, W / 2, 154);
+    }
+
+    if (game.state === 'playing' && game.run && game.time - game.run.startTime < 7.5) {
+      roundRectPath(ctx, 204, H - 58, 552, 38, 12); ctx.fillStyle = 'rgba(10, 8, 14, .76)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,211,109,.25)'; ctx.stroke();
+      ctx.textAlign = 'center'; ctx.fillStyle = '#fff1bb'; ctx.font = '900 14px system-ui, sans-serif';
+      ctx.fillText('提示：唯一主魔法可被火、冰、雷、毒覆蓋；兩種元素會融合成新法術。', W / 2, H - 34);
+    }
+    ctx.restore();
+  }
+
+  function drawPanel(x, y, w, h) {
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, 'rgba(33,24,45,.93)');
+    g.addColorStop(1, 'rgba(14,11,20,.93)');
+    roundRectPath(ctx, x, y, w, h, 18);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,211,109,.32)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    roundRectPath(ctx, x + 8, y + 8, w - 16, h - 16, 12);
+    ctx.strokeStyle = 'rgba(255,255,255,.10)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function drawTitle() {
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 520);
+    bg.addColorStop(0, 'rgba(118,72,180,.35)'); bg.addColorStop(1, 'rgba(0,0,0,.76)');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    drawPanel(150, 74, 660, 500);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd36d'; ctx.font = '900 46px system-ui, sans-serif';
+    ctx.fillText('Mini Mage Mayhem', W / 2, 142);
+    ctx.fillStyle = '#9fe7ff'; ctx.font = '900 20px system-ui, sans-serif';
+    ctx.fillText('v0.8 Art Style：魔法玩具箱 / 元素失控', W / 2, 178);
+    ctx.fillStyle = '#f7ecd6'; ctx.font = '15px system-ui, sans-serif';
+    ctx.fillText('新美術方向：大帽子小法師、桌上棋盤感、符文地板、元素彈體形狀差異、法術配方卡。', W / 2, 218);
+    ctx.fillText('玩法不變：通過升級覆蓋唯一主魔法飛彈，兩種元素會融合並改變戰場。', W / 2, 244);
+    const rows = [
+      ['🔥 火', '火球：點燃草地、引爆毒霧', '#ffbd66'],
+      ['❄ 冰', '冰箭：凍水成冰面、緩速敵人', '#bff4ff'],
+      ['☁ 火 + 冰', '蒸氣彈：產生蒸氣雲、融冰、緩速', '#d8f6ff'],
+      ['☣ 火 + 毒', '毒爆彈：製造毒霧並爆燃', '#d998ff'],
+      ['✦ 火 + 雷', '電漿彈：爆炸並導電', '#ffd36d'],
+      ['✹ 雷 + 冰', '電霜彈：導電、緩速、控場', '#9fe7ff']
+    ];
+    for (let i = 0; i < rows.length; i++) {
+      const y = 306 + i * 28;
+      ctx.fillStyle = rows[i][2]; ctx.font = '900 16px system-ui, sans-serif'; ctx.fillText(rows[i][0], 342, y);
+      ctx.fillStyle = '#f3e9dc'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(rows[i][1], 572, y);
+    }
+    ctx.fillStyle = '#ffd36d'; ctx.font = '900 24px system-ui, sans-serif';
+    ctx.fillText('點擊畫面或按 Enter 開始', W / 2, 522);
+    ctx.fillStyle = '#c9c0d8'; ctx.font = '13px system-ui, sans-serif';
+    ctx.fillText('WASD 移動｜滑鼠瞄準｜左鍵主魔法飛彈｜Space/Shift 閃避｜R 重開', W / 2, 550);
+  }
+
+  function upgradeMeta(up) {
+    if (['inject_fire'].includes(up.id)) return { label: '元素', color: '#ffbd66' };
+    if (['inject_ice'].includes(up.id)) return { label: '元素', color: '#bff4ff' };
+    if (['inject_lightning'].includes(up.id)) return { label: '元素', color: '#9fe7ff' };
+    if (['inject_poison'].includes(up.id)) return { label: '元素', color: '#d998ff' };
+    if (['split','explode','trail','big','spread','toxic_boom','ice_lake','ice_shatter','shock'].includes(up.id)) return { label: '改造', color: '#fff1bb' };
+    if (['danger','vamp','haste'].includes(up.id)) return { label: '通用', color: '#d7a0ff' };
+    return { label: '升級', color: '#fff1bb' };
+  }
+
+  function drawUpgrade() {
+    ctx.fillStyle = 'rgba(0,0,0,.64)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff0b5';
+    ctx.font = '900 32px system-ui, sans-serif';
+    ctx.fillText(game.wave >= 5 && !game.bossStarted ? 'Boss 前最後升級！' : `第 ${game.wave} 波清除！選一個升級`, W / 2, 126);
+    ctx.fillStyle = '#e9dcff';
+    ctx.font = '700 15px system-ui, sans-serif';
+    ctx.fillText(`目前主法術：${game.stats.spellName}｜${spellDescription(game.stats.spellKind)}`, W / 2, 154);
+    for (let i = 0; i < game.upgrades.length; i++) {
+      const up = game.upgrades[i];
+      const x = 165 + i * 215;
+      const y = 198;
+      drawPanel(x, y, 195, 238);
+      const meta = upgradeMeta(up);
+      ctx.fillStyle = meta.color;
+      ctx.fillRect(x + 14, y + 14, 58, 22);
+      ctx.fillStyle = '#1b1420';
+      ctx.font = '900 12px system-ui, sans-serif';
+      ctx.fillText(meta.label, x + 43, y + 30);
+      ctx.fillStyle = '#ffd36d';
+      ctx.font = '900 19px system-ui, sans-serif';
+      ctx.fillText(`${i + 1}. ${up.name}`, x + 98, y + 58);
+
+      if (up.element) {
+        const preview = previewSpellState(up.element);
+        const color = ELEMENT_INFO[preview.kind]?.color || '#fff1bb';
+        const before = game.stats.spellName;
+        ctx.fillStyle = 'rgba(255,255,255,.07)';
+        ctx.fillRect(x + 16, y + 78, 163, 62);
+        ctx.strokeStyle = preview.fused ? color : 'rgba(255,255,255,.14)';
+        ctx.lineWidth = preview.fused ? 2 : 1;
+        ctx.strokeRect(x + 16, y + 78, 163, 62);
+        ctx.fillStyle = preview.fused ? color : '#fff08a';
+        ctx.font = '900 13px system-ui, sans-serif';
+        ctx.fillText(preview.fused ? '融合預覽' : '法術變化', x + 98, y + 96);
+        ctx.fillStyle = '#f3e9dc';
+        ctx.font = '700 12px system-ui, sans-serif';
+        ctx.fillText(`${before} →`, x + 98, y + 116);
+        ctx.fillStyle = color;
+        ctx.font = '900 16px system-ui, sans-serif';
+        ctx.fillText(preview.name, x + 98, y + 134);
+        ctx.fillStyle = '#e9dcff';
+        ctx.font = '13px system-ui, sans-serif';
+        wrapText(preview.desc, x + 98, y + 166, 158, 17);
+      } else {
+        ctx.fillStyle = '#e9dcff';
+        ctx.font = '14px system-ui, sans-serif';
+        wrapText(up.desc, x + 98, y + 92, 158, 18);
+      }
+
+      ctx.fillStyle = '#8cecff';
+      ctx.font = '800 13px system-ui, sans-serif';
+      ctx.fillText('點擊或按 ' + (i + 1), x + 98, y + 214);
+    }
+    ctx.fillStyle = '#c9c0d8';
+    ctx.font = '700 13px system-ui, sans-serif';
+    ctx.fillText('提示：元素升級會直接改變唯一主攻擊；兩種元素會融合，第三種元素會替換最舊元素。', W / 2, 478);
+  }
+
+  function wrapText(text, x, y, maxWidth, lineHeight) {
+    const chars = [...text];
+    let line = '';
+    let yy = y;
+    for (const ch of chars) {
+      const test = line + ch;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, yy);
+        line = ch;
+        yy += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) ctx.fillText(line, x, yy);
+  }
+
+  function drawEnd(win) {
+    ctx.fillStyle = 'rgba(0,0,0,.65)';
+    ctx.fillRect(0, 0, W, H);
+    drawPanel(216, 76, 528, 520);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = win ? '#afff9d' : '#ffb29d';
+    ctx.font = '900 38px system-ui, sans-serif';
+    ctx.fillText(win ? '勝利！災難倖存者' : '死亡！魔法失控', W / 2, 138);
+    ctx.fillStyle = '#f3e9dc';
+    ctx.font = '17px system-ui, sans-serif';
+    wrapText(makeRunStory(win), W / 2, 174, 456, 20);
+    ctx.fillText(`主法術：${game.stats.spellName}｜地圖：${game.run && game.run.arena ? game.run.arena.name : '未知'}｜流派：${currentFlowName()}`, W / 2, 224);
+    ctx.fillText(`擊殺數：${game.kills}　分數：${game.score}`, W / 2, 258);
+    ctx.fillText(`最大單次爆炸擊殺：${game.biggestBoom}　毒霧引爆：${game.chainBooms}`, W / 2, 292);
+    ctx.fillText(`水池導電：${game.stats.waterElectrocutes}　凍結水面：${game.stats.frozenWater}　蒸氣雲：${game.stats.steamClouds}`, W / 2, 326);
+    ctx.fillText(`燒草/破牆：${game.stats.burnedGrass}/${game.stats.shatteredWalls}　融合次數：${game.stats.fusions}`, W / 2, 360);
+    ctx.fillText(`菁英擊殺 / 背面命中 / 格擋：${game.stats.elitesKilled} / ${game.stats.backHits} / ${game.stats.frontBlocks}`, W / 2, 384);
+    ctx.fillText(`Boss傷害：${Math.round(game.stats.bossDamage)}　最後命中：${game.stats.bossLastHit}`, W / 2, 406);
+    ctx.fillStyle = '#fff08a';
+    ctx.font = '800 16px system-ui, sans-serif';
+    wrapText(`本局最大災難：${game.stats.biggestDisaster}`, W / 2, 434, 450, 20);
+    ctx.fillStyle = '#f3e9dc';
+    ctx.font = '17px system-ui, sans-serif';
+    ctx.fillStyle = '#fff1bb';
+    ctx.font = '700 15px system-ui, sans-serif';
+    const evText = game.run && game.run.events.length ? game.run.events.join(' → ') : '無事件';
+    wrapText('本局事件：' + evText, W / 2, 466, 440, 20);
+    ctx.fillStyle = '#d7c7ff';
+    const buildText = game.stats.upgradeNames.length ? game.stats.upgradeNames.join(' / ') : '無升級';
+    const spellText = game.stats.spellHistory ? game.stats.spellHistory.join(' → ') : game.stats.spellName;
+    const fusionText = game.stats.fusionLog && game.stats.fusionLog.length ? '｜融合：' + game.stats.fusionLog.join(' / ') : '';
+    wrapText('法術演化：' + spellText + fusionText, W / 2, 506, 440, 20);
+    wrapText('Build：' + buildText, W / 2, 544, 440, 20);
+    ctx.fillStyle = '#9fe7ff';
+    ctx.font = '800 20px system-ui, sans-serif';
+    ctx.fillText('按 R 重開', W / 2, 574);
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  resetGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
