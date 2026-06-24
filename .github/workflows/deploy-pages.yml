@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# DISABLED auto-run: GitHub Pages is currently served via "Deploy from a branch"
+# (Settings -> Pages -> main / root, with .nojekyll). This workflow no longer
+# runs on push (it would fail, since the Pages source is the branch, not Actions).
+# To switch back to Actions-based deploys: set Pages Source to "GitHub Actions"
+# and re-add the `push:` trigger below.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Permissions needed for the GitHub Pages deployment.
