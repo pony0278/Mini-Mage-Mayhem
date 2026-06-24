@@ -135,6 +135,7 @@
   const TILE_WATER = 5;
   const TILE_ICE = 6;
   const TILE_ICEWALL = 7; // player-built ice wall (solid, melts to floor via fire/steam)
+  const TILE_OIL = 8;     // spilled oil (walkable; ignites into a big explosion on fire)
 
   const game = {
     state: 'title',
@@ -162,6 +163,8 @@
     electricZones: [],
     explosions: [],
     walls: [],
+    oils: [],
+    blackHoles: [],
     bossWarnings: [],
     particles: [],
     rings: [],
@@ -258,7 +261,11 @@
     { id: 'dash_cd', name: '疾風步', desc: '衝刺冷卻降低 30%。', apply: () => { game.stats.dashCdMul *= 0.7; toast('衝刺更頻繁了！'); } },
     { id: 'dash_power', name: '衝刺強化', desc: '衝刺傷害、擊退與元素留痕提高（衝刺流派）。', apply: () => { game.stats.dashPower += 1; toast('衝刺變成武器了！'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => { game.stats.secondary = 'earthwall'; toast('副攻換成土牆！'); } },
-    { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => { game.stats.secondary = 'icewall'; toast('副攻換成冰牆！'); } }
+    { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => { game.stats.secondary = 'icewall'; toast('副攻換成冰牆！'); } },
+    { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => { game.stats.secondary = 'oil'; toast('副攻換成潑油！'); } },
+    { id: 'equip_wind', name: '副攻：風陣', desc: '副攻改成陣風；擊退敵人並把火/毒/蒸氣往前吹。', apply: () => { game.stats.secondary = 'wind'; toast('副攻換成風陣！'); } },
+    { id: 'equip_earthfist', name: '副攻：土拳', desc: '副攻改成近戰土拳；高傷擊退、打破薄牆（突進流）。', apply: () => { game.stats.secondary = 'earthfist'; toast('副攻換成土拳！'); } },
+    { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => { game.stats.secondary = 'blackhole'; toast('副攻換成黑洞！'); } }
   ];
 
   function resetGame() {
@@ -285,6 +292,8 @@
     game.electricZones.length = 0;
     game.explosions.length = 0;
     game.walls.length = 0;
+    game.oils.length = 0;
+    game.blackHoles.length = 0;
     game.bossWarnings.length = 0;
     game.particles.length = 0;
     game.rings.length = 0;
@@ -1425,6 +1434,8 @@
     updateBossWarnings(dt);
     updateZones(dt);
     updateWalls(dt);
+    updateOil(dt);
+    updateBlackHoles(dt);
 
     game.enemies = game.enemies.filter(e => !e.dead);
 
@@ -1554,36 +1565,105 @@
 
   // --- Secondary slot: build-defined spell on one button ------------------
   // Add new secondary spells here as a single registry entry (see docs §7).
+  // Secondary registry: each entry is { name, cd, cast(angle) } (see docs §7).
   const SECONDARY = {
-    icewall:   { name: '冰牆', cd: 3.0, tile: TILE_ICEWALL, kind: 'ice',   life: 6, len: 4 },
-    earthwall: { name: '土牆', cd: 3.4, tile: TILE_THIN,    kind: 'earth', life: 8, len: 4 }
+    icewall:   { name: '冰牆', cd: 3.0, cast: (a) => buildWall(a, 'ice',   TILE_ICEWALL, 6, 4) },
+    earthwall: { name: '土牆', cd: 3.4, cast: (a) => buildWall(a, 'earth', TILE_THIN,    8, 4) },
+    oil:       { name: '潑油', cd: 2.6, cast: (a) => layOil(a) },
+    wind:      { name: '風陣', cd: 2.0, cast: (a) => windGust(a) },
+    earthfist: { name: '土拳', cd: 1.3, cast: (a) => earthFist(a) },
+    blackhole: { name: '黑洞', cd: 6.0, cast: (a) => castBlackHole(a) }
   };
   function castSecondary(angle) {
     const p = game.player;
     const def = SECONDARY[game.stats.secondary] || SECONDARY.icewall;
     p.secondaryCooldown = def.cd;
-    // A barrier across your aim: a short line of tiles, ahead of you, perpendicular to facing.
-    const ahead = 46;
-    const cx = p.x + Math.cos(angle) * ahead;
-    const cy = p.y + Math.sin(angle) * ahead;
+    def.cast(angle);
+  }
+
+  // A barrier across your aim: a short perpendicular line of solid tiles ahead of you.
+  function buildWall(angle, kind, tile, life, len) {
+    const p = game.player;
+    const cx = p.x + Math.cos(angle) * 46, cy = p.y + Math.sin(angle) * 46;
     const px = Math.cos(angle + Math.PI / 2), py = Math.sin(angle + Math.PI / 2);
-    const half = (def.len - 1) / 2;
+    const half = (len - 1) / 2;
     let placed = 0;
     for (let k = -half; k <= half; k++) {
-      const wx = cx + px * k * TILE, wy = cy + py * k * TILE;
-      const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
+      const tx = Math.floor((cx + px * k * TILE) / TILE), ty = Math.floor((cy + py * k * TILE) / TILE);
       if (tx < 1 || ty < 1 || tx >= COLS - 1 || ty >= ROWS - 1) continue;
       if (isSolidTile(game.map[ty][tx])) continue;
-      if (Math.hypot(tx * TILE + TILE / 2 - p.x, ty * TILE + TILE / 2 - p.y) < p.r + 8) continue; // don't bury self
-      game.walls.push({ tx, ty, kind: def.kind, prev: game.map[ty][tx], life: def.life, maxLife: def.life });
-      game.map[ty][tx] = def.tile;
+      if (Math.hypot(tx * TILE + TILE / 2 - p.x, ty * TILE + TILE / 2 - p.y) < p.r + 8) continue;
+      game.walls.push({ tx, ty, kind, prev: game.map[ty][tx], life, maxLife: life });
+      game.map[ty][tx] = tile;
       placed++;
     }
     if (placed) {
-      addText(cx, cy - 20, def.name, def.kind === 'ice' ? '#bff4ff' : '#d1a06a');
-      addRing(p.x, p.y, 24, def.kind === 'ice' ? '#bff4ff' : '#caa472', 0.3, 3);
+      addText(cx, cy - 20, kind === 'ice' ? '冰牆' : '土牆', kind === 'ice' ? '#bff4ff' : '#d1a06a');
+      addRing(p.x, p.y, 24, kind === 'ice' ? '#bff4ff' : '#caa472', 0.3, 3);
       game.screenShake = Math.max(game.screenShake, 2);
     }
+  }
+
+  // Spill a small oil patch ahead — does nothing until fire touches it, then big boom.
+  function layOil(angle) {
+    const p = game.player;
+    const cx = p.x + Math.cos(angle) * 40, cy = p.y + Math.sin(angle) * 40;
+    const ctx0 = Math.floor(cx / TILE), cty0 = Math.floor(cy / TILE);
+    let placed = 0;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const tx = ctx0 + ox, ty = cty0 + oy;
+      if (tx < 1 || ty < 1 || tx >= COLS - 1 || ty >= ROWS - 1) continue;
+      const t = game.map[ty][tx];
+      if (t !== TILE_FLOOR && t !== TILE_GRASS && t !== TILE_BURNT && t !== TILE_ICE) continue;
+      game.oils.push({ tx, ty, prev: t, life: 7, maxLife: 7 });
+      game.map[ty][tx] = TILE_OIL;
+      placed++;
+    }
+    if (placed) { addText(cx, cy - 20, '潑油', '#cdb06a'); addRing(p.x, p.y, 22, '#caa45a', 0.3, 3); }
+  }
+
+  // A forward gust: knock back enemies in a cone and shove hazard clouds the way you aim.
+  function windGust(angle) {
+    const p = game.player, range = 220, halfAng = 0.62;
+    for (const e of game.enemies) {
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > range) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng) continue;
+      const f = 560 * (1 - d / range);
+      e.vx = (e.vx || 0) + Math.cos(angle) * f; e.vy = (e.vy || 0) + Math.sin(angle) * f;
+    }
+    const shove = (arr) => { for (const c of arr) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d > range) continue; const a = Math.atan2(c.y - p.y, c.x - p.x); if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.35) continue; c.x = clamp(c.x + Math.cos(angle) * 64, 0, W); c.y = clamp(c.y + Math.sin(angle) * 64, 0, H); } };
+    shove(game.poisonClouds); shove(game.fireZones); shove(game.steamClouds);
+    for (let i = 0; i < 16; i++) { const a = angle + rnd(-halfAng, halfAng), sp = rnd(140, 280); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#dff3ff' }); }
+    addRing(p.x, p.y, 30, '#dff3ff', 0.3, 3); game.screenShake = Math.max(game.screenShake, 2);
+  }
+
+  // Close-range earth punch: heavy hit + knockback, and smashes thin/earth walls.
+  function earthFist(angle) {
+    const p = game.player, reach = 54, r = 42;
+    const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
+    const dmg = 22 + game.stats.dashPower * 4 + game.stats.size * 3;
+    for (const e of game.enemies) {
+      if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
+        damageEnemy(e, dmg, p.x, p.y, '土拳');
+        const a = angleTo(p, e);
+        e.vx = (e.vx || 0) + Math.cos(a) * 460; e.vy = (e.vy || 0) + Math.sin(a) * 460;
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.55);
+      }
+    }
+    breakThinWalls(fx, fy, r);
+    addRing(fx, fy, r, '#caa472', 0.3, 4); game.screenShake = Math.max(game.screenShake, 4);
+    for (let i = 0; i < 10; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-170, 170), vy: rnd(-170, 170), r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: '#b58a5a' });
+  }
+
+  // Spawn a black hole that pulls enemies + hazards together, then collapses (explodes).
+  function castBlackHole(angle) {
+    const p = game.player;
+    const x = clamp(p.x + Math.cos(angle) * 160, 36, W - 36);
+    const y = clamp(p.y + Math.sin(angle) * 160, 36, H - 36);
+    game.blackHoles.push({ x, y, r: 120 + game.stats.size * 14, life: 1.6, maxLife: 1.6, exploded: false });
+    addRing(x, y, 30, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
   }
   function updateWalls(dt) {
     let dirty = false;
@@ -1608,6 +1688,38 @@
       }
     }
     if (dirty) game.walls = game.walls.filter(w => !w.dead);
+  }
+
+  function updateOil(dt) {
+    let dirty = false;
+    for (const o of game.oils) {
+      o.life -= dt;
+      if (game.map[o.ty][o.tx] !== TILE_OIL) { o.dead = true; dirty = true; continue; }
+      const cx = o.tx * TILE + TILE / 2, cy = o.ty * TILE + TILE / 2;
+      let ignite = false;
+      for (const fz of game.fireZones) { if (Math.hypot(fz.x - cx, fz.y - cy) < fz.r + 12) { ignite = true; break; } }
+      if (ignite) {
+        game.map[o.ty][o.tx] = TILE_BURNT;
+        addExplosion(cx, cy, 54 + game.stats.size * 8, 38, '油爆'); // chains to adjacent oil via the new fire zone
+        o.dead = true; dirty = true; continue;
+      }
+      if (o.life <= 0) { if (game.map[o.ty][o.tx] === TILE_OIL) game.map[o.ty][o.tx] = o.prev; o.dead = true; dirty = true; }
+    }
+    if (dirty) game.oils = game.oils.filter(o => !o.dead);
+  }
+
+  function updateBlackHoles(dt) {
+    for (const bh of game.blackHoles) {
+      bh.life -= dt;
+      for (const e of game.enemies) {
+        const dx = bh.x - e.x, dy = bh.y - e.y, d = Math.hypot(dx, dy);
+        if (d < bh.r && d > 4) { const a = 2600 * (1 - d / bh.r) * dt; e.vx = (e.vx || 0) + dx / d * a; e.vy = (e.vy || 0) + dy / d * a; }
+      }
+      const pull = (arr) => { for (const c of arr) { const dx = bh.x - c.x, dy = bh.y - c.y, d = Math.hypot(dx, dy); if (d < bh.r && d > 4) { const s = Math.min(d, 130 * dt); c.x += dx / d * s; c.y += dy / d * s; } } };
+      pull(game.poisonClouds); pull(game.fireZones); pull(game.steamClouds);
+      if (bh.life <= 0 && !bh.exploded) { bh.exploded = true; addExplosion(bh.x, bh.y, bh.r * 0.9, 46, '黑洞塌縮'); }
+    }
+    game.blackHoles = game.blackHoles.filter(bh => bh.life > -0.05);
   }
 
 
@@ -2278,6 +2390,7 @@
       else if (t === TILE_WALL) c = '#2b2630';
       else if (t === TILE_THIN) c = '#43342e';
       else if (t === TILE_ICEWALL) c = '#7fb6c9';
+      else if (t === TILE_OIL) c = '#241f17';
       else c = ((x + y) % 2 === 0) ? ART.floorA : ART.floorB;
       gtx.fillStyle = c;
       gtx.fillRect(px, py, s, s);
@@ -2640,6 +2753,15 @@
       puff(ex.x, ex.y, ex.r, 0xff7640, 0.22 * (ex.life / ex.maxLife), 6, 30);
     }
     for (const rg of game.rings) disc(rg.x, rg.y, rg.r * (0.5 + (1 - rg.life / rg.maxLife) * 0.7), 0xffffff, 0.14 * clamp(rg.life / rg.maxLife, 0, 1));
+    for (const bh of game.blackHoles) {
+      disc(bh.x, bh.y, bh.r, 0x2a0f3a, 0.34);
+      const t = 1 - bh.life / bh.maxLife;
+      const core = new THREE.Mesh(sphereGeo, tmpMat(0x140022, 0.95, false));
+      core.scale.setScalar(10 + t * 8); core.position.set(bh.x, 16, bh.y); zoneGroup.add(core);
+      const ringm = new THREE.Mesh(torusGeo, tmpMat(0xb07aff, 0.7, true));
+      ringm.rotation.x = -Math.PI / 2; ringm.position.set(bh.x, 4, bh.y);
+      const rr = bh.r * (0.62 - t * 0.4); ringm.scale.set(rr, rr, rr); zoneGroup.add(ringm);
+    }
   }
 
   // --- mouse -> world ground point via camera raycast ---
