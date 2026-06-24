@@ -616,7 +616,6 @@
     // Already own this element → no wasted pick: deepen it (mastery, B step 1).
     if (elements.includes(element)) {
       game.stats.mastery[element] = (game.stats.mastery[element] || 0) + 1;
-      applyMastery(element);
       game.stats.elementPicks++;
       const lvl = game.stats.mastery[element];
       const nm = ELEMENT_INFO[element].name + '精通';
@@ -848,25 +847,22 @@
     game.enemies.push(e);
   }
 
-  // --- upgrade relevance + element mastery (no wasted picks) ---------------
-  function applyMastery(element) {
-    const s = game.stats;
-    if (element === 'fire') s.fireSpread += 1;
-    else if (element === 'ice') { s.iceSlow += 1; s.iceRadius += 1; }
-    else if (element === 'lightning') s.storm += 1;
-    else if (element === 'poison') s.poisonBoom += 1;
-    s.damageMul *= 1.05; // small guaranteed payoff so mastery always feels worth it
-  }
+  // --- element mastery (B): a per-element level that scales that element's
+  // signature effects, read at use-time (see spawnSpellProjectile / addFireZone
+  // / addPoisonCloud / chillEnemy / lightning jumps). Picking an owned element
+  // levels it up — never a wasted pick, and the pool never dries late game.
+  function mLvl(el) { return (game.stats.mastery && game.stats.mastery[el]) || 0; }
+  function spellMastery() { let s = 0; for (const el of (game.stats.spellElements || [])) s += mLvl(el); return s; }
   function masteryDesc(element) {
     return {
-      fire: '已擁有火：火焰範圍更大、燃燒更猛，傷害再提升。',
-      ice: '已擁有冰：緩速更久、冰面更大，傷害再提升。',
-      lightning: '已擁有雷：雷鏈多跳、導電更強，傷害再提升。',
-      poison: '已擁有毒：毒爆更大、毒霧更廣，傷害再提升。'
+      fire: '火焰精通：每級提升火球傷害、火場範圍與燃燒強度。',
+      ice: '寒冰精通：每級提升緩速時間、冰面範圍與傷害。',
+      lightning: '雷電精通：每級增加雷鏈跳數與導電強度。',
+      poison: '劇毒精通：每級擴大毒霧範圍、提升毒傷與毒爆。'
     }[element] || '強化目前元素。';
   }
   function isMastery(up) { return up.element && (game.stats.spellElements || []).includes(up.element); }
-  function upgradeName(up) { return isMastery(up) ? ELEMENT_INFO[up.element].name + '精通' : up.name; }
+  function upgradeName(up) { return isMastery(up) ? ELEMENT_INFO[up.element].name + '精通 Lv' + (mLvl(up.element) + 1) : up.name; }
   function upgradeDesc(up) { return isMastery(up) ? masteryDesc(up.element) : up.desc; }
   // Would this upgrade actually do something for the current build?
   function upgradeRelevant(up) {
@@ -948,13 +944,14 @@
     const kind = game.stats.spellKind || 'neutral';
     const info = ELEMENT_INFO[kind] || ELEMENT_INFO.neutral;
     const speedByKind = { neutral: 510, fire: 480, ice: 440, lightning: 570, poison: 430, steam: 390, toxic_boom: 420, plasma: 520, frost_shock: 500, toxic_shock: 480, venom_frost: 440 };
-    const r = (kind === 'steam' ? 10 : 7) + sizeLevel * 2;
+    const mm = spellMastery(); // total mastery across the spell's current elements
+    const r = ((kind === 'steam' ? 10 : 7) + sizeLevel * 2) * (1 + 0.04 * mm);
     const baseDamage = { neutral: 15, fire: 17, ice: 12, lightning: 15, poison: 10, steam: 11, toxic_boom: 14, plasma: 18, frost_shock: 14, toxic_shock: 13, venom_frost: 12 }[kind] || 14;
     const speed = speedByKind[kind] || 480;
     game.fireballs.push({
       x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
       r, kind, color: info.color, coreColor: info.core,
-      damage: baseDamage + sizeLevel * 5,
+      damage: (baseDamage + sizeLevel * 5) * (1 + 0.10 * mm),
       life: kind === 'steam' ? 1.25 : 1.45,
       trailTick: 0,
       explosive: game.stats.explosive > 0 || kind === 'toxic_boom' || kind === 'plasma',
@@ -1021,9 +1018,10 @@
   }
 
   function chillEnemy(e, time, sourceX, sourceY) {
-    e.slowTimer = Math.max(e.slowTimer || 0, time);
+    const im = mLvl('ice'); // ice mastery → longer slow + more damage
+    e.slowTimer = Math.max(e.slowTimer || 0, time + im * 0.25);
     e.chilled = true;
-    damageEnemy(e, 9 + game.stats.iceSlow * 2, sourceX, sourceY);
+    damageEnemy(e, 9 + game.stats.iceSlow * 2 + im * 2, sourceX, sourceY);
     addText(e.x, e.y - e.r - 12, '緩速', '#bff4ff');
     addRing(e.x, e.y, e.r + 10, '#bff4ff', 0.25, 2);
   }
@@ -1051,7 +1049,7 @@
     let current = firstTarget || nearestEnemy(x, y, 180);
     const hit = new Set();
     let fromX = x, fromY = y;
-    const jumps = 1 + Math.min(4, game.stats.storm + game.stats.shockStun + (game.stats.spellKind === 'lightning' ? 1 : 0));
+    const jumps = 1 + Math.min(4, game.stats.storm + game.stats.shockStun + (game.stats.spellKind === 'lightning' ? 1 : 0)) + Math.min(3, mLvl('lightning'));
     for (let i = 0; i <= jumps && current; i++) {
       hit.add(current);
       game.lightningBolts.push({ x1: fromX, y1: fromY, x2: current.x, y2: current.y, life: 0.14, maxLife: 0.14 });
@@ -1075,7 +1073,7 @@
       y2 = target.y;
       let current = target;
       const hit = new Set();
-      const jumps = 2 + game.stats.lightningChain * 2;
+      const jumps = 2 + game.stats.lightningChain * 2 + Math.min(3, mLvl('lightning'));
       for (let i = 0; i <= jumps && current; i++) {
         hit.add(current);
         const fromX = i === 0 ? p.x : x2;
@@ -1202,13 +1200,17 @@
   }
 
   function addFireZone(x, y, r, life = 2.2, friendly = false) {
-    const rr = r + (friendly ? game.stats.fireSpread * 4 : 0);
-    game.fireZones.push({ x, y, r: rr, life, maxLife: life, dps: friendly ? 10 + game.stats.fireSpread * 1.5 : 14, tick: 0, friendly });
+    const fm = friendly ? mLvl('fire') : 0; // fire mastery makes your fire bigger/hotter/longer
+    const rr = r + (friendly ? game.stats.fireSpread * 4 + fm * 5 : 0);
+    const lf = life * (1 + fm * 0.08);
+    game.fireZones.push({ x, y, r: rr, life: lf, maxLife: lf, dps: friendly ? 10 + game.stats.fireSpread * 1.5 + fm * 2.5 : 14, tick: 0, friendly });
     igniteGrass(x, y, rr + 8 + game.stats.fireSpread * 5);
   }
 
   function addPoisonCloud(x, y, r, life = 5.0) {
-    game.poisonClouds.push({ x, y, r, life, maxLife: life, dps: 9, pulse: rnd(0, 6.28) });
+    const pm = mLvl('poison'); // poison mastery → larger, longer, nastier clouds
+    const rr = r + pm * 5, lf = life * (1 + pm * 0.08);
+    game.poisonClouds.push({ x, y, r: rr, life: lf, maxLife: lf, dps: 9 + pm * 1.5, pulse: rnd(0, 6.28) });
   }
 
   function addExplosion(x, y, r, damage = 42, source = '爆炸') {
