@@ -53,6 +53,7 @@
     #cam-panel button,#cp-show{background:#3a3147;color:#fff;border:1px solid #5a4f6a;border-radius:6px;
       padding:5px 9px;cursor:pointer;font:600 12px system-ui,sans-serif}
     #cam-panel button:hover,#cp-show:hover{background:#4a4057}
+    #cp-pause.on{background:#6a4d2a;border-color:#ffd36d;color:#ffe6a7}
     #cp-show{position:absolute;top:14px;left:14px;z-index:30;pointer-events:auto;display:none}
   </style>
 </head>
@@ -69,7 +70,11 @@
   <label>角度 Angle：<span id="v-angle"></span>°<input id="s-angle" type="range" min="15" max="85" step="1"></label>
   <label>距離 Distance：<span id="v-dist"></span><input id="s-dist" type="range" min="300" max="1400" step="10"></label>
   <label>看向高度 Look：<span id="v-looky"></span><input id="s-looky" type="range" min="-50" max="220" step="5"></label>
+  <label>方位角 Azimuth：<span id="v-azi"></span>°<input id="s-azi" type="range" min="-180" max="180" step="5"></label>
+  <label>取景偏移X PanX：<span id="v-panx"></span><input id="s-panx" type="range" min="-300" max="300" step="10"></label>
+  <label>取景偏移Z PanZ：<span id="v-panz"></span><input id="s-panz" type="range" min="-300" max="300" step="10"></label>
   <div class="cp-readout" id="cp-readout"></div>
+  <div class="cp-row"><button id="cp-pause" style="flex:1">⏸ 暫停 (P)</button></div>
   <div class="cp-row"><button id="cp-copy">複製設定</button><button id="cp-reset">重設</button></div>
 </div>
 <button id="cp-show">🎥 調攝影機</button>
@@ -2082,37 +2087,49 @@
   scene.fog = new THREE.Fog(0x100e18, 820, 1580);
 
   // Sandbox-tunable camera: angle (deg from ground), distance, fov, look height.
-  const CAM = { fov: 43, angle: 46, dist: 849, lookY: 0 };
+  const CAM = { fov: 43, angle: 46, dist: 849, azimuth: 0, panX: 0, panZ: 0, lookY: 0 };
   const camera = new THREE.PerspectiveCamera(CAM.fov, W / H, 1, 5000);
+  let sandboxPaused = false;
   // --- on-screen camera control panel ---
   (function camPanel() {
     const $ = (id) => document.getElementById(id);
     const sFov = $('s-fov'), sAng = $('s-angle'), sDist = $('s-dist'), sLook = $('s-looky');
+    const sAzi = $('s-azi'), sPanX = $('s-panx'), sPanZ = $('s-panz');
     if (!sFov) return;
-    const DEFAULT = { fov: 43, angle: 46, dist: 849, lookY: 0 };
+    const DEFAULT = { fov: 43, angle: 46, dist: 849, azimuth: 0, panX: 0, panZ: 0, lookY: 0 };
+    function configLine() {
+      return 'CAM = { fov:' + CAM.fov + ', angle:' + CAM.angle + ', dist:' + CAM.dist
+        + ', azimuth:' + CAM.azimuth + ', panX:' + CAM.panX + ', panZ:' + CAM.panZ
+        + ', lookY:' + CAM.lookY + ' }';
+    }
     function refresh() {
       sFov.value = CAM.fov; sAng.value = CAM.angle; sDist.value = CAM.dist; sLook.value = CAM.lookY;
+      sAzi.value = CAM.azimuth; sPanX.value = CAM.panX; sPanZ.value = CAM.panZ;
       $('v-fov').textContent = CAM.fov; $('v-angle').textContent = CAM.angle;
       $('v-dist').textContent = CAM.dist; $('v-looky').textContent = CAM.lookY;
+      $('v-azi').textContent = CAM.azimuth; $('v-panx').textContent = CAM.panX; $('v-panz').textContent = CAM.panZ;
       const rad = CAM.angle * Math.PI / 180;
       const h = Math.round(Math.sin(rad) * CAM.dist), b = Math.round(Math.cos(rad) * CAM.dist);
-      $('cp-readout').textContent =
-        'CAM = { fov:' + CAM.fov + ', angle:' + CAM.angle + ', dist:' + CAM.dist + ', lookY:' + CAM.lookY + ' }\n'
-        + '\u2192 height:' + h + '  back:' + b + '   (貼這行給我也可)';
+      $('cp-readout').textContent = configLine() + '\n→ height:' + h + '  半徑:' + b + '   (貼這行給我也可)';
     }
     sFov.oninput = (e) => { CAM.fov = +e.target.value; refresh(); };
     sAng.oninput = (e) => { CAM.angle = +e.target.value; refresh(); };
     sDist.oninput = (e) => { CAM.dist = +e.target.value; refresh(); };
     sLook.oninput = (e) => { CAM.lookY = +e.target.value; refresh(); };
+    sAzi.oninput = (e) => { CAM.azimuth = +e.target.value; refresh(); };
+    sPanX.oninput = (e) => { CAM.panX = +e.target.value; refresh(); };
+    sPanZ.oninput = (e) => { CAM.panZ = +e.target.value; refresh(); };
     $('cp-copy').onclick = () => {
-      const rad = CAM.angle * Math.PI / 180;
-      const h = Math.round(Math.sin(rad) * CAM.dist), b = Math.round(Math.cos(rad) * CAM.dist);
-      const txt = 'CAM fov:' + CAM.fov + ' angle:' + CAM.angle + ' dist:' + CAM.dist
-        + ' lookY:' + CAM.lookY + '  (height:' + h + ' back:' + b + ')';
-      if (navigator.clipboard) navigator.clipboard.writeText(txt);
+      if (navigator.clipboard) navigator.clipboard.writeText(configLine());
       $('cp-copy').textContent = '已複製!'; setTimeout(() => { $('cp-copy').textContent = '複製設定'; }, 1200);
     };
     $('cp-reset').onclick = () => { Object.assign(CAM, DEFAULT); refresh(); };
+    function setPause(p) {
+      sandboxPaused = p;
+      $('cp-pause').textContent = p ? '▶ 繼續 (P)' : '⏸ 暫停 (P)';
+      $('cp-pause').classList.toggle('on', p);
+    }
+    $('cp-pause').onclick = () => setPause(!sandboxPaused);
     function toggle(hide) {
       $('cam-panel').classList.toggle('hidden', hide);
       $('cp-show').style.display = hide ? 'block' : 'none';
@@ -2120,7 +2137,9 @@
     $('cp-hide').onclick = () => toggle(true);
     $('cp-show').onclick = () => toggle(false);
     window.addEventListener('keydown', (e) => {
-      if (e.key.toLowerCase() === 'h') toggle(!$('cam-panel').classList.contains('hidden'));
+      const k = e.key.toLowerCase();
+      if (k === 'h') toggle(!$('cam-panel').classList.contains('hidden'));
+      if (k === 'p') setPause(!sandboxPaused);
     });
     refresh();
   })();
@@ -2597,9 +2616,11 @@
     const pz = game.player ? game.player.y : H / 2;
     let shx = 0, shz = 0;
     if (game.screenShake > 0) { shx = rnd(-game.screenShake, game.screenShake); shz = rnd(-game.screenShake, game.screenShake); }
-    const _rad = CAM.angle * Math.PI / 180;
-    camera.position.set(px + shx, Math.sin(_rad) * CAM.dist, pz + Math.cos(_rad) * CAM.dist + shz);
-    camera.lookAt(px, CAM.lookY, pz);
+    const _pit = CAM.angle * Math.PI / 180, _az = CAM.azimuth * Math.PI / 180;
+    const _hr = Math.cos(_pit) * CAM.dist;           // horizontal radius
+    const _tx = px + CAM.panX, _tz = pz + CAM.panZ;  // look target (with framing pan)
+    camera.position.set(_tx + Math.sin(_az) * _hr + shx, Math.sin(_pit) * CAM.dist, _tz + Math.cos(_az) * _hr + shz);
+    camera.lookAt(_tx, CAM.lookY, _tz);
     if (camera.fov !== CAM.fov) { camera.fov = CAM.fov; camera.updateProjectionMatrix(); }
     syncActors();
     syncProjectiles();
@@ -3512,7 +3533,7 @@
   function loop(now) {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    update(dt);
+    if (!sandboxPaused) update(dt);
     draw();
     requestAnimationFrame(loop);
   }
