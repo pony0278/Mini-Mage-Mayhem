@@ -265,7 +265,10 @@
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => { game.stats.secondary = 'oil'; toast('副攻換成潑油！'); } },
     { id: 'equip_wind', name: '副攻：風陣', desc: '副攻改成陣風；擊退敵人並把火/毒/蒸氣往前吹。', apply: () => { game.stats.secondary = 'wind'; toast('副攻換成風陣！'); } },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => { game.stats.secondary = 'blackhole'; toast('副攻換成黑洞！'); } },
-    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } }
+    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } },
+    { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
+    { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
+    { id: 'second_wind', name: '回春', desc: '立即回復 40% 最大生命。', apply: () => { healPlayer(game.player.maxHp * 0.4); toast('回復生命！'); } }
   ];
 
   function resetGame() {
@@ -322,6 +325,7 @@
       dashPower: 0,
       secondary: null,
       mainMode: 'spell',
+      mastery: { fire: 0, ice: 0, lightning: 0, poison: 0 },
       size: 0,
       siphon: 0,
       lightningChain: 0,
@@ -608,13 +612,23 @@
   }
 
   function injectElement(element) {
+    let elements = [...(game.stats.spellElements || [])];
+    // Already own this element → no wasted pick: deepen it (mastery, B step 1).
+    if (elements.includes(element)) {
+      game.stats.mastery[element] = (game.stats.mastery[element] || 0) + 1;
+      applyMastery(element);
+      game.stats.elementPicks++;
+      const lvl = game.stats.mastery[element];
+      const nm = ELEMENT_INFO[element].name + '精通';
+      addText(game.player.x, game.player.y - 42, `${nm} Lv${lvl}`, ELEMENT_INFO[element].color);
+      game.fusionBanner = { title: 'MASTERY', equation: `${nm} Lv${lvl}`, desc: masteryDesc(element), life: 1.45, maxLife: 1.45, color: ELEMENT_INFO[element].color };
+      toast(`${nm}！`);
+      return;
+    }
     const before = game.stats.spellName || '魔法飛彈';
     const preview = previewSpellState(element);
-    let elements = [...(game.stats.spellElements || [])];
-    if (!elements.includes(element)) {
-      if (elements.length < 2) elements.push(element);
-      else elements = [elements[1], element];
-    }
+    if (elements.length < 2) elements.push(element);
+    else elements = [elements[1], element]; // replace the oldest element
     game.stats.spellElements = elements;
     const oldKind = game.stats.spellKind;
     syncSpell();
@@ -834,12 +848,45 @@
     game.enemies.push(e);
   }
 
+  // --- upgrade relevance + element mastery (no wasted picks) ---------------
+  function applyMastery(element) {
+    const s = game.stats;
+    if (element === 'fire') s.fireSpread += 1;
+    else if (element === 'ice') { s.iceSlow += 1; s.iceRadius += 1; }
+    else if (element === 'lightning') s.storm += 1;
+    else if (element === 'poison') s.poisonBoom += 1;
+    s.damageMul *= 1.05; // small guaranteed payoff so mastery always feels worth it
+  }
+  function masteryDesc(element) {
+    return {
+      fire: '已擁有火：火焰範圍更大、燃燒更猛，傷害再提升。',
+      ice: '已擁有冰：緩速更久、冰面更大，傷害再提升。',
+      lightning: '已擁有雷：雷鏈多跳、導電更強，傷害再提升。',
+      poison: '已擁有毒：毒爆更大、毒霧更廣，傷害再提升。'
+    }[element] || '強化目前元素。';
+  }
+  function isMastery(up) { return up.element && (game.stats.spellElements || []).includes(up.element); }
+  function upgradeName(up) { return isMastery(up) ? ELEMENT_INFO[up.element].name + '精通' : up.name; }
+  function upgradeDesc(up) { return isMastery(up) ? masteryDesc(up.element) : up.desc; }
+  // Would this upgrade actually do something for the current build?
+  function upgradeRelevant(up) {
+    const s = game.stats;
+    const owns = (el) => (s.spellElements || []).includes(el);
+    if (up.id && up.id.indexOf('equip_') === 0) {
+      const want = up.id.slice('equip_'.length);
+      return s.secondary !== want;            // don't offer the secondary you already have
+    }
+    if (up.id === 'fist_mode') return s.mainMode !== 'fist'; // already a brawler
+    if (up.id === 'ice_lake' || up.id === 'ice_shatter') return owns('ice');
+    if (up.id === 'shock') return owns('lightning');
+    if (up.id === 'toxic_boom') return owns('poison');
+    return true; // inject_* (inject or mastery) and generics are always meaningful
+  }
   function openUpgrade() {
     game.state = 'upgrade';
-    const pool = [...upgradePool];
     game.upgrades = [];
-    for (let i = 0; i < 3; i++) {
-      if (!pool.length) break;
+    let pool = upgradePool.filter(upgradeRelevant);
+    for (let i = 0; i < 3 && pool.length; i++) {
       const pick = Math.floor(Math.random() * pool.length);
       game.upgrades.push(pool.splice(pick, 1)[0]);
     }
@@ -848,7 +895,7 @@
   function applyUpgrade(index) {
     const up = game.upgrades[index];
     if (!up) return;
-    game.stats.upgradeNames.push(up.name);
+    game.stats.upgradeNames.push(upgradeName(up));
     up.apply();
     game.state = 'playing';
     if (game.wave >= 5 && !game.bossStarted) {
@@ -3616,7 +3663,10 @@
     if (['inject_lightning'].includes(up.id)) return { label: '元素', color: '#9fe7ff' };
     if (['inject_poison'].includes(up.id)) return { label: '元素', color: '#d998ff' };
     if (['split','explode','trail','big','spread','toxic_boom','ice_lake','ice_shatter','shock'].includes(up.id)) return { label: '改造', color: '#fff1bb' };
-    if (['danger','vamp','haste'].includes(up.id)) return { label: '通用', color: '#d7a0ff' };
+    if (up.id && up.id.indexOf('equip_') === 0) return { label: '副攻', color: '#8cecff' };
+    if (up.id === 'fist_mode') return { label: '肉搏', color: '#e0b07a' };
+    if (['dash_cd','dash_power'].includes(up.id)) return { label: '衝刺', color: '#b7d8ff' };
+    if (['danger','vamp','haste','vitality','swift','second_wind'].includes(up.id)) return { label: '通用', color: '#d7a0ff' };
     return { label: '升級', color: '#fff1bb' };
   }
 
@@ -3643,9 +3693,9 @@
       ctx.fillText(meta.label, x + 43, y + 30);
       ctx.fillStyle = '#ffd36d';
       ctx.font = '900 19px system-ui, sans-serif';
-      ctx.fillText(`${i + 1}. ${up.name}`, x + 98, y + 58);
+      ctx.fillText(`${i + 1}. ${upgradeName(up)}`, x + 98, y + 58);
 
-      if (up.element) {
+      if (up.element && !isMastery(up)) {
         const preview = previewSpellState(up.element);
         const color = ELEMENT_INFO[preview.kind]?.color || '#fff1bb';
         const before = game.stats.spellName;
@@ -3669,7 +3719,7 @@
       } else {
         ctx.fillStyle = '#e9dcff';
         ctx.font = '14px system-ui, sans-serif';
-        wrapText(up.desc, x + 98, y + 92, 158, 18);
+        wrapText(upgradeDesc(up), x + 98, y + 92, 158, 18);
       }
 
       ctx.fillStyle = '#8cecff';
