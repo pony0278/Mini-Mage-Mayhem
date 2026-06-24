@@ -292,8 +292,8 @@
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => { game.stats.secondary = 'icewall'; toast('副攻換成冰牆！'); } },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => { game.stats.secondary = 'oil'; toast('副攻換成潑油！'); } },
     { id: 'equip_wind', name: '副攻：風陣', desc: '副攻改成陣風；擊退敵人並把火/毒/蒸氣往前吹。', apply: () => { game.stats.secondary = 'wind'; toast('副攻換成風陣！'); } },
-    { id: 'equip_earthfist', name: '副攻：土拳', desc: '副攻改成近戰土拳；高傷擊退、打破薄牆（突進流）。', apply: () => { game.stats.secondary = 'earthfist'; toast('副攻換成土拳！'); } },
-    { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => { game.stats.secondary = 'blackhole'; toast('副攻換成黑洞！'); } }
+    { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => { game.stats.secondary = 'blackhole'; toast('副攻換成黑洞！'); } },
+    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } }
   ];
 
   function resetGame() {
@@ -348,7 +348,8 @@
       cooldownMul: 1,
       dashCdMul: 1,
       dashPower: 0,
-      secondary: 'icewall',
+      secondary: null,
+      mainMode: 'spell',
       size: 0,
       siphon: 0,
       lightningChain: 0,
@@ -1544,8 +1545,13 @@
     if (p.dashTime > 0) dashTrail(p);
 
     if (mouse.down && p.cooldown <= 0) {
-      shoot(p.facing);
-      p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
+      if (game.stats.mainMode === 'fist') {
+        meleePunch(p.facing);
+        p.cooldown = Math.max(0.12, 0.32 * game.stats.cooldownMul);
+      } else {
+        shoot(p.facing);
+        p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
+      }
     }
     // Secondary attack (one button: RMB or Q) — build-defined slot.
     if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
@@ -1599,13 +1605,12 @@
     earthwall: { name: '土牆', cd: 3.4, cast: (a) => buildWall(a, 'earth', TILE_THIN,    8, 4) },
     oil:       { name: '潑油', cd: 2.6, cast: (a) => layOil(a) },
     wind:      { name: '風陣', cd: 2.0, cast: (a) => windGust(a) },
-    earthfist: { name: '土拳', cd: 1.3, cast: (a) => earthFist(a) },
     blackhole: { name: '黑洞', cd: 6.0, cast: (a) => castBlackHole(a) }
   };
   function castSecondary(angle) {
-    const p = game.player;
-    const def = SECONDARY[game.stats.secondary] || SECONDARY.icewall;
-    p.secondaryCooldown = def.cd;
+    const def = SECONDARY[game.stats.secondary];
+    if (!def) return; // no secondary equipped yet (gained via upgrades)
+    game.player.secondaryCooldown = def.cd;
     def.cast(angle);
   }
 
@@ -1667,22 +1672,28 @@
     addRing(p.x, p.y, 30, '#dff3ff', 0.3, 3); game.screenShake = Math.max(game.screenShake, 2);
   }
 
-  // Close-range earth punch: heavy hit + knockback, and smashes thin/earth walls.
-  function earthFist(angle) {
-    const p = game.player, reach = 54, r = 42;
+  // Melee MAIN attack (brawler build): close-range punch that carries the current
+  // element, knocks back, and smashes thin/earth walls. Replaces the projectile.
+  function meleePunch(angle) {
+    const p = game.player, reach = 46, r = 36;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
-    const dmg = 22 + game.stats.dashPower * 4 + game.stats.size * 3;
+    const el = dashElement();
+    const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2;
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
-        damageEnemy(e, dmg, p.x, p.y, '土拳');
+        damageEnemy(e, dmg, p.x, p.y, '肉搏');
         const a = angleTo(p, e);
-        e.vx = (e.vx || 0) + Math.cos(a) * 460; e.vy = (e.vy || 0) + Math.sin(a) * 460;
-        e.stunTimer = Math.max(e.stunTimer || 0, 0.55);
+        e.vx = (e.vx || 0) + Math.cos(a) * 320; e.vy = (e.vy || 0) + Math.sin(a) * 320;
+        if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.0); e.chilled = true; }
+        else if (el === 'poison') addPoisonCloud(e.x, e.y, 16, 1.8);
       }
     }
     breakThinWalls(fx, fy, r);
-    addRing(fx, fy, r, '#caa472', 0.3, 4); game.screenShake = Math.max(game.screenShake, 4);
-    for (let i = 0; i < 10; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-170, 170), vy: rnd(-170, 170), r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: '#b58a5a' });
+    if (el === 'fire') { addFireZone(fx, fy, 18, 0.7, true); igniteGrass(fx, fy, 20); }
+    else if (el === 'lightning' && tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 40, 0.6);
+    const col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888';
+    addRing(fx, fy, r, col, 0.24, 3); game.screenShake = Math.max(game.screenShake, 3);
+    for (let i = 0; i < 6; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-130, 130), vy: rnd(-130, 130), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col });
   }
 
   // Spawn a black hole that pulls enemies + hazards together, then collapses (explodes).
@@ -3605,8 +3616,16 @@
       ctx.fillText('提示：唯一主魔法可被火、冰、雷、毒覆蓋；兩種元素會融合成新法術。', W / 2, H - 34);
     }
 
-    // Secondary-attack indicator (bottom-left): name + cooldown.
-    if (game.state === 'playing') {
+    // Brawler tag: main attack is melee.
+    if (game.state === 'playing' && game.stats.mainMode === 'fist') {
+      roundRectPath(ctx, 16, H - 92, 150, 32, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
+      ctx.strokeStyle = '#e0b07a'; ctx.stroke();
+      ctx.textAlign = 'left'; ctx.font = '900 13px system-ui, sans-serif'; ctx.fillStyle = '#ffdfa6';
+      ctx.fillText('主攻 [左鍵]：肉搏 土拳', 26, H - 71);
+    }
+
+    // Secondary-attack indicator (bottom-left) — only once a secondary is equipped.
+    if (game.state === 'playing' && game.stats.secondary) {
       const sec = SECONDARY[game.stats.secondary];
       const ready = p.secondaryCooldown <= 0;
       const icy = game.stats.secondary === 'icewall';
