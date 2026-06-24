@@ -134,6 +134,7 @@
   const TILE_BURNT = 4;
   const TILE_WATER = 5;
   const TILE_ICE = 6;
+  const TILE_ICEWALL = 7; // player-built ice wall (solid, melts to floor via fire/steam)
 
   const game = {
     state: 'title',
@@ -160,6 +161,7 @@
     fireZones: [],
     electricZones: [],
     explosions: [],
+    walls: [],
     bossWarnings: [],
     particles: [],
     rings: [],
@@ -252,7 +254,11 @@
     { id: 'shock', name: '導電麻痺', desc: '雷電導通水池時更容易打斷衝鋒怪。', apply: () => { game.stats.shockStun += 1; game.stats.storm += 1; toast('電流開始麻痺敵人！'); } },
     { id: 'ice_lake', name: '大冰面', desc: '冰元素凍水範圍提高，緩速時間增加。', apply: () => { game.stats.iceRadius += 1; game.stats.iceSlow += 1; toast('水池開始結成大片冰面！'); } },
     { id: 'ice_shatter', name: '寒冰碎裂', desc: '被冰系飛彈緩速的敵人死亡時會小範圍冰爆。', apply: () => { game.stats.iceShatter += 1; toast('冰凍敵人會碎裂！'); } },
-    { id: 'danger', name: '危險魔力', desc: '所有傷害大幅提高，但自傷也提高。', apply: () => { game.stats.damageMul *= 1.28; game.stats.selfDamageMul *= 1.24; toast('你變強了，也更危險了！'); } }
+    { id: 'danger', name: '危險魔力', desc: '所有傷害大幅提高，但自傷也提高。', apply: () => { game.stats.damageMul *= 1.28; game.stats.selfDamageMul *= 1.24; toast('你變強了，也更危險了！'); } },
+    { id: 'dash_cd', name: '疾風步', desc: '衝刺冷卻降低 30%。', apply: () => { game.stats.dashCdMul *= 0.7; toast('衝刺更頻繁了！'); } },
+    { id: 'dash_power', name: '衝刺強化', desc: '衝刺傷害、擊退與元素留痕提高（衝刺流派）。', apply: () => { game.stats.dashPower += 1; toast('衝刺變成武器了！'); } },
+    { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => { game.stats.secondary = 'earthwall'; toast('副攻換成土牆！'); } },
+    { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => { game.stats.secondary = 'icewall'; toast('副攻換成冰牆！'); } }
   ];
 
   function resetGame() {
@@ -278,6 +284,7 @@
     game.fireZones.length = 0;
     game.electricZones.length = 0;
     game.explosions.length = 0;
+    game.walls.length = 0;
     game.bossWarnings.length = 0;
     game.particles.length = 0;
     game.rings.length = 0;
@@ -302,6 +309,9 @@
       explosive: 0,
       trail: 0,
       cooldownMul: 1,
+      dashCdMul: 1,
+      dashPower: 0,
+      secondary: 'icewall',
       size: 0,
       siphon: 0,
       lightningChain: 0,
@@ -364,6 +374,9 @@
       iceCooldown: 0,
       dashCooldown: 0,
       dashTime: 0,
+      dashTrailCd: 0,
+      dashHits: null,
+      secondaryCooldown: 0,
       invuln: 0,
       hurtTimer: 0,
       facing: 0,
@@ -636,7 +649,7 @@
     return game.map[ty][tx];
   }
 
-  function isSolidTile(t) { return t === TILE_WALL || t === TILE_THIN; }
+  function isSolidTile(t) { return t === TILE_WALL || t === TILE_THIN || t === TILE_ICEWALL; }
 
   function circleHitsSolid(x, y, r) {
     const minX = Math.floor((x - r) / TILE);
@@ -1411,6 +1424,7 @@
     updateEnemies(dt);
     updateBossWarnings(dt);
     updateZones(dt);
+    updateWalls(dt);
 
     game.enemies = game.enemies.filter(e => !e.dead);
 
@@ -1436,6 +1450,8 @@
     p.iceCooldown = Math.max(0, p.iceCooldown - dt);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.dashTime = Math.max(0, p.dashTime - dt);
+    p.dashTrailCd = Math.max(0, p.dashTrailCd - dt);
+    p.secondaryCooldown = Math.max(0, p.secondaryCooldown - dt);
     p.invuln = Math.max(0, p.invuln - dt);
     p.hurtTimer = Math.max(0, p.hurtTimer - dt);
     p.facing = Math.atan2(mouse.y - p.y, mouse.x - p.x);
@@ -1454,12 +1470,15 @@
 
     if ((keys.has(' ') || keys.has('shift')) && p.dashCooldown <= 0) {
       p.dashTime = 0.13;
-      p.dashCooldown = 1.1;
+      p.dashCooldown = 1.1 * game.stats.dashCdMul;
       p.invuln = Math.max(p.invuln, 0.18);
+      p.dashHits = new Set();   // enemies hit by this dash (offensive dash)
+      p.dashTrailCd = 0;        // lay first trail node immediately
       game.screenShake = Math.max(game.screenShake, 2);
       if (Math.abs(n.x) + Math.abs(n.y) > 0) { p.vx = n.x * 560; p.vy = n.y * 560; }
+      const dc = ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color || '#b7d8ff';
       for (let i = 0; i < 12; i++) {
-        game.particles.push({ x: p.x, y: p.y, vx: rnd(-90, 90), vy: rnd(-90, 90), r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#b7d8ff' });
+        game.particles.push({ x: p.x, y: p.y, vx: rnd(-90, 90), vy: rnd(-90, 90), r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: dc });
       }
     }
     if (p.dashTime > 0) speed = 520;
@@ -1483,10 +1502,112 @@
     if (!circleHitsSolid(nx, p.y, p.r)) p.x = nx; else p.vx *= -0.15;
     if (!circleHitsSolid(p.x, ny, p.r)) p.y = ny; else p.vy *= -0.15;
 
+    if (p.dashTime > 0) dashTrail(p);
+
     if (mouse.down && p.cooldown <= 0) {
       shoot(p.facing);
       p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
     }
+    // Secondary attack (one button: RMB or Q) — build-defined slot.
+    if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
+      castSecondary(p.facing);
+    }
+  }
+
+  // --- Element-infused dash (movement-as-terrain build) -------------------
+  function dashElement() {
+    const els = game.stats.spellElements || [];
+    return els.length ? els[els.length - 1] : null; // most recent element
+  }
+  // element -> what the dash lays on the ground it crosses
+  const DASH_FX = {
+    fire: (x, y) => { igniteGrass(x, y, 22); addFireZone(x, y, 16 + game.stats.dashPower * 6, 0.7, true); },
+    ice: (x, y) => { freezeWaterAt(x, y, 26); },
+    lightning: (x, y) => { if (tileAtPixel(x, y) === TILE_WATER) addElectricZone(x, y, 44 + game.stats.dashPower * 10, 0.7); },
+    poison: (x, y) => { addPoisonCloud(x, y, 18 + game.stats.dashPower * 5, 2.2); }
+  };
+  function dashTrail(p) {
+    const el = dashElement();
+    const col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#b7d8ff';
+    // lay an element trail node on a short throttle
+    if (p.dashTrailCd <= 0) {
+      if (el && DASH_FX[el]) DASH_FX[el](p.x, p.y);
+      for (let i = 0; i < 3; i++) game.particles.push({ x: p.x, y: p.y, vx: rnd(-50, 50), vy: rnd(-50, 50), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col });
+      p.dashTrailCd = 0.04;
+    }
+    // offensive dash: bump enemies passed through (once each)
+    if (!p.dashHits) p.dashHits = new Set();
+    const dmg = 8 + game.stats.dashPower * 6 + game.stats.size * 2;
+    for (const e of game.enemies) {
+      if (e.dead || p.dashHits.has(e)) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y) < p.r + e.r + 4) {
+        p.dashHits.add(e);
+        damageEnemy(e, dmg, p.x, p.y, '衝刺');
+        const a = angleTo(p, e);
+        e.vx = (e.vx || 0) + Math.cos(a) * 240;
+        e.vy = (e.vy || 0) + Math.sin(a) * 240;
+        if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.1); e.chilled = true; }
+        if (el === 'poison') addPoisonCloud(e.x, e.y, 18, 2.0);
+      }
+    }
+  }
+
+  // --- Secondary slot: build-defined spell on one button ------------------
+  // Add new secondary spells here as a single registry entry (see docs §7).
+  const SECONDARY = {
+    icewall:   { name: '冰牆', cd: 3.0, tile: TILE_ICEWALL, kind: 'ice',   life: 6, len: 4 },
+    earthwall: { name: '土牆', cd: 3.4, tile: TILE_THIN,    kind: 'earth', life: 8, len: 4 }
+  };
+  function castSecondary(angle) {
+    const p = game.player;
+    const def = SECONDARY[game.stats.secondary] || SECONDARY.icewall;
+    p.secondaryCooldown = def.cd;
+    // A barrier across your aim: a short line of tiles, ahead of you, perpendicular to facing.
+    const ahead = 46;
+    const cx = p.x + Math.cos(angle) * ahead;
+    const cy = p.y + Math.sin(angle) * ahead;
+    const px = Math.cos(angle + Math.PI / 2), py = Math.sin(angle + Math.PI / 2);
+    const half = (def.len - 1) / 2;
+    let placed = 0;
+    for (let k = -half; k <= half; k++) {
+      const wx = cx + px * k * TILE, wy = cy + py * k * TILE;
+      const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
+      if (tx < 1 || ty < 1 || tx >= COLS - 1 || ty >= ROWS - 1) continue;
+      if (isSolidTile(game.map[ty][tx])) continue;
+      if (Math.hypot(tx * TILE + TILE / 2 - p.x, ty * TILE + TILE / 2 - p.y) < p.r + 8) continue; // don't bury self
+      game.walls.push({ tx, ty, kind: def.kind, prev: game.map[ty][tx], life: def.life, maxLife: def.life });
+      game.map[ty][tx] = def.tile;
+      placed++;
+    }
+    if (placed) {
+      addText(cx, cy - 20, def.name, def.kind === 'ice' ? '#bff4ff' : '#d1a06a');
+      addRing(p.x, p.y, 24, def.kind === 'ice' ? '#bff4ff' : '#caa472', 0.3, 3);
+      game.screenShake = Math.max(game.screenShake, 2);
+    }
+  }
+  function updateWalls(dt) {
+    let dirty = false;
+    for (const w of game.walls) {
+      const wallTile = w.kind === 'ice' ? TILE_ICEWALL : TILE_THIN;
+      w.life -= dt;
+      // Destroyed by something else (explosion broke earth wall, etc.) → drop entry, no revert.
+      if (game.map[w.ty][w.tx] !== wallTile) { w.dead = true; dirty = true; continue; }
+      // Ice walls melt when a fire zone touches them → steam.
+      if (w.kind === 'ice') {
+        const cx = w.tx * TILE + TILE / 2, cy = w.ty * TILE + TILE / 2;
+        for (const fz of game.fireZones) {
+          if (Math.hypot(fz.x - cx, fz.y - cy) < fz.r + 14) {
+            game.map[w.ty][w.tx] = TILE_FLOOR; addSteamCloud(cx, cy, 26, 1.4); w.dead = true; dirty = true; break;
+          }
+        }
+        if (w.dead) continue;
+      }
+      if (w.life <= 0) {
+        if (game.map[w.ty][w.tx] === wallTile) game.map[w.ty][w.tx] = w.prev;
+        w.dead = true; dirty = true;
+      }
+    }
+    if (dirty) game.walls = game.walls.filter(w => !w.dead);
   }
 
 
@@ -2156,6 +2277,7 @@
       else if (t === TILE_ICE) c = ART.ice;
       else if (t === TILE_WALL) c = '#2b2630';
       else if (t === TILE_THIN) c = '#43342e';
+      else if (t === TILE_ICEWALL) c = '#7fb6c9';
       else c = ((x + y) % 2 === 0) ? ART.floorA : ART.floorB;
       gtx.fillStyle = c;
       gtx.fillRect(px, py, s, s);
@@ -2211,25 +2333,29 @@
   const wallTopMat = new THREE.MeshLambertMaterial({ color: ART.wallTop });
   const thinMat = new THREE.MeshLambertMaterial({ color: ART.thin });
   const thinTopMat = new THREE.MeshLambertMaterial({ color: ART.thinTop });
+  const iceWallMat = new THREE.MeshLambertMaterial({ color: 0x9fdcef, transparent: true, opacity: 0.8 });
+  const iceWallTopMat = new THREE.MeshLambertMaterial({ color: 0xe8fbff, transparent: true, opacity: 0.88 });
+  const wallBodyMat = (t) => t === TILE_WALL ? wallMat : (t === TILE_ICEWALL ? iceWallMat : thinMat);
+  const wallCapMat = (t) => t === TILE_WALL ? wallTopMat : (t === TILE_ICEWALL ? iceWallTopMat : thinTopMat);
   let wallSig = '';
   function syncWalls() {
     let sig = '';
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const t = game.map[y][x];
-      if (t === TILE_WALL || t === TILE_THIN) sig += x + '.' + y + '.' + t + ';';
+      if (t === TILE_WALL || t === TILE_THIN || t === TILE_ICEWALL) sig += x + '.' + y + '.' + t + ';';
     }
     if (sig === wallSig) return;
     wallSig = sig;
     wallGroup.clear();
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const t = game.map[y][x];
-      if (t !== TILE_WALL && t !== TILE_THIN) continue;
-      const h = t === TILE_WALL ? 48 : 30;
-      const body = new THREE.Mesh(boxGeo, t === TILE_WALL ? wallMat : thinMat);
+      if (t !== TILE_WALL && t !== TILE_THIN && t !== TILE_ICEWALL) continue;
+      const h = t === TILE_WALL ? 48 : (t === TILE_ICEWALL ? 34 : 30);
+      const body = new THREE.Mesh(boxGeo, wallBodyMat(t));
       body.scale.set(TILE, h, TILE);
       body.position.set(x * TILE + TILE / 2, h / 2, y * TILE + TILE / 2);
       wallGroup.add(body);
-      const cap = new THREE.Mesh(boxGeo, t === TILE_WALL ? wallTopMat : thinTopMat);
+      const cap = new THREE.Mesh(boxGeo, wallCapMat(t));
       cap.scale.set(TILE * 0.94, 4, TILE * 0.94);
       cap.position.set(x * TILE + TILE / 2, h + 2, y * TILE + TILE / 2);
       wallGroup.add(cap);
@@ -3272,6 +3398,25 @@
       roundRectPath(ctx, 204, H - 58, 552, 38, 12); ctx.fillStyle = 'rgba(10, 8, 14, .76)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,211,109,.25)'; ctx.stroke();
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1bb'; ctx.font = '900 14px system-ui, sans-serif';
       ctx.fillText('提示：唯一主魔法可被火、冰、雷、毒覆蓋；兩種元素會融合成新法術。', W / 2, H - 34);
+    }
+
+    // Secondary-attack indicator (bottom-left): name + cooldown.
+    if (game.state === 'playing') {
+      const sec = SECONDARY[game.stats.secondary];
+      const ready = p.secondaryCooldown <= 0;
+      const icy = game.stats.secondary === 'icewall';
+      roundRectPath(ctx, 16, H - 52, 150, 36, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
+      ctx.strokeStyle = ready ? (icy ? '#bff4ff' : '#d1a06a') : 'rgba(255,255,255,.18)'; ctx.stroke();
+      ctx.textAlign = 'left'; ctx.font = '900 13px system-ui, sans-serif';
+      ctx.fillStyle = ready ? '#fff1e2' : 'rgba(255,255,255,.5)';
+      ctx.fillText('副攻 [右鍵]', 26, H - 34);
+      ctx.fillStyle = ready ? (icy ? '#bff4ff' : '#e0b07a') : 'rgba(255,255,255,.45)';
+      ctx.fillText(sec ? sec.name : '—', 26, H - 20);
+      if (!ready && sec) {
+        const f = 1 - p.secondaryCooldown / sec.cd;
+        ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(108, H - 30, 48, 6);
+        ctx.fillStyle = icy ? '#bff4ff' : '#e0b07a'; ctx.fillRect(108, H - 30, 48 * f, 6);
+      }
     }
     ctx.restore();
   }
