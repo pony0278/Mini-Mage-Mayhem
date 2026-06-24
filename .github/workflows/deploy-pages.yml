@@ -30,7 +30,7 @@ jobs:
         # Serve the game at the site root as index.html, plus vendored libs.
         run: |
           mkdir -p _site/vendor
-          cp mini_mage_mayhem_demo_v0_7_5.html _site/index.html
+          cp mini_mage_mayhem_demo_v0_8.html _site/index.html
           cp -r vendor/* _site/vendor/
 
       - name: Setup Pages
