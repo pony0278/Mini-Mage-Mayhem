@@ -27,10 +27,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build site
-        # Serve the game at the site root as index.html, plus vendored libs.
+        # Publish the repo root (index.html + vendor/ + .nojekyll).
         run: |
           mkdir -p _site/vendor
-          cp mini_mage_mayhem_demo_v0_8.html _site/index.html
+          cp index.html _site/index.html
+          cp .nojekyll _site/.nojekyll
           cp -r vendor/* _site/vendor/
 
       - name: Setup Pages
