@@ -25,49 +25,47 @@
       place-items: center;
       background: radial-gradient(circle at center, #2a2030 0%, #15131b 60%, #0e0c12 100%);
     }
-    canvas {
-      image-rendering: pixelated;
-      max-width: 100vw;
-      max-height: 100vh;
+    #stage {
+      position: relative;
       width: min(100vw, calc(100vh * 1.5));
       height: min(100vh, calc(100vw / 1.5));
       box-shadow: 0 0 0 2px #3e3346, 0 18px 50px rgba(0,0,0,.45);
       background: #241d25;
       cursor: crosshair;
     }
+    #stage canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    /* #game = 3D world (WebGL); #hud = crisp 2D overlay on top */
+    #hud { pointer-events: none; background: transparent; }
   </style>
 </head>
 <body>
 <div id="wrap">
-  <canvas id="game" width="960" height="640"></canvas>
+  <div id="stage">
+    <canvas id="game" width="960" height="640"></canvas>
+    <canvas id="hud" width="960" height="640"></canvas>
+  </div>
 </div>
+<script src="vendor/three.min.js"></script>
 <script>
 (() => {
   'use strict';
 
-  const canvas = document.getElementById('game');
-  const screenCtx = canvas.getContext('2d');
+  const canvas = document.getElementById('game');   // WebGL (3D world) canvas
+  const hud = document.getElementById('hud');        // 2D overlay (HUD/text)
   const W = canvas.width;
   const H = canvas.height;
+  const screenCtx = hud.getContext('2d');
   const TILE = 32;
   const COLS = W / TILE;
   const ROWS = H / TILE;
 
-  // --- Chunky pixel renderer -------------------------------------------
-  // The whole world is drawn into a small low-resolution buffer, then
-  // upscaled to the canvas with nearest-neighbour sampling. That gives the
-  // uniform "big pixel" look (Hunt Royale-ish). HUD/text are drawn crisp on
-  // top afterwards. All world draw code keeps using full-res coordinates;
-  // the buffer context is pre-scaled so nothing else has to change.
-  const PIXEL = 4;                       // size of one chunky pixel (screen px)
-  const BW = Math.round(W / PIXEL);      // buffer width  (240)
-  const BH = Math.round(H / PIXEL);      // buffer height (160)
-  const buffer = document.createElement('canvas');
-  buffer.width = BW;
-  buffer.height = BH;
-  const bufferCtx = buffer.getContext('2d');
-  // `ctx` is the *active* draw target. It points at the low-res buffer while
-  // the world is rendered, then at the screen for crisp HUD/overlays.
+  // `ctx` is the active 2D draw target (HUD overlay). The 3D world is drawn
+  // with WebGL/Three.js; only HUD/text/menus use this 2D context.
   let ctx = screenCtx;
 
   // --- Orthographic (Little Fighter 2 style) camera ---------------------
@@ -81,20 +79,11 @@
     depth: 0.7,     // depth compression ~cos(45deg): looking down at the arena
     wallH: 26       // visual height of arena boundary walls
   };
+  // Project a world point (wx along x, wy along depth, wz = height) to HUD
+  // screen pixels using the live 3D camera. Used for health bars / floating text.
   function project(wx, wy, wz = 0) {
-    return { x: wx, y: VIEW.horizon + wy * VIEW.depth - wz };
-  }
-  // Screen -> world ground plane (used to keep mouse aiming aligned with view)
-  function unproject(sx, sy) {
-    return { x: sx, y: (sy - VIEW.horizon) / VIEW.depth };
-  }
-  // Draw a soft ground shadow at a projected world position.
-  function groundShadow(wx, wy, rx, ry = rx * 0.42, alpha = 0.26) {
-    const s = project(wx, wy);
-    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-    ctx.beginPath();
-    ctx.ellipse(s.x, s.y, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const v = _projV.set(wx, wz, wy).project(camera);
+    return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H, behind: v.z > 1 };
   }
 
   const keys = new Set();
@@ -109,13 +98,10 @@
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const sx = (e.clientX - rect.left) / rect.width * W;
-    const sy = (e.clientY - rect.top) / rect.height * H;
-    // Map cursor from the projected view back onto the ground plane so that
-    // aiming, reticle and water targeting all line up with what is drawn.
-    const g = unproject(sx, sy);
-    mouse.x = clamp(g.x, 0, W);
-    mouse.y = clamp(g.y, 0, H);
+    // Store cursor in canvas pixels; converted to a world ground point each
+    // frame via a camera raycast (see updateMouseWorld), since the 3D camera moves.
+    mouseScreen.x = (e.clientX - rect.left) / rect.width * W;
+    mouseScreen.y = (e.clientY - rect.top) / rect.height * H;
   });
   canvas.addEventListener('mousedown', (e) => {
     if (e.button === 2) mouse.right = true;
@@ -1401,6 +1387,7 @@
 
   function update(dt) {
     game.time += dt;
+    updateMouseWorld(); // map cursor onto the ground plane for aiming
     game.screenShake = Math.max(0, game.screenShake - dt * 28);
     game.flash = Math.max(0, game.flash - dt * 1.7);
     if (game.messageTimer > 0) game.messageTimer -= dt;
@@ -2049,38 +2036,333 @@
     game.floatingTexts = game.floatingTexts.filter(t => t.life > 0);
   }
 
-  function draw() {
-    // ---- 1. Render the world into the low-res pixel buffer ----
-    ctx = bufferCtx;
-    ctx.save();
-    ctx.setTransform(1 / PIXEL, 0, 0, 1 / PIXEL, 0, 0); // full-res coords -> buffer
-    ctx.clearRect(0, 0, W, H);
-    if (game.screenShake > 0) {
-      ctx.translate(rnd(-game.screenShake, game.screenShake), rnd(-game.screenShake, game.screenShake));
+  // ===================================================================
+  //  3D RENDERER (Three.js) — voxel world, fixed 45° follow camera.
+  //  Game logic is unchanged; this replaces the old 2D world drawing.
+  // ===================================================================
+  const mouseScreen = { x: W / 2, y: H / 2 };
+  const _projV = new THREE.Vector3();
+
+  let renderer = null, gl3dOk = false;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(W, H, false);
+    renderer.shadowMap.enabled = false;
+    gl3dOk = true;
+  } catch (err) {
+    console.warn('WebGL unavailable:', err);
+  }
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x14121b);
+  scene.fog = new THREE.Fog(0x14121b, 900, 1700);
+
+  const camera = new THREE.PerspectiveCamera(45, W / H, 1, 5000);
+  const CAM = { back: 610, height: 610 }; // back === height -> 45° downward
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+  const sun = new THREE.DirectionalLight(0xfff0d8, 1.0);
+  sun.position.set(-0.5, 1.2, 0.4);
+  scene.add(sun);
+  const rim = new THREE.DirectionalLight(0x8aa6ff, 0.28);
+  rim.position.set(0.5, 0.5, -0.6);
+  scene.add(rim);
+
+  // --- shared geometry / material caches ---
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+  const sphereGeo = new THREE.SphereGeometry(1, 12, 10);
+  const circleGeo = new THREE.CircleGeometry(1, 28);
+  const colorHex = (s) => {
+    if (typeof s === 'number') return s;
+    if (!s) return 0xffffff;
+    if (s[0] === '#') return parseInt(s.slice(1), 16);
+    return 0xffffff;
+  };
+  const _matCache = new Map();
+  const basicMat = (hex) => {
+    let m = _matCache.get(hex);
+    if (!m) { m = new THREE.MeshBasicMaterial({ color: hex }); _matCache.set(hex, m); }
+    return m;
+  };
+  const lightMat = new THREE.LineBasicMaterial({ color: 0xe5fcff });
+
+  function makeBox(w, h, d, color) {
+    const m = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color }));
+    m.scale.set(w, h, d);
+    return m;
+  }
+
+  // --- ground (tilemap drawn to a texture on a flat plane) ---
+  const groundCanvas = document.createElement('canvas');
+  groundCanvas.width = COLS * 8; groundCanvas.height = ROWS * 8;
+  const gtx = groundCanvas.getContext('2d');
+  const groundTex = new THREE.CanvasTexture(groundCanvas);
+  groundTex.magFilter = THREE.NearestFilter;
+  groundTex.minFilter = THREE.NearestFilter;
+  const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshLambertMaterial({ map: groundTex }));
+  groundMesh.rotation.x = -Math.PI / 2;
+  groundMesh.position.set(W / 2, 0, H / 2);
+  scene.add(groundMesh);
+
+  function drawGroundTexture() {
+    const s = 8;
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = game.map[y][x];
+      let c;
+      if (t === TILE_GRASS) c = '#355431';
+      else if (t === TILE_BURNT) c = '#30221d';
+      else if (t === TILE_WATER) c = '#24485b';
+      else if (t === TILE_ICE) c = '#bfeefc';
+      else if (t === TILE_WALL) c = '#221d29';
+      else if (t === TILE_THIN) c = '#2c2630';
+      else c = ((x + y) % 2 === 0) ? '#2d2732' : '#2a2430';
+      gtx.fillStyle = c; gtx.fillRect(x * s, y * s, s, s);
     }
-    drawMap();
-    drawZones();
-    drawBossWarnings();
-    drawProjectiles();
-    drawActors();
-    drawParticles();
-    drawRings();
-    drawReticle();
-    ctx.restore();
+    groundTex.needsUpdate = true;
+  }
 
-    // ---- 2. Upscale the buffer to the screen with chunky pixels ----
+  // --- raised walls (rebuilt only when the tile map changes) ---
+  const wallGroup = new THREE.Group(); scene.add(wallGroup);
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4350 });
+  const thinMat = new THREE.MeshLambertMaterial({ color: 0x6b573f });
+  let wallSig = '';
+  function syncWalls() {
+    let sig = '';
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = game.map[y][x];
+      if (t === TILE_WALL || t === TILE_THIN) sig += x + '.' + y + '.' + t + ';';
+    }
+    if (sig === wallSig) return;
+    wallSig = sig;
+    wallGroup.clear();
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = game.map[y][x];
+      if (t !== TILE_WALL && t !== TILE_THIN) continue;
+      const h = t === TILE_WALL ? 46 : 30;
+      const m = new THREE.Mesh(boxGeo, t === TILE_WALL ? wallMat : thinMat);
+      m.scale.set(TILE, h, TILE);
+      m.position.set(x * TILE + TILE / 2, h / 2, y * TILE + TILE / 2);
+      wallGroup.add(m);
+    }
+  }
+
+  // --- actor (player + enemy) voxel meshes ---
+  const actorMeshes = new Map();
+  let playerMesh = null;
+
+  function tintable(group, list, m) { group.add(m); list.push({ mesh: m, base: m.material.color.getHex() }); return m; }
+
+  function buildPlayer() {
+    const g = new THREE.Group();
+    const body = makeBox(18, 22, 14, 0x4f6cff); body.position.y = 11; g.add(body);
+    const belt = makeBox(19, 4, 15, 0xffcc56); belt.position.y = 16; g.add(belt);
+    const head = makeBox(14, 12, 12, 0xffe0bd); head.position.y = 29; g.add(head);
+    const eyeL = makeBox(2.5, 3, 1, 0x23304f); eyeL.position.set(-3.2, 30, 6); g.add(eyeL);
+    const eyeR = makeBox(2.5, 3, 1, 0x23304f); eyeR.position.set(3.2, 30, 6); g.add(eyeR);
+    const hat1 = makeBox(19, 5, 19, 0x3344c0); hat1.position.y = 37; g.add(hat1);
+    const hat2 = makeBox(11, 7, 11, 0x3344c0); hat2.position.y = 44; g.add(hat2);
+    const hat3 = makeBox(5, 6, 5, 0x3344c0); hat3.position.y = 50; g.add(hat3);
+    const orb = makeBox(6, 6, 6, 0xffcc56); orb.position.y = 55; orb.material.emissive = new THREE.Color(0xffcc56); g.add(orb);
+    const staff = makeBox(2.5, 42, 2.5, 0x8a6a3c); staff.position.set(11, 21, 7); g.add(staff);
+    const sOrb = makeBox(7, 7, 7, 0xffcc56); sOrb.position.set(11, 44, 7); sOrb.material.emissive = new THREE.Color(0xffcc56); g.add(sOrb);
+    g.userData.orb = orb; g.userData.sOrb = sOrb;
+    return g;
+  }
+  function updatePlayerMesh() {
+    const p = game.player;
+    playerMesh.position.set(p.x, 0, p.y);
+    playerMesh.rotation.y = Math.atan2(mouse.x - p.x, mouse.y - p.y);
+    const col = colorHex((ELEMENT_INFO[game.stats.spellKind] && ELEMENT_INFO[game.stats.spellKind].color) || '#ffcc56');
+    playerMesh.userData.orb.material.color.setHex(col); playerMesh.userData.orb.material.emissive.setHex(col);
+    playerMesh.userData.sOrb.material.color.setHex(col); playerMesh.userData.sOrb.material.emissive.setHex(col);
+    const blink = p.invuln > 0 && Math.floor(game.time * 20) % 2 === 0;
+    playerMesh.visible = !blink;
+  }
+
+  function buildEnemy(e) {
+    const g = new THREE.Group(); const r = e.r; const tints = [];
+    const base = colorHex(e.color);
+    if (e.type === 'slime') {
+      const b = tintable(g, tints, makeBox(r * 1.9, r * 1.5, r * 1.9, base)); b.position.y = r * 0.75;
+      const eL = makeBox(3, 4, 1, 0x10241a); eL.position.set(-r * 0.4, r * 1.0, r * 0.95); g.add(eL);
+      const eR = makeBox(3, 4, 1, 0x10241a); eR.position.set(r * 0.4, r * 1.0, r * 0.95); g.add(eR);
+    } else if (e.type === 'bug') {
+      const b = tintable(g, tints, makeBox(r * 1.7, r * 1.4, r * 2.0, base)); b.position.y = r * 0.9;
+      const eL = makeBox(3, 3, 1, 0xffffff); eL.position.set(-r * 0.4, r * 1.2, r * 1.0); g.add(eL);
+      const eR = makeBox(3, 3, 1, 0xffffff); eR.position.set(r * 0.4, r * 1.2, r * 1.0); g.add(eR);
+    } else if (e.type === 'imp') {
+      const b = tintable(g, tints, makeBox(r * 1.5, r * 1.9, r * 1.5, base)); b.position.y = r * 0.95;
+      const hornL = makeBox(2.5, r * 0.8, 2.5, 0x6a2a18); hornL.position.set(-r * 0.4, r * 2.0, 0); g.add(hornL);
+      const hornR = makeBox(2.5, r * 0.8, 2.5, 0x6a2a18); hornR.position.set(r * 0.4, r * 2.0, 0); g.add(hornR);
+      const eL = makeBox(3, 3, 1, 0xfff0a3); eL.position.set(-r * 0.35, r * 1.3, r * 0.75); g.add(eL);
+      const eR = makeBox(3, 3, 1, 0xfff0a3); eR.position.set(r * 0.35, r * 1.3, r * 0.75); g.add(eR);
+    } else if (e.type === 'charger') {
+      const b = tintable(g, tints, makeBox(r * 1.7, r * 1.9, r * 1.5, 0xb9925e)); b.position.y = r * 0.95;
+      const helm = makeBox(r * 1.4, r * 0.7, r * 1.3, 0x8f6f48); helm.position.y = r * 2.1; g.add(helm);
+      const visor = makeBox(r * 1.0, 4, 1, 0xffd36d); visor.position.set(0, r * 2.0, r * 0.75); g.add(visor);
+      const shield = makeBox(r * 1.5, r * 1.6, 5, 0x9c7a4f); shield.position.set(0, r * 1.0, r * 0.95); g.add(shield);
+    } else if (e.type === 'boss') {
+      const b = tintable(g, tints, makeBox(26, 30, 22, 0x66e0a6)); b.position.y = 0;
+      const head = makeBox(24, 20, 20, 0x66e0a6); head.position.y = 26; g.add(head);
+      const eL = makeBox(5, 6, 1, 0x2b1f34); eL.position.set(-7, 28, 10); g.add(eL);
+      const eR = makeBox(5, 6, 1, 0x2b1f34); eR.position.set(7, 28, 10); g.add(eR);
+      const hat = makeBox(30, 8, 30, 0x3f8f6c); hat.position.y = 40; g.add(hat);
+      const orbs = [];
+      const oc = [0xffbd66, 0xbff4ff, 0x9fe7ff, 0xd998ff];
+      for (let i = 0; i < 4; i++) { const o = makeBox(8, 8, 8, oc[i]); o.material.emissive = new THREE.Color(oc[i]); g.add(o); orbs.push(o); }
+      g.userData.orbs = orbs;
+    }
+    g.userData.tints = tints;
+    return g;
+  }
+  function updateActor(e, g) {
+    g.position.set(e.x, 0, e.y);
+    if (e.type === 'slime') g.position.y = Math.abs(Math.sin(game.time * 4 + e.x * 0.1)) * 4;
+    if (e.type === 'boss') {
+      g.position.y = 28 + Math.sin(game.time * 2) * 4;
+      const orbs = g.userData.orbs || [];
+      for (let i = 0; i < orbs.length; i++) {
+        const a = game.time * (e.phase === 2 ? 2.8 : 1.8) + i * Math.PI / 2;
+        orbs[i].position.set(Math.cos(a) * 42, 18 + Math.sin(a) * 12, Math.sin(a) * 42);
+      }
+    }
+    if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
+    else g.rotation.y = Math.atan2((game.player ? game.player.x - e.x : 0), (game.player ? game.player.y - e.y : 1));
+    const tintHex = e.hurt > 0 ? 0xffffff : (e.slowTimer > 0 ? 0xd8fbff : null);
+    for (const t of g.userData.tints) t.mesh.material.color.setHex(tintHex != null ? tintHex : t.base);
+  }
+
+  function syncActors() {
+    const seen = new Set();
+    for (const e of game.enemies) {
+      seen.add(e);
+      let g = actorMeshes.get(e);
+      if (!g) { g = buildEnemy(e); scene.add(g); actorMeshes.set(e, g); }
+      updateActor(e, g);
+    }
+    for (const [e, g] of actorMeshes) {
+      if (!seen.has(e)) { scene.remove(g); actorMeshes.delete(e); }
+    }
+    if (game.player) {
+      if (!playerMesh) { playerMesh = buildPlayer(); scene.add(playerMesh); }
+      updatePlayerMesh();
+    }
+  }
+
+  // --- projectiles + ground effect discs (rebuilt each frame) ---
+  const PROJZ = 18;
+  const projGroup = new THREE.Group(); scene.add(projGroup);
+  const zoneGroup = new THREE.Group(); scene.add(zoneGroup);
+  function clearDynamic(grp) {
+    for (const c of grp.children) {
+      if (c.geometry && c.geometry.__tmp) c.geometry.dispose();
+      if (c.material && c.material.__tmp) c.material.dispose();
+    }
+    grp.clear();
+  }
+  function ball(x, y, r, hex) {
+    const m = new THREE.Mesh(sphereGeo, basicMat(hex));
+    m.position.set(x, PROJZ, y); m.scale.setScalar(r);
+    projGroup.add(m);
+  }
+  function syncProjectiles() {
+    clearDynamic(projGroup);
+    for (const fb of game.fireballs) ball(fb.x, fb.y, (fb.r || 7) * 1.3, colorHex(fb.color || '#ffffff'));
+    for (const b of game.enemyProjectiles) ball(b.x, b.y, (b.r || 6) * 1.3, colorHex(b.color || '#ff8c4d'));
+    for (const ib of game.iceBolts) ball(ib.x, ib.y, (ib.r || 6) * 1.3, 0xbff4ff);
+    for (const lb of game.lightningBolts) {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(lb.x1, PROJZ, lb.y1), new THREE.Vector3(lb.x2, PROJZ, lb.y2)]);
+      geo.__tmp = true;
+      projGroup.add(new THREE.Line(geo, lightMat));
+    }
+  }
+  function disc(x, y, r, hex, op) {
+    const mat = new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: op, depthWrite: false });
+    mat.__tmp = true;
+    const m = new THREE.Mesh(circleGeo, mat);
+    m.rotation.x = -Math.PI / 2; m.position.set(x, 1.5, y); m.scale.setScalar(Math.max(1, r));
+    zoneGroup.add(m);
+  }
+  function syncZones() {
+    clearDynamic(zoneGroup);
+    for (const pc of game.poisonClouds) disc(pc.x, pc.y, pc.r, 0xa04dd2, 0.34 * clamp(pc.life / pc.maxLife, 0, 1));
+    for (const sc of game.steamClouds) disc(sc.x, sc.y, sc.r, 0xeaffff, 0.30 * clamp(sc.life / sc.maxLife, 0, 1));
+    for (const fz of game.fireZones) disc(fz.x, fz.y, fz.r, 0xff7a3e, 0.42 * clamp(fz.life / fz.maxLife, 0, 1));
+    for (const ez of game.electricZones) disc(ez.x, ez.y, ez.r, 0x79dcff, 0.30 * clamp(ez.life / ez.maxLife, 0, 1));
+    for (const w of game.bossWarnings) disc(w.x, w.y, w.r, 0xffd36d, 0.22);
+    for (const ex of game.explosions) disc(ex.x, ex.y, ex.r * (0.4 + (1 - ex.life / ex.maxLife) * 0.7), 0xffd36d, 0.3 * (ex.life / ex.maxLife));
+    for (const rg of game.rings) disc(rg.x, rg.y, rg.r * (0.5 + (1 - rg.life / rg.maxLife) * 0.7), 0xffffff, 0.16 * clamp(rg.life / rg.maxLife, 0, 1));
+  }
+
+  // --- mouse -> world ground point via camera raycast ---
+  const raycaster = new THREE.Raycaster();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const _ndc = new THREE.Vector2();
+  const _hit = new THREE.Vector3();
+  function updateMouseWorld() {
+    _ndc.set(mouseScreen.x / W * 2 - 1, -(mouseScreen.y / H * 2 - 1));
+    raycaster.setFromCamera(_ndc, camera);
+    if (raycaster.ray.intersectPlane(groundPlane, _hit)) {
+      mouse.x = clamp(_hit.x, 0, W);
+      mouse.y = clamp(_hit.z, 0, H);
+    }
+  }
+
+  function render3D() {
+    if (!gl3dOk) return;
+    drawGroundTexture();
+    syncWalls();
+    const px = game.player ? game.player.x : W / 2;
+    const pz = game.player ? game.player.y : H / 2;
+    let shx = 0, shz = 0;
+    if (game.screenShake > 0) { shx = rnd(-game.screenShake, game.screenShake); shz = rnd(-game.screenShake, game.screenShake); }
+    camera.position.set(px + shx, CAM.height, pz + CAM.back + shz);
+    camera.lookAt(px, 0, pz);
+    syncActors();
+    syncProjectiles();
+    syncZones();
+    renderer.render(scene, camera);
+  }
+
+  // Enemy health bars, billboarded onto the HUD overlay.
+  function drawEnemyBars() {
+    for (const e of game.enemies) {
+      if (e.type === 'boss') continue;
+      if (!(e.maxHp && (e.type === 'charger' || e.hurt > 0 || e.hp < e.maxHp))) continue;
+      const s = project(e.x, e.y, e.r * 2.4 + 22);
+      if (s.behind) continue;
+      const bw = e.type === 'charger' ? 42 : 28;
+      const pct = clamp(e.hp / e.maxHp, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(s.x - bw / 2, s.y, bw, 4);
+      ctx.fillStyle = e.type === 'charger' ? '#ffd36d' : '#ff7b72'; ctx.fillRect(s.x - bw / 2, s.y, bw * pct, 4);
+    }
+  }
+
+
+  function draw() {
+    // 3D world (WebGL) ...
+    render3D();
+    // ... then the crisp 2D HUD overlay on top.
     ctx = screenCtx;
-    ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, W, H);
-    ctx.drawImage(buffer, 0, 0, BW, BH, 0, 0, W, H);
-
-    // ---- 3. Crisp overlays on top (flash, floating text, HUD, screens) ----
+    if (!gl3dOk) {
+      ctx.fillStyle = '#1a1722'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff1bb'; ctx.textAlign = 'center';
+      ctx.font = '800 22px system-ui, sans-serif';
+      ctx.fillText('此瀏覽器未啟用 WebGL，無法顯示 3D 畫面', W / 2, H / 2 - 10);
+      ctx.font = '600 15px system-ui, sans-serif';
+      ctx.fillText('請改用較新的瀏覽器，或在設定中開啟硬體加速 / WebGL', W / 2, H / 2 + 22);
+      return;
+    }
     if (game.flash > 0) {
       ctx.fillStyle = `rgba(255, 221, 148, ${game.flash * 0.22})`;
       ctx.fillRect(0, 0, W, H);
     }
-
+    drawEnemyBars();
     drawFloatingTexts();
+    drawReticle();
     drawUi();
 
     if (game.state === 'title') drawTitle();
