@@ -1445,7 +1445,11 @@
     if (keys.has('s') || keys.has('arrowdown')) my += 1;
     if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
     if (keys.has('d') || keys.has('arrowright')) mx += 1;
-    const n = norm(mx, my);
+    // Camera-relative movement so WASD matches the screen at any azimuth.
+    const _maz = (CAM.azimuth || 0) * Math.PI / 180;
+    const _fX = -Math.sin(_maz), _fY = -Math.cos(_maz); // screen-up in world
+    const _rX = Math.cos(_maz), _rY = -Math.sin(_maz);  // screen-right in world
+    const n = norm(_rX * mx + _fX * (-my), _rY * mx + _fY * (-my));
     let speed = p.speed;
 
     if ((keys.has(' ') || keys.has('shift')) && p.dashCooldown <= 0) {
@@ -2058,8 +2062,9 @@
   scene.background = new THREE.Color(0x100e18);
   scene.fog = new THREE.Fog(0x100e18, 820, 1580);
 
-  const camera = new THREE.PerspectiveCamera(43, W / H, 1, 5000);
-  const CAM = { back: 590, height: 610 }; // toybox 2.5D camera, slightly punchier than v0.7.5
+  // Tuned in the camera sandbox: telephoto, low diagonal follow cam.
+  const CAM = { fov: 33, angle: 41, dist: 720, azimuth: -35, panX: 10, panZ: -10, lookY: -10 };
+  const camera = new THREE.PerspectiveCamera(CAM.fov, W / H, 1, 5000);
 
   const hemi = new THREE.HemisphereLight(0xfff2d2, 0x1c1630, 0.92);
   scene.add(hemi);
@@ -2533,8 +2538,11 @@
     const pz = game.player ? game.player.y : H / 2;
     let shx = 0, shz = 0;
     if (game.screenShake > 0) { shx = rnd(-game.screenShake, game.screenShake); shz = rnd(-game.screenShake, game.screenShake); }
-    camera.position.set(px + shx, CAM.height, pz + CAM.back + shz);
-    camera.lookAt(px, 0, pz);
+    const _pit = CAM.angle * Math.PI / 180, _az = CAM.azimuth * Math.PI / 180;
+    const _hr = Math.cos(_pit) * CAM.dist;
+    const _tx = px + CAM.panX, _tz = pz + CAM.panZ;
+    camera.position.set(_tx + Math.sin(_az) * _hr + shx, Math.sin(_pit) * CAM.dist, _tz + Math.cos(_az) * _hr + shz);
+    camera.lookAt(_tx, CAM.lookY, _tz);
     syncActors();
     syncProjectiles();
     syncZones();
