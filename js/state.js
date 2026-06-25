@@ -53,3 +53,9 @@ export const game = {
 // state; render's updateMouseWorld writes mouse world-coords; sim/loop read.
 export const keys = new Set();
 export const mouse = { x: W / 2, y: H / 2, down: false, right: false };
+
+// Follow-camera config. Owned by render long-term; parked here transitionally
+// so the (still-inline) sim can read CAM.azimuth without a render↔sim import
+// cycle. Moves into render.js once the intent adapter removes sim's CAM read.
+// Mutated in place (camera-sandbox sliders); never reassigned.
+export const CAM = { fov: 33, angle: 41, dist: 720, azimuth: -35, panX: 10, panZ: -10, lookY: -10 };

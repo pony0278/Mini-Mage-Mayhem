@@ -83,7 +83,7 @@
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL } from './js/constants.js';
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './js/utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './js/data.js';
-import { game, keys, mouse } from './js/state.js';
+import { game, keys, mouse, CAM } from './js/state.js';
 (() => {
   'use strict';
 
@@ -2737,7 +2737,6 @@ import { game, keys, mouse } from './js/state.js';
   scene.fog = new THREE.Fog(0x100e18, 820, 1580);
 
   // Tuned in the camera sandbox: telephoto, low diagonal follow cam.
-  const CAM = { fov: 33, angle: 41, dist: 720, azimuth: -35, panX: 10, panZ: -10, lookY: -10 };
   const camera = new THREE.PerspectiveCamera(CAM.fov, W / H, 1, 5000);
   let sandboxPaused = false;
   // --- on-screen camera control panel ---

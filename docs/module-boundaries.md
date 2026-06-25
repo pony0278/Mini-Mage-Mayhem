@@ -116,9 +116,11 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 0. ✅ **先刪死碼**（§7-4，commit `9773c85`）：移除舊版 2D top-down 渲染器（§8 全部 12 函式 + `onGround` + `VIEW`/`TH` + 舊 ortho 註解），~501 行/檔。三檔同步、語法 OK、0 殘留引用、in-game 渲染無誤。**行為零變化**（原本就無人呼叫）。
 1. ✅ **最安全先抽**：`js/constants.js`（W/H/TILE/tile-enum）+ `js/utils.js`（rnd/clamp/dist/angleTo/norm/circleRectOverlap）+ `js/data.js`（ELEMENT_INFO/arenaTemplates/fusionKind/isX­Kind）。三檔 `<script>` 改 `type="module"` + `import`，移除內聯定義。HTTP 載入零錯誤、in-game 渲染無誤。**首次引入 ESM**：本地測試改走 `python -m http.server`；deploy workflow 加 copy `js/`（Pages 目前走分支直出，`js/` 已在 root，無破壞）。
 1.5. ✅ **抽 `state.js`**（§7-5，render 的前置）：`export const game / keys / mouse`（三個跨界共享的可變單例；已驗證只原地 mutate、從不重新賦值 → live-binding 安全）。`state.js` 只 import `constants`（mouse 初值用 W/H）。三檔加 `import { game, keys, mouse }`、移除內聯定義;HTTP 載入零錯誤、training 可玩、渲染不變。
-2. **抽 render**：合併成**單一 `render.js`**（§7-1）。`import { game, mouse } from state.js`；私有 module-level 持有 `scene/camera/renderer/ctx/CAM/幾何·材質快取/actorMeshes/project`。render 只讀 game，搬完行為不變。
-   - **CAM 過渡**：CAM 歸 render.js;此時仍內聯的 sim 讀 `CAM.azimuth` → 暫時 `import { CAM } from './render.js'`（1 行，步驟 3 上 intent adapter 後移除）。
-3. **抽 sim.js**：把 278–2650 整塊搬出；**同時**做 §3 的 `update(dt, intent)` 接縫，斷開 CAM/mouse（§7-2，避免循環依賴）。
+2. **抽 `sim.js`**（依賴掃描後**提前**——見 §7-2 修訂）：`upgradePool`/`SECONDARY`（帶行為）+ 全部模擬函式（resetGame … update，約 278–2688）搬出。`import` from `state`（game/keys/mouse/**CAM**）、constants、utils、data。對外只需 `export` 內聯/render 用到的約 **21 個**函式（其餘內部互呼不 export）。
+   - **CAM 過渡**：先把 `CAM` 暫放 `state.js`（§7-2 修訂），sim 從 state import → render↔sim 的環立刻解除，sim.js 馬上抽得出來。
+   - 2a 先做 `CAM → state.js` 移動 + 驗證;2b 再抽 sim.js。
+3. **抽 `render.js`**：合併成**單一 `render.js`**（§7-1）。`import` 那 9 個 sim 函式（from `sim.js`）+ state（game/mouse/CAM）；私有 module-level 持有 `scene/camera/renderer/ctx/幾何·材質快取/actorMeshes`；relocate `project`。render 只讀 game。
+3.5. **（獨立）intent adapter**：把 sim 讀 mouse/CAM/keys 改成 `update(dt, intent)`，sim 變真 headless（roadmap B0）；`CAM` 從 state.js 移回 render.js。專心做 + 驗手感。
 4. **`input.js` + `main.js`**：輸入事件 → `intent`；`loop()` 接線。
 5. **三份 HTML 收斂**（§7-3）：`index/camera-sandbox/training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。
 6. 每步用無頭 Puppeteer（改走 `python -m http.server`）截圖/讀狀態，確認**行為零變化**再進下一步。
@@ -128,7 +130,7 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 ## 7. 決策記錄（已拍板）
 
 1. **模組粒度**：✅ 第一刀 `render3d + hud` 合成**單一 `render.js`**；日後嫌大再細分（rule of three）。
-2. **`update(dt, intent)` 接縫**：✅ **跟 sim 抽取一起做**。否則 `sim.js` 仍 import render 的 `CAM`/`mouse` → 循環依賴、違反 DAG 鐵律。等於是抽 sim 時的必做步驟。
+2. **`update(dt, intent)` 接縫**：🔄 **修訂（依賴掃描後）**。原訂「跟 sim 一起做」。掃描發現 **render → sim 有 9 處呼叫**（HUD：upgradeName/upgradeDesc/isMastery/isSecMastery/previewSpellState/spellDescription/currentFlowName/makeRunStory/dashElement/nearestLiftable）→ **sim 必須在 render 之前抽**（順序對調）。而 sim 對 render 的耦合只有 **`CAM.azimuth` 1 行**（+ 讀 mouse/keys，mouse/keys 已在 state.js）。為降風險：**先把 `CAM` 暫放 `state.js` 解環、立刻抽出 sim.js**；intent adapter **延後成獨立步驟 3.5**（headless 純化）再專心做。
 3. **三份 HTML 共享**：✅ `index` / `camera-sandbox` / `training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。**消滅「改一次 replay 到三檔」的手動同步**（`training.html` 已用 `window.__game`，接縫現成；需另外 expose `CAM` + 少量 hook）。
 4. **死碼**：✅ 已查證 —— 舊版 2D top-down 渲染器**無人呼叫**（證據與清單見 §8），**開工前先刪**，不把死重量搬進模組。
 5. **狀態存取介面**：✅ **`state.js` 匯出 `game`（+ `keys`/`mouse`），各模組 live-binding `import`**，不走參數注入。理由：單機只有一個 game 實例;`game` 已驗證只原地 mutate、從不重新賦值，import 綁定永遠指向最新狀態;render 函式零簽名改動。連帶：**新增步驟 1.5（先抽 `state.js`）**作為 render 的前置（render3D 讀 game、updateMouseWorld 寫 mouse，無法在它們還內聯時被抽出）。BR 不受擋：伺服器端若要多實例，`sim.js` 函式可改吃 state 參數，客戶端維持單例。
