@@ -41,7 +41,7 @@
     }
     /* #game = 3D world (WebGL); #hud = crisp 2D overlay on top */
     #hud { pointer-events: none; background: transparent; }
-    #train-panel{position:absolute;top:12px;left:12px;z-index:30;width:268px;background:rgba(14,11,20,.93);
+    #train-panel{position:absolute;top:12px;left:12px;z-index:30;width:280px;background:rgba(14,11,20,.93);
       border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:9px 10px;color:#f3e9dc;
       font:600 12px system-ui,sans-serif;pointer-events:auto;box-shadow:0 8px 26px rgba(0,0,0,.5)}
     #train-panel.hidden{display:none}
@@ -53,6 +53,12 @@
     #train-panel .tp-readout{margin-top:7px;padding:6px 7px;background:rgba(0,0,0,.4);border-radius:6px;
       font:700 11px ui-monospace,Menlo,monospace;white-space:pre-wrap;color:#bfead0;line-height:1.5}
     #train-panel .tp-hint{margin-top:6px;font-size:10px;color:#8a7d96}
+    #tp-list{margin-top:7px;max-height:236px;overflow-y:auto;border-top:1px solid rgba(255,255,255,.12);padding-top:6px}
+    #tp-list.hidden{display:none}
+    #tp-list .tp-lh{font-size:10px;color:#8a7d96;margin:4px 0 2px}
+    #tp-list .tp-lrow{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:2px}
+    #tp-list .tp-li{font:600 10px system-ui,sans-serif;padding:2px 6px}
+    #tp-list .tp-li.on{background:#5a4d2a;border-color:#ffd36d;color:#ffe6a7}
     #tp-show{position:absolute;top:12px;left:12px;z-index:30;pointer-events:auto;display:none;
       background:#3a3147;color:#fff;border:1px solid #5a4f6a;border-radius:6px;padding:5px 9px;cursor:pointer;font:700 12px system-ui}
   </style>
@@ -70,10 +76,11 @@
   <div class="tp-sec">精通+<button data-act="mas:fire">火</button><button data-act="mas:ice">冰</button><button data-act="mas:lightning">雷</button><button data-act="mas:poison">毒</button></div>
   <div class="tp-sec">主攻<button data-act="main:spell">飛彈</button><button data-act="main:fist">肉搏</button></div>
   <div class="tp-sec">副攻<button data-act="sec:none">無</button><button data-act="sec:icewall">冰牆</button><button data-act="sec:earthwall">土牆</button><button data-act="sec:oil">油</button><button data-act="sec:wind">風</button><button data-act="sec:lightpalm">雷掌</button><button data-act="sec:blackhole">黑洞</button></div>
-  <div class="tp-sec">改造<button data-act="mod:split">分裂</button><button data-act="mod:explosive">爆炸</button><button data-act="mod:trail">留痕</button><button data-act="mod:size">巨大</button></div>
-  <div class="tp-sec">假人<button data-act="dummy:add">+3</button><button data-act="dummy:clear">清除</button><button data-act="heal:1">補血</button><button data-act="open:up">看升級</button></div>
+  <div class="tp-sec">假人<button data-act="dummy:add">+3</button><button data-act="dummy:clear">清除</button><button data-act="heal:1">補血</button></div>
+  <div class="tp-sec">工具<button data-act="list:1">升級表</button><button data-act="reset:1">重置build</button><button data-act="open:up">看升級(抽卡預覽)</button></div>
   <div class="tp-readout" id="tp-readout"></div>
-  <div class="tp-hint">WASD 移動・左鍵主攻・右鍵/Q 副攻・Space 衝刺・選升級按 1/2/3</div>
+  <div id="tp-list" class="hidden"></div>
+  <div class="tp-hint">WASD 移動・左鍵主攻・右鍵/Q 副攻・Space 衝刺・升級表點了直接套用</div>
 </div>
 <button id="tp-show">🧪 測試面板</button>
 <script src="vendor/three.min.js"></script>
@@ -3925,7 +3932,10 @@
     const panel = document.getElementById('train-panel');
     const showBtn = document.getElementById('tp-show');
     const readout = document.getElementById('tp-readout');
+    const listEl = document.getElementById('tp-list');
     if (!panel) return;
+    const applied = {};
+    const btnFor = {};
     function spawnDummy() {
       const p = game.player; const a = Math.random() * Math.PI * 2; const d = 110 + Math.random() * 70;
       game.enemies.push({ type: 'slime', x: clamp(p.x + Math.cos(a) * d, 60, W - 60), y: clamp(p.y + Math.sin(a) * d, 60, H - 60),
@@ -3939,6 +3949,42 @@
       const mods = ['split', 'explosive', 'trail', 'size'].filter(k => s[k]).map(k => k + s[k]).join(' ');
       readout.textContent = '主法術：' + s.spellName + '\n元素：' + els + '\n主攻：' + (s.mainMode === 'fist' ? '肉搏' : '飛彈') + '　副攻：' + sec + (mods ? '\n改造：' + mods : '');
     }
+    function cat(up) {
+      if (up.element) return '元素';
+      if (up.id && up.id.indexOf('equip_') === 0) return '副攻';
+      if (up.id === 'fist_mode') return '肉搏';
+      if (up.id === 'dash_cd' || up.id === 'dash_power') return '衝刺';
+      if (['vitality', 'swift', 'second_wind', 'vamp', 'haste', 'danger'].includes(up.id)) return '通用';
+      return '改造';
+    }
+    function updateCounts() {
+      for (const up of upgradePool) { const b = btnFor[up.id]; if (!b) continue; const n = applied[up.id] || 0; b.textContent = up.name + (n ? ' ×' + n : ''); b.classList.toggle('on', n > 0); }
+    }
+    function buildList() {
+      const groups = {}; for (const up of upgradePool) (groups[cat(up)] = groups[cat(up)] || []).push(up);
+      listEl.innerHTML = '';
+      for (const g of ['元素', '改造', '衝刺', '副攻', '肉搏', '通用']) {
+        if (!groups[g]) continue;
+        const h = document.createElement('div'); h.className = 'tp-lh'; h.textContent = g; listEl.appendChild(h);
+        const row = document.createElement('div'); row.className = 'tp-lrow';
+        for (const up of groups[g]) {
+          const btn = document.createElement('button'); btn.className = 'tp-li';
+          btn.onclick = () => { up.apply(); applied[up.id] = (applied[up.id] || 0) + 1; updateCounts(); refresh(); };
+          btnFor[up.id] = btn; row.appendChild(btn);
+        }
+        listEl.appendChild(row);
+      }
+      updateCounts();
+    }
+    function enterTraining() {
+      if (game.state === 'title') startRun();
+      game.training = true;
+      game.enemies.length = 0; game.wave = 0;
+      game.player.maxHp = 99999; game.player.hp = 99999;
+      for (let i = 0; i < 5; i++) spawnDummy();
+      refresh();
+    }
+    function resetBuild() { for (const k in applied) delete applied[k]; resetGame(); enterTraining(); updateCounts(); }
     function toggle(hide) { panel.classList.toggle('hidden', hide); showBtn.style.display = hide ? 'block' : 'none'; }
     panel.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-act]'); if (!b) return;
@@ -3947,22 +3993,18 @@
       else if (k === 'mas') { game.stats.mastery[v] = (game.stats.mastery[v] || 0) + 1; }
       else if (k === 'main') { game.stats.mainMode = v; }
       else if (k === 'sec') { game.stats.secondary = v === 'none' ? null : v; }
-      else if (k === 'mod') { game.stats[v] = (game.stats[v] || 0) + 1; }
       else if (k === 'dummy') { if (v === 'add') { for (let i = 0; i < 3; i++) spawnDummy(); } else { game.enemies = game.enemies.filter(e => !e.dummy); } }
       else if (k === 'heal') { game.player.hp = game.player.maxHp; }
       else if (k === 'open') { openUpgrade(); }
+      else if (k === 'list') { listEl.classList.toggle('hidden'); }
+      else if (k === 'reset') { resetBuild(); }
       else if (k === 'ui') { toggle(true); }
       refresh();
     });
     showBtn.onclick = () => toggle(false);
     window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 't') toggle(!panel.classList.contains('hidden')); });
-    if (game.state === 'title') startRun();
-    game.training = true;
-    game.enemies.length = 0;
-    game.wave = 0;
-    game.player.maxHp = 99999; game.player.hp = 99999;
-    for (let i = 0; i < 5; i++) spawnDummy();
-    refresh();
+    buildList();
+    enterTraining();
   })();
 
   requestAnimationFrame(loop);
