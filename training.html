@@ -417,6 +417,11 @@
       dashTime: 0,
       dashTrailCd: 0,
       dashHits: null,
+      fistHand: 0,
+      fistAnim: 0,
+      fistAnimMax: 0.14,
+      fistCombo: 0,
+      fistComboTimer: 0,
       secondaryCooldown: 0,
       invuln: 0,
       hurtTimer: 0,
@@ -1540,6 +1545,9 @@
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.dashTime = Math.max(0, p.dashTime - dt);
     p.dashTrailCd = Math.max(0, p.dashTrailCd - dt);
+    p.fistAnim = Math.max(0, p.fistAnim - dt);
+    p.fistComboTimer = Math.max(0, p.fistComboTimer - dt);
+    if (p.fistComboTimer <= 0) p.fistCombo = 0;
     p.secondaryCooldown = Math.max(0, p.secondaryCooldown - dt);
     p.invuln = Math.max(0, p.invuln - dt);
     p.hurtTimer = Math.max(0, p.hurtTimer - dt);
@@ -1596,7 +1604,8 @@
     if (mouse.down && p.cooldown <= 0) {
       if (game.stats.mainMode === 'fist') {
         meleePunch(p.facing);
-        p.cooldown = Math.max(0.12, 0.32 * game.stats.cooldownMul);
+        // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
+        p.cooldown = Math.max(0.13, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
       } else {
         shoot(p.facing);
         p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
@@ -1726,6 +1735,11 @@
   // element, knocks back, and smashes thin/earth walls. Replaces the projectile.
   function meleePunch(angle) {
     const p = game.player, reach = 46, r = 36;
+    // drive the visible alternating palm thrust + combo timer (see updatePlayerMesh)
+    p.fistHand = p.fistHand ? 0 : 1;
+    p.fistAnim = p.fistAnimMax;
+    p.fistCombo = p.fistComboTimer > 0 ? Math.min(p.fistCombo + 1, 6) : 1;
+    p.fistComboTimer = 0.55;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
     const el = dashElement();
     const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2;
@@ -2641,7 +2655,12 @@
     const sOrb = makeGlowSphere(11, 0xffcc56, 0.34); sOrb.position.set(15, 55, 9); g.add(sOrb);
     const sCore = new THREE.Mesh(octaGeo, matLambert(0xffcc56, 0xffcc56, 1)); sCore.scale.set(6.5, 6.5, 6.5); sCore.position.set(15, 55, 9); g.add(sCore);
     const familiar = new THREE.Mesh(octaGeo, matLambert(0x9fe7ff, 0x9fe7ff, 0.75)); familiar.scale.set(7, 7, 7); g.add(familiar);
+    // brawler fists (shown only in fist mode; thrust forward when punching)
+    const armL = makeBox(8, 8, 11, 0xffd7b0); armL.position.set(-13, 22, 6); armL.visible = false; g.add(armL);
+    const armR = makeBox(8, 8, 11, 0xffd7b0); armR.position.set(13, 22, 6); armR.visible = false; g.add(armR);
     g.userData.orb = orb; g.userData.orbCore = orbCore; g.userData.sOrb = sOrb; g.userData.sCore = sCore; g.userData.familiar = familiar;
+    g.userData.armL = armL; g.userData.armR = armR;
+    g.userData.armLBase = armL.position.clone(); g.userData.armRBase = armR.position.clone();
     return g;
   }
   function updatePlayerMesh() {
@@ -2661,6 +2680,27 @@
       const a = game.time * 2.2;
       fam.position.set(Math.cos(a) * 24, 31 + Math.sin(a * 1.7) * 5, Math.sin(a) * 18);
       fam.rotation.y += 0.05; fam.rotation.x += 0.035;
+    }
+    // brawler palm thrust: alternating hands shoot forward (local +Z = aim) on each punch
+    const fist = game.stats.mainMode === 'fist';
+    const armL = playerMesh.userData.armL, armR = playerMesh.userData.armR;
+    if (armL && armR) {
+      armL.visible = fist; armR.visible = fist;
+      if (fist) {
+        const baseL = playerMesh.userData.armLBase, baseR = playerMesh.userData.armRBase;
+        armL.position.copy(baseL); armR.position.copy(baseR);
+        const active = p.fistHand ? armR : armL, idle = p.fistHand ? armL : armR;
+        const base = p.fistHand ? baseR : baseL;
+        const prog = p.fistAnim > 0 ? Math.sin((1 - p.fistAnim / p.fistAnimMax) * Math.PI) : 0; // 0→1→0
+        active.position.z = base.z + prog * 34;          // thrust toward aim
+        active.position.x = base.x * (1 - prog * 0.7);   // converge to centre
+        active.position.y = base.y + prog * 3;
+        const ecol = colorHex((ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color) || '#ffe0bd');
+        active.material.color.setHex(prog > 0.2 ? ecol : 0xffd7b0);
+        if (active.material.emissive) { active.material.emissive.setHex(ecol); active.material.emissiveIntensity = prog * 0.6; }
+        idle.material.color.setHex(0xffd7b0);
+        if (idle.material.emissive) idle.material.emissiveIntensity = 0;
+      }
     }
     const blink = p.invuln > 0 && Math.floor(game.time * 20) % 2 === 0;
     playerMesh.visible = !blink;
