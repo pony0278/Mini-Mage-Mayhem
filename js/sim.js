@@ -82,6 +82,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'dash_power', name: '衝刺強化', desc: '衝刺傷害、擊退與元素留痕提高（衝刺流派）。', apply: () => { game.stats.dashPower += 1; toast('衝刺變成武器了！'); } },
     { id: 'dash_charge', name: '疾風連步', desc: '衝刺多一段充能，可連續衝刺（雙閃/三閃）。', apply: () => { game.stats.dashCharges += 1; game.player.dashStock = game.stats.dashCharges; toast('衝刺多一段！'); } },
     { id: 'cap_meteor', name: '流星降臨', desc: '畢業大絕（火+土）：戰鬥中持續天降流星，落點預警後爆炸並留下岩漿池。', apply: () => { game.stats.capstone = 'meteor'; toast('流星降臨！從此天降災厄'); } },
+    { id: 'cap_plague', name: '瘟疫核爆', desc: '畢業大絕（火+毒）：你佈下的毒霧會週期性自動連環引爆（距你太近的不引爆）。', apply: () => { game.stats.capstone = 'plague'; toast('瘟疫核爆！毒霧開始自爆'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -722,6 +723,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'dash_charge') return s.dashCharges < 3; // cap at triple-dash
     if (up.id === 'split' || up.id === 'explode' || up.id === 'trail') return s.mainMode === 'spell'; // pure-projectile mechanics — dead once a brawler stance is picked
     if (up.id === 'cap_meteor') return !s.capstone && owns('fire') && owns('earth'); // capstone: one per run, gated on the fire+earth combo
+    if (up.id === 'cap_plague') return !s.capstone && owns('fire') && owns('poison'); // capstone: fire+poison
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1318,6 +1320,22 @@ import { game, keys, mouse, CAM } from './state.js';
         const t = live.length ? live[Math.floor(Math.random() * live.length)] : { x: mouse.x, y: mouse.y };
         const r = 58 + game.stats.size * 6 + spellMastery() * 4;
         addBossWarning('meteor', clamp(t.x, 30, W - 30), clamp(t.y, 30, H - 30), r, 0.85, '#ff7a3a');
+      }
+    }
+    // capstone 瘟疫核爆 (火+毒): periodically chain-detonate your own poison clouds
+    if (game.stats.capstone === 'plague' && game.state === 'playing') {
+      game.plagueTimer = (game.plagueTimer || 0) - dt;
+      if (game.plagueTimer <= 0) {
+        game.plagueTimer = 2.8;
+        const p = game.player; let n = 0;
+        for (const cloud of game.poisonClouds) {
+          if (cloud.life > 0 && Math.hypot(cloud.x - p.x, cloud.y - p.y) > 50) { // skip clouds hugging the player (auto-proc fairness)
+            cloud.life = -1; game.chainBooms++; n++;
+            addExplosion(cloud.x, cloud.y, Math.max(70, cloud.r) + game.stats.poisonBoom * 18, 46 + game.stats.size * 8 + game.stats.poisonBoom * 12, '瘟疫核爆');
+            if (game.stats.siphon > 0) healPlayer(4 + game.stats.siphon * 3);
+          }
+        }
+        if (n) addText(p.x, p.y - 40, `瘟疫核爆 ×${n}!`, '#d998ff');
       }
     }
 
