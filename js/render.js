@@ -514,6 +514,14 @@ let ctx = screenCtx;
   }
   function syncZones() {
     clearDynamic(zoneGroup);
+    // capstone 凍毒領域: a frost-venom field that follows the player (radius kept in sync by sim)
+    if (game.state === 'playing' && game.stats.capstone === 'frostpoison') {
+      const p = game.player, r = game.frostAuraR || 116;
+      const pulse = 0.17 + 0.06 * Math.sin(game.time * 3);
+      disc(p.x, p.y, r, 0x6fd8c0, pulse);              // teal frost-venom field
+      disc(p.x, p.y, r * 0.66, 0xa7ff45, pulse * 0.55); // toxic inner ring
+      puff(p.x, p.y, r, 0xbff4ff, pulse * 0.7, 6, 12);
+    }
     for (const pc of game.poisonClouds) {
       const a = 0.32 * clamp(pc.life / pc.maxLife, 0, 1);
       disc(pc.x, pc.y, pc.r, 0x8a36c8, a);
@@ -1026,7 +1034,7 @@ let ctx = screenCtx;
       equip_oil: ['火', '高風險', '副攻'], equip_blackhole: ['環境', '副攻'],
       fist_mode: ['近戰', '破壞'], lightpalm_mode: ['雷', '近戰', '控場'], windpalm_mode: ['風', '近戰', '控場'],
       vitality: ['通用'], swift: ['通用'], second_wind: ['通用'],
-      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業'], cap_storm: ['土', '雷', '畢業']
+      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業'], cap_storm: ['土', '雷', '畢業'], cap_frostpoison: ['冰', '毒', '畢業']
     };
     return T[up.id] || ['升級'];
   }

@@ -84,6 +84,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'cap_meteor', name: '流星降臨', desc: '畢業大絕（火+土）：戰鬥中持續天降流星，落點預警後爆炸並留下岩漿池。', apply: () => { game.stats.capstone = 'meteor'; toast('流星降臨！從此天降災厄'); } },
     { id: 'cap_plague', name: '瘟疫核爆', desc: '畢業大絕（火+毒）：你佈下的毒霧會週期性自動連環引爆（距你太近的不引爆）。', apply: () => { game.stats.capstone = 'plague'; toast('瘟疫核爆！毒霧開始自爆'); } },
     { id: 'cap_storm', name: '磁暴奇點', desc: '畢業大絕（土+雷）：週期生成磁力奇點把敵人吸成一團，塌縮時雷鏈貫穿引爆。', apply: () => { game.stats.capstone = 'storm'; toast('磁暴奇點！敵人將被吸攏電穿'); } },
+    { id: 'cap_frostpoison', name: '凍毒領域', desc: '畢業大絕（冰+毒）：身周凝結持續凍毒光環，範圍內敵人被冰緩並中毒。', apply: () => { game.stats.capstone = 'frostpoison'; toast('凍毒領域！身周凝結劇毒寒霜'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -151,7 +152,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷)
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -727,6 +728,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'cap_meteor') return !s.capstone && owns('fire') && owns('earth'); // capstone: one per run, gated on the fire+earth combo
     if (up.id === 'cap_plague') return !s.capstone && owns('fire') && owns('poison'); // capstone: fire+poison
     if (up.id === 'cap_storm') return !s.capstone && owns('earth') && owns('lightning'); // capstone: earth+lightning
+    if (up.id === 'cap_frostpoison') return !s.capstone && owns('ice') && owns('poison'); // capstone: ice+poison
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1355,6 +1357,27 @@ import { game, keys, mouse, CAM } from './state.js';
           game.blackHoles.push({ x: clamp(best.x, 40, W - 40), y: clamp(best.y, 40, H - 40), r, life: 1.5, maxLife: 1.5, exploded: false, storm: true });
           addRing(best.x, best.y, 36, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
         } else { game.stormTimer = 1.2; } // no clump yet — re-check soon (don't waste the proc)
+      }
+    }
+    // capstone 凍毒領域 (冰+毒): a frost-venom aura that follows you — chills + poisons foes in range.
+    // Player-centred, so no telegraph needed; the risk/reward is you must keep foes close.
+    if (game.stats.capstone === 'frostpoison' && game.state === 'playing') {
+      const p = game.player;
+      const r = 116 + game.stats.size * 10 + spellMastery() * 6;
+      game.frostAuraR = r; // render reads this to draw the disc (kept in sync here)
+      const dps = 9 + mLvl('poison') * 1.5; // mirrors a poison cloud's bite
+      for (const e of game.enemies) {
+        if (e.dead || e.type === 'bug') continue; // bugs shrug off poison (as in the cloud logic)
+        if (Math.hypot(e.x - p.x, e.y - p.y) < r + e.r) {
+          damageEnemy(e, dps * 0.45 * dt, p.x, p.y, '凍毒領域');
+          e.slowTimer = Math.max(e.slowTimer || 0, 0.5); e.chilled = true;
+        }
+      }
+      game.auraTimer = (game.auraTimer || 0) - dt; // periodic pulse + frost/venom motes (reuse ring + particles)
+      if (game.auraTimer <= 0) {
+        game.auraTimer = 0.6;
+        addRing(p.x, p.y, r, '#9fe0d0', 0.22, 3);
+        for (let i = 0; i < 4; i++) { const a = rnd(0, 6.28), d = rnd(r * 0.4, r); game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: rnd(-12, 12), vy: rnd(-24, -6), r: rnd(2, 4), life: 0.6, maxLife: 0.6, color: i % 2 ? '#bff4ff' : '#a7ff45' }); }
       }
     }
 
