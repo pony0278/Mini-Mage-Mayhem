@@ -2,7 +2,7 @@
 
 > 用途：把目前 ~4273 行的單檔 `index.html`（inline `<script>` IIFE）拆成多個 ES module 的**邊界定義書**。
 > 目標：解決「太肥」維護性問題，同時把 **sim 核心抽成 headless**（= roadmap 的 B0，未來 BR / WASM 的地基），全程**零 build、仍是靜態頁**。
-> 狀態：**分析完成、邊界提案、尚未動工**。行號為分析當下快照（會隨改動漂移，僅供定位）。
+> 狀態：**分析完成、邊界已拍板（見 §7 決策記錄）、尚未動工**。行號為分析當下快照（會隨改動漂移，僅供定位）。
 
 ---
 
@@ -97,7 +97,7 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 
 **鐵律：`sim.js` 不准 import `render3d` / `hud` / `input` / `main`。** 這條不變式就是「sim 永遠可抽成 headless」的保證。今天的 CAM/mouse 耦合違反了它 —— 用 §3 的 `intent` 接縫修掉。
 
-> 可選簡化：第一刀可先把 `render3d + hud` 合成單一 `render.js`，降低一次搬檔的面數；待穩定後再細分。
+> **已拍板（§7-1）**：第一刀把 `render3d + hud` 合成**單一 `render.js`**，降低一次搬檔的面數；待穩定後（rule of three）再細分回 `render3d.js` / `hud.js`。
 
 ---
 
@@ -111,21 +111,44 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 
 ---
 
-## 6. 建議的搬檔順序（漸進、每步可驗證）
+## 6. 搬檔順序（已拍板，漸進、每步可驗證）
 
+0. **先刪死碼**（§7-4）：移除舊版 2D top-down 渲染器（清單見 §8），確認共用 helper（`onGround`/`TH`）連帶處理，行為零變化。先瘦身再拆。
 1. **最安全先抽**：`constants.js` + `utils.js` + `data.js`（純資料/純函式，零行為依賴）。
-2. **抽 render**：`render3d.js`（+ `hud.js`，或先合併成 `render.js`）。render 只讀 sim 狀態，搬完行為不變。
-3. **抽 sim.js**：把 278–2650 整塊搬出；同時做 §3 的 `update(dt, intent)` 接縫，斷開 CAM/mouse。
+2. **抽 render**：合併成**單一 `render.js`**（§7-1）。render 只讀 sim 狀態，搬完行為不變。
+3. **抽 sim.js**：把 278–2650 整塊搬出；**同時**做 §3 的 `update(dt, intent)` 接縫，斷開 CAM/mouse（§7-2，避免循環依賴）。
 4. **`input.js` + `main.js`**：輸入事件 → `intent`；`loop()` 接線。
-5. 每步用無頭 Puppeteer（改走 `http.server`）截圖/讀狀態，確認**行為零變化**再進下一步。
+5. **三份 HTML 收斂**（§7-3）：`index/camera-sandbox/training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。
+6. 每步用無頭 Puppeteer（改走 `python -m http.server`）截圖/讀狀態，確認**行為零變化**再進下一步。
 
 ---
 
-## 7. 待拍板（動工前）
+## 7. 決策記錄（已拍板）
 
-1. **模組邊界**是否如 §4？或第一刀先把 `render3d+hud` 合成 `render.js`？
-2. **`update(dt, intent)` 接縫**和拆分一起做（建議），還是先純搬檔、之後再斷 CAM/mouse？
-3. **三份 HTML 的共享**：`index.html` / `camera-sandbox.html`（CAM 滑桿）/ `training.html`（測試面板）目前各自內嵌同一份 JS。拆 module 後，建議三者都改成 `<script type="module" src="main.js">`，差異（滑桿/面板）做成各自的小掛載檔，**徹底消滅三份手動同步**（目前每次改動都要 replay 到三檔的痛點，拆分後自然消失）。
-4. **死碼確認**：3D mesh 路徑 vs 2D sprite 路徑哪條現役（§5）。
+1. **模組粒度**：✅ 第一刀 `render3d + hud` 合成**單一 `render.js`**；日後嫌大再細分（rule of three）。
+2. **`update(dt, intent)` 接縫**：✅ **跟 sim 抽取一起做**。否則 `sim.js` 仍 import render 的 `CAM`/`mouse` → 循環依賴、違反 DAG 鐵律。等於是抽 sim 時的必做步驟。
+3. **三份 HTML 共享**：✅ `index` / `camera-sandbox` / `training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。**消滅「改一次 replay 到三檔」的手動同步**（`training.html` 已用 `window.__game`，接縫現成；需另外 expose `CAM` + 少量 hook）。
+4. **死碼**：✅ 已查證 —— 舊版 2D top-down 渲染器**無人呼叫**（證據與清單見 §8），**開工前先刪**，不把死重量搬進模組。
 
 > 本文件是拆分的單一依據。邊界一旦動工，請更新 §0 狀態與各模組的「已抽出 ✅」標記。
+
+---
+
+## 8. 死碼清單（已查證無人呼叫 → 步驟 0 先刪）
+
+`draw()` 的真實呼叫鏈：`render3D()`（3D 世界，內含 `syncWalls/syncProps/syncActors/syncProjectiles/syncZones`）→ HUD 疊圖 `drawEnemyBars / drawCrateHints / drawFloatingTexts / drawReticle / drawUi / drawFusionBanner / drawBossPhaseBanner` + 選單。角色是**真 3D 體素 mesh**（`buildEnemy`/`buildPlayer`）。
+
+以下為 3D 化之前遺留的 2D top-down 渲染器，**引用次數 = 1（只有定義）或只被彼此呼叫**，現役路徑完全不碰：
+
+| 函式 | 引用次數 | 說明 |
+|---|---|---|
+| `drawActors` | 1 | 根死碼（只有定義，無人呼叫）|
+| `drawMap` | 1 | 死（2D 地圖繪製，已被 `drawGroundTexture`/3D 取代）|
+| `drawZones`（2D）| 1 | 死（現役是 3D `syncZones`）|
+| `drawProjectiles`（2D）| 1 | 死（現役是 3D `syncProjectiles`）|
+| `drawEnemySprite` / `drawPlayerSprite` | 2 | 只被死的 `drawActors` 呼叫 |
+| `drawActorBar` / `actorHeight` | 3 / 2 | 只被上面那群死碼呼叫 |
+
+- **注意**：這些函式與現役函式**交錯排列**，要逐函式刪、不是整塊砍。
+- **連帶確認**：`onGround`（引用 9）、`TH` 常數、`VIEW.depth` 等共用 helper —— 刪完上面那群後重新確認是否變死碼，一併處理。
+- 刪除後 `hud.js` 的範圍會乾淨很多（只剩 bars / floating-text / reticle / ui / 選單 / banner）。
