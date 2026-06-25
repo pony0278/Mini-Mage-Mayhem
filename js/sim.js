@@ -81,6 +81,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'dash_cd', name: '疾風步', desc: '衝刺冷卻降低 30%。', apply: () => { game.stats.dashCdMul *= 0.7; toast('衝刺更頻繁了！'); } },
     { id: 'dash_power', name: '衝刺強化', desc: '衝刺傷害、擊退與元素留痕提高（衝刺流派）。', apply: () => { game.stats.dashPower += 1; toast('衝刺變成武器了！'); } },
     { id: 'dash_charge', name: '疾風連步', desc: '衝刺多一段充能，可連續衝刺（雙閃/三閃）。', apply: () => { game.stats.dashCharges += 1; game.player.dashStock = game.stats.dashCharges; toast('衝刺多一段！'); } },
+    { id: 'cap_meteor', name: '流星降臨', desc: '畢業大絕（火+土）：戰鬥中持續天降流星，落點預警後爆炸並留下岩漿池。', apply: () => { game.stats.capstone = 'meteor'; toast('流星降臨！從此天降災厄'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -148,6 +149,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
+      capstone: null,   // build 畢業大絕 id（一局一條）；目前：'meteor'（火+土 流星降臨）
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -719,6 +721,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'toxic_boom') return owns('poison');
     if (up.id === 'dash_charge') return s.dashCharges < 3; // cap at triple-dash
     if (up.id === 'split' || up.id === 'explode' || up.id === 'trail') return s.mainMode === 'spell'; // pure-projectile mechanics — dead once a brawler stance is picked
+    if (up.id === 'cap_meteor') return !s.capstone && owns('fire') && owns('earth'); // capstone: one per run, gated on the fire+earth combo
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1306,6 +1309,18 @@ import { game, keys, mouse, CAM } from './state.js';
 
     if (game.state !== 'playing') return;
     updatePlayer(dt);
+    // capstone 流星降臨 (火+土): periodic telegraphed meteors while fighting
+    if (game.stats.capstone === 'meteor' && game.state === 'playing') {
+      game.meteorTimer = (game.meteorTimer || 0) - dt;
+      if (game.meteorTimer <= 0) {
+        game.meteorTimer = 2.6;
+        const live = game.enemies.filter(e => !e.dead && e.type !== 'boss');
+        const t = live.length ? live[Math.floor(Math.random() * live.length)] : { x: mouse.x, y: mouse.y };
+        const r = 58 + game.stats.size * 6 + spellMastery() * 4;
+        addBossWarning('meteor', clamp(t.x, 30, W - 30), clamp(t.y, 30, H - 30), r, 0.85, '#ff7a3a');
+      }
+    }
+
     updateProjectiles(dt);
     updateEnemies(dt);
     updateBossWarnings(dt);
@@ -2422,6 +2437,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (type === 'lightning') return '雷擊';
     if (type === 'fire') return '火圈';
     if (type === 'steam') return '蒸氣';
+    if (type === 'meteor') return '流星';
     return '危險';
   }
 
@@ -2471,6 +2487,11 @@ import { game, keys, mouse, CAM } from './state.js';
       } else if (w.type === 'steam') {
         addSteamCloud(w.x, w.y, w.r, 3.0);
         addText(w.x, w.y - w.r, '蒸氣！', '#d8f6ff');
+      } else if (w.type === 'meteor') {
+        addExplosion(w.x, w.y, w.r, 38 + game.stats.size * 6 + spellMastery() * 4, '流星');
+        addFireZone(w.x, w.y, w.r * 0.6, 2.4, true); // lava pool
+        addText(w.x, w.y - w.r, '流星！', '#ff7a3a');
+        game.screenShake = Math.max(game.screenShake, 8);
       }
     }
     game.bossWarnings = game.bossWarnings.filter(w => !w.dead);

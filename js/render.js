@@ -1003,7 +1003,7 @@ let ctx = screenCtx;
     '火': '#ffbd66', '冰': '#bff4ff', '雷': '#9fe7ff', '毒': '#d998ff', '風': '#dff3ff', '土': '#c79a5b', '精通': '#ffd36d',
     '元素': '#ffe6a7', '近戰': '#e0b07a', '環境': '#8ee07a', '控場': '#9fe7ff',
     '破壞': '#caa472', '高風險': '#ff7b72', '投擲': '#dff3ff', '衝刺': '#b7d8ff',
-    '副攻': '#8cecff', '通用': '#d7a0ff', '改造': '#fff1bb'
+    '副攻': '#8cecff', '通用': '#d7a0ff', '改造': '#fff1bb', '畢業': '#ffcf6f'
   };
   function upgradeTags(up) {
     if (up.element) return isMastery(up) ? [ELEMENT_INFO[up.element].name, '精通'] : [ELEMENT_INFO[up.element].name, '元素'];
@@ -1015,7 +1015,8 @@ let ctx = screenCtx;
       equip_icewall: ['冰', '環境', '副攻'], equip_earthwall: ['環境', '破壞', '副攻'],
       equip_oil: ['火', '高風險', '副攻'], equip_blackhole: ['環境', '副攻'],
       fist_mode: ['近戰', '破壞'], lightpalm_mode: ['雷', '近戰', '控場'], windpalm_mode: ['風', '近戰', '控場'],
-      vitality: ['通用'], swift: ['通用'], second_wind: ['通用']
+      vitality: ['通用'], swift: ['通用'], second_wind: ['通用'],
+      cap_meteor: ['火', '土', '畢業']
     };
     return T[up.id] || ['升級'];
   }
