@@ -90,6 +90,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'cap_boil', name: '沸騰領域', desc: '畢業大絕（火+冰）：全場籠罩蒸氣風暴，所有敵人持續減速並被灼燒。', apply: () => { game.stats.capstone = 'boil'; toast('沸騰領域！全場沸騰蒸騰'); } },
     { id: 'cap_zero', name: '絕對零度', desc: '畢業大絕（雷+冰）：週期釋放冰凍新星，凍結並電擊全場敵人。', apply: () => { game.stats.capstone = 'zero'; toast('絕對零度！全場將被凍結電穿'); } },
     { id: 'cap_venomnet', name: '劇毒電網', desc: '畢業大絕（雷+毒）：身周展開帶電毒場，範圍內敵人持續中毒並週期麻痺。', apply: () => { game.stats.capstone = 'venomnet'; toast('劇毒電網！身周張開帶電毒場'); } },
+    { id: 'cap_quagmire', name: '大地崩毀', desc: '畢業大絕（土+毒）：腳下毒沼持續擴張，範圍內中毒陷足，並不斷迸出碎石擊退敵人、砸穿薄牆。', apply: () => { game.stats.capstone = 'quagmire'; toast('大地崩毀！腳下毒沼蔓延崩裂'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -130,6 +131,7 @@ import { game, keys, mouse, CAM } from './state.js';
     game.blackHoles.length = 0;
     game.plasmaOrb = null;
     game.glaciers = null;
+    game.quagmireR = null;
     game.props.length = 0;
     game.bossWarnings.length = 0;
     game.particles.length = 0;
@@ -159,7 +161,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰) / 'boil'(火+冰) / 'zero'(雷+冰) / 'venomnet'(雷+毒)
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰) / 'boil'(火+冰) / 'zero'(雷+冰) / 'venomnet'(雷+毒) / 'quagmire'(土+毒)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -741,6 +743,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'cap_boil') return !s.capstone && owns('fire') && owns('ice'); // capstone: fire+ice
     if (up.id === 'cap_zero') return !s.capstone && owns('lightning') && owns('ice'); // capstone: lightning+ice
     if (up.id === 'cap_venomnet') return !s.capstone && owns('lightning') && owns('poison'); // capstone: lightning+poison
+    if (up.id === 'cap_quagmire') return !s.capstone && owns('earth') && owns('poison'); // capstone: earth+poison
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1517,6 +1520,33 @@ import { game, keys, mouse, CAM } from './state.js';
         if (any) chainLightningFrom(p.x, p.y, null, 14 + game.stats.storm * 3); // arc through the netted foes (no ground zone — it would shock you)
         addRing(p.x, p.y, r, '#c98cff', 0.22, 3);
         for (let i = 0; i < 5; i++) { const a = rnd(0, 6.28), d = rnd(r * 0.4, r); game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: rnd(-14, 14), vy: rnd(-26, -6), r: rnd(2, 4), life: 0.6, maxLife: 0.6, color: i % 2 ? '#c98cff' : '#9fe7ff' }); }
+      }
+    }
+    // capstone 大地崩毀 (土+毒): a poison quagmire that expands under you — foes are poisoned + bogged, and rocks
+    // keep erupting to knock foes back and smash thin walls. Enemy-only poison (no cloud → never poisons you).
+    if (game.stats.capstone === 'quagmire' && game.state === 'playing') {
+      const p = game.player;
+      const rmax = 150 + game.stats.size * 12 + spellMastery() * 8;
+      game.quagmireR = Math.min((game.quagmireR || 90) + 8 * dt, rmax); // 持續擴張 to a cap
+      const r = game.quagmireR, dps = 9 + mLvl('poison') * 1.5;
+      for (const e of game.enemies) {
+        if (e.dead || e.type === 'bug') continue;
+        if (Math.hypot(e.x - p.x, e.y - p.y) < r + e.r) { damageEnemy(e, dps * 0.45 * dt, p.x, p.y, '大地崩毀'); e.slowTimer = Math.max(e.slowTimer || 0, 0.5); } // 毒沼: 中毒 + 陷足
+      }
+      game.quakeTimer = (game.quakeTimer || 0) - dt;
+      if (game.quakeTimer <= 0) { // 迸碎石: erupt at a random spot in the mire
+        game.quakeTimer = 0.8;
+        const a = rnd(0, 6.28), d = rnd(0, r * 0.9), ex = clamp(p.x + Math.cos(a) * d, 20, W - 20), ey = clamp(p.y + Math.sin(a) * d, 20, H - 20);
+        breakThinWalls(ex, ey, 26); // 崩毀地形
+        for (const e of game.enemies) {
+          if (e.dead) continue;
+          if (Math.hypot(e.x - ex, e.y - ey) < 42 + e.r) {
+            damageEnemy(e, 18 + game.stats.size * 4, ex, ey, '大地崩毀');
+            const ka = Math.atan2(e.y - ey, e.x - ex); e.vx = (e.vx || 0) + Math.cos(ka) * 300; e.vy = (e.vy || 0) + Math.sin(ka) * 300;
+          }
+        }
+        addRing(ex, ey, 40, '#caa472', 0.3, 3); game.screenShake = Math.max(game.screenShake, 3);
+        for (let i = 0; i < 8; i++) { const pa = rnd(0, 6.28), s = rnd(80, 220); game.particles.push({ x: ex, y: ey, vx: Math.cos(pa) * s, vy: Math.sin(pa) * s, r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: pa % 2 < 1 ? '#caa472' : '#a7c044' }); }
       }
     }
 
