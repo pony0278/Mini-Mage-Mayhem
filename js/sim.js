@@ -89,7 +89,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } },
     { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 短雷鏈，踩水放電整片水池（也會電到自己）。放棄遠程飛彈。', apply: () => { game.stats.mainMode = 'lightpalm'; toast('主攻換成雷掌！'); } },
-    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。', apply: () => { game.stats.mainMode = 'windpalm'; toast('主攻換成風掌！'); } },
+    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast('風掌升星！可累積撿取 ' + s.windpalmStar + ' 個齊射'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
     { id: 'second_wind', name: '回春', desc: '立即回復 40% 最大生命。', apply: () => { healPlayer(game.player.maxHp * 0.4); toast('回復生命！'); } }
@@ -154,6 +154,7 @@ import { game, keys, mouse, CAM } from './state.js';
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
+      windpalmStar: 0,  // 風掌星級 (1–3)；= 風掌一次可累積撿取的數量（0 = 未選風掌）
       mastery: { fire: 0, ice: 0, lightning: 0, poison: 0, earth: 0 },
       size: 0,
       siphon: 0,
@@ -234,8 +235,7 @@ import { game, keys, mouse, CAM } from './state.js';
       fistCombo: 0,
       fistComboTimer: 0,
       secondaryCooldown: 0,
-      heldProp: null,
-      heldEnemy: null,
+      held: [],   // 風掌撿起的東西(木箱/小怪混裝)，上限 = windpalmStar
       eDown: false,
       invuln: 0,
       hurtTimer: 0,
@@ -701,6 +701,7 @@ import { game, keys, mouse, CAM } from './state.js';
   export function upgradeName(up) {
     if (isMastery(up)) return ELEMENT_INFO[up.element].name + '精通 Lv' + (mLvl(up.element) + 1);
     if (isSecMastery(up)) { const id = up.id.slice('equip_'.length); return SECONDARY[id].name + '強化 Lv' + (sLvl(id) + 1); }
+    if (up.id === 'windpalm_mode' && game.stats.mainMode === 'windpalm') return '風掌 ★' + Math.min(3, game.stats.windpalmStar + 1);
     return up.name;
   }
   export function upgradeDesc(up) {
@@ -716,7 +717,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id && up.id.indexOf('equip_') === 0) return true;
     if (up.id === 'fist_mode') return s.mainMode !== 'fist';        // already that brawler stance
     if (up.id === 'lightpalm_mode') return s.mainMode !== 'lightpalm';
-    if (up.id === 'windpalm_mode') return s.mainMode !== 'windpalm';
+    if (up.id === 'windpalm_mode') return s.mainMode !== 'windpalm' || s.windpalmStar < 3; // 重選 → 升星(上限 ★3)
     if (up.id === 'ice_lake' || up.id === 'ice_shatter') return owns('ice');
     if (up.id === 'shock') return owns('lightning');
     if (up.id === 'toxic_boom') return owns('poison');
@@ -1489,7 +1490,7 @@ import { game, keys, mouse, CAM } from './state.js';
 
     const wp = game.stats.mainMode === 'windpalm';
     // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
-    if (mouse.down && p.cooldown <= 0 && !(wp && (p.heldProp || p.heldEnemy))) {
+    if (mouse.down && p.cooldown <= 0 && !(wp && p.held.length)) {
       if (game.stats.mainMode !== 'spell') {
         meleeAttack(p.facing);
         // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
@@ -1503,32 +1504,26 @@ import { game, keys, mouse, CAM } from './state.js';
     if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
       castSecondary(p.facing);
     }
-    // 風掌 crate handling on a dedicated key (E), edge-triggered: lift the nearest
-    // crate in reach, then press E again to hurl it along the aim.
+    // 風掌 E（edge-triggered）：撿取（累積到星級上限）→ 滿了/沒得撿就齊射丟出。
     const eDown = keys.has('e'); const eEdge = eDown && !p.eDown; p.eDown = eDown;
     if (wp && eEdge) {
-      if (p.heldProp) throwHeldProp(p.facing);
-      else if (p.heldEnemy) throwHeldEnemy(p.facing);
-      else if (!liftNearestEnemy(p)) { const pr = nearestLiftable(p); if (pr) liftProp(pr); } // grab a foe first, else a crate
+      const cap = game.stats.windpalmStar || 1;
+      let grabbed = false;
+      if (p.held.length < cap) grabbed = tryGrab(p);
+      if (!grabbed && p.held.length > 0) throwHeld(p.facing);
     }
-    // Carry a lifted crate floating in front of the mage (follows the aim).
-    if (p.heldProp) {
-      const pr = p.heldProp, off = p.r + pr.r + 10;
-      pr.x = clamp(p.x + Math.cos(p.facing) * off, pr.r, W - pr.r);
-      pr.y = clamp(p.y + Math.sin(p.facing) * off, pr.r, H - pr.r);
-      pr.vx = 0; pr.vy = 0; pr.thrown = 0;
-    }
-    // Carry a grabbed enemy floating in front (風掌 丟人); drop it if it dies in your grip.
-    if (p.heldEnemy) {
-      const e = p.heldEnemy;
-      if (e.dead) { p.heldEnemy = null; }
-      else {
-        const off = p.r + e.r + 12;
-        e.x = clamp(p.x + Math.cos(p.facing) * off, e.r, W - e.r);
-        e.y = clamp(p.y + Math.sin(p.facing) * off, e.r, H - e.r);
-        e.vx = 0; e.vy = 0; e.thrown = 0;
-        e.stunTimer = Math.max(e.stunTimer || 0, 0.3);
-      }
+    // Carry held items (crates / foes) floating in a fan in front of the mage.
+    if (p.held.length) {
+      p.held = p.held.filter(it => !it.dead); // drop anything that died in your grip
+      const n = p.held.length;
+      p.held.forEach((it, i) => {
+        const spread = n === 1 ? 0 : (i - (n - 1) / 2) * 0.34;
+        const off = p.r + it.r + 12;
+        it.x = clamp(p.x + Math.cos(p.facing + spread) * off, it.r, W - it.r);
+        it.y = clamp(p.y + Math.sin(p.facing + spread) * off, it.r, H - it.r);
+        it.vx = 0; it.vy = 0; it.thrown = 0;
+        if (it.type) it.stunTimer = Math.max(it.stunTimer || 0, 0.3); // a held foe stays dazed
+      });
     }
   }
 
@@ -1863,8 +1858,8 @@ import { game, keys, mouse, CAM } from './state.js';
       }
     }
   }
-  // 風掌 lift/throw: nearest crate within arm's reach (and not already held).
-  export function nearestLiftable(p) {
+  // 風掌 撿取/齊射 — p.held 為陣列(木箱與小怪混裝)，上限 = 風掌星級。
+  export function nearestLiftable(p) {           // nearest free crate in reach (also used by render's hint)
     let best = null, bd = 1e9; const reach = p.r + 17 + 30;
     for (const pr of game.props) {
       if (pr.dead || pr.held) continue;
@@ -1873,27 +1868,7 @@ import { game, keys, mouse, CAM } from './state.js';
     }
     return best;
   }
-  export function liftProp(pr) {
-    const p = game.player;
-    p.heldProp = pr; pr.held = true; pr.vx = 0; pr.vy = 0; pr.thrown = 0;
-    addText(p.x, p.y - 46, '舉起 ↑', '#dff3ff');
-    addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
-    game.screenShake = Math.max(game.screenShake, 2);
-  }
-  export function throwHeldProp(angle) {
-    const p = game.player, pr = p.heldProp; if (!pr) return;
-    p.heldProp = null; pr.held = false;
-    const sp = 640;
-    pr.vx = Math.cos(angle) * sp; pr.vy = Math.sin(angle) * sp; pr.thrown = 0.5;
-    p.cooldown = Math.max(p.cooldown, 0.26);
-    addText(p.x, p.y - 46, '投擲 →', '#eafaff');
-    addRing(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, 26, '#eafaff', 0.22, 3);
-    game.screenShake = Math.max(game.screenShake, 4);
-    for (let i = 0; i < 10; i++) { const a = angle + rnd(-0.4, 0.4), s = rnd(120, 260); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#dff3ff' }); }
-  }
-  // 風掌 丟人: grab the nearest grabbable foe in arm's reach. Light types (slime/bug/imp)
-  // any time; chargers only while stunned; boss never. Returns true if one was grabbed.
-  export function liftNearestEnemy(p) {
+  function nearestGrabbableEnemy(p) {            // nearest grabbable foe in reach (slime/bug/imp, or stunned/chilled; never boss)
     let best = null, bd = p.r + 17 + 34;
     for (const e of game.enemies) {
       if (e.dead || e.held || e.type === 'boss') continue;
@@ -1902,20 +1877,30 @@ import { game, keys, mouse, CAM } from './state.js';
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d < bd) { bd = d; best = e; }
     }
-    if (!best) return false;
-    p.heldEnemy = best; best.held = true; best.vx = 0; best.vy = 0; best.thrown = 0;
-    addText(p.x, p.y - 46, '抓起 ↑', '#dff3ff'); addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
+    return best;
+  }
+  export function tryGrab(p) {                    // grab nearest foe (preferred) else crate → push to p.held
+    const it = nearestGrabbableEnemy(p) || nearestLiftable(p);
+    if (!it) return false;
+    it.held = true; it.vx = 0; it.vy = 0; it.thrown = 0;
+    p.held.push(it);
+    addText(p.x, p.y - 46, it.type ? '抓起 ↑' : '舉起 ↑', '#dff3ff');
+    addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
     game.screenShake = Math.max(game.screenShake, 2);
     return true;
   }
-  export function throwHeldEnemy(angle) {
-    const p = game.player, e = p.heldEnemy; if (!e) return;
-    p.heldEnemy = null; e.held = false;
-    const sp = 720;
-    e.vx = Math.cos(angle) * sp; e.vy = Math.sin(angle) * sp; e.thrown = 0.6;
-    e.stunTimer = Math.max(e.stunTimer || 0, 0.8); // dazed after the flight
+  export function throwHeld(angle) {              // volley-throw everything held, fanned along the aim
+    const p = game.player; const n = p.held.length; if (!n) return;
+    p.held.forEach((it, i) => {
+      const a = angle + (n === 1 ? 0 : (i - (n - 1) / 2) * 0.20);
+      it.held = false;
+      if (it.type) { it.vx = Math.cos(a) * 720; it.vy = Math.sin(a) * 720; it.thrown = 0.6; it.stunTimer = Math.max(it.stunTimer || 0, 0.8); } // foe
+      else { it.vx = Math.cos(a) * 640; it.vy = Math.sin(a) * 640; it.thrown = 0.5; } // crate
+    });
+    p.held = [];
     p.cooldown = Math.max(p.cooldown, 0.26);
-    addText(p.x, p.y - 46, '丟人 →', '#eafaff'); addRing(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, 26, '#eafaff', 0.22, 3);
+    addText(p.x, p.y - 46, n > 1 ? `齊射 ×${n} →` : '投擲 →', '#eafaff');
+    addRing(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, 26, '#eafaff', 0.22, 3);
     game.screenShake = Math.max(game.screenShake, 4);
     for (let i = 0; i < 10; i++) { const a = angle + rnd(-0.4, 0.4), s = rnd(120, 260); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#dff3ff' }); }
   }
@@ -1926,8 +1911,9 @@ import { game, keys, mouse, CAM } from './state.js';
   export function shatterProp(pr, reason) {
     if (pr.dead) return;
     pr.dead = true; const cx = pr.x, cy = pr.y, charged = pr.charge === 'lightning';
-    if (game.player.heldProp === pr) {              // bursting in your hands: drop it (fire singes you)
-      game.player.heldProp = null; pr.held = false;
+    if (pr.held) {                                  // bursting in your hands: drop it (fire singes you)
+      const hi = game.player.held.indexOf(pr); if (hi >= 0) game.player.held.splice(hi, 1);
+      pr.held = false;
       if (reason === 'fire') damagePlayer(10, '燙手');
     }
     for (const e of game.enemies) {                  // fragments bite nearby enemies

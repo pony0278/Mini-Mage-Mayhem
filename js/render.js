@@ -641,15 +641,18 @@ let ctx = screenCtx;
   function drawCrateHints() {
     if (game.state !== 'playing' || game.stats.mainMode !== 'windpalm') return;
     const p = game.player;
-    if (p.heldProp) {
-      const pr = p.heldProp, s = project(pr.x, pr.y, pr.r * 2.6 + 24);
-      if (s.behind) return;
-      const pulse = 0.6 + 0.4 * Math.sin(game.time * 8);
-      ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 60, s.y - 16, 120, 22, 8); ctx.fill();
-      ctx.textAlign = 'center'; ctx.font = '900 13px system-ui, sans-serif';
-      ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('E 投擲 →', s.x, s.y);
-      return;
+    const cap = game.stats.windpalmStar || 1;
+    if (p.held.length) {
+      const it = p.held[0], s = project(it.x, it.y, it.r * 2.6 + 24);
+      if (!s.behind) {
+        const pulse = 0.6 + 0.4 * Math.sin(game.time * 8);
+        const label = p.held.length > 1 ? `E 齊射 ×${p.held.length} →` : 'E 投擲 →';
+        ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 60, s.y - 16, 120, 22, 8); ctx.fill();
+        ctx.textAlign = 'center'; ctx.font = '900 13px system-ui, sans-serif';
+        ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText(label, s.x, s.y);
+      }
     }
+    if (p.held.length >= cap) return;
     const pr = nearestLiftable(p);
     if (!pr) return;
     const s = project(pr.x, pr.y, pr.r * 2.4 + 14);
@@ -898,11 +901,11 @@ let ctx = screenCtx;
 
     // 風掌 crate-control reminder (lift / throw), sits above the brawler tag.
     if (game.state === 'playing' && game.stats.mainMode === 'windpalm') {
-      const held = !!p.heldProp;
+      const heldN = p.held.length, cap = game.stats.windpalmStar || 1;
       roundRectPath(ctx, 16, H - 128, 214, 30, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
       ctx.strokeStyle = '#dff3ff'; ctx.stroke();
       ctx.textAlign = 'left'; ctx.font = '900 12px system-ui, sans-serif'; ctx.fillStyle = '#eafaff';
-      ctx.fillText(held ? '[E] 投擲箱子 →' : '[E] 靠近箱子 → 舉起', 26, H - 108);
+      ctx.fillText(heldN ? `[E] 投擲 ×${heldN} →` : `[E] 靠近箱子/小怪 → 撿起 (★${cap})`, 26, H - 108);
     }
 
     // Brawler tag: main attack is melee (土拳 / 雷掌 / 風掌).
