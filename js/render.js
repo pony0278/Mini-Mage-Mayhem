@@ -527,6 +527,14 @@ let ctx = screenCtx;
       disc(p.x, p.y, r * 0.66, 0xa7ff45, pulse * 0.55); // toxic inner ring
       puff(p.x, p.y, r, 0xbff4ff, pulse * 0.7, 6, 12);
     }
+    // capstone 劇毒電網: a charged poison field that follows the player
+    if (game.state === 'playing' && game.stats.capstone === 'venomnet') {
+      const p = game.player, r = game.venomNetR || 116;
+      const pulse = 0.17 + 0.07 * Math.sin(game.time * 4);
+      disc(p.x, p.y, r, 0x9a4fd0, pulse);               // purple poison field
+      disc(p.x, p.y, r * 0.6, 0x79dcff, pulse * 0.5);   // electric inner core
+      puff(p.x, p.y, r, 0xc98cff, pulse * 0.7, 6, 12);
+    }
     for (const pc of game.poisonClouds) {
       const a = 0.32 * clamp(pc.life / pc.maxLife, 0, 1);
       disc(pc.x, pc.y, pc.r, 0x8a36c8, a);
@@ -1039,7 +1047,7 @@ let ctx = screenCtx;
       equip_oil: ['火', '高風險', '副攻'], equip_blackhole: ['環境', '副攻'],
       fist_mode: ['近戰', '破壞'], lightpalm_mode: ['雷', '近戰', '控場'], windpalm_mode: ['風', '近戰', '控場'],
       vitality: ['通用'], swift: ['通用'], second_wind: ['通用'],
-      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業'], cap_storm: ['土', '雷', '畢業'], cap_frostpoison: ['冰', '毒', '畢業'], cap_plasma: ['火', '雷', '畢業'], cap_glacier: ['土', '冰', '畢業'], cap_boil: ['火', '冰', '畢業'], cap_zero: ['雷', '冰', '畢業']
+      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業'], cap_storm: ['土', '雷', '畢業'], cap_frostpoison: ['冰', '毒', '畢業'], cap_plasma: ['火', '雷', '畢業'], cap_glacier: ['土', '冰', '畢業'], cap_boil: ['火', '冰', '畢業'], cap_zero: ['雷', '冰', '畢業'], cap_venomnet: ['雷', '毒', '畢業']
     };
     return T[up.id] || ['升級'];
   }

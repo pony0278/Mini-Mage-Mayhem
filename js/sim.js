@@ -89,6 +89,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'cap_glacier', name: '冰川崩落', desc: '畢業大絕（土+冰）：週期在敵群外圍升起冰牆短暫關籠，隨即同時碎裂成大範圍冰爆。', apply: () => { game.stats.capstone = 'glacier'; toast('冰川崩落！冰牆將困敵碎裂'); } },
     { id: 'cap_boil', name: '沸騰領域', desc: '畢業大絕（火+冰）：全場籠罩蒸氣風暴，所有敵人持續減速並被灼燒。', apply: () => { game.stats.capstone = 'boil'; toast('沸騰領域！全場沸騰蒸騰'); } },
     { id: 'cap_zero', name: '絕對零度', desc: '畢業大絕（雷+冰）：週期釋放冰凍新星，凍結並電擊全場敵人。', apply: () => { game.stats.capstone = 'zero'; toast('絕對零度！全場將被凍結電穿'); } },
+    { id: 'cap_venomnet', name: '劇毒電網', desc: '畢業大絕（雷+毒）：身周展開帶電毒場，範圍內敵人持續中毒並週期麻痺。', apply: () => { game.stats.capstone = 'venomnet'; toast('劇毒電網！身周張開帶電毒場'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -158,7 +159,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰) / 'boil'(火+冰) / 'zero'(雷+冰)
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰) / 'boil'(火+冰) / 'zero'(雷+冰) / 'venomnet'(雷+毒)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -739,6 +740,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'cap_glacier') return !s.capstone && owns('earth') && owns('ice'); // capstone: earth+ice
     if (up.id === 'cap_boil') return !s.capstone && owns('fire') && owns('ice'); // capstone: fire+ice
     if (up.id === 'cap_zero') return !s.capstone && owns('lightning') && owns('ice'); // capstone: lightning+ice
+    if (up.id === 'cap_venomnet') return !s.capstone && owns('lightning') && owns('poison'); // capstone: lightning+poison
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1494,6 +1496,27 @@ import { game, keys, mouse, CAM } from './state.js';
           addText(p.x, p.y - 40, '絕對零度！', '#bff4ff'); game.screenShake = Math.max(game.screenShake, 7);
           for (let i = 0; i < 16; i++) { const a = rnd(0, 6.28), s = rnd(120, 300); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: rnd(0.4, 0.8), maxLife: 0.8, color: i % 2 ? '#bff4ff' : '#9fe7ff' }); }
         }
+      }
+    }
+    // capstone 劇毒電網 (雷+毒): a charged poison field around you — foes inside are poisoned constantly + periodically stunned.
+    // Player-centred aura, so no telegraph; the risk/reward is keeping foes in your charged net.
+    if (game.stats.capstone === 'venomnet' && game.state === 'playing') {
+      const p = game.player;
+      const r = 116 + game.stats.size * 10 + spellMastery() * 6;
+      game.venomNetR = r; // render reads this to draw the disc
+      const dps = 9 + mLvl('poison') * 1.5;
+      for (const e of game.enemies) {
+        if (e.dead || e.type === 'bug') continue; // bugs shrug off poison
+        if (Math.hypot(e.x - p.x, e.y - p.y) < r + e.r) damageEnemy(e, dps * 0.45 * dt, p.x, p.y, '劇毒電網'); // 中毒
+      }
+      game.netTimer = (game.netTimer || 0) - dt;
+      if (game.netTimer <= 0) { // periodic charge: stun foes in the net + a chain arc
+        game.netTimer = 1.1;
+        let any = false;
+        for (const e of game.enemies) { if (!e.dead && Math.hypot(e.x - p.x, e.y - p.y) < r + e.r) { e.stunTimer = Math.max(e.stunTimer || 0, 0.5); any = true; } } // 麻痺
+        if (any) chainLightningFrom(p.x, p.y, null, 14 + game.stats.storm * 3); // arc through the netted foes (no ground zone — it would shock you)
+        addRing(p.x, p.y, r, '#c98cff', 0.22, 3);
+        for (let i = 0; i < 5; i++) { const a = rnd(0, 6.28), d = rnd(r * 0.4, r); game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: rnd(-14, 14), vy: rnd(-26, -6), r: rnd(2, 4), life: 0.6, maxLife: 0.6, color: i % 2 ? '#c98cff' : '#9fe7ff' }); }
       }
     }
 
