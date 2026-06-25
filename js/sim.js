@@ -85,6 +85,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'cap_plague', name: '瘟疫核爆', desc: '畢業大絕（火+毒）：你佈下的毒霧會週期性自動連環引爆（距你太近的不引爆）。', apply: () => { game.stats.capstone = 'plague'; toast('瘟疫核爆！毒霧開始自爆'); } },
     { id: 'cap_storm', name: '磁暴奇點', desc: '畢業大絕（土+雷）：週期生成磁力奇點把敵人吸成一團，塌縮時雷鏈貫穿引爆。', apply: () => { game.stats.capstone = 'storm'; toast('磁暴奇點！敵人將被吸攏電穿'); } },
     { id: 'cap_frostpoison', name: '凍毒領域', desc: '畢業大絕（冰+毒）：身周凝結持續凍毒光環，範圍內敵人被冰緩並中毒。', apply: () => { game.stats.capstone = 'frostpoison'; toast('凍毒領域！身周凝結劇毒寒霜'); } },
+    { id: 'cap_plasma', name: '電漿風暴', desc: '畢業大絕（火+雷）：一顆電漿球在場上自走，週期爆裂並雷鏈導電，獵殺敵人。', apply: () => { game.stats.capstone = 'plasma'; toast('電漿風暴！電漿球開始獵殺'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -123,6 +124,7 @@ import { game, keys, mouse, CAM } from './state.js';
     game.walls.length = 0;
     game.oils.length = 0;
     game.blackHoles.length = 0;
+    game.plasmaOrb = null;
     game.props.length = 0;
     game.bossWarnings.length = 0;
     game.particles.length = 0;
@@ -152,7 +154,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒)
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -729,6 +731,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'cap_plague') return !s.capstone && owns('fire') && owns('poison'); // capstone: fire+poison
     if (up.id === 'cap_storm') return !s.capstone && owns('earth') && owns('lightning'); // capstone: earth+lightning
     if (up.id === 'cap_frostpoison') return !s.capstone && owns('ice') && owns('poison'); // capstone: ice+poison
+    if (up.id === 'cap_plasma') return !s.capstone && owns('fire') && owns('lightning'); // capstone: fire+lightning
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1378,6 +1381,31 @@ import { game, keys, mouse, CAM } from './state.js';
         game.auraTimer = 0.6;
         addRing(p.x, p.y, r, '#9fe0d0', 0.22, 3);
         for (let i = 0; i < 4; i++) { const a = rnd(0, 6.28), d = rnd(r * 0.4, r); game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: rnd(-12, 12), vy: rnd(-24, -6), r: rnd(2, 4), life: 0.6, maxLife: 0.6, color: i % 2 ? '#bff4ff' : '#a7ff45' }); }
+      }
+    }
+    // capstone 電漿風暴 (火+雷): a self-roaming plasma orb that hunts foes, bursting + conducting where it passes.
+    // A mobile autonomous hazard — it homes onto the nearest enemy, bounces off walls, and only ever hurts enemies.
+    if (game.stats.capstone === 'plasma' && game.state === 'playing') {
+      if (!game.plasmaOrb) { const p = game.player; game.plasmaOrb = { x: clamp(p.x, 40, W - 40), y: clamp(p.y, 40, H - 40), vx: rnd(-1, 1) || 1, vy: rnd(-1, 1) || 1, zap: 0 }; }
+      const orb = game.plasmaOrb;
+      const speed = 150 + spellMastery() * 12;
+      const tgt = nearestEnemy(orb.x, orb.y, 9999); // homing servant: drift toward the nearest foe
+      if (tgt) { const a = Math.atan2(tgt.y - orb.y, tgt.x - orb.x); orb.vx += Math.cos(a) * 2.4; orb.vy += Math.sin(a) * 2.4; }
+      const sp = Math.hypot(orb.vx, orb.vy) || 1; orb.vx = orb.vx / sp * speed; orb.vy = orb.vy / sp * speed;
+      let nx = orb.x + orb.vx * dt, ny = orb.y + orb.vy * dt;
+      if (circleHitsSolid(nx, orb.y, 10) || nx <= 16 || nx >= W - 16) { orb.vx *= -1; nx = orb.x; }
+      if (circleHitsSolid(orb.x, ny, 10) || ny <= 16 || ny >= H - 16) { orb.vy *= -1; ny = orb.y; }
+      orb.x = clamp(nx, 16, W - 16); orb.y = clamp(ny, 16, H - 16);
+      game.particles.push({ x: orb.x, y: orb.y, vx: rnd(-24, 24), vy: rnd(-24, 24), r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: Math.random() < 0.5 ? '#bdf5ff' : '#ffb46a' });
+      orb.zap -= dt;
+      if (orb.zap <= 0) { // periodic 爆裂 (radial damage) + 導電 (chain) where it sits
+        orb.zap = 0.7;
+        const br = 36 + game.stats.size * 5;
+        for (const e of game.enemies) { if (!e.dead && Math.hypot(e.x - orb.x, e.y - orb.y) < br + e.r) { damageEnemy(e, 16 + game.stats.size * 4, orb.x, orb.y, '電漿風暴'); e.stunTimer = Math.max(e.stunTimer || 0, 0.25); } }
+        chainLightningFrom(orb.x, orb.y, null, 16 + game.stats.storm * 3);
+        if (tileAtPixel(orb.x, orb.y) === TILE_WATER) addElectricZone(orb.x, orb.y, 52, 0.6);
+        addRing(orb.x, orb.y, br, '#9fe7ff', 0.22, 3);
+        game.screenShake = Math.max(game.screenShake, 2);
       }
     }
 

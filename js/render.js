@@ -479,6 +479,11 @@ let ctx = screenCtx;
   }
   function syncProjectiles() {
     clearDynamic(projGroup);
+    if (game.plasmaOrb && game.state === 'playing' && game.stats.capstone === 'plasma') { // 電漿風暴: roaming plasma orb
+      const o = game.plasmaOrb, R = 13 + game.stats.size * 1.5;
+      addProjectileModel('plasma', o.x, o.y, R, 0x9fe7ff, o.vx, o.vy);
+      const halo = new THREE.Mesh(sphereGeo, tmpMat(0xffb46a, 0.2, true)); halo.scale.setScalar(R * 3.2); halo.position.set(o.x, PROJZ, o.y); projGroup.add(halo);
+    }
     for (const fb of game.fireballs) addProjectileModel(fb.kind, fb.x, fb.y, (fb.r || 7) * 1.25, colorHex(fb.color || '#ffffff'), fb.vx, fb.vy);
     for (const b of game.enemyProjectiles) addProjectileModel('fire', b.x, b.y, (b.r || 6) * 1.15, colorHex(b.color || '#ff8c4d'), b.vx, b.vy);
     for (const ib of game.iceBolts) addProjectileModel('ice', ib.x, ib.y, (ib.r || 6) * 1.3, 0xbff4ff, ib.vx, ib.vy);
@@ -1034,7 +1039,7 @@ let ctx = screenCtx;
       equip_oil: ['火', '高風險', '副攻'], equip_blackhole: ['環境', '副攻'],
       fist_mode: ['近戰', '破壞'], lightpalm_mode: ['雷', '近戰', '控場'], windpalm_mode: ['風', '近戰', '控場'],
       vitality: ['通用'], swift: ['通用'], second_wind: ['通用'],
-      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業'], cap_storm: ['土', '雷', '畢業'], cap_frostpoison: ['冰', '毒', '畢業']
+      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業'], cap_storm: ['土', '雷', '畢業'], cap_frostpoison: ['冰', '毒', '畢業'], cap_plasma: ['火', '雷', '畢業']
     };
     return T[up.id] || ['升級'];
   }
