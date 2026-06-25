@@ -429,6 +429,9 @@
       dashDirY: 0,
       dashSpeed: 520,
       lungeStrike: false,
+      dashEl: null,
+      dashCharge: false,
+      dashArrive: false,
       fistHand: 0,
       fistAnim: 0,
       fistAnimMax: 0.14,
@@ -1605,8 +1608,12 @@
     p.invuln = Math.max(0, p.invuln - dt);
     p.hurtTimer = Math.max(0, p.hurtTimer - dt);
     p.facing = Math.atan2(mouse.y - p.y, mouse.x - p.x);
-    // Lunge payoff: the frame a 突進 ends, throw its gap-closing strike toward the cursor.
-    if (p.lungeStrike && p.dashTime <= 0) { p.lungeStrike = false; meleeAttack(p.facing); }
+    if (p.dashTime <= 0) {
+      // Lunge payoff (A): a 突進 ends with a gap-closing melee strike toward the cursor.
+      if (p.lungeStrike) { p.lungeStrike = false; meleeAttack(p.facing); }
+      // Element shaping (B): fire/lightning dashes detonate where they land.
+      if (p.dashArrive) { p.dashArrive = false; dashArrival(p); }
+    }
 
     let mx = 0, my = 0;
     if (keys.has('w') || keys.has('arrowup')) my -= 1;
@@ -1652,6 +1659,13 @@
         p.dashSpeed = 520;
         p.dashTime = 0.13;
       }
+      // Direction B: the dash element reshapes the move itself, not just the trail it lays.
+      // Long-range stays build-gated — only lightning (a build commitment) lengthens the dash.
+      const dEl = dashElement();
+      p.dashEl = dEl; p.dashCharge = false; p.dashArrive = false;
+      if (dEl === 'lightning') { p.dashSpeed *= 1.4; p.dashTime *= 0.88; p.dashArrive = true; } // 瞬閃: snappy + longer reach, arrival zap
+      else if (dEl === 'earth') { p.dashCharge = true; }                                        // 衝撞: heavy ram (handled in dashTrail)
+      else if (dEl === 'fire') { p.dashArrive = true; }                                         // 火尾 + 結尾小爆
       p.dashDirX = dirX; p.dashDirY = dirY;
       p.invuln = Math.max(p.invuln, p.dashTime + 0.05); // i-frames cover the whole move
       game.screenShake = Math.max(game.screenShake, lunge ? 3 : 2);
@@ -1740,25 +1754,48 @@
     // lay an element trail node on a short throttle
     if (p.dashTrailCd <= 0) {
       if (el && DASH_FX[el]) DASH_FX[el](p.x, p.y);
+      if (p.dashCharge) breakThinWalls(p.x, p.y, p.r + 6); // 土衝撞: ram smashes thin walls it crosses
       for (let i = 0; i < 3; i++) game.particles.push({ x: p.x, y: p.y, vx: rnd(-50, 50), vy: rnd(-50, 50), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col });
       p.dashTrailCd = 0.04;
     }
     // offensive dash: bump enemies passed through (once each)
     if (!p.dashHits) p.dashHits = new Set();
-    const dmg = 8 + game.stats.dashPower * 6 + game.stats.size * 2;
+    const charge = p.dashCharge;                                                      // 土衝撞 hits harder + knocks back hard
+    const dmg = (8 + game.stats.dashPower * 6 + game.stats.size * 2) * (charge ? 1.6 : 1);
+    const kb = charge ? 520 : 240;
     for (const e of game.enemies) {
       if (e.dead || p.dashHits.has(e)) continue;
       if (Math.hypot(e.x - p.x, e.y - p.y) < p.r + e.r + 4) {
         p.dashHits.add(e);
         damageEnemy(e, dmg, p.x, p.y, '衝刺');
         const a = angleTo(p, e);
-        e.vx = (e.vx || 0) + Math.cos(a) * 240;
-        e.vy = (e.vy || 0) + Math.sin(a) * 240;
+        e.vx = (e.vx || 0) + Math.cos(a) * kb;
+        e.vy = (e.vy || 0) + Math.sin(a) * kb;
         if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.1); e.chilled = true; }
         if (el === 'poison') addPoisonCloud(e.x, e.y, 18, 2.0);
+        if (charge) game.screenShake = Math.max(game.screenShake, 3);
       }
     }
     for (const pr of game.props) { if (Math.hypot(pr.x - p.x, pr.y - p.y) < p.r + pr.r + 4) pushProp(pr, p.x - p.vx * 0.05, p.y - p.vy * 0.05, 360); } // dash shoves crates
+  }
+  // Direction B arrival burst: fire detonates a small blaze, lightning zaps where the dash lands.
+  function dashArrival(p) {
+    const el = p.dashEl;
+    if (el === 'fire') {
+      igniteGrass(p.x, p.y, 30);
+      addFireZone(p.x, p.y, 30 + game.stats.dashPower * 8, 1.0, true);
+      addRing(p.x, p.y, 28, '#ff9a3c', 0.3, 4);
+    } else if (el === 'lightning') {
+      const r = 56 + game.stats.dashPower * 8, dmg = 10 + game.stats.dashPower * 4 + game.stats.size * 2;
+      for (const e of game.enemies) {
+        if (e.dead) continue;
+        if (Math.hypot(e.x - p.x, e.y - p.y) < r) { damageEnemy(e, dmg, p.x, p.y, '瞬閃'); e.slowTimer = Math.max(e.slowTimer || 0, 0.6); }
+      }
+      if (tileAtPixel(p.x, p.y) === TILE_WATER) addElectricZone(p.x, p.y, r, 0.6);
+      addRing(p.x, p.y, r * 0.6, '#bfe6ff', 0.25, 4);
+      for (let i = 0; i < 10; i++) { const a = rnd(0, 6.28), sp = rnd(140, 280); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#bfe6ff' }); }
+    }
+    game.screenShake = Math.max(game.screenShake, 3);
   }
 
   // --- Secondary slot: build-defined spell on one button ------------------
