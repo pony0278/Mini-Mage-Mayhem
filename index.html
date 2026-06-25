@@ -895,6 +895,7 @@
     game.stats.upgradeNames.push(upgradeName(up));
     up.apply();
     game.state = 'playing';
+    if (game.training) return; // training arena: apply effect only, no wave progression
     if (game.wave >= 5 && !game.bossStarted) {
       healPlayer(18);
       addText(game.player.x, game.player.y - 46, 'Boss 前恢復', '#afff9d');
@@ -3697,6 +3698,28 @@
     return { label: '升級', color: '#fff1bb' };
   }
 
+  // Multiple build tags per upgrade card (max 3). See docs/design-vision §10.
+  const TAGCOLOR = {
+    '火': '#ffbd66', '冰': '#bff4ff', '雷': '#9fe7ff', '毒': '#d998ff', '精通': '#ffd36d',
+    '元素': '#ffe6a7', '近戰': '#e0b07a', '環境': '#8ee07a', '控場': '#9fe7ff',
+    '破壞': '#caa472', '高風險': '#ff7b72', '投擲': '#dff3ff', '衝刺': '#b7d8ff',
+    '副攻': '#8cecff', '通用': '#d7a0ff', '改造': '#fff1bb'
+  };
+  function upgradeTags(up) {
+    if (up.element) return isMastery(up) ? [ELEMENT_INFO[up.element].name, '精通'] : [ELEMENT_INFO[up.element].name, '元素'];
+    const T = {
+      split: ['改造'], explode: ['改造', '破壞'], trail: ['改造', '環境'], haste: ['改造'],
+      big: ['改造'], vamp: ['通用'], spread: ['環境'], toxic_boom: ['毒', '環境'],
+      shock: ['雷', '控場'], ice_lake: ['冰', '環境'], ice_shatter: ['冰', '控場'], danger: ['高風險'],
+      dash_cd: ['衝刺'], dash_power: ['衝刺', '近戰'],
+      equip_icewall: ['冰', '環境', '副攻'], equip_earthwall: ['環境', '破壞', '副攻'],
+      equip_oil: ['火', '高風險', '副攻'], equip_wind: ['投擲', '環境', '副攻'],
+      equip_lightpalm: ['雷', '近戰', '副攻'], equip_blackhole: ['環境', '副攻'],
+      fist_mode: ['近戰', '破壞'], vitality: ['通用'], swift: ['通用'], second_wind: ['通用']
+    };
+    return T[up.id] || ['升級'];
+  }
+
   function drawUpgrade() {
     ctx.fillStyle = 'rgba(0,0,0,.64)';
     ctx.fillRect(0, 0, W, H);
@@ -3712,12 +3735,20 @@
       const x = 165 + i * 215;
       const y = 198;
       drawPanel(x, y, 195, 238);
-      const meta = upgradeMeta(up);
-      ctx.fillStyle = meta.color;
-      ctx.fillRect(x + 14, y + 14, 58, 22);
-      ctx.fillStyle = '#1b1420';
-      ctx.font = '900 12px system-ui, sans-serif';
-      ctx.fillText(meta.label, x + 43, y + 30);
+      // build tags (chips)
+      const tags = upgradeTags(up).slice(0, 3);
+      ctx.textAlign = 'left';
+      ctx.font = '900 11px system-ui, sans-serif';
+      let chipX = x + 14;
+      for (const t of tags) {
+        const w = ctx.measureText(t).width + 12;
+        roundRectPath(ctx, chipX, y + 12, w, 18, 5);
+        ctx.fillStyle = TAGCOLOR[t] || '#fff1bb'; ctx.fill();
+        ctx.fillStyle = '#1b1420';
+        ctx.fillText(t, chipX + 6, y + 25);
+        chipX += w + 4;
+      }
+      ctx.textAlign = 'center';
       ctx.fillStyle = '#ffd36d';
       ctx.font = '900 19px system-ui, sans-serif';
       ctx.fillText(`${i + 1}. ${upgradeName(up)}`, x + 98, y + 58);
