@@ -193,6 +193,7 @@
     walls: [],
     oils: [],
     blackHoles: [],
+    props: [],
     bossWarnings: [],
     particles: [],
     rings: [],
@@ -327,6 +328,7 @@
     game.walls.length = 0;
     game.oils.length = 0;
     game.blackHoles.length = 0;
+    game.props.length = 0;
     game.bossWarnings.length = 0;
     game.particles.length = 0;
     game.rings.length = 0;
@@ -1529,6 +1531,7 @@
     updateWalls(dt);
     updateOil(dt);
     updateBlackHoles(dt);
+    updateProps(dt);
 
     game.enemies = game.enemies.filter(e => !e.dead);
 
@@ -1663,6 +1666,7 @@
         if (el === 'poison') addPoisonCloud(e.x, e.y, 18, 2.0);
       }
     }
+    for (const pr of game.props) { if (Math.hypot(pr.x - p.x, pr.y - p.y) < p.r + pr.r + 4) pushProp(pr, p.x - p.vx * 0.05, p.y - p.vy * 0.05, 360); } // dash shoves crates
   }
 
   // --- Secondary slot: build-defined spell on one button ------------------
@@ -1739,6 +1743,14 @@
     }
     const shove = (arr) => { for (const c of arr) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d > range) continue; const a = Math.atan2(c.y - p.y, c.x - p.x); if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.35) continue; c.x = clamp(c.x + Math.cos(angle) * 64, 0, W); c.y = clamp(c.y + Math.sin(angle) * 64, 0, H); } };
     shove(game.poisonClouds); shove(game.fireZones); shove(game.steamClouds);
+    for (const pr of game.props) {                    // 風推: shove crates along the aim (→ ram enemies)
+      const d = Math.hypot(pr.x - p.x, pr.y - p.y);
+      if (d > range) continue;
+      const a = Math.atan2(pr.y - p.y, pr.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.2) continue;
+      const f = 540 * (1 - d / range) + 180;
+      pr.vx = (pr.vx || 0) + Math.cos(angle) * f; pr.vy = (pr.vy || 0) + Math.sin(angle) * f;
+    }
     for (let i = 0; i < 16; i++) { const a = angle + rnd(-halfAng, halfAng), sp = rnd(140, 280); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#dff3ff' }); }
     addRing(fx, fy, hitR, '#dff3ff', 0.24, 3); game.screenShake = Math.max(game.screenShake, 3);
   }
@@ -1781,6 +1793,7 @@
       }
     }
     breakThinWalls(fx, fy, r);
+    for (const pr of game.props) { if (Math.hypot(pr.x - fx, pr.y - fy) < r + pr.r + 8) shatterProp(pr, 'break'); } // 土碎: smash crates → 碎片
     if (el === 'fire') { addFireZone(fx, fy, 18, 0.7, true); igniteGrass(fx, fy, 20); }
     else if (el === 'lightning' && tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 40, 0.6);
     const col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888';
@@ -1815,6 +1828,7 @@
     }
     if (tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 72, 0.9);
     else if (tileAtPixel(p.x, p.y) === TILE_WATER) addElectricZone(p.x, p.y, 72, 0.9);
+    for (const pr of game.props) { if (Math.hypot(pr.x - fx, pr.y - fy) < r + pr.r + 8) { pr.charge = 'lightning'; pr.chargeTimer = 5; pr.zapCd = 0; addRing(pr.x, pr.y, pr.r + 8, '#9fe7ff', 0.3, 3); } } // 雷充能: charge crate → mobile electric wall
     addRing(fx, fy, r, '#9fe7ff', 0.25, 3); game.screenShake = Math.max(game.screenShake, 3);
     for (let i = 0; i < 8; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#bdf5ff' });
   }
@@ -1873,6 +1887,84 @@
       if (bh.life <= 0 && !bh.exploded) { bh.exploded = true; addExplosion(bh.x, bh.y, bh.r * 0.9, 46, '黑洞塌縮'); }
     }
     game.blackHoles = game.blackHoles.filter(bh => bh.life > -0.05);
+  }
+
+  // ===== Interactive props (keystone) — a crate you can push / break / charge =====
+  // Minimal set validated in training: 風掌 pushes it (ram), 土拳 breaks it (碎片),
+  // 雷掌 charges it (zaps + becomes a mobile electric wall when pushed).
+  function spawnCrate(x, y) {
+    game.props.push({ x: clamp(x, 40, W - 40), y: clamp(y, 40, H - 40), vx: 0, vy: 0, r: 17, hp: 60, maxHp: 60, charge: null, chargeTimer: 0, zapCd: 0, burn: 0 });
+  }
+  function pushProp(pr, fromX, fromY, force) {
+    const a = Math.atan2(pr.y - fromY, pr.x - fromX);
+    pr.vx = (pr.vx || 0) + Math.cos(a) * force; pr.vy = (pr.vy || 0) + Math.sin(a) * force;
+  }
+  function shatterProp(pr, reason) {
+    if (pr.dead) return;
+    pr.dead = true; const cx = pr.x, cy = pr.y, charged = pr.charge === 'lightning';
+    for (const e of game.enemies) {                  // fragments bite nearby enemies
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - cx, e.y - cy);
+      if (d < 72 + e.r) {
+        damageEnemy(e, 18, cx, cy, '碎片');
+        const a = Math.atan2(e.y - cy, e.x - cx);
+        e.vx = (e.vx || 0) + Math.cos(a) * 190; e.vy = (e.vy || 0) + Math.sin(a) * 190;
+        if (charged) { e.stunTimer = Math.max(e.stunTimer || 0, 0.5); }
+      }
+    }
+    const shardCol = reason === 'fire' ? '#ff8a3a' : '#caa472';
+    for (let i = 0; i < 16; i++) { const a = rnd(0, Math.PI * 2), sp = rnd(120, 320); game.particles.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: shardCol }); }
+    addRing(cx, cy, 64, reason === 'fire' ? '#ff8a3a' : '#d8b888', 0.3, 4);
+    if (reason === 'fire') addFireZone(cx, cy, 30, 1.0, true);
+    if (charged) addElectricZone(cx, cy, 64, 0.6);
+    game.screenShake = Math.max(game.screenShake, 4);
+  }
+  function updateProps(dt) {
+    if (!game.props.length) return;
+    for (const pr of game.props) {
+      if (pr.dead) continue;
+      const sp = Math.hypot(pr.vx, pr.vy);
+      if (sp > 1) {                                   // sliding: move, bounce off walls, ram enemies
+        let nx = pr.x + pr.vx * dt, ny = pr.y + pr.vy * dt;
+        if (circleHitsSolid(nx, pr.y, pr.r)) { pr.vx *= -0.3; nx = pr.x; }
+        if (circleHitsSolid(pr.x, ny, pr.r)) { pr.vy *= -0.3; ny = pr.y; }
+        pr.x = clamp(nx, pr.r, W - pr.r); pr.y = clamp(ny, pr.r, H - pr.r);
+        if (sp > 120) for (const e of game.enemies) {
+          if (e.dead) continue;
+          if (Math.hypot(e.x - pr.x, e.y - pr.y) < pr.r + e.r) {
+            damageEnemy(e, 14 + sp * 0.03, pr.x, pr.y, '撞擊');
+            const a = Math.atan2(e.y - pr.y, e.x - pr.x);
+            e.vx = (e.vx || 0) + Math.cos(a) * sp * 0.55; e.vy = (e.vy || 0) + Math.sin(a) * sp * 0.55;
+            pr.vx *= 0.6; pr.vy *= 0.6;
+            if (pr.charge === 'lightning') { e.stunTimer = Math.max(e.stunTimer || 0, 0.5); chainLightningFrom(e.x, e.y, e, 12); game.lightningBolts.push({ x1: pr.x, y1: pr.y, x2: e.x, y2: e.y, life: 0.12, maxLife: 0.12 }); }
+          }
+        }
+        const fr = Math.max(0, 1 - 3.6 * dt); pr.vx *= fr; pr.vy *= fr;
+      } else { pr.vx = 0; pr.vy = 0; }
+      // lightning charge: periodically zap the nearest enemy + electrify water it sits in
+      if (pr.charge === 'lightning') {
+        pr.chargeTimer -= dt; pr.zapCd -= dt;
+        if (pr.zapCd <= 0) {
+          pr.zapCd = 0.5; let best = null, bd = 86;
+          for (const e of game.enemies) { if (e.dead) continue; const d = Math.hypot(e.x - pr.x, e.y - pr.y); if (d < bd) { bd = d; best = e; } }
+          if (best) { damageEnemy(best, 8, pr.x, pr.y, '充能'); best.stunTimer = Math.max(best.stunTimer || 0, 0.3); game.lightningBolts.push({ x1: pr.x, y1: pr.y, x2: best.x, y2: best.y, life: 0.12, maxLife: 0.12 }); }
+          if (tileAtPixel(pr.x, pr.y) === TILE_WATER) addElectricZone(pr.x, pr.y, 44, 0.5);
+        }
+        if (pr.chargeTimer <= 0) pr.charge = null;
+      }
+      // fire: catching a fire zone ignites the crate; it burns down then bursts
+      if (pr.charge !== 'lightning') {
+        for (const fz of game.fireZones) { if (Math.hypot(fz.x - pr.x, fz.y - pr.y) < fz.r + pr.r) { pr.charge = 'fire'; break; } }
+      }
+      if (pr.charge === 'fire') {
+        pr.burn += dt; pr.zapCd -= dt;
+        if (pr.zapCd <= 0) { pr.zapCd = 0.1; for (let i = 0; i < 2; i++) game.particles.push({ x: pr.x + rnd(-8, 8), y: pr.y + rnd(-8, 8), vx: rnd(-20, 20), vy: rnd(-46, -12), r: rnd(2, 4), life: 0.4, maxLife: 0.4, color: '#ff8a3a' }); }
+        if (pr.burn > 1.6) { shatterProp(pr, 'fire'); continue; }
+      }
+      for (const ex of game.explosions) { if (Math.hypot(ex.x - pr.x, ex.y - pr.y) < ex.r + pr.r) { shatterProp(pr, 'break'); break; } }
+      if (!pr.dead && pr.hp <= 0) shatterProp(pr, 'break');
+    }
+    game.props = game.props.filter(p => !p.dead);
   }
 
 
@@ -2872,6 +2964,26 @@
     }
   }
 
+  // --- interactive props (crates) — rebuilt each frame (few of them) ---
+  const propGroup = new THREE.Group(); scene.add(propGroup);
+  function syncProps() {
+    propGroup.clear();
+    for (const pr of game.props) {
+      const charged = pr.charge === 'lightning', burning = pr.charge === 'fire';
+      const cracked = pr.hp < pr.maxHp;
+      const col = burning ? 0xff7a3a : charged ? 0x6fb8d8 : (cracked ? 0x9c7038 : 0xb98a52);
+      const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : 0x000000;
+      const s = pr.r * 1.9;
+      const box = makeBox(s, s, s, col, emis, (charged || burning) ? 0.7 : 0);
+      box.position.set(pr.x, pr.r * 0.95, pr.y);
+      box.rotation.y = (pr.x + pr.y) * 0.01;
+      propGroup.add(box);
+      const cap = makeBox(s * 1.04, 3, s * 1.04, burning ? 0x9c4422 : charged ? 0x3a7a90 : 0x7a5a32);
+      cap.position.set(pr.x, pr.r * 1.9, pr.y); cap.rotation.y = box.rotation.y; propGroup.add(cap);
+      if (charged) { const g = makeGlowSphere(pr.r * 1.7, 0x9fe7ff, 0.3); g.position.set(pr.x, pr.r, pr.y); propGroup.add(g); }
+    }
+  }
+
   // --- projectiles + ground effect discs (rebuilt each frame) ---
   const PROJZ = 18;
   const projGroup = new THREE.Group(); scene.add(projGroup);
@@ -3045,6 +3157,7 @@
     if (!gl3dOk) return;
     drawGroundTexture();
     syncWalls();
+    syncProps();
     const px = game.player ? game.player.x : W / 2;
     const pz = game.player ? game.player.y : H / 2;
     let shx = 0, shz = 0;
