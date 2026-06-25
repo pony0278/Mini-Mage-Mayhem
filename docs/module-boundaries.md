@@ -2,7 +2,7 @@
 
 > 用途：把目前 ~4273 行的單檔 `index.html`（inline `<script>` IIFE）拆成多個 ES module 的**邊界定義書**。
 > 目標：解決「太肥」維護性問題，同時把 **sim 核心抽成 headless**（= roadmap 的 B0，未來 BR / WASM 的地基），全程**零 build、仍是靜態頁**。
-> 狀態：**動工中**。已完成 0（刪死碼）→ 1（constants/utils/data）→ 1.5（state.js）→ 2（sim.js）→ 3（render.js）。內聯腳本剩 input handlers + loop + boot（index 已縮到 143 行）。剩 3.5（intent adapter）、4（input/main）、5（三檔收斂）。行號為早期快照（已漂移，僅供定位）。
+> 狀態：**結構重構完成** ✅。步驟 0→1→1.5→2→3→4→5 全做完:遊戲碼全在 `js/`（constants/utils/data/state/sim/render/main + camera-panel/training-panel），三份 HTML 是薄殼（index 56 行）。唯一剩下的是**選做的 3.5 intent adapter**（讓 sim 完全 headless;目前 sim 仍 import CAM/mouse/keys）。行號為早期快照（已漂移，僅供定位）。
 
 ---
 
@@ -125,8 +125,8 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
    - **camera-sandbox 特例**：其 render = index render + 相機面板 IIFE + 1 行 live-fov。render.js 取 index 版 **+ 補那行 live-fov**（對 index/training 是 no-op，因 CAM.fov 不變）→ 三檔共用同一 render.js;**相機面板 IIFE 當 island 留在 camera-sandbox 內聯**（只依賴 CAM + DOM）。
    - 三檔內聯砍到 **index 143 行 / training 265 / camera-sandbox 224**（原 ~4273）。驗證:語法全過;HTTP 三檔零錯誤;training 可玩;camera-sandbox 面板可調(fov 滑桿→CAM→render 即時生效)、渲染無誤。
 3.5. **（獨立）intent adapter**：把 sim 讀 mouse/CAM/keys 改成 `update(dt, intent)`，sim 變真 headless（roadmap B0）；`CAM` 從 state.js 移回 render.js。專心做 + 驗手感。
-4. **`input.js` + `main.js`**：輸入事件 → `intent`；`loop()` 接線。
-5. **三份 HTML 收斂**（§7-3）：`index/camera-sandbox/training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。
+4. ✅ **`main.js`**（含輸入處理 + loop + boot;input 暫不獨立成 input.js——rule of three，glue 很小）：`export setPaused`（camera-sandbox pause hook）、`window.__game` debug hook。
+5. ✅ **三份 HTML 收斂**（§7-3）：三檔都載 `js/main.js`；`camera-panel.js`（相機滑桿,import CAM+setPaused）、`training-panel.js`（測試面板,import game+sim helpers）做成各自的 add-on。**三檔內聯歸零**（index 56 行 / camera-sandbox 85 / training 91，全是 HTML+`<script src>`）。手動同步痛點消滅:改遊戲只動 `js/`。
 6. 每步用無頭 Puppeteer（改走 `python -m http.server`）截圖/讀狀態，確認**行為零變化**再進下一步。
 
 ---

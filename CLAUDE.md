@@ -6,26 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mini Mage Mayhem — a single-player, web, top-down magic roguelike (4 elements, fusions, elemental reactions, enemy waves, a boss). No framework, no bundler, no npm for the game itself; runtime deps are Three.js (vendored at `vendor/three.min.js`, r149 UMD global `THREE`) plus **build-free ES modules under `js/`**. The HTML files load the game via `<script type="module">` and `import` from `js/`.
 
-> **Refactor in progress** — the game JS is being split out of the single inline `<script>` into `js/` ES modules. The single source of truth for the boundaries/plan is `docs/module-boundaries.md`. Until the split finishes, the bulk of the game code is still inline (duplicated across the three HTML shells); only what's already extracted lives in `js/`.
+The game JS now lives in **`js/` ES modules** (build-free); the three HTML files are thin shells that load them. **There is no duplicated game code anymore — edit the modules, not the HTML.** History/rationale of the split: `docs/module-boundaries.md`.
 
-- `index.html` — the game (deployed as the site root `index.html`).
-- `camera-sandbox.html` — a copy of the game plus an on-screen camera-tuning panel (sliders for fov/angle/dist/azimuth/pan/lookY + pause). Keep its game logic in sync with `index.html` when changing shared (still-inline) behaviour.
-- `training.html` — repo-only test arena (panel to spawn enemies/props, switch builds; exposes `window.__game`). Keep its inline game logic in sync too.
-- `js/` — extracted ES modules. So far: `constants.js` (W/H/TILE/tile-enum), `utils.js` (rnd/clamp/dist/angleTo/norm/circleRectOverlap), `data.js` (ELEMENT_INFO, arenaTemplates, fusionKind, isX­Kind classifiers).
+- `js/constants.js` — `W/H/TILE/COLS/ROWS` + `TILE_*` enum.
+- `js/utils.js` — pure helpers (`rnd/clamp/dist/angleTo/norm/circleRectOverlap`).
+- `js/data.js` — pure data + classifiers (`ELEMENT_INFO`, `arenaTemplates`, `fusionKind`, `isX­Kind`).
+- `js/state.js` — the shared mutable singletons: `game` (session state), `keys`, `mouse`, `CAM` (`CAM` parked here transitionally; moves to render after the intent adapter, step 3.5).
+- `js/sim.js` — the **simulation core**: `game` mutation + all logic (spells/enemies/zones/reactions/player/dash/secondary/props), `upgradePool`/`SECONDARY`, `update(dt)`. Imports only constants/utils/data/state — never render/input. (Still reads `CAM`/`mouse`/`keys`; the intent adapter, step 3.5, will make it fully headless.)
+- `js/render.js` — 3D (Three.js voxel world) + 2D HUD. Reads game state; owns scene/camera/renderer/`ctx`. Imports sim only for HUD presentation helpers (`render → sim`, never reverse).
+- `js/main.js` — app glue: input handlers + main loop + boot. Shared by all three shells.
+- `js/camera-panel.js`, `js/training-panel.js` — page-specific add-ons (camera-tuning sliders / sandbox test panel).
+- `index.html` — the game (site root). Loads `js/main.js`.
+- `camera-sandbox.html` — game + camera panel. Loads `main.js` + `camera-panel.js`.
+- `training.html` — repo-only test arena (spawn enemies/props, switch builds; `window.__game` debug hook). Loads `main.js` + `training-panel.js`.
 - `vendor/three.min.js` — vendored Three.js. CDNs are blocked by the egress proxy; the npm registry is allowed, so re-vendor via `npm i three@0.149.0` and copy `build/three.min.js`.
-- `docs/` — design + roadmap docs (repo-only, not deployed). Start at `docs/README.md`; `docs/roadmap.md` holds the current A/B/C direction decision; `docs/module-boundaries.md` is the split plan.
+- `docs/` — design + roadmap docs (repo-only, not deployed). Start at `docs/README.md`; `docs/roadmap.md` holds the A/B/C direction decision; `docs/module-boundaries.md` documents the module split.
+
+> **Module DAG (acyclic):** `constants` → `utils`/`data` → `state` → `sim` → `render` → `main`/panels. Invariant: **`sim.js` must not import render/input/main** (keeps the sim headless-extractable for the BR path).
 
 ## No build / test / lint
 
-There is no build, test, or lint tooling. To sanity-check a change to the game JS, extract the inline module and run Node's syntax checker (treat as ESM — it has `import`s):
+There is no build, test, or lint tooling. To sanity-check a change, run Node's syntax checker on the modules (they're ESM — copy to `.mjs` so `node --check` treats them as modules):
 
 ```bash
-python3 - <<'PY'
-import re; s=open("index.html",encoding="utf-8").read()
-m=[x for x in re.findall(r"<script[^>]*>(.*?)</script>", s, re.S) if 'import' in x or '(() =>' in x]
-open("/tmp/_game.mjs","w").write(m[-1])
-PY
-node --check /tmp/_game.mjs   # and: node --check on each js/*.js (copy to .mjs)
+for f in js/*.js; do cp "$f" /tmp/_chk.mjs && node --check /tmp/_chk.mjs || echo "FAIL $f"; done
 ```
 
 To actually *see* a change, render it headlessly with Puppeteer. **WebGL needs SwiftShader flags** — without them `WebGLRenderer` throws and the page is blank:
@@ -36,17 +40,17 @@ To actually *see* a change, render it headlessly with Puppeteer. **WebGL needs S
 
 **ES modules do not load over `file://`** (browser CORS) — serve locally first: `python3 -m http.server 8099` then point Puppeteer at `http://localhost:8099/index.html`. The egress proxy blocks `github.io` and CDNs, so you cannot load the live Pages URL headlessly — test the local server instead.
 
-## Editing the file
+## Editing the files
 
-`index.html` is ~3500 lines. Small edits use the Edit tool; **large structural replacements are done with a Python splice script** (read file → `str.index`/`replace` between stable anchors → write), because exact-match edits over big blocks are fragile (watch for `\u` / `\n` escapes and full-width punctuation in the Chinese UI strings).
+Edit the `js/` modules directly (the HTML shells are tiny now). `sim.js` (~2600 lines) and `render.js` (~1100) are large; small edits use the Edit tool, **large structural moves via a Python splice script** (read → `str.index`/`replace`/line-slice between stable anchors → write), because exact-match edits over big blocks are fragile (watch for `\u`/`\n` escapes and full-width punctuation in the Chinese UI strings). Each guarded splice should assert its anchor matches exactly once.
 
 ## Architecture
 
 ### Simulation vs. rendering split
 The game **logic** runs on a flat 2D plane in pixel units: `W=960, H=640, TILE=32`, world coordinates `(x, y)` where `y` is depth. All gameplay (movement, collisions, elements, reactions, waves, boss) operates on this plane and is rendering-agnostic. This matters: the planned battle-royale path (see `docs/`) extracts this logic as a headless sim, and the 3D/art layer is irrelevant to it.
 
-- `const game = {...}` (~line 138) is the single mutable state object (player, enemies, projectiles, zones, particles, stats, map, run, wave/boss flags).
-- `update(dt)` advances the simulation; `draw()` renders; `loop(now)` ties them together with `requestAnimationFrame`.
+- `game` (exported from `js/state.js`) is the single mutable state object (player, enemies, projectiles, zones, particles, stats, map, run, wave/boss flags). Modules share it via live-binding `import` — only ever mutated in place, never reassigned.
+- `update(dt)` (`sim.js`) advances the simulation; `draw()` (`render.js`) renders; `loop(now)` (`main.js`) ties them together with `requestAnimationFrame`.
 - The tile map is `game.map` (a `ROWS×COLS` grid of `TILE_*` constants: floor/wall/thin/grass/burnt/water/ice). `makeMap(template)` builds arenas.
 
 ### Rendering: 3D via Three.js, 2D HUD overlay
@@ -65,4 +69,4 @@ The player's single spell is defined by up to two elements. `fusionKind(elements
 
 ## Deploy (GitHub Pages)
 
-`.github/workflows/deploy-pages.yml` publishes the repo root to Pages on every push to `main` (and via `workflow_dispatch`). It copies `index.html`, `camera-sandbox.html`, `vendor/`, and `.nojekyll` into `_site`. **`.nojekyll` is required** — without it Jekyll excludes `vendor/`, so Three.js 404s and the game is blank. `configure-pages` runs with `enablement: true`. Pushing to `main` is what updates the live site: <https://pony0278.github.io/Mini-Mage-Mayhem/>. After deploys, a hard refresh is often needed (the HTML carries no-cache meta, but browsers/Pages still cache).
+Pages is served **directly from the `main` branch root** (Settings → Pages → branch), so committing to `main` updates the live site — the `js/` modules and `vendor/` are served as static files. (`.github/workflows/deploy-pages.yml` is a kept-but-disabled Actions alternative; it copies `index.html`, `camera-sandbox.html`, `vendor/`, **`js/`**, and `.nojekyll` into `_site`.) **`.nojekyll` is required** — without it Jekyll excludes `vendor/`/`js/`, so files 404 and the game is blank. `configure-pages` runs with `enablement: true`. Pushing to `main` is what updates the live site: <https://pony0278.github.io/Mini-Mage-Mayhem/>. After deploys, a hard refresh is often needed (the HTML carries no-cache meta, but browsers/Pages still cache).
