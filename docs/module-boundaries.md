@@ -115,7 +115,9 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 
 0. ✅ **先刪死碼**（§7-4，commit `9773c85`）：移除舊版 2D top-down 渲染器（§8 全部 12 函式 + `onGround` + `VIEW`/`TH` + 舊 ortho 註解），~501 行/檔。三檔同步、語法 OK、0 殘留引用、in-game 渲染無誤。**行為零變化**（原本就無人呼叫）。
 1. ✅ **最安全先抽**：`js/constants.js`（W/H/TILE/tile-enum）+ `js/utils.js`（rnd/clamp/dist/angleTo/norm/circleRectOverlap）+ `js/data.js`（ELEMENT_INFO/arenaTemplates/fusionKind/isX­Kind）。三檔 `<script>` 改 `type="module"` + `import`，移除內聯定義。HTTP 載入零錯誤、in-game 渲染無誤。**首次引入 ESM**：本地測試改走 `python -m http.server`；deploy workflow 加 copy `js/`（Pages 目前走分支直出，`js/` 已在 root，無破壞）。
-2. **抽 render**：合併成**單一 `render.js`**（§7-1）。render 只讀 sim 狀態，搬完行為不變。
+1.5. **抽 `state.js`**（§7-5，render 的前置）：`export const game / keys / mouse`（三個跨界共享的可變單例；已驗證只原地 mutate、從不重新賦值 → live-binding 安全）。`state.js` 只 import `constants`（mouse 初值用 W/H）。
+2. **抽 render**：合併成**單一 `render.js`**（§7-1）。`import { game, mouse } from state.js`；私有 module-level 持有 `scene/camera/renderer/ctx/CAM/幾何·材質快取/actorMeshes/project`。render 只讀 game，搬完行為不變。
+   - **CAM 過渡**：CAM 歸 render.js;此時仍內聯的 sim 讀 `CAM.azimuth` → 暫時 `import { CAM } from './render.js'`（1 行，步驟 3 上 intent adapter 後移除）。
 3. **抽 sim.js**：把 278–2650 整塊搬出；**同時**做 §3 的 `update(dt, intent)` 接縫，斷開 CAM/mouse（§7-2，避免循環依賴）。
 4. **`input.js` + `main.js`**：輸入事件 → `intent`；`loop()` 接線。
 5. **三份 HTML 收斂**（§7-3）：`index/camera-sandbox/training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。
@@ -129,6 +131,7 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 2. **`update(dt, intent)` 接縫**：✅ **跟 sim 抽取一起做**。否則 `sim.js` 仍 import render 的 `CAM`/`mouse` → 循環依賴、違反 DAG 鐵律。等於是抽 sim 時的必做步驟。
 3. **三份 HTML 共享**：✅ `index` / `camera-sandbox` / `training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。**消滅「改一次 replay 到三檔」的手動同步**（`training.html` 已用 `window.__game`，接縫現成；需另外 expose `CAM` + 少量 hook）。
 4. **死碼**：✅ 已查證 —— 舊版 2D top-down 渲染器**無人呼叫**（證據與清單見 §8），**開工前先刪**，不把死重量搬進模組。
+5. **狀態存取介面**：✅ **`state.js` 匯出 `game`（+ `keys`/`mouse`），各模組 live-binding `import`**，不走參數注入。理由：單機只有一個 game 實例;`game` 已驗證只原地 mutate、從不重新賦值，import 綁定永遠指向最新狀態;render 函式零簽名改動。連帶：**新增步驟 1.5（先抽 `state.js`）**作為 render 的前置（render3D 讀 game、updateMouseWorld 寫 mouse，無法在它們還內聯時被抽出）。BR 不受擋：伺服器端若要多實例，`sim.js` 函式可改吃 state 參數，客戶端維持單例。
 
 > 本文件是拆分的單一依據。邊界一旦動工，請更新 §0 狀態與各模組的「已抽出 ✅」標記。
 
