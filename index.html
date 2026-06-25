@@ -263,6 +263,7 @@
     { id: 'danger', name: '危險魔力', desc: '所有傷害大幅提高，但自傷也提高。', apply: () => { game.stats.damageMul *= 1.28; game.stats.selfDamageMul *= 1.24; toast('你變強了，也更危險了！'); } },
     { id: 'dash_cd', name: '疾風步', desc: '衝刺冷卻降低 30%。', apply: () => { game.stats.dashCdMul *= 0.7; toast('衝刺更頻繁了！'); } },
     { id: 'dash_power', name: '衝刺強化', desc: '衝刺傷害、擊退與元素留痕提高（衝刺流派）。', apply: () => { game.stats.dashPower += 1; toast('衝刺變成武器了！'); } },
+    { id: 'dash_charge', name: '疾風連步', desc: '衝刺多一段充能，可連續衝刺（雙閃/三閃）。', apply: () => { game.stats.dashCharges += 1; game.player.dashStock = game.stats.dashCharges; toast('衝刺多一段！'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -329,6 +330,7 @@
       cooldownMul: 1,
       dashCdMul: 1,
       dashPower: 0,
+      dashCharges: 1,
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -393,7 +395,9 @@
       cooldown: 0,
       lightningCooldown: 0,
       iceCooldown: 0,
-      dashCooldown: 0,
+      dashStock: 1,
+      dashRecharge: 0,
+      dashTapCd: 0,
       dashTime: 0,
       dashTrailCd: 0,
       dashHits: null,
@@ -929,6 +933,7 @@
     if (up.id === 'ice_lake' || up.id === 'ice_shatter') return owns('ice');
     if (up.id === 'shock') return owns('lightning');
     if (up.id === 'toxic_boom') return owns('poison');
+    if (up.id === 'dash_charge') return s.dashCharges < 3; // cap at triple-dash
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   function openUpgrade() {
@@ -1570,7 +1575,16 @@
     p.cooldown = Math.max(0, p.cooldown - dt);
     p.lightningCooldown = Math.max(0, p.lightningCooldown - dt);
     p.iceCooldown = Math.max(0, p.iceCooldown - dt);
-    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    // Dash charges (C): hold up to stats.dashCharges; each spent charge recharges serially.
+    p.dashTapCd = Math.max(0, p.dashTapCd - dt);
+    const dashMax = game.stats.dashCharges;
+    if (p.dashStock < dashMax) {
+      p.dashRecharge -= dt;
+      if (p.dashRecharge <= 0) {
+        p.dashStock = Math.min(dashMax, p.dashStock + 1);
+        p.dashRecharge = p.dashStock < dashMax ? 1.1 * game.stats.dashCdMul : 0;
+      }
+    }
     p.dashTime = Math.max(0, p.dashTime - dt);
     p.dashTrailCd = Math.max(0, p.dashTrailCd - dt);
     p.fistAnim = Math.max(0, p.fistAnim - dt);
@@ -1599,8 +1613,10 @@
     const n = norm(_rX * mx + _fX * (-my), _rY * mx + _fY * (-my));
     let speed = p.speed;
 
-    if ((keys.has(' ') || keys.has('shift')) && p.dashCooldown <= 0) {
-      p.dashCooldown = 1.1 * game.stats.dashCdMul;
+    if ((keys.has(' ') || keys.has('shift')) && p.dashStock >= 1 && p.dashTapCd <= 0 && p.dashTime <= 0) {
+      p.dashStock -= 1;
+      p.dashTapCd = 0.22;                                                   // brief rhythm gate between chained dashes
+      if (p.dashRecharge <= 0) p.dashRecharge = 1.1 * game.stats.dashCdMul; // begin recharge if idle
       p.dashHits = new Set();   // enemies hit by this dash (offensive dash)
       p.dashTrailCd = 0;        // lay first trail node immediately
       p.lungeStrike = false;
@@ -4045,6 +4061,15 @@
     ctx.fillStyle = '#fff4db'; ctx.font = '900 14px system-ui, sans-serif'; ctx.textAlign = 'left';
     ctx.fillText(`${Math.ceil(p.hp)} / ${p.maxHp}`, 278, 44);
     ctx.fillStyle = '#9fe7ff'; ctx.fillRect(88, 54, 148 * (1 - clamp(p.cooldown / Math.max(0.05, 0.18 * game.stats.cooldownMul), 0, 1)), 7);
+    // dash charges (C): one pip per charge; the recharging pip fills up as it comes back.
+    { const n = game.stats.dashCharges, pw = 15, gap = 4, py = 63, rt = Math.max(0.05, 1.1 * game.stats.dashCdMul);
+      for (let i = 0; i < n; i++) {
+        const x = 240 + i * (pw + gap);
+        ctx.fillStyle = 'rgba(183,216,255,.16)'; ctx.fillRect(x, py, pw, 5);
+        const f = i < p.dashStock ? 1 : (i === p.dashStock ? 1 - clamp(p.dashRecharge / rt, 0, 1) : 0);
+        if (f > 0) { ctx.fillStyle = '#b7d8ff'; ctx.fillRect(x, py, pw * f, 5); }
+      }
+    }
     ctx.fillStyle = '#fff2cf'; ctx.font = '800 13px system-ui, sans-serif';
     ctx.fillText(`${game.bossStarted ? 'BOSS FIGHT' : 'WAVE ' + (game.wave || 0) + '/5'}   ☠ ${game.kills}   ✦ ${game.score}`, 88, 82);
 
@@ -4180,7 +4205,7 @@
     if (['split','explode','trail','big','spread','toxic_boom','ice_lake','ice_shatter','shock'].includes(up.id)) return { label: '改造', color: '#fff1bb' };
     if (up.id && up.id.indexOf('equip_') === 0) return { label: isSecMastery(up) ? '強化' : '副攻', color: '#8cecff' };
     if (['fist_mode','lightpalm_mode','windpalm_mode'].includes(up.id)) return { label: '肉搏', color: '#e0b07a' };
-    if (['dash_cd','dash_power'].includes(up.id)) return { label: '衝刺', color: '#b7d8ff' };
+    if (['dash_cd','dash_power','dash_charge'].includes(up.id)) return { label: '衝刺', color: '#b7d8ff' };
     if (['danger','vamp','haste','vitality','swift','second_wind'].includes(up.id)) return { label: '通用', color: '#d7a0ff' };
     return { label: '升級', color: '#fff1bb' };
   }
@@ -4198,7 +4223,7 @@
       split: ['改造'], explode: ['改造', '破壞'], trail: ['改造', '環境'], haste: ['改造'],
       big: ['改造'], vamp: ['通用'], spread: ['環境'], toxic_boom: ['毒', '環境'],
       shock: ['雷', '控場'], ice_lake: ['冰', '環境'], ice_shatter: ['冰', '控場'], danger: ['高風險'],
-      dash_cd: ['衝刺'], dash_power: ['衝刺', '近戰'],
+      dash_cd: ['衝刺'], dash_power: ['衝刺', '近戰'], dash_charge: ['衝刺'],
       equip_icewall: ['冰', '環境', '副攻'], equip_earthwall: ['環境', '破壞', '副攻'],
       equip_oil: ['火', '高風險', '副攻'], equip_blackhole: ['環境', '副攻'],
       fist_mode: ['近戰', '破壞'], lightpalm_mode: ['雷', '近戰', '控場'], windpalm_mode: ['風', '近戰', '控場'],
