@@ -276,6 +276,7 @@
     { id: 'inject_ice', element: 'ice', name: '注入寒冰', desc: '把目前魔法飛彈改造成冰箭；若已有火，會融合成蒸氣彈。', apply: () => injectElement('ice') },
     { id: 'inject_lightning', element: 'lightning', name: '注入雷電', desc: '把目前魔法飛彈改造成雷彈；命中水池會導電。', apply: () => injectElement('lightning') },
     { id: 'inject_poison', element: 'poison', name: '注入劇毒', desc: '把目前魔法飛彈改造成毒彈；若已有火，會融合成毒爆彈。', apply: () => injectElement('poison') },
+    { id: 'inject_earth', element: 'earth', name: '注入大地', desc: '把目前魔法飛彈改造成巨石：重擊擊退、打碎薄牆、迸出碎石；與火/冰/雷/毒融合成熔岩/凍岩/磁暴/毒沼。', apply: () => injectElement('earth') },
     { id: 'split', name: '分裂', desc: '目前魔法飛彈變成多發，適合擴大元素災難。', apply: () => { game.stats.split += 1; toast('魔法飛彈開始分裂！'); } },
     { id: 'explode', name: '命中爆炸', desc: '目前魔法飛彈命中或撞牆時會爆炸。', apply: () => { game.stats.explosive += 1; toast('命中會爆炸！'); } },
     { id: 'trail', name: '元素留痕', desc: '飛行路徑會留下目前元素的殘留區域。', apply: () => { game.stats.trail += 1; toast('飛彈開始留下元素痕跡！'); } },
@@ -358,7 +359,7 @@
       dashPower: 0,
       secondary: null,
       mainMode: 'spell',
-      mastery: { fire: 0, ice: 0, lightning: 0, poison: 0 },
+      mastery: { fire: 0, ice: 0, lightning: 0, poison: 0, earth: 0 },
       size: 0,
       siphon: 0,
       lightningChain: 0,
@@ -574,7 +575,12 @@
     plasma: { name: '電漿', color: '#ffcf6f', core: '#eaffff' },
     frost_shock: { name: '電霜', color: '#bff4ff', core: '#ffffff' },
     toxic_shock: { name: '電毒', color: '#b794ff', core: '#eaffff' },
-    venom_frost: { name: '毒冰', color: '#b7ffd2', core: '#ffffff' }
+    venom_frost: { name: '毒冰', color: '#b7ffd2', core: '#ffffff' },
+    earth: { name: '土', color: '#c79a5b', core: '#ffe1a8' },
+    magma: { name: '熔岩', color: '#ff7a3a', core: '#ffe08a' },
+    frost_rock: { name: '凍岩', color: '#a9d8e6', core: '#ffffff' },
+    magnet: { name: '磁暴', color: '#b8a0ff', core: '#eaffff' },
+    toxic_mire: { name: '毒沼', color: '#9fae5a', core: '#e6ffa8' }
   };
 
   function fusionKind(elements) {
@@ -587,6 +593,10 @@
     if (s.has('lightning') && s.has('ice')) return 'frost_shock';
     if (s.has('lightning') && s.has('poison')) return 'toxic_shock';
     if (s.has('ice') && s.has('poison')) return 'venom_frost';
+    if (s.has('earth') && s.has('fire')) return 'magma';
+    if (s.has('earth') && s.has('ice')) return 'frost_rock';
+    if (s.has('earth') && s.has('lightning')) return 'magnet';
+    if (s.has('earth') && s.has('poison')) return 'toxic_mire';
     return [...s].join('_');
   }
 
@@ -594,7 +604,8 @@
     const names = {
       neutral: '魔法飛彈', fire: '火球', ice: '冰箭', lightning: '雷彈', poison: '毒彈',
       steam: '蒸氣彈', toxic_boom: '毒爆彈', plasma: '電漿彈', frost_shock: '電霜彈',
-      toxic_shock: '電毒彈', venom_frost: '毒冰刺'
+      toxic_shock: '電毒彈', venom_frost: '毒冰刺',
+      earth: '巨石', magma: '熔岩彈', frost_rock: '凍岩', magnet: '磁暴彈', toxic_mire: '毒沼彈'
     };
     return names[kind] || '融合飛彈';
   }
@@ -617,7 +628,12 @@
       plasma: '火雷融合，命中爆裂並導電，清場強但自傷危險。',
       frost_shock: '雷冰融合，導電與緩速並存，適合控住衝鋒怪。',
       toxic_shock: '雷毒融合，產生帶電毒雲，持續傷害與連鎖兼具。',
-      venom_frost: '冰毒融合，緩速並留下毒性冰刺，控場穩定。'
+      venom_frost: '冰毒融合，緩速並留下毒性冰刺，控場穩定。',
+      earth: '巨石彈，重擊擊退、打碎薄牆，落地迸出碎石。',
+      magma: '土火融合，重擊後留下大片岩漿火池，焚燒兼控場。',
+      frost_rock: '土冰融合，重擊強化減速，凍住水面、破薄牆。',
+      magnet: '土雷融合，命中磁力吸引周圍敵人聚成一團再雷鏈。',
+      toxic_mire: '土毒融合，落地生成減速且持續中毒的毒沼。'
     };
     return desc[kind] || '未知融合，會造成不穩定的元素災難。';
   }
@@ -904,7 +920,8 @@
       fire: '火焰精通：每級提升火球傷害、火場範圍與燃燒強度。',
       ice: '寒冰精通：每級提升緩速時間、冰面範圍與傷害。',
       lightning: '雷電精通：每級增加雷鏈跳數與導電強度。',
-      poison: '劇毒精通：每級擴大毒霧範圍、提升毒傷與毒爆。'
+      poison: '劇毒精通：每級擴大毒霧範圍、提升毒傷與毒爆。',
+      earth: '大地精通：每級提升巨石撞擊傷害、碎石與擊退。'
     }[element] || '強化目前元素。';
   }
   function isMastery(up) { return up.element && (game.stats.spellElements || []).includes(up.element); }
@@ -992,10 +1009,10 @@
     const sizeLevel = game.stats.size;
     const kind = game.stats.spellKind || 'neutral';
     const info = ELEMENT_INFO[kind] || ELEMENT_INFO.neutral;
-    const speedByKind = { neutral: 510, fire: 480, ice: 440, lightning: 570, poison: 430, steam: 390, toxic_boom: 420, plasma: 520, frost_shock: 500, toxic_shock: 480, venom_frost: 440 };
+    const speedByKind = { neutral: 510, fire: 480, ice: 440, lightning: 570, poison: 430, steam: 390, toxic_boom: 420, plasma: 520, frost_shock: 500, toxic_shock: 480, venom_frost: 440, earth: 360, magma: 380, frost_rock: 360, magnet: 430, toxic_mire: 350 };
     const mm = spellMastery(); // total mastery across the spell's current elements
     const r = ((kind === 'steam' ? 10 : 7) + sizeLevel * 2) * (1 + 0.04 * mm);
-    const baseDamage = { neutral: 15, fire: 17, ice: 12, lightning: 15, poison: 10, steam: 11, toxic_boom: 14, plasma: 18, frost_shock: 14, toxic_shock: 13, venom_frost: 12 }[kind] || 14;
+    const baseDamage = { neutral: 15, fire: 17, ice: 12, lightning: 15, poison: 10, steam: 11, toxic_boom: 14, plasma: 18, frost_shock: 14, toxic_shock: 13, venom_frost: 12, earth: 21, magma: 19, frost_rock: 16, magnet: 15, toxic_mire: 12 }[kind] || 14;
     const speed = speedByKind[kind] || 480;
     game.fireballs.push({
       x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
@@ -1256,10 +1273,12 @@
     igniteGrass(x, y, rr + 8 + game.stats.fireSpread * 5);
   }
 
-  function addPoisonCloud(x, y, r, life = 5.0) {
+  function addPoisonCloud(x, y, r, life = 5.0, mire = false) {
     const pm = mLvl('poison'); // poison mastery → larger, longer, nastier clouds
-    const rr = r + pm * 5, lf = life * (1 + pm * 0.08);
-    game.poisonClouds.push({ x, y, r: rr, life: lf, maxLife: lf, dps: 9 + pm * 1.5, pulse: rnd(0, 6.28) });
+    const rr = (r + pm * 5) * (mire ? 1.3 : 1), lf = life * (1 + pm * 0.08) * (mire ? 1.4 : 1);
+    const pc = { x, y, r: rr, life: lf, maxLife: lf, dps: 9 + pm * 1.5, pulse: rnd(0, 6.28), mire };
+    game.poisonClouds.push(pc);
+    return pc; // 毒沼 (mire) clouds also slow enemies — see the poison-cloud update loop
   }
 
   function addExplosion(x, y, r, damage = 42, source = '爆炸') {
@@ -2088,10 +2107,13 @@
     game.enemyProjectiles = game.enemyProjectiles.filter(b => !b.dead && b.life > 0);
   }
 
-  function isFireKind(kind) { return ['fire','toxic_boom','plasma'].includes(kind); }
-  function isIceKind(kind) { return ['ice','frost_shock','venom_frost'].includes(kind); }
-  function isLightningKind(kind) { return ['lightning','plasma','frost_shock','toxic_shock'].includes(kind); }
-  function isPoisonKind(kind) { return ['poison','toxic_boom','toxic_shock','venom_frost'].includes(kind); }
+  // Earth fusions inherit their partner's reactions via these lists, then add the
+  // shared "heavy impact" kicker (isEarthKind) on top.
+  function isFireKind(kind) { return ['fire','toxic_boom','plasma','magma'].includes(kind); }
+  function isIceKind(kind) { return ['ice','frost_shock','venom_frost','frost_rock'].includes(kind); }
+  function isLightningKind(kind) { return ['lightning','plasma','frost_shock','toxic_shock','magnet'].includes(kind); }
+  function isPoisonKind(kind) { return ['poison','toxic_boom','toxic_shock','venom_frost','toxic_mire'].includes(kind); }
+  function isEarthKind(kind) { return ['earth','magma','frost_rock','magnet','toxic_mire'].includes(kind); }
 
   function leaveSpellTrail(fb) {
     const k = fb.kind;
@@ -2160,15 +2182,34 @@
       addElectricZone(e.x, e.y, 44 + game.stats.storm * 12, 0.52);
       e.slowTimer = Math.max(e.slowTimer || 0, 1.0 + game.stats.iceSlow * 0.35);
     }
+    if (isEarthKind(fb.kind) && fb.kind !== 'magnet') {  // heavy stone impact: bonus knockback
+      const a = Math.atan2(e.y - fb.y, e.x - fb.x), kb = 220 + game.stats.size * 28;
+      e.vx = (e.vx || 0) + Math.cos(a) * kb; e.vy = (e.vy || 0) + Math.sin(a) * kb;
+    }
+    if (fb.kind === 'frost_rock') { e.slowTimer = Math.max(e.slowTimer || 0, 1.6 + game.stats.iceSlow * 0.4); e.chilled = true; }
+    if (fb.kind === 'magnet') {                          // magnetise: drag nearby foes into the blast, then it chains
+      for (const o of game.enemies) {
+        if (o.dead) continue;
+        const d = Math.hypot(o.x - fb.x, o.y - fb.y);
+        if (d > 4 && d < 160) { const f = 360 * (1 - d / 160), a2 = Math.atan2(fb.y - o.y, fb.x - o.x); o.vx = (o.vx || 0) + Math.cos(a2) * f; o.vy = (o.vy || 0) + Math.sin(a2) * f; o.stunTimer = Math.max(o.stunTimer || 0, 0.25); }
+      }
+      addRing(fb.x, fb.y, 160, '#b8a0ff', 0.32, 4); addText(fb.x, fb.y - 28, '磁暴吸引！', '#cdbcff');
+    }
   }
 
   function finishSpellProjectile(fb) {
     const k = fb.kind;
     if (isFireKind(k)) { igniteGrass(fb.x, fb.y, fb.r + 14 + game.stats.fireSpread * 4); addFireZone(fb.x, fb.y, 18 + game.stats.size * 2, 1.2, true); }
     if (isIceKind(k)) freezeWaterAt(fb.x, fb.y, 42 + game.stats.iceRadius * 14);
-    if (isPoisonKind(k)) addPoisonCloud(fb.x, fb.y, 28 + game.stats.size * 5, 4.0);
+    if (isPoisonKind(k)) addPoisonCloud(fb.x, fb.y, 28 + game.stats.size * 5, 4.0, k === 'toxic_mire');
     if (k === 'steam') addSteamCloud(fb.x, fb.y, 52 + game.stats.size * 8, 3.0);
     if (isLightningKind(k) && tileAtPixel(fb.x, fb.y) === TILE_WATER) addElectricZone(fb.x, fb.y, 58 + game.stats.storm * 20, 0.8);
+    if (isEarthKind(k)) {                                // stone shards: a small burst that bites + breaks thin walls
+      for (let i = 0; i < 5; i++) { const a = rnd(0, 6.28), sp = rnd(120, 300); game.particles.push({ x: fb.x, y: fb.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: '#caa472' }); }
+      for (const e of game.enemies) { if (!e.dead && Math.hypot(e.x - fb.x, e.y - fb.y) < 48 + e.r) damageEnemy(e, 10 + game.stats.size * 2, fb.x, fb.y, '碎石'); }
+      breakThinWalls(fb.x, fb.y, 40);
+    }
+    if (k === 'magma') { addFireZone(fb.x, fb.y, 34 + game.stats.size * 5, 2.6, true); igniteGrass(fb.x, fb.y, fb.r + 20); addText(fb.x, fb.y - 24, '岩漿！', '#ff9a4a'); }
     if (fb.explosive || fb.life <= 0) addExplosion(fb.x, fb.y, fb.boomRadius, 26 + game.stats.size * 7, spellDisplayName(k));
     else addRing(fb.x, fb.y, fb.r * 3.2, fb.color, 0.18, 2);
   }
@@ -2542,7 +2583,10 @@
       pc.pulse += dt * 4;
       if (Math.hypot(game.player.x - pc.x, game.player.y - pc.y) < game.player.r + pc.r) damagePlayer(pc.dps * dt, '毒霧');
       for (const e of game.enemies) {
-        if (e.type !== 'bug' && Math.hypot(e.x - pc.x, e.y - pc.y) < e.r + pc.r) damageEnemy(e, pc.dps * 0.35 * dt, pc.x, pc.y);
+        if (e.type !== 'bug' && Math.hypot(e.x - pc.x, e.y - pc.y) < e.r + pc.r) {
+          damageEnemy(e, pc.dps * 0.35 * dt, pc.x, pc.y);
+          if (pc.mire) e.slowTimer = Math.max(e.slowTimer || 0, 0.4); // 毒沼: bog them down
+        }
       }
     }
     game.poisonClouds = game.poisonClouds.filter(pc => pc.life > 0);
@@ -3091,6 +3135,10 @@
     } else if (kind === 'poison' || kind === 'toxic_boom') {
       m = new THREE.Mesh(sphereGeo, tmpMat(hex, 0.82, true));
       m.scale.setScalar(r * 1.35);
+    } else if (isEarthKind(kind)) {                 // a tumbling angular rock
+      m = new THREE.Mesh(tetraGeo, tmpMat(hex, 1, kind === 'magma'));
+      m.scale.setScalar(r * 1.55);
+      m.rotation.set(game.time * 4, game.time * 5 + a, a);
     } else {
       m = new THREE.Mesh(sphereGeo, tmpMat(hex, 1, kind === 'plasma' || kind === 'fire'));
       m.scale.setScalar(r * 1.25);
@@ -3913,7 +3961,8 @@
     const map = {
       fire: ['🔥', '#ff8b47'], ice: ['❄', '#9feeff'], lightning: ['⚡', '#8fe8ff'], poison: ['☠', '#c07aff'],
       steam: ['☁', '#d8f6ff'], toxic_boom: ['☣', '#d998ff'], plasma: ['✦', '#ffcf6f'], frost_shock: ['✹', '#bff4ff'],
-      toxic_shock: ['☠', '#b794ff'], venom_frost: ['◆', '#b7ffd2'], neutral: ['✦', '#f4e7ff']
+      toxic_shock: ['☠', '#b794ff'], venom_frost: ['◆', '#b7ffd2'], neutral: ['✦', '#f4e7ff'],
+      earth: ['⬢', '#c79a5b'], magma: ['◉', '#ff7a3a'], frost_rock: ['❖', '#a9d8e6'], magnet: ['⊕', '#b8a0ff'], toxic_mire: ['⬟', '#9fae5a']
     };
     return map[el] || map.neutral;
   }
@@ -4095,6 +4144,7 @@
     if (['inject_ice'].includes(up.id)) return { label: '元素', color: '#bff4ff' };
     if (['inject_lightning'].includes(up.id)) return { label: '元素', color: '#9fe7ff' };
     if (['inject_poison'].includes(up.id)) return { label: '元素', color: '#d998ff' };
+    if (['inject_earth'].includes(up.id)) return { label: '元素', color: '#c79a5b' };
     if (['split','explode','trail','big','spread','toxic_boom','ice_lake','ice_shatter','shock'].includes(up.id)) return { label: '改造', color: '#fff1bb' };
     if (up.id && up.id.indexOf('equip_') === 0) return { label: '副攻', color: '#8cecff' };
     if (['fist_mode','lightpalm_mode','windpalm_mode'].includes(up.id)) return { label: '肉搏', color: '#e0b07a' };
@@ -4105,7 +4155,7 @@
 
   // Multiple build tags per upgrade card (max 3). See docs/design-vision §10.
   const TAGCOLOR = {
-    '火': '#ffbd66', '冰': '#bff4ff', '雷': '#9fe7ff', '毒': '#d998ff', '風': '#dff3ff', '精通': '#ffd36d',
+    '火': '#ffbd66', '冰': '#bff4ff', '雷': '#9fe7ff', '毒': '#d998ff', '風': '#dff3ff', '土': '#c79a5b', '精通': '#ffd36d',
     '元素': '#ffe6a7', '近戰': '#e0b07a', '環境': '#8ee07a', '控場': '#9fe7ff',
     '破壞': '#caa472', '高風險': '#ff7b72', '投擲': '#dff3ff', '衝刺': '#b7d8ff',
     '副攻': '#8cecff', '通用': '#d7a0ff', '改造': '#fff1bb'
