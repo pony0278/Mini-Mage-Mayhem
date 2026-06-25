@@ -8,6 +8,7 @@
 | [design-vision.md](design-vision.md) | 法術與環境互動的設計願景 — 北極星 + 現況標記（已實作/keystone/岔路）| ⭐ 願景 |
 | [content-backlog.md](content-backlog.md) | 內容待辦 — 在「按鍵極簡（手機友善）」下要加的法術/環境互動、副攻插槽、複合組合、分批 | 📝 規劃中 |
 | [spells-and-upgrades.md](spells-and-upgrades.md) | 法術與升級總覽 — 目前所有元素/融合/主攻模式/衝刺/副攻/精通/升級的狀態一覽 | 📖 參考 |
+| [module-boundaries.md](module-boundaries.md) | index.html 拆分的邊界定義書 — sim/render 耦合分析、模組 DAG、輸入 adapter 接縫、搬檔順序 | 🔧 重構依據 |
 | [demo-concept.md](demo-concept.md) | 單機俯視角魔法 Roguelike 小品企劃 — MVP 規格、法術／修飾符／元素反應／敵人／Boss／美術方向 | ✅ 已實作（單機 v0.8） |
 | [battle-royale-tech-stack-v1.md](battle-royale-tech-stack-v1.md) | 若往「即時多人大逃殺 (BR)」發展的完整技術棧定案 — Rust sim 核、dedicated server、Nakama meta、傳輸、場地同步 | ⏳ 未來（探針通過後） |
 | [battle-royale-phase-plan-v1.md](battle-royale-phase-plan-v1.md) | BR 的階段任務計畫 — 探針一(netcode) → 探針二(PvP 好不好玩) → GATE → 正式棧 | ⏳ 未來 |
