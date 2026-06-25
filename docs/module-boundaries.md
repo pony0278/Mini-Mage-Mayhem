@@ -2,7 +2,7 @@
 
 > 用途：把目前 ~4273 行的單檔 `index.html`（inline `<script>` IIFE）拆成多個 ES module 的**邊界定義書**。
 > 目標：解決「太肥」維護性問題，同時把 **sim 核心抽成 headless**（= roadmap 的 B0，未來 BR / WASM 的地基），全程**零 build、仍是靜態頁**。
-> 狀態：**分析完成、邊界已拍板（見 §7 決策記錄）、尚未動工**。行號為分析當下快照（會隨改動漂移，僅供定位）。
+> 狀態：**動工中**。已完成 步驟 0（刪死碼）→ 1（constants/utils/data）→ 1.5（state.js）→ 2（sim.js，含 CAM→state + updateMouseWorld 解耦）。剩 3（render.js）、3.5（intent adapter）、4（input/main）、5（三檔收斂）。行號為早期快照（已漂移，僅供定位）。
 
 ---
 
@@ -116,9 +116,11 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 0. ✅ **先刪死碼**（§7-4，commit `9773c85`）：移除舊版 2D top-down 渲染器（§8 全部 12 函式 + `onGround` + `VIEW`/`TH` + 舊 ortho 註解），~501 行/檔。三檔同步、語法 OK、0 殘留引用、in-game 渲染無誤。**行為零變化**（原本就無人呼叫）。
 1. ✅ **最安全先抽**：`js/constants.js`（W/H/TILE/tile-enum）+ `js/utils.js`（rnd/clamp/dist/angleTo/norm/circleRectOverlap）+ `js/data.js`（ELEMENT_INFO/arenaTemplates/fusionKind/isX­Kind）。三檔 `<script>` 改 `type="module"` + `import`，移除內聯定義。HTTP 載入零錯誤、in-game 渲染無誤。**首次引入 ESM**：本地測試改走 `python -m http.server`；deploy workflow 加 copy `js/`（Pages 目前走分支直出，`js/` 已在 root，無破壞）。
 1.5. ✅ **抽 `state.js`**（§7-5，render 的前置）：`export const game / keys / mouse`（三個跨界共享的可變單例；已驗證只原地 mutate、從不重新賦值 → live-binding 安全）。`state.js` 只 import `constants`（mouse 初值用 W/H）。三檔加 `import { game, keys, mouse }`、移除內聯定義;HTTP 載入零錯誤、training 可玩、渲染不變。
-2. **抽 `sim.js`**（依賴掃描後**提前**——見 §7-2 修訂）：`upgradePool`/`SECONDARY`（帶行為）+ 全部模擬函式（resetGame … update，約 278–2688）搬出。`import` from `state`（game/keys/mouse/**CAM**）、constants、utils、data。對外只需 `export` 內聯/render 用到的約 **21 個**函式（其餘內部互呼不 export）。
-   - **CAM 過渡**：先把 `CAM` 暫放 `state.js`（§7-2 修訂），sim 從 state import → render↔sim 的環立刻解除，sim.js 馬上抽得出來。
-   - 2a 先做 `CAM → state.js` 移動 + 驗證;2b 再抽 sim.js。
+2. ✅ **抽 `sim.js`**（依賴掃描後**提前**——見 §7-2 修訂）：`waveEvents`/`upgradePool`/`DASH_FX`/`SECONDARY` + 全部模擬函式搬出，共 **2568 行** → `js/sim.js`。`import` from constants/utils/data/state（game/keys/mouse/CAM）；**over-export** 所有頂層函式 + 4 個 const（未來 render/input 直接 import）。三檔 HTML 砍到 ~1270–1390 行（各少 ~2560 行）。
+   - ✅ **2a**：`CAM → state.js`（解 render↔sim 環）。
+   - ✅ **2b-prep**：把 sim 唯一的 render 呼叫 `updateMouseWorld()` 從 `update()` 移到 `loop()`（render-owned;camera-sandbox 用 pause-preserving 形式）→ sim 對 render 零呼叫。
+   - ✅ **2b**：兩段（waveEvents→island 前、shoot→divider 前）line-slice 抽出，**中間的 input island（click/menu-keydown 兩個 handler）留在內聯**。三檔 sim 區已驗證 byte-identical。內聯 import sim 用到的符號（index/camera 16 個;training 21 個——測試面板多用 upgradePool/openUpgrade/spawnCrate/syncSpell/injectElement）。
+   - 驗證：sim.js + 三內聯模組語法 OK;HTTP 載入三檔零錯誤;training `state=playing`、sim time 前進(0.04→0.34)、in-game 渲染無誤。
 3. **抽 `render.js`**：合併成**單一 `render.js`**（§7-1）。`import` 那 9 個 sim 函式（from `sim.js`）+ state（game/mouse/CAM）；私有 module-level 持有 `scene/camera/renderer/ctx/幾何·材質快取/actorMeshes`；relocate `project`。render 只讀 game。
 3.5. **（獨立）intent adapter**：把 sim 讀 mouse/CAM/keys 改成 `update(dt, intent)`，sim 變真 headless（roadmap B0）；`CAM` 從 state.js 移回 render.js。專心做 + 驗手感。
 4. **`input.js` + `main.js`**：輸入事件 → `intent`；`loop()` 接線。
