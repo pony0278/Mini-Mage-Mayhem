@@ -263,10 +263,10 @@
     { id: 'danger', name: '危險魔力', desc: '所有傷害大幅提高，但自傷也提高。', apply: () => { game.stats.damageMul *= 1.28; game.stats.selfDamageMul *= 1.24; toast('你變強了，也更危險了！'); } },
     { id: 'dash_cd', name: '疾風步', desc: '衝刺冷卻降低 30%。', apply: () => { game.stats.dashCdMul *= 0.7; toast('衝刺更頻繁了！'); } },
     { id: 'dash_power', name: '衝刺強化', desc: '衝刺傷害、擊退與元素留痕提高（衝刺流派）。', apply: () => { game.stats.dashPower += 1; toast('衝刺變成武器了！'); } },
-    { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => { game.stats.secondary = 'earthwall'; toast('副攻換成土牆！'); } },
-    { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => { game.stats.secondary = 'icewall'; toast('副攻換成冰牆！'); } },
-    { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => { game.stats.secondary = 'oil'; toast('副攻換成潑油！'); } },
-    { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => { game.stats.secondary = 'blackhole'; toast('副攻換成黑洞！'); } },
+    { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
+    { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
+    { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
+    { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } },
     { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 短雷鏈，踩水放電整片水池（也會電到自己）。放棄遠程飛彈。', apply: () => { game.stats.mainMode = 'lightpalm'; toast('主攻換成雷掌！'); } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。', apply: () => { game.stats.mainMode = 'windpalm'; toast('主攻換成風掌！'); } },
@@ -330,6 +330,7 @@
       dashCdMul: 1,
       dashPower: 0,
       secondary: null,
+      secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
       mastery: { fire: 0, ice: 0, lightning: 0, poison: 0, earth: 0 },
       size: 0,
@@ -897,16 +898,24 @@
     }[element] || '強化目前元素。';
   }
   function isMastery(up) { return up.element && (game.stats.spellElements || []).includes(up.element); }
-  function upgradeName(up) { return isMastery(up) ? ELEMENT_INFO[up.element].name + '精通 Lv' + (mLvl(up.element) + 1) : up.name; }
-  function upgradeDesc(up) { return isMastery(up) ? masteryDesc(up.element) : up.desc; }
+  // equip_X for the already-equipped secondary reads as a 強化 (mastery) card.
+  function isSecMastery(up) { return up.id && up.id.indexOf('equip_') === 0 && game.stats.secondary === up.id.slice('equip_'.length); }
+  function upgradeName(up) {
+    if (isMastery(up)) return ELEMENT_INFO[up.element].name + '精通 Lv' + (mLvl(up.element) + 1);
+    if (isSecMastery(up)) { const id = up.id.slice('equip_'.length); return SECONDARY[id].name + '強化 Lv' + (sLvl(id) + 1); }
+    return up.name;
+  }
+  function upgradeDesc(up) {
+    if (isMastery(up)) return masteryDesc(up.element);
+    if (isSecMastery(up)) return '副攻強化：範圍/耐久更大，冷卻更短。';
+    return up.desc;
+  }
   // Would this upgrade actually do something for the current build?
   function upgradeRelevant(up) {
     const s = game.stats;
     const owns = (el) => (s.spellElements || []).includes(el);
-    if (up.id && up.id.indexOf('equip_') === 0) {
-      const want = up.id.slice('equip_'.length);
-      return s.secondary !== want;            // don't offer the secondary you already have
-    }
+    // equip_X is always meaningful now: equip (none yet) / swap (different) / 強化 (same → mastery).
+    if (up.id && up.id.indexOf('equip_') === 0) return true;
     if (up.id === 'fist_mode') return s.mainMode !== 'fist';        // already that brawler stance
     if (up.id === 'lightpalm_mode') return s.mainMode !== 'lightpalm';
     if (up.id === 'windpalm_mode') return s.mainMode !== 'windpalm';
@@ -1694,15 +1703,31 @@
     oil:       { name: '潑油', cd: 2.6, cast: (a) => layOil(a) },
     blackhole: { name: '黑洞', cd: 6.0, cast: (a) => castBlackHole(a) }
   };
+  // Secondary mastery (mirrors element mastery): re-picking the equipped secondary
+  // deepens it; a different pick swaps the slot, keeping each one's remembered level.
+  function sLvl(id) { return (game.stats.secondaryLvl && game.stats.secondaryLvl[id || game.stats.secondary]) || 0; }
+  function equipOrLevelSecondary(id) {
+    const s = game.stats;
+    if (s.secondary === id) {
+      s.secondaryLvl[id] = (s.secondaryLvl[id] || 0) + 1;
+      const lv = s.secondaryLvl[id];
+      addText(game.player.x, game.player.y - 42, `${SECONDARY[id].name}強化 Lv${lv}`, '#8cecff');
+      toast(`${SECONDARY[id].name}強化 Lv${lv}！`);
+    } else {
+      s.secondary = id;
+      toast(`副攻換成${SECONDARY[id].name}！`);
+    }
+  }
   function castSecondary(angle) {
     const def = SECONDARY[game.stats.secondary];
     if (!def) return; // no secondary equipped yet (gained via upgrades)
-    game.player.secondaryCooldown = def.cd;
+    game.player.secondaryCooldown = def.cd * Math.max(0.5, 1 - 0.08 * sLvl()); // mastery shortens cd
     def.cast(angle);
   }
 
   // A barrier across your aim: a short perpendicular line of solid tiles ahead of you.
   function buildWall(angle, kind, tile, life, len) {
+    const lv = sLvl(); len += lv; life += lv * 2; // mastery: longer + more durable wall
     const p = game.player;
     const cx = p.x + Math.cos(angle) * 46, cy = p.y + Math.sin(angle) * 46;
     const px = Math.cos(angle + Math.PI / 2), py = Math.sin(angle + Math.PI / 2);
@@ -1727,15 +1752,16 @@
   // Spill a small oil patch ahead — does nothing until fire touches it, then big boom.
   function layOil(angle) {
     const p = game.player;
+    const lv = sLvl(), rad = 1 + Math.min(lv, 2), oilLife = 7 + lv * 1.5; // mastery: wider, longer-lasting slick
     const cx = p.x + Math.cos(angle) * 40, cy = p.y + Math.sin(angle) * 40;
     const ctx0 = Math.floor(cx / TILE), cty0 = Math.floor(cy / TILE);
     let placed = 0;
-    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+    for (let oy = -rad; oy <= rad; oy++) for (let ox = -rad; ox <= rad; ox++) {
       const tx = ctx0 + ox, ty = cty0 + oy;
       if (tx < 1 || ty < 1 || tx >= COLS - 1 || ty >= ROWS - 1) continue;
       const t = game.map[ty][tx];
       if (t !== TILE_FLOOR && t !== TILE_GRASS && t !== TILE_BURNT && t !== TILE_ICE) continue;
-      game.oils.push({ tx, ty, prev: t, life: 7, maxLife: 7 });
+      game.oils.push({ tx, ty, prev: t, life: oilLife, maxLife: oilLife });
       game.map[ty][tx] = TILE_OIL;
       placed++;
     }
@@ -1822,7 +1848,8 @@
     const p = game.player;
     const x = clamp(p.x + Math.cos(angle) * 160, 36, W - 36);
     const y = clamp(p.y + Math.sin(angle) * 160, 36, H - 36);
-    game.blackHoles.push({ x, y, r: 120 + game.stats.size * 14, life: 1.6, maxLife: 1.6, exploded: false });
+    const lv = sLvl(); // mastery: bigger reach + longer pull before collapse
+    game.blackHoles.push({ x, y, r: 120 + game.stats.size * 14 + lv * 22, life: 1.6 + lv * 0.3, maxLife: 1.6 + lv * 0.3, exploded: false });
     addRing(x, y, 30, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
   }
 
@@ -4063,7 +4090,7 @@
     if (['inject_poison'].includes(up.id)) return { label: '元素', color: '#d998ff' };
     if (['inject_earth'].includes(up.id)) return { label: '元素', color: '#c79a5b' };
     if (['split','explode','trail','big','spread','toxic_boom','ice_lake','ice_shatter','shock'].includes(up.id)) return { label: '改造', color: '#fff1bb' };
-    if (up.id && up.id.indexOf('equip_') === 0) return { label: '副攻', color: '#8cecff' };
+    if (up.id && up.id.indexOf('equip_') === 0) return { label: isSecMastery(up) ? '強化' : '副攻', color: '#8cecff' };
     if (['fist_mode','lightpalm_mode','windpalm_mode'].includes(up.id)) return { label: '肉搏', color: '#e0b07a' };
     if (['dash_cd','dash_power'].includes(up.id)) return { label: '衝刺', color: '#b7d8ff' };
     if (['danger','vamp','haste','vitality','swift','second_wind'].includes(up.id)) return { label: '通用', color: '#d7a0ff' };
