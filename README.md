@@ -25,7 +25,10 @@
 
 - `index.html` — 遊戲本體（部署為網站首頁）
 - `camera-sandbox.html` — 攝影機調整沙盒（滑桿即時調 FOV／角度／距離／環繞／取景／暫停）
+- `training.html` — 法術測試場（即時切換元素／精通／副攻／肉搏 + 生成不死假人；按 T 收合面板）
 - `vendor/three.min.js` — 內建的 Three.js（同源載入）
+
+> 兩個沙盒由 `index.html` 重新生成（單一真相來源），不手動維護。
 
 ## 文件
 

@@ -264,6 +264,7 @@
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => { game.stats.secondary = 'icewall'; toast('副攻換成冰牆！'); } },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => { game.stats.secondary = 'oil'; toast('副攻換成潑油！'); } },
     { id: 'equip_wind', name: '副攻：風陣', desc: '副攻改成陣風；擊退敵人並把火/毒/蒸氣往前吹。', apply: () => { game.stats.secondary = 'wind'; toast('副攻換成風陣！'); } },
+    { id: 'equip_lightpalm', name: '副攻：雷掌', desc: '副攻改成近戰電掌；擊退 + 短雷鏈，踩水放會電整片水池（也會電到自己）。', apply: () => { game.stats.secondary = 'lightpalm'; toast('副攻換成雷掌！'); } },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => { game.stats.secondary = 'blackhole'; toast('副攻換成黑洞！'); } },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
@@ -1626,6 +1627,7 @@
     earthwall: { name: '土牆', cd: 3.4, cast: (a) => buildWall(a, 'earth', TILE_THIN,    8, 4) },
     oil:       { name: '潑油', cd: 2.6, cast: (a) => layOil(a) },
     wind:      { name: '風陣', cd: 2.0, cast: (a) => windGust(a) },
+    lightpalm: { name: '雷掌', cd: 1.6, cast: (a) => lightningPalm(a) },
     blackhole: { name: '黑洞', cd: 6.0, cast: (a) => castBlackHole(a) }
   };
   function castSecondary(angle) {
@@ -1724,6 +1726,28 @@
     const y = clamp(p.y + Math.sin(angle) * 160, 36, H - 36);
     game.blackHoles.push({ x, y, r: 120 + game.stats.size * 14, life: 1.6, maxLife: 1.6, exploded: false });
     addRing(x, y, 30, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
+  }
+
+  // Close-range electric palm: knockback + short chain; electrifies water you
+  // stand in or aim at (which can shock you too — on-brand self-harm).
+  function lightningPalm(angle) {
+    const p = game.player, reach = 50, r = 40;
+    const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
+    const dmg = 18 + game.stats.size * 2 + mLvl('lightning') * 3;
+    for (const e of game.enemies) {
+      if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
+        damageEnemy(e, dmg, p.x, p.y, '雷掌');
+        const a = angleTo(p, e);
+        e.vx = (e.vx || 0) + Math.cos(a) * 360; e.vy = (e.vy || 0) + Math.sin(a) * 360;
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.5);
+        game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.14, maxLife: 0.14 });
+        chainLightningFrom(e.x, e.y, e, 14 + mLvl('lightning') * 2);
+      }
+    }
+    if (tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 72, 0.9);
+    else if (tileAtPixel(p.x, p.y) === TILE_WATER) addElectricZone(p.x, p.y, 72, 0.9);
+    addRing(fx, fy, r, '#9fe7ff', 0.25, 3); game.screenShake = Math.max(game.screenShake, 3);
+    for (let i = 0; i < 8; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#bdf5ff' });
   }
   function updateWalls(dt) {
     let dirty = false;
@@ -1923,6 +1947,7 @@
       e.hurt = Math.max(0, e.hurt - dt);
       e.blockTextCd = Math.max(0, (e.blockTextCd || 0) - dt);
       e.slowTimer = Math.max(0, (e.slowTimer || 0) - dt);
+      if (e.dummy) { e.vx = 0; e.vy = 0; continue; } // training dummy: stand still, no AI
 
       if (e.type === 'boss') {
         updateBoss(e, dt);

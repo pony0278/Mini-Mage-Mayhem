@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234f6cff'/%3E%3Ccircle cx='8' cy='6' r='2.4' fill='%23ffd36d'/%3E%3C/svg%3E" />
-  <title>Mini Mage Mayhem — Camera Sandbox</title>
+  <title>Mini Mage Mayhem — 法術測試場</title>
   <style>
     html, body {
       margin: 0;
@@ -41,20 +41,20 @@
     }
     /* #game = 3D world (WebGL); #hud = crisp 2D overlay on top */
     #hud { pointer-events: none; background: transparent; }
-    #cam-panel{position:absolute;top:14px;left:14px;z-index:30;width:248px;background:rgba(16,13,22,.92);
-      border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:10px 12px;color:#f3e9dc;
+    #train-panel{position:absolute;top:12px;left:12px;z-index:30;width:268px;background:rgba(14,11,20,.93);
+      border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:9px 10px;color:#f3e9dc;
       font:600 12px system-ui,sans-serif;pointer-events:auto;box-shadow:0 8px 26px rgba(0,0,0,.5)}
-    #cam-panel.hidden{display:none}
-    #cam-panel label{display:block;margin:9px 0 1px}
-    #cam-panel input[type=range]{width:100%;margin-top:2px;accent-color:#ffd36d}
-    #cam-panel .cp-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
-    #cam-panel .cp-readout{margin:9px 0;padding:7px 8px;background:rgba(0,0,0,.38);border-radius:6px;
-      font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:#bfead0;line-height:1.5}
-    #cam-panel button,#cp-show{background:#3a3147;color:#fff;border:1px solid #5a4f6a;border-radius:6px;
-      padding:5px 9px;cursor:pointer;font:600 12px system-ui,sans-serif}
-    #cam-panel button:hover,#cp-show:hover{background:#4a4057}
-    #cp-pause.on{background:#6a4d2a;border-color:#ffd36d;color:#ffe6a7}
-    #cp-show{position:absolute;top:14px;left:14px;z-index:30;pointer-events:auto;display:none}
+    #train-panel.hidden{display:none}
+    #train-panel .tp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+    #train-panel .tp-sec{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:5px 0;font-size:11px;color:#bda9c9}
+    #train-panel button{background:#3a3147;color:#fff;border:1px solid #5a4f6a;border-radius:5px;
+      padding:3px 7px;cursor:pointer;font:700 11px system-ui,sans-serif}
+    #train-panel button:hover{background:#4a4057}
+    #train-panel .tp-readout{margin-top:7px;padding:6px 7px;background:rgba(0,0,0,.4);border-radius:6px;
+      font:700 11px ui-monospace,Menlo,monospace;white-space:pre-wrap;color:#bfead0;line-height:1.5}
+    #train-panel .tp-hint{margin-top:6px;font-size:10px;color:#8a7d96}
+    #tp-show{position:absolute;top:12px;left:12px;z-index:30;pointer-events:auto;display:none;
+      background:#3a3147;color:#fff;border:1px solid #5a4f6a;border-radius:6px;padding:5px 9px;cursor:pointer;font:700 12px system-ui}
   </style>
 </head>
 <body>
@@ -64,20 +64,18 @@
     <canvas id="hud" width="960" height="640"></canvas>
   </div>
 </div>
-<div id="cam-panel">
-  <div class="cp-row"><b>🎥 攝影機沙盒</b><button id="cp-hide">隱藏 (H)</button></div>
-  <label>FOV 視野：<span id="v-fov"></span><input id="s-fov" type="range" min="25" max="70" step="1"></label>
-  <label>角度 Angle：<span id="v-angle"></span>°<input id="s-angle" type="range" min="15" max="85" step="1"></label>
-  <label>距離 Distance：<span id="v-dist"></span><input id="s-dist" type="range" min="300" max="1400" step="10"></label>
-  <label>看向高度 Look：<span id="v-looky"></span><input id="s-looky" type="range" min="-50" max="220" step="5"></label>
-  <label>方位角 Azimuth：<span id="v-azi"></span>°<input id="s-azi" type="range" min="-180" max="180" step="5"></label>
-  <label>取景偏移X PanX：<span id="v-panx"></span><input id="s-panx" type="range" min="-300" max="300" step="10"></label>
-  <label>取景偏移Z PanZ：<span id="v-panz"></span><input id="s-panz" type="range" min="-300" max="300" step="10"></label>
-  <div class="cp-readout" id="cp-readout"></div>
-  <div class="cp-row"><button id="cp-pause" style="flex:1">⏸ 暫停 (P)</button></div>
-  <div class="cp-row"><button id="cp-copy">複製設定</button><button id="cp-reset">重設</button></div>
+<div id="train-panel">
+  <div class="tp-h"><b>🧪 法術測試場</b><button data-act="ui:hide">隱藏 (T)</button></div>
+  <div class="tp-sec">元素<button data-act="el:fire">火</button><button data-act="el:ice">冰</button><button data-act="el:lightning">雷</button><button data-act="el:poison">毒</button><button data-act="el:clear">清空</button></div>
+  <div class="tp-sec">精通+<button data-act="mas:fire">火</button><button data-act="mas:ice">冰</button><button data-act="mas:lightning">雷</button><button data-act="mas:poison">毒</button></div>
+  <div class="tp-sec">主攻<button data-act="main:spell">飛彈</button><button data-act="main:fist">肉搏</button></div>
+  <div class="tp-sec">副攻<button data-act="sec:none">無</button><button data-act="sec:icewall">冰牆</button><button data-act="sec:earthwall">土牆</button><button data-act="sec:oil">油</button><button data-act="sec:wind">風</button><button data-act="sec:lightpalm">雷掌</button><button data-act="sec:blackhole">黑洞</button></div>
+  <div class="tp-sec">改造<button data-act="mod:split">分裂</button><button data-act="mod:explosive">爆炸</button><button data-act="mod:trail">留痕</button><button data-act="mod:size">巨大</button></div>
+  <div class="tp-sec">假人<button data-act="dummy:add">+3</button><button data-act="dummy:clear">清除</button><button data-act="heal:1">補血</button></div>
+  <div class="tp-readout" id="tp-readout"></div>
+  <div class="tp-hint">WASD 移動・左鍵主攻・右鍵/Q 副攻・Space 衝刺</div>
 </div>
-<button id="cp-show">🎥 調攝影機</button>
+<button id="tp-show">🧪 測試面板</button>
 <script src="vendor/three.min.js"></script>
 <script>
 (() => {
@@ -2411,60 +2409,6 @@
   // Tuned in the camera sandbox: telephoto, low diagonal follow cam.
   const CAM = { fov: 33, angle: 41, dist: 720, azimuth: -35, panX: 10, panZ: -10, lookY: -10 };
   const camera = new THREE.PerspectiveCamera(CAM.fov, W / H, 1, 5000);
-  let sandboxPaused = false;
-  // --- on-screen camera control panel ---
-  (function camPanel() {
-    const $ = (id) => document.getElementById(id);
-    const sFov = $('s-fov'), sAng = $('s-angle'), sDist = $('s-dist'), sLook = $('s-looky');
-    const sAzi = $('s-azi'), sPanX = $('s-panx'), sPanZ = $('s-panz');
-    if (!sFov) return;
-    const DEFAULT = { fov: 33, angle: 41, dist: 720, azimuth: -35, panX: 10, panZ: -10, lookY: -10 };
-    function configLine() {
-      return 'CAM = { fov:' + CAM.fov + ', angle:' + CAM.angle + ', dist:' + CAM.dist
-        + ', azimuth:' + CAM.azimuth + ', panX:' + CAM.panX + ', panZ:' + CAM.panZ
-        + ', lookY:' + CAM.lookY + ' }';
-    }
-    function refresh() {
-      sFov.value = CAM.fov; sAng.value = CAM.angle; sDist.value = CAM.dist; sLook.value = CAM.lookY;
-      sAzi.value = CAM.azimuth; sPanX.value = CAM.panX; sPanZ.value = CAM.panZ;
-      $('v-fov').textContent = CAM.fov; $('v-angle').textContent = CAM.angle;
-      $('v-dist').textContent = CAM.dist; $('v-looky').textContent = CAM.lookY;
-      $('v-azi').textContent = CAM.azimuth; $('v-panx').textContent = CAM.panX; $('v-panz').textContent = CAM.panZ;
-      const rad = CAM.angle * Math.PI / 180;
-      const h = Math.round(Math.sin(rad) * CAM.dist), b = Math.round(Math.cos(rad) * CAM.dist);
-      $('cp-readout').textContent = configLine() + '\n→ height:' + h + '  半徑:' + b + '   (貼這行給我也可)';
-    }
-    sFov.oninput = (e) => { CAM.fov = +e.target.value; refresh(); };
-    sAng.oninput = (e) => { CAM.angle = +e.target.value; refresh(); };
-    sDist.oninput = (e) => { CAM.dist = +e.target.value; refresh(); };
-    sLook.oninput = (e) => { CAM.lookY = +e.target.value; refresh(); };
-    sAzi.oninput = (e) => { CAM.azimuth = +e.target.value; refresh(); };
-    sPanX.oninput = (e) => { CAM.panX = +e.target.value; refresh(); };
-    sPanZ.oninput = (e) => { CAM.panZ = +e.target.value; refresh(); };
-    $('cp-copy').onclick = () => {
-      if (navigator.clipboard) navigator.clipboard.writeText(configLine());
-      $('cp-copy').textContent = '已複製!'; setTimeout(() => { $('cp-copy').textContent = '複製設定'; }, 1200);
-    };
-    $('cp-reset').onclick = () => { Object.assign(CAM, DEFAULT); refresh(); };
-    function setPause(p) {
-      sandboxPaused = p;
-      $('cp-pause').textContent = p ? '▶ 繼續 (P)' : '⏸ 暫停 (P)';
-      $('cp-pause').classList.toggle('on', p);
-    }
-    $('cp-pause').onclick = () => setPause(!sandboxPaused);
-    function toggle(hide) {
-      $('cam-panel').classList.toggle('hidden', hide);
-      $('cp-show').style.display = hide ? 'block' : 'none';
-    }
-    $('cp-hide').onclick = () => toggle(true);
-    $('cp-show').onclick = () => toggle(false);
-    window.addEventListener('keydown', (e) => {
-      const k = e.key.toLowerCase();
-      if (k === 'h') toggle(!$('cam-panel').classList.contains('hidden'));
-      if (k === 'p') setPause(!sandboxPaused);
-    });
-    refresh();
-  })();
 
   const hemi = new THREE.HemisphereLight(0xfff2d2, 0x1c1630, 0.92);
   scene.add(hemi);
@@ -2958,7 +2902,6 @@
     const _tx = px + CAM.panX, _tz = pz + CAM.panZ;
     camera.position.set(_tx + Math.sin(_az) * _hr + shx, Math.sin(_pit) * CAM.dist, _tz + Math.cos(_az) * _hr + shz);
     camera.lookAt(_tx, CAM.lookY, _tz);
-    if (camera.fov !== CAM.fov) { camera.fov = CAM.fov; camera.updateProjectionMatrix(); }
     syncActors();
     syncProjectiles();
     syncZones();
@@ -3900,12 +3843,55 @@
   function loop(now) {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    if (!sandboxPaused) update(dt);
+    update(dt);
     draw();
     requestAnimationFrame(loop);
   }
 
   resetGame();
+  // ===== Training-sandbox panel (this page only) =====
+  (function trainingPanel() {
+    const panel = document.getElementById('train-panel');
+    const showBtn = document.getElementById('tp-show');
+    const readout = document.getElementById('tp-readout');
+    if (!panel) return;
+    function spawnDummy() {
+      const p = game.player; const a = Math.random() * Math.PI * 2; const d = 110 + Math.random() * 70;
+      game.enemies.push({ type: 'slime', x: clamp(p.x + Math.cos(a) * d, 60, W - 60), y: clamp(p.y + Math.sin(a) * d, 60, H - 60),
+        vx: 0, vy: 0, hp: 999999, maxHp: 999999, r: 16, speed: 0, color: '#75d56b', touch: 0, value: 0, hurt: 0,
+        dummy: true, slowTimer: 0, chilled: false, stunTimer: 0, state: 'pursue', facing: 0, shootCd: 999, chargeCooldown: 999, blockTextCd: 0 });
+    }
+    function refresh() {
+      const s = game.stats;
+      const els = (s.spellElements || []).map(e => ELEMENT_INFO[e].name + (s.mastery[e] ? ('+' + s.mastery[e]) : '')).join(' + ') || '無';
+      const sec = s.secondary ? SECONDARY[s.secondary].name : '無';
+      const mods = ['split', 'explosive', 'trail', 'size'].filter(k => s[k]).map(k => k + s[k]).join(' ');
+      readout.textContent = '主法術：' + s.spellName + '\n元素：' + els + '\n主攻：' + (s.mainMode === 'fist' ? '肉搏' : '飛彈') + '　副攻：' + sec + (mods ? '\n改造：' + mods : '');
+    }
+    function toggle(hide) { panel.classList.toggle('hidden', hide); showBtn.style.display = hide ? 'block' : 'none'; }
+    panel.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-act]'); if (!b) return;
+      const parts = b.dataset.act.split(':'); const k = parts[0], v = parts[1];
+      if (k === 'el') { if (v === 'clear') { game.stats.spellElements = []; syncSpell(); } else injectElement(v); }
+      else if (k === 'mas') { game.stats.mastery[v] = (game.stats.mastery[v] || 0) + 1; }
+      else if (k === 'main') { game.stats.mainMode = v; }
+      else if (k === 'sec') { game.stats.secondary = v === 'none' ? null : v; }
+      else if (k === 'mod') { game.stats[v] = (game.stats[v] || 0) + 1; }
+      else if (k === 'dummy') { if (v === 'add') { for (let i = 0; i < 3; i++) spawnDummy(); } else { game.enemies = game.enemies.filter(e => !e.dummy); } }
+      else if (k === 'heal') { game.player.hp = game.player.maxHp; }
+      else if (k === 'ui') { toggle(true); }
+      refresh();
+    });
+    showBtn.onclick = () => toggle(false);
+    window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 't') toggle(!panel.classList.contains('hidden')); });
+    if (game.state === 'title') startRun();
+    game.enemies.length = 0;
+    game.wave = 0;
+    game.player.maxHp = 99999; game.player.hp = 99999;
+    for (let i = 0; i < 5; i++) spawnDummy();
+    refresh();
+  })();
+
   requestAnimationFrame(loop);
 })();
 </script>
