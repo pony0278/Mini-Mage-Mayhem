@@ -87,6 +87,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'cap_frostpoison', name: '凍毒領域', desc: '畢業大絕（冰+毒）：身周凝結持續凍毒光環，範圍內敵人被冰緩並中毒。', apply: () => { game.stats.capstone = 'frostpoison'; toast('凍毒領域！身周凝結劇毒寒霜'); } },
     { id: 'cap_plasma', name: '電漿風暴', desc: '畢業大絕（火+雷）：一顆電漿球在場上自走，週期爆裂並雷鏈導電，獵殺敵人。', apply: () => { game.stats.capstone = 'plasma'; toast('電漿風暴！電漿球開始獵殺'); } },
     { id: 'cap_glacier', name: '冰川崩落', desc: '畢業大絕（土+冰）：週期在敵群外圍升起冰牆短暫關籠，隨即同時碎裂成大範圍冰爆。', apply: () => { game.stats.capstone = 'glacier'; toast('冰川崩落！冰牆將困敵碎裂'); } },
+    { id: 'cap_boil', name: '沸騰領域', desc: '畢業大絕（火+冰）：全場籠罩蒸氣風暴，所有敵人持續減速並被灼燒。', apply: () => { game.stats.capstone = 'boil'; toast('沸騰領域！全場沸騰蒸騰'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -156,7 +157,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰)
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰) / 'boil'(火+冰)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -735,6 +736,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'cap_frostpoison') return !s.capstone && owns('ice') && owns('poison'); // capstone: ice+poison
     if (up.id === 'cap_plasma') return !s.capstone && owns('fire') && owns('lightning'); // capstone: fire+lightning
     if (up.id === 'cap_glacier') return !s.capstone && owns('earth') && owns('ice'); // capstone: earth+ice
+    if (up.id === 'cap_boil') return !s.capstone && owns('fire') && owns('ice'); // capstone: fire+ice
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1450,6 +1452,21 @@ import { game, keys, mouse, CAM } from './state.js';
             addRing(best.x, best.y, 2.7 * TILE, '#bff4ff', 0.3, 3); game.screenShake = Math.max(game.screenShake, 2);
           } else { game.glacierTimer = 1.2; } // all ring tiles blocked — re-check soon
         }
+      }
+    }
+    // capstone 沸騰領域 (火+冰): an arena-wide steam storm — every foe is continuously slowed + scalded.
+    // Global weather (not localised); only enemies are affected — you walk through your own storm unharmed.
+    if (game.stats.capstone === 'boil' && game.state === 'playing') {
+      const burnDps = 5 + game.stats.size * 1.5 + spellMastery() * 1.5;
+      for (const e of game.enemies) {
+        if (e.dead) continue;
+        e.slowTimer = Math.max(e.slowTimer || 0, 0.4);           // 全場減速
+        damageEnemy(e, burnDps * dt, e.x, e.y, '沸騰領域');       // 灼燒 (gentle per-frame DoT, like a cloud)
+      }
+      game.boilTimer = (game.boilTimer || 0) - dt;
+      if (game.boilTimer <= 0) { // scatter steam across the arena for the storm look (also reinforces the slow)
+        game.boilTimer = 0.6;
+        for (let i = 0; i < 2; i++) addSteamCloud(rnd(60, W - 60), rnd(60, H - 60), 40 + game.stats.size * 4, 1.6);
       }
     }
 
