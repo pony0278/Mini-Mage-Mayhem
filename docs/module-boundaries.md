@@ -2,7 +2,7 @@
 
 > 用途：把目前 ~4273 行的單檔 `index.html`（inline `<script>` IIFE）拆成多個 ES module 的**邊界定義書**。
 > 目標：解決「太肥」維護性問題，同時把 **sim 核心抽成 headless**（= roadmap 的 B0，未來 BR / WASM 的地基），全程**零 build、仍是靜態頁**。
-> 狀態：**動工中**。已完成 步驟 0（刪死碼）→ 1（constants/utils/data）→ 1.5（state.js）→ 2（sim.js，含 CAM→state + updateMouseWorld 解耦）。剩 3（render.js）、3.5（intent adapter）、4（input/main）、5（三檔收斂）。行號為早期快照（已漂移，僅供定位）。
+> 狀態：**動工中**。已完成 0（刪死碼）→ 1（constants/utils/data）→ 1.5（state.js）→ 2（sim.js）→ 3（render.js）。內聯腳本剩 input handlers + loop + boot（index 已縮到 143 行）。剩 3.5（intent adapter）、4（input/main）、5（三檔收斂）。行號為早期快照（已漂移，僅供定位）。
 
 ---
 
@@ -121,7 +121,9 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
    - ✅ **2b-prep**：把 sim 唯一的 render 呼叫 `updateMouseWorld()` 從 `update()` 移到 `loop()`（render-owned;camera-sandbox 用 pause-preserving 形式）→ sim 對 render 零呼叫。
    - ✅ **2b**：兩段（waveEvents→island 前、shoot→divider 前）line-slice 抽出，**中間的 input island（click/menu-keydown 兩個 handler）留在內聯**。三檔 sim 區已驗證 byte-identical。內聯 import sim 用到的符號（index/camera 16 個;training 21 個——測試面板多用 upgradePool/openUpgrade/spawnCrate/syncSpell/injectElement）。
    - 驗證：sim.js + 三內聯模組語法 OK;HTTP 載入三檔零錯誤;training `state=playing`、sim time 前進(0.04→0.34)、in-game 渲染無誤。
-3. **抽 `render.js`**：合併成**單一 `render.js`**（§7-1）。`import` 那 9 個 sim 函式（from `sim.js`）+ state（game/mouse/CAM）；私有 module-level 持有 `scene/camera/renderer/ctx/幾何·材質快取/actorMeshes`；relocate `project`。render 只讀 game。
+3. ✅ **抽 `render.js`**（§7-1，單一檔 1146 行）：3D（THREE 場景/相機/燈光/幾何/材質/mesh/sync*）+ HUD（draw/ui/upgrade/title/end/banner）+ relocate `project`。`import` 10 個 sim presentation 函式 + `SECONDARY`（from sim.js）+ game/mouse/CAM（state）+ constants/utils/data;自己 grab DOM（canvas/hud/screenCtx/ctx）。`export` draw/updateMouseWorld/camera/mouseScreen/project（內聯 loop + 面板用）。
+   - **camera-sandbox 特例**：其 render = index render + 相機面板 IIFE + 1 行 live-fov。render.js 取 index 版 **+ 補那行 live-fov**（對 index/training 是 no-op，因 CAM.fov 不變）→ 三檔共用同一 render.js;**相機面板 IIFE 當 island 留在 camera-sandbox 內聯**（只依賴 CAM + DOM）。
+   - 三檔內聯砍到 **index 143 行 / training 265 / camera-sandbox 224**（原 ~4273）。驗證:語法全過;HTTP 三檔零錯誤;training 可玩;camera-sandbox 面板可調(fov 滑桿→CAM→render 即時生效)、渲染無誤。
 3.5. **（獨立）intent adapter**：把 sim 讀 mouse/CAM/keys 改成 `update(dt, intent)`，sim 變真 headless（roadmap B0）；`CAM` 從 state.js 移回 render.js。專心做 + 驗手感。
 4. **`input.js` + `main.js`**：輸入事件 → `intent`；`loop()` 接線。
 5. **三份 HTML 收斂**（§7-3）：`index/camera-sandbox/training` 都改 `<script type="module" src="main.js">`；CAM 滑桿、測試面板做成各自的 add-on 模組。
