@@ -430,7 +430,7 @@
       fistComboTimer: 0,
       secondaryCooldown: 0,
       heldProp: null,
-      rmbDown: false,
+      eDown: false,
       invuln: 0,
       hurtTimer: 0,
       facing: 0,
@@ -1624,11 +1624,9 @@
     if (p.dashTime > 0) dashTrail(p);
 
     const wp = game.stats.mainMode === 'windpalm';
-    // Main attack (LMB). While 風掌 is carrying a crate, LMB also hurls it forward.
-    if (mouse.down && p.cooldown <= 0) {
-      if (wp && p.heldProp) {
-        throwHeldProp(p.facing);
-      } else if (game.stats.mainMode !== 'spell') {
+    // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
+    if (mouse.down && p.cooldown <= 0 && !(wp && p.heldProp)) {
+      if (game.stats.mainMode !== 'spell') {
         meleeAttack(p.facing);
         // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
         p.cooldown = Math.max(0.13, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
@@ -1637,21 +1635,16 @@
         p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
       }
     }
-    // RMB: 風掌 uses it (edge-triggered) to lift a nearby crate, then throw it; any other
-    // build keeps RMB as the secondary-spell slot. Q always casts the secondary.
-    const rmbEdge = mouse.right && !p.rmbDown; p.rmbDown = mouse.right;
-    if (wp) {
-      if (p.heldProp) {
-        if (rmbEdge) throwHeldProp(p.facing);
-      } else if (rmbEdge) {
-        const pr = nearestLiftable(p);
-        if (pr) liftProp(pr);
-        else if (p.secondaryCooldown <= 0) castSecondary(p.facing);
-      } else if (keys.has('q') && p.secondaryCooldown <= 0) {
-        castSecondary(p.facing);
-      }
-    } else if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
+    // Secondary slot (RMB or Q) — build-defined spell, unchanged in every stance.
+    if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
       castSecondary(p.facing);
+    }
+    // 風掌 crate handling on a dedicated key (E), edge-triggered: lift the nearest
+    // crate in reach, then press E again to hurl it along the aim.
+    const eDown = keys.has('e'); const eEdge = eDown && !p.eDown; p.eDown = eDown;
+    if (wp && eEdge) {
+      if (p.heldProp) throwHeldProp(p.facing);
+      else { const pr = nearestLiftable(p); if (pr) liftProp(pr); }
     }
     // Carry a lifted crate floating in front of the mage (follows the aim).
     if (p.heldProp) {
@@ -3281,7 +3274,7 @@
       const pulse = 0.6 + 0.4 * Math.sin(game.time * 8);
       ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 60, s.y - 16, 120, 22, 8); ctx.fill();
       ctx.textAlign = 'center'; ctx.font = '900 13px system-ui, sans-serif';
-      ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('左/右鍵 投擲 →', s.x, s.y);
+      ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('E 投擲 →', s.x, s.y);
       return;
     }
     const pr = nearestLiftable(p);
@@ -3295,7 +3288,7 @@
     ctx.restore();
     ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 46, s.y - 14, 92, 20, 8); ctx.fill();
     ctx.textAlign = 'center'; ctx.font = '900 12px system-ui, sans-serif';
-    ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('右鍵舉起 ↑', s.x, s.y);
+    ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('E 舉起 ↑', s.x, s.y);
   }
 
   function draw() {
@@ -4015,7 +4008,7 @@
       roundRectPath(ctx, 16, H - 128, 214, 30, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
       ctx.strokeStyle = '#dff3ff'; ctx.stroke();
       ctx.textAlign = 'left'; ctx.font = '900 12px system-ui, sans-serif'; ctx.fillStyle = '#eafaff';
-      ctx.fillText(held ? '[左/右鍵] 投擲箱子 →' : '[右鍵] 靠近箱子 → 舉起', 26, H - 108);
+      ctx.fillText(held ? '[E] 投擲箱子 →' : '[E] 靠近箱子 → 舉起', 26, H - 108);
     }
 
     // Brawler tag: main attack is melee (土拳 / 雷掌 / 風掌).
