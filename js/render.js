@@ -948,10 +948,12 @@ let ctx = screenCtx;
     if (game.state === 'playing' && game.stats.mainMode !== 'spell') {
       const BRAWL = { fist: ['肉搏 土拳', '#e0b07a', '#ffdfa6'], lightpalm: ['肉搏 雷掌', '#9fe7ff', '#cdf3ff'], windpalm: ['肉搏 風掌', '#dff3ff', '#eafaff'] };
       const b = BRAWL[game.stats.mainMode] || BRAWL.fist;
-      roundRectPath(ctx, 16, H - 92, 150, 32, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
+      const starN = { fist: game.stats.fistStar, lightpalm: game.stats.lightStar, windpalm: game.stats.windpalmStar }[game.stats.mainMode] || 0;
+      const stars = starN > 1 ? ' ' + '★'.repeat(starN) : '';
+      roundRectPath(ctx, 16, H - 92, 168, 32, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
       ctx.strokeStyle = b[1]; ctx.stroke();
       ctx.textAlign = 'left'; ctx.font = '900 13px system-ui, sans-serif'; ctx.fillStyle = b[2];
-      ctx.fillText('主攻 [左鍵]：' + b[0], 26, H - 71);
+      ctx.fillText('主攻 [左鍵]：' + b[0] + stars, 26, H - 71);
     }
 
     // Secondary-attack indicator (bottom-left) — only once a secondary is equipped.

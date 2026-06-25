@@ -95,8 +95,8 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
-    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } },
-    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 短雷鏈，踩水放電整片水池（也會電到自己）。放棄遠程飛彈。', apply: () => { game.stats.mainMode = 'lightpalm'; toast('主攻換成雷掌！'); } },
+    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。重選→升星，★2 重擊震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast('土拳升星 ★' + s.fistStar + '！'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 雷鏈，踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast('雷掌升星 ★' + s.lightStar + '！'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast('風掌升星！可累積撿取 ' + s.windpalmStar + ' 個齊射'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
@@ -166,6 +166,8 @@ import { game, keys, mouse, CAM } from './state.js';
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
       windpalmStar: 0,  // 風掌星級 (1–3)；= 風掌一次可累積撿取的數量（0 = 未選風掌）
+      fistStar: 0,      // 土拳星級 (1–3)：★2 重擊震波、★3 週期地震
+      lightStar: 0,     // 雷掌星級 (1–3)：★ 加強雷鏈、★3 雷神週期放電
       mastery: { fire: 0, ice: 0, lightning: 0, poison: 0, earth: 0 },
       size: 0,
       siphon: 0,
@@ -713,6 +715,8 @@ import { game, keys, mouse, CAM } from './state.js';
     if (isMastery(up)) return ELEMENT_INFO[up.element].name + '精通 Lv' + (mLvl(up.element) + 1);
     if (isSecMastery(up)) { const id = up.id.slice('equip_'.length); return SECONDARY[id].name + '強化 Lv' + (sLvl(id) + 1); }
     if (up.id === 'windpalm_mode' && game.stats.mainMode === 'windpalm') return '風掌 ★' + Math.min(3, game.stats.windpalmStar + 1);
+    if (up.id === 'fist_mode' && game.stats.mainMode === 'fist') return '土拳 ★' + Math.min(3, game.stats.fistStar + 1);
+    if (up.id === 'lightpalm_mode' && game.stats.mainMode === 'lightpalm') return '雷掌 ★' + Math.min(3, game.stats.lightStar + 1);
     return up.name;
   }
   export function upgradeDesc(up) {
@@ -726,8 +730,8 @@ import { game, keys, mouse, CAM } from './state.js';
     const owns = (el) => (s.spellElements || []).includes(el);
     // equip_X is always meaningful now: equip (none yet) / swap (different) / 強化 (same → mastery).
     if (up.id && up.id.indexOf('equip_') === 0) return true;
-    if (up.id === 'fist_mode') return s.mainMode !== 'fist';        // already that brawler stance
-    if (up.id === 'lightpalm_mode') return s.mainMode !== 'lightpalm';
+    if (up.id === 'fist_mode') return s.mainMode !== 'fist' || s.fistStar < 3;          // 重選 → 升星(上限 ★3)
+    if (up.id === 'lightpalm_mode') return s.mainMode !== 'lightpalm' || s.lightStar < 3;
     if (up.id === 'windpalm_mode') return s.mainMode !== 'windpalm' || s.windpalmStar < 3; // 重選 → 升星(上限 ★3)
     if (up.id === 'ice_lake' || up.id === 'ice_shatter') return owns('ice');
     if (up.id === 'shock') return owns('lightning');
@@ -1549,6 +1553,42 @@ import { game, keys, mouse, CAM } from './state.js';
         for (let i = 0; i < 8; i++) { const pa = rnd(0, 6.28), s = rnd(80, 220); game.particles.push({ x: ex, y: ey, vx: Math.cos(pa) * s, vy: Math.sin(pa) * s, r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: pa % 2 < 1 ? '#caa472' : '#a7c044' }); }
       }
     }
+    // 土拳 ★3 畢業「地震」: periodic field-wide tremor — knock every foe back, light damage, smash thin walls.
+    if (game.stats.mainMode === 'fist' && game.stats.fistStar >= 3 && game.state === 'playing') {
+      game.quakeFistTimer = (game.quakeFistTimer || 0) - dt;
+      if (game.quakeFistTimer <= 0) {
+        game.quakeFistTimer = 4.5;
+        const p = game.player;
+        for (const e of game.enemies) {
+          if (e.dead) continue;
+          const a = angleTo(p, e); e.vx = (e.vx || 0) + Math.cos(a) * 340; e.vy = (e.vy || 0) + Math.sin(a) * 340;
+          damageEnemy(e, 20 + game.stats.size * 4, p.x, p.y, '地震'); e.stunTimer = Math.max(e.stunTimer || 0, 0.4);
+        }
+        breakThinWalls(p.x, p.y, 220);
+        addRing(p.x, p.y, 90, '#d8b888', 0.4, 5); addRing(p.x, p.y, 190, '#caa472', 0.3, 4);
+        addText(p.x, p.y - 40, '地震！', '#e0b07a'); game.screenShake = Math.max(game.screenShake, 9);
+        for (let i = 0; i < 14; i++) { const a = rnd(0, 6.28), s = rnd(90, 260); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 5), life: rnd(0.3, 0.7), maxLife: 0.7, color: '#caa472' }); }
+      }
+    }
+    // 雷掌 ★3 畢業「雷神」: periodic discharge — bolts arc to the nearest few foes, each chaining onward.
+    if (game.stats.mainMode === 'lightpalm' && game.stats.lightStar >= 3 && game.state === 'playing') {
+      game.thorTimer = (game.thorTimer || 0) - dt;
+      if (game.thorTimer <= 0) {
+        const live = game.enemies.filter(e => !e.dead);
+        if (!live.length) { game.thorTimer = 0.8; }
+        else {
+          game.thorTimer = 2.4;
+          const p = game.player;
+          live.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+          for (let i = 0; i < Math.min(3, live.length); i++) {
+            const e = live[i];
+            game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.16, maxLife: 0.16 });
+            chainLightningFrom(e.x, e.y, e, 20 + game.stats.storm * 3);
+          }
+          addRing(p.x, p.y, 60, '#9fe7ff', 0.3, 4); addText(p.x, p.y - 40, '雷神！', '#bdf5ff'); game.screenShake = Math.max(game.screenShake, 5);
+        }
+      }
+    }
 
     updateProjectiles(dt);
     updateEnemies(dt);
@@ -1939,9 +1979,10 @@ import { game, keys, mouse, CAM } from './state.js';
   // back, and smashes thin/earth walls. Replaces the projectile.
   export function earthFist(angle) {
     const p = game.player, reach = 46, r = 36;
+    const star = game.stats.fistStar || 1;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
     const el = dashElement();
-    const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2;
+    const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2 + (star - 1) * 6; // ★ heavier punch
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
         damageEnemy(e, dmg, p.x, p.y, '肉搏');
@@ -1958,6 +1999,16 @@ import { game, keys, mouse, CAM } from './state.js';
     const col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888';
     addRing(fx, fy, r, col, 0.24, 3); game.screenShake = Math.max(game.screenShake, 3);
     for (let i = 0; i < 6; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-130, 130), vy: rnd(-130, 130), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col });
+    if (star >= 2) { // ★2+: a radial shockwave around the mage — wider knockback + smashes a ring of thin walls
+      const sr = 70 + star * 22;
+      for (const e of game.enemies) {
+        if (e.dead || Math.hypot(e.x - p.x, e.y - p.y) >= sr + e.r) continue;
+        damageEnemy(e, 8 + star * 3, p.x, p.y, '震波');
+        const a = angleTo(p, e); e.vx = (e.vx || 0) + Math.cos(a) * 240; e.vy = (e.vy || 0) + Math.sin(a) * 240;
+      }
+      breakThinWalls(p.x, p.y, sr);
+      addRing(p.x, p.y, sr, '#d8b888', 0.3, 4); game.screenShake = Math.max(game.screenShake, 4);
+    }
   }
 
   // Spawn a black hole that pulls enemies + hazards together, then collapses (explodes).
@@ -1965,8 +2016,8 @@ import { game, keys, mouse, CAM } from './state.js';
     const p = game.player;
     const x = clamp(p.x + Math.cos(angle) * 160, 36, W - 36);
     const y = clamp(p.y + Math.sin(angle) * 160, 36, H - 36);
-    const lv = sLvl(); // mastery: bigger reach + longer pull before collapse
-    game.blackHoles.push({ x, y, r: 120 + game.stats.size * 14 + lv * 22, life: 1.6 + lv * 0.3, maxLife: 1.6 + lv * 0.3, exploded: false });
+    const lv = sLvl(); // mastery: bigger reach + longer pull before collapse; ★ (lv≥2) → 超新星 collapse
+    game.blackHoles.push({ x, y, r: 120 + game.stats.size * 14 + lv * 22, life: 1.6 + lv * 0.3, maxLife: 1.6 + lv * 0.3, exploded: false, supernova: lv >= 2 });
     addRing(x, y, 30, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
   }
 
@@ -1974,8 +2025,9 @@ import { game, keys, mouse, CAM } from './state.js';
   // stand in or aim at (which can shock you too — on-brand self-harm).
   export function lightningPalm(angle) {
     const p = game.player, reach = 50, r = 40;
+    const star = game.stats.lightStar || 1;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
-    const dmg = 18 + game.stats.size * 2 + mLvl('lightning') * 3;
+    const dmg = 18 + game.stats.size * 2 + mLvl('lightning') * 3 + (star - 1) * 4; // ★ stronger palm
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
         damageEnemy(e, dmg, p.x, p.y, '雷掌');
@@ -1983,7 +2035,7 @@ import { game, keys, mouse, CAM } from './state.js';
         e.vx = (e.vx || 0) + Math.cos(a) * 360; e.vy = (e.vy || 0) + Math.sin(a) * 360;
         e.stunTimer = Math.max(e.stunTimer || 0, 0.5);
         game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.14, maxLife: 0.14 });
-        chainLightningFrom(e.x, e.y, e, 14 + mLvl('lightning') * 2);
+        chainLightningFrom(e.x, e.y, e, 14 + mLvl('lightning') * 2 + star * 4); // ★ fiercer chain
       }
     }
     if (tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 72, 0.9);
@@ -2046,8 +2098,14 @@ import { game, keys, mouse, CAM } from './state.js';
       pull(game.poisonClouds); pull(game.fireZones); pull(game.steamClouds);
       if (bh.life <= 0 && !bh.exploded) { // collapse takes the build's element
         bh.exploded = true;
-        addExplosion(bh.x, bh.y, bh.r * 0.9, 46, bh.storm ? '磁暴奇點' : '黑洞塌縮');
-        applyElementalBurst(bh.x, bh.y, bh.r * 0.5);
+        const sup = bh.supernova;
+        addExplosion(bh.x, bh.y, bh.r * (sup ? 1.5 : 0.9), sup ? 84 : 46, bh.storm ? '磁暴奇點' : sup ? '超新星' : '黑洞塌縮');
+        applyElementalBurst(bh.x, bh.y, bh.r * (sup ? 0.8 : 0.5));
+        if (sup) { // 超新星: a far bigger blast + flash
+          addRing(bh.x, bh.y, bh.r * 1.5, '#ffe0ff', 0.5, 6); addRing(bh.x, bh.y, bh.r * 0.9, '#b07aff', 0.4, 5);
+          addText(bh.x, bh.y - 40, '超新星！', '#e6b0ff'); game.screenShake = Math.max(game.screenShake, 9);
+          for (let i = 0; i < 22; i++) { const a = rnd(0, 6.28), s = rnd(140, 360); game.particles.push({ x: bh.x, y: bh.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 5), life: rnd(0.4, 0.85), maxLife: 0.85, color: i % 2 ? '#e6b0ff' : '#ffd9ff' }); }
+        }
         if (bh.storm) { // 磁暴: a chain-lightning rips through the clumped foes + an electric field
           addElectricZone(bh.x, bh.y, bh.r * 0.7, 0.9);
           let seed = null, sd = bh.r;
