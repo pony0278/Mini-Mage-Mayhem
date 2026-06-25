@@ -70,7 +70,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'explode', name: '命中爆炸', desc: '目前魔法飛彈命中或撞牆時會爆炸。', apply: () => { game.stats.explosive += 1; toast('命中會爆炸！'); } },
     { id: 'trail', name: '元素留痕', desc: '飛行路徑會留下目前元素的殘留區域。', apply: () => { game.stats.trail += 1; toast('飛彈開始留下元素痕跡！'); } },
     { id: 'haste', name: '快速施法', desc: '主攻擊冷卻降低 25%。', apply: () => { game.stats.cooldownMul *= 0.75; toast('施法速度提升！'); } },
-    { id: 'big', name: '巨大飛彈', desc: '目前魔法飛彈半徑、傷害、反應範圍提高。', apply: () => { game.stats.size += 1; toast('魔法飛彈變大了！'); } },
+    { id: 'big', name: '巨大化', desc: '半徑、傷害、反應範圍提高（飛彈／拳／衝刺／災難都吃）。', apply: () => { game.stats.size += 1; toast('威能變大了！'); } },
     { id: 'vamp', name: '災難回血', desc: '引爆毒霧或擊殺敵人時，少量回血。', apply: () => { game.stats.siphon += 1; toast('混亂正在餵養你！'); } },
     { id: 'spread', name: '元素蔓延', desc: '火焰、毒霧、蒸氣等區域效果更大。', apply: () => { game.stats.fireSpread += 1; toast('元素區域開始失控！'); } },
     { id: 'toxic_boom', name: '毒爆擴大', desc: '毒霧被點燃時，爆炸範圍與傷害提高。', apply: () => { game.stats.poisonBoom += 1; toast('毒霧變得更危險！'); } },
@@ -718,6 +718,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'shock') return owns('lightning');
     if (up.id === 'toxic_boom') return owns('poison');
     if (up.id === 'dash_charge') return s.dashCharges < 3; // cap at triple-dash
+    if (up.id === 'split' || up.id === 'explode' || up.id === 'trail') return s.mainMode === 'spell'; // pure-projectile mechanics — dead once a brawler stance is picked
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
