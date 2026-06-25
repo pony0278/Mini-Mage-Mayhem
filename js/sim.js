@@ -86,6 +86,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'cap_storm', name: '磁暴奇點', desc: '畢業大絕（土+雷）：週期生成磁力奇點把敵人吸成一團，塌縮時雷鏈貫穿引爆。', apply: () => { game.stats.capstone = 'storm'; toast('磁暴奇點！敵人將被吸攏電穿'); } },
     { id: 'cap_frostpoison', name: '凍毒領域', desc: '畢業大絕（冰+毒）：身周凝結持續凍毒光環，範圍內敵人被冰緩並中毒。', apply: () => { game.stats.capstone = 'frostpoison'; toast('凍毒領域！身周凝結劇毒寒霜'); } },
     { id: 'cap_plasma', name: '電漿風暴', desc: '畢業大絕（火+雷）：一顆電漿球在場上自走，週期爆裂並雷鏈導電，獵殺敵人。', apply: () => { game.stats.capstone = 'plasma'; toast('電漿風暴！電漿球開始獵殺'); } },
+    { id: 'cap_glacier', name: '冰川崩落', desc: '畢業大絕（土+冰）：週期在敵群外圍升起冰牆短暫關籠，隨即同時碎裂成大範圍冰爆。', apply: () => { game.stats.capstone = 'glacier'; toast('冰川崩落！冰牆將困敵碎裂'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -125,6 +126,7 @@ import { game, keys, mouse, CAM } from './state.js';
     game.oils.length = 0;
     game.blackHoles.length = 0;
     game.plasmaOrb = null;
+    game.glaciers = null;
     game.props.length = 0;
     game.bossWarnings.length = 0;
     game.particles.length = 0;
@@ -154,7 +156,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷)
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -732,6 +734,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'cap_storm') return !s.capstone && owns('earth') && owns('lightning'); // capstone: earth+lightning
     if (up.id === 'cap_frostpoison') return !s.capstone && owns('ice') && owns('poison'); // capstone: ice+poison
     if (up.id === 'cap_plasma') return !s.capstone && owns('fire') && owns('lightning'); // capstone: fire+lightning
+    if (up.id === 'cap_glacier') return !s.capstone && owns('earth') && owns('ice'); // capstone: earth+ice
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1406,6 +1409,47 @@ import { game, keys, mouse, CAM } from './state.js';
         if (tileAtPixel(orb.x, orb.y) === TILE_WATER) addElectricZone(orb.x, orb.y, 52, 0.6);
         addRing(orb.x, orb.y, br, '#9fe7ff', 0.22, 3);
         game.screenShake = Math.max(game.screenShake, 2);
+      }
+    }
+    // capstone 冰川崩落 (土+冰): raise a cage of ice walls around a foe cluster, then shatter it into a wide ice burst.
+    // Reuses TILE_ICEWALL (solid → caging) + addIceBurst; self-contained — tiles set directly, cleared on shatter.
+    if (game.stats.capstone === 'glacier' && game.state === 'playing') {
+      const p = game.player;
+      if (!game.glaciers) game.glaciers = [];
+      for (const gl of game.glaciers) { // tick fuses → shatter
+        gl.fuse -= dt;
+        if (gl.fuse <= 0 && !gl.done) {
+          gl.done = true;
+          for (const [tx, ty] of gl.tiles) if (game.map[ty][tx] === TILE_ICEWALL) game.map[ty][tx] = TILE_FLOOR;
+          addIceBurst(gl.x, gl.y, gl.r, 22 + game.stats.size * 5 + mLvl('ice') * 3);
+          addText(gl.x, gl.y - 34, '冰川崩落！', '#bff4ff');
+        }
+      }
+      game.glaciers = game.glaciers.filter(gl => !gl.done);
+      game.glacierTimer = (game.glacierTimer || 0) - dt;
+      if (game.glacierTimer <= 0) {
+        const live = game.enemies.filter(e => !e.dead && e.type !== 'boss');
+        let best = live[0], bestN = -1; // densest cluster, like the singularity
+        for (const e of live) { let c = 0; for (const o of live) if (Math.hypot(o.x - e.x, o.y - e.y) < 110) c++; if (c > bestN) { bestN = c; best = e; } }
+        if (!live.length || Math.hypot(best.x - p.x, best.y - p.y) < 3.4 * TILE) {
+          game.glacierTimer = 1.2; // no foes, or the cage would enclose you — re-check soon
+        } else {
+          game.glacierTimer = 4.2;
+          const ctx0 = Math.floor(best.x / TILE), cty0 = Math.floor(best.y / TILE), tiles = [];
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== 2) continue; // ring only (cage), interior left open
+            const tx = ctx0 + dx, ty = cty0 + dy;
+            if (tx < 1 || ty < 1 || tx >= COLS - 1 || ty >= ROWS - 1) continue;
+            if (isSolidTile(game.map[ty][tx])) continue; // never overwrite walls/borders
+            const cx = tx * TILE + TILE / 2, cy = ty * TILE + TILE / 2;
+            if (Math.hypot(cx - p.x, cy - p.y) < p.r + 14) continue; // never cage the player's own tile
+            game.map[ty][tx] = TILE_ICEWALL; tiles.push([tx, ty]);
+          }
+          if (tiles.length) {
+            game.glaciers.push({ x: best.x, y: best.y, r: 2.7 * TILE + game.stats.size * 5, fuse: 0.9, done: false, tiles });
+            addRing(best.x, best.y, 2.7 * TILE, '#bff4ff', 0.3, 3); game.screenShake = Math.max(game.screenShake, 2);
+          } else { game.glacierTimer = 1.2; } // all ring tiles blocked — re-check soon
+        }
       }
     }
 
