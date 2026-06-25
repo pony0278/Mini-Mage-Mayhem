@@ -429,6 +429,8 @@
       fistCombo: 0,
       fistComboTimer: 0,
       secondaryCooldown: 0,
+      heldProp: null,
+      rmbDown: false,
       invuln: 0,
       hurtTimer: 0,
       facing: 0,
@@ -1617,11 +1619,16 @@
     const ny = p.y + p.vy * dt;
     if (!circleHitsSolid(nx, p.y, p.r)) p.x = nx; else p.vx *= -0.15;
     if (!circleHitsSolid(p.x, ny, p.r)) p.y = ny; else p.vy *= -0.15;
+    blockByProps(p);                                // crates are solid (hard walls)
 
     if (p.dashTime > 0) dashTrail(p);
 
+    const wp = game.stats.mainMode === 'windpalm';
+    // Main attack (LMB). While 風掌 is carrying a crate, LMB also hurls it forward.
     if (mouse.down && p.cooldown <= 0) {
-      if (game.stats.mainMode !== 'spell') {
+      if (wp && p.heldProp) {
+        throwHeldProp(p.facing);
+      } else if (game.stats.mainMode !== 'spell') {
         meleeAttack(p.facing);
         // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
         p.cooldown = Math.max(0.13, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
@@ -1630,9 +1637,28 @@
         p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
       }
     }
-    // Secondary attack (one button: RMB or Q) — build-defined slot.
-    if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
+    // RMB: 風掌 uses it (edge-triggered) to lift a nearby crate, then throw it; any other
+    // build keeps RMB as the secondary-spell slot. Q always casts the secondary.
+    const rmbEdge = mouse.right && !p.rmbDown; p.rmbDown = mouse.right;
+    if (wp) {
+      if (p.heldProp) {
+        if (rmbEdge) throwHeldProp(p.facing);
+      } else if (rmbEdge) {
+        const pr = nearestLiftable(p);
+        if (pr) liftProp(pr);
+        else if (p.secondaryCooldown <= 0) castSecondary(p.facing);
+      } else if (keys.has('q') && p.secondaryCooldown <= 0) {
+        castSecondary(p.facing);
+      }
+    } else if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
       castSecondary(p.facing);
+    }
+    // Carry a lifted crate floating in front of the mage (follows the aim).
+    if (p.heldProp) {
+      const pr = p.heldProp, off = p.r + pr.r + 10;
+      pr.x = clamp(p.x + Math.cos(p.facing) * off, pr.r, W - pr.r);
+      pr.y = clamp(p.y + Math.sin(p.facing) * off, pr.r, H - pr.r);
+      pr.vx = 0; pr.vy = 0; pr.thrown = 0;
     }
   }
 
@@ -1899,7 +1925,48 @@
   // Minimal set validated in training: 風掌 pushes it (ram), 土拳 breaks it (碎片),
   // 雷掌 charges it (zaps + becomes a mobile electric wall when pushed).
   function spawnCrate(x, y) {
-    game.props.push({ x: clamp(x, 40, W - 40), y: clamp(y, 40, H - 40), vx: 0, vy: 0, r: 17, hp: 60, maxHp: 60, charge: null, chargeTimer: 0, zapCd: 0, burn: 0 });
+    game.props.push({ x: clamp(x, 40, W - 40), y: clamp(y, 40, H - 40), vx: 0, vy: 0, r: 17, hp: 60, maxHp: 60, charge: null, chargeTimer: 0, zapCd: 0, burn: 0, held: false, thrown: 0 });
+  }
+  // Hard-wall collision: shove an entity {x,y,r} out of any solid (non-held, non-thrown) crate.
+  function blockByProps(o) {
+    for (const pr of game.props) {
+      if (pr.dead || pr.held || pr.thrown > 0) continue;
+      const dx = o.x - pr.x, dy = o.y - pr.y, dist = Math.hypot(dx, dy), min = o.r + pr.r;
+      if (dist < min && dist > 0.0001) {
+        const push = min - dist, ux = dx / dist, uy = dy / dist;
+        const tx = o.x + ux * push, ty = o.y + uy * push;
+        if (!circleHitsSolid(tx, o.y, o.r)) o.x = tx;
+        if (!circleHitsSolid(o.x, ty, o.r)) o.y = ty;
+      }
+    }
+  }
+  // 風掌 lift/throw: nearest crate within arm's reach (and not already held).
+  function nearestLiftable(p) {
+    let best = null, bd = 1e9; const reach = p.r + 17 + 30;
+    for (const pr of game.props) {
+      if (pr.dead || pr.held) continue;
+      const d = Math.hypot(pr.x - p.x, pr.y - p.y);
+      if (d < reach && d < bd) { bd = d; best = pr; }
+    }
+    return best;
+  }
+  function liftProp(pr) {
+    const p = game.player;
+    p.heldProp = pr; pr.held = true; pr.vx = 0; pr.vy = 0; pr.thrown = 0;
+    addText(p.x, p.y - 46, '舉起 ↑', '#dff3ff');
+    addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
+    game.screenShake = Math.max(game.screenShake, 2);
+  }
+  function throwHeldProp(angle) {
+    const p = game.player, pr = p.heldProp; if (!pr) return;
+    p.heldProp = null; pr.held = false;
+    const sp = 640;
+    pr.vx = Math.cos(angle) * sp; pr.vy = Math.sin(angle) * sp; pr.thrown = 0.5;
+    p.cooldown = Math.max(p.cooldown, 0.26);
+    addText(p.x, p.y - 46, '投擲 →', '#eafaff');
+    addRing(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, 26, '#eafaff', 0.22, 3);
+    game.screenShake = Math.max(game.screenShake, 4);
+    for (let i = 0; i < 10; i++) { const a = angle + rnd(-0.4, 0.4), s = rnd(120, 260); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#dff3ff' }); }
   }
   function pushProp(pr, fromX, fromY, force) {
     const a = Math.atan2(pr.y - fromY, pr.x - fromX);
@@ -1908,6 +1975,10 @@
   function shatterProp(pr, reason) {
     if (pr.dead) return;
     pr.dead = true; const cx = pr.x, cy = pr.y, charged = pr.charge === 'lightning';
+    if (game.player.heldProp === pr) {              // bursting in your hands: drop it (fire singes you)
+      game.player.heldProp = null; pr.held = false;
+      if (reason === 'fire') damagePlayer(10, '燙手');
+    }
     for (const e of game.enemies) {                  // fragments bite nearby enemies
       if (e.dead) continue;
       const d = Math.hypot(e.x - cx, e.y - cy);
@@ -1929,7 +2000,8 @@
     if (!game.props.length) return;
     for (const pr of game.props) {
       if (pr.dead) continue;
-      const sp = Math.hypot(pr.vx, pr.vy);
+      if (pr.thrown > 0) pr.thrown = Math.max(0, pr.thrown - dt);
+      const sp = pr.held ? 0 : Math.hypot(pr.vx, pr.vy);
       if (sp > 1) {                                   // sliding: move, bounce off walls, ram enemies
         let nx = pr.x + pr.vx * dt, ny = pr.y + pr.vy * dt;
         if (circleHitsSolid(nx, pr.y, pr.r)) { pr.vx *= -0.3; nx = pr.x; }
@@ -2340,6 +2412,7 @@
     let hit = false;
     if (!circleHitsSolid(nx, e.y, e.r)) e.x = nx; else { e.vx *= charging ? -0.15 : -0.25; hit = true; }
     if (!circleHitsSolid(e.x, ny, e.r)) e.y = ny; else { e.vy *= charging ? -0.15 : -0.25; hit = true; }
+    blockByProps(e);                                // crates block enemies too
     return hit;
   }
 
@@ -2980,13 +3053,15 @@
       const col = burning ? 0xff7a3a : charged ? 0x6fb8d8 : (cracked ? 0x9c7038 : 0xb98a52);
       const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : 0x000000;
       const s = pr.r * 1.9;
+      const lift = pr.held ? pr.r * 2.0 : 0;          // a carried crate floats above the mage
       const box = makeBox(s, s, s, col, emis, (charged || burning) ? 0.7 : 0);
-      box.position.set(pr.x, pr.r * 0.95, pr.y);
-      box.rotation.y = (pr.x + pr.y) * 0.01;
+      box.position.set(pr.x, pr.r * 0.95 + lift, pr.y);
+      box.rotation.y = (pr.x + pr.y) * 0.01 + (pr.held ? game.time * 1.5 : 0);
       propGroup.add(box);
       const cap = makeBox(s * 1.04, 3, s * 1.04, burning ? 0x9c4422 : charged ? 0x3a7a90 : 0x7a5a32);
-      cap.position.set(pr.x, pr.r * 1.9, pr.y); cap.rotation.y = box.rotation.y; propGroup.add(cap);
-      if (charged) { const g = makeGlowSphere(pr.r * 1.7, 0x9fe7ff, 0.3); g.position.set(pr.x, pr.r, pr.y); propGroup.add(g); }
+      cap.position.set(pr.x, pr.r * 1.9 + lift, pr.y); cap.rotation.y = box.rotation.y; propGroup.add(cap);
+      if (charged) { const g = makeGlowSphere(pr.r * 1.7, 0x9fe7ff, 0.3); g.position.set(pr.x, pr.r + lift, pr.y); propGroup.add(g); }
+      if (pr.held) { const g = makeGlowSphere(pr.r * 2.1, 0xdff3ff, 0.26); g.position.set(pr.x, pr.r * 0.95 + lift, pr.y); propGroup.add(g); }
     }
   }
 
@@ -3195,6 +3270,34 @@
   }
 
 
+  // 風掌 crate prompts, billboarded onto the world: highlight a liftable crate, or
+  // remind you that you can throw the one you're carrying.
+  function drawCrateHints() {
+    if (game.state !== 'playing' || game.stats.mainMode !== 'windpalm') return;
+    const p = game.player;
+    if (p.heldProp) {
+      const pr = p.heldProp, s = project(pr.x, pr.y, pr.r * 2.6 + 24);
+      if (s.behind) return;
+      const pulse = 0.6 + 0.4 * Math.sin(game.time * 8);
+      ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 60, s.y - 16, 120, 22, 8); ctx.fill();
+      ctx.textAlign = 'center'; ctx.font = '900 13px system-ui, sans-serif';
+      ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('左/右鍵 投擲 →', s.x, s.y);
+      return;
+    }
+    const pr = nearestLiftable(p);
+    if (!pr) return;
+    const s = project(pr.x, pr.y, pr.r * 2.4 + 14);
+    if (s.behind) return;
+    const pulse = 0.55 + 0.45 * Math.sin(game.time * 6);
+    ctx.save();
+    ctx.strokeStyle = `rgba(223,243,255,${pulse})`; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(s.x, s.y + 10, 20 + 3 * Math.sin(game.time * 6), 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 46, s.y - 14, 92, 20, 8); ctx.fill();
+    ctx.textAlign = 'center'; ctx.font = '900 12px system-ui, sans-serif';
+    ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('右鍵舉起 ↑', s.x, s.y);
+  }
+
   function draw() {
     // 3D world (WebGL) ...
     render3D();
@@ -3215,6 +3318,7 @@
       ctx.fillRect(0, 0, W, H);
     }
     drawEnemyBars();
+    drawCrateHints();
     drawFloatingTexts();
     drawReticle();
     drawUi();
@@ -3903,6 +4007,15 @@
       roundRectPath(ctx, 204, H - 58, 552, 38, 12); ctx.fillStyle = 'rgba(10, 8, 14, .76)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,211,109,.25)'; ctx.stroke();
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1bb'; ctx.font = '900 14px system-ui, sans-serif';
       ctx.fillText('提示：唯一主魔法可被火、冰、雷、毒覆蓋；兩種元素會融合成新法術。', W / 2, H - 34);
+    }
+
+    // 風掌 crate-control reminder (lift / throw), sits above the brawler tag.
+    if (game.state === 'playing' && game.stats.mainMode === 'windpalm') {
+      const held = !!p.heldProp;
+      roundRectPath(ctx, 16, H - 128, 214, 30, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
+      ctx.strokeStyle = '#dff3ff'; ctx.stroke();
+      ctx.textAlign = 'left'; ctx.font = '900 12px system-ui, sans-serif'; ctx.fillStyle = '#eafaff';
+      ctx.fillText(held ? '[左/右鍵] 投擲箱子 →' : '[右鍵] 靠近箱子 → 舉起', 26, H - 108);
     }
 
     // Brawler tag: main attack is melee (土拳 / 雷掌 / 風掌).
