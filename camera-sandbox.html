@@ -425,6 +425,10 @@
       dashTime: 0,
       dashTrailCd: 0,
       dashHits: null,
+      dashDirX: 0,
+      dashDirY: 0,
+      dashSpeed: 520,
+      lungeStrike: false,
       fistHand: 0,
       fistAnim: 0,
       fistAnimMax: 0.14,
@@ -1601,6 +1605,8 @@
     p.invuln = Math.max(0, p.invuln - dt);
     p.hurtTimer = Math.max(0, p.hurtTimer - dt);
     p.facing = Math.atan2(mouse.y - p.y, mouse.x - p.x);
+    // Lunge payoff: the frame a 突進 ends, throw its gap-closing strike toward the cursor.
+    if (p.lungeStrike && p.dashTime <= 0) { p.lungeStrike = false; meleeAttack(p.facing); }
 
     let mx = 0, my = 0;
     if (keys.has('w') || keys.has('arrowup')) my -= 1;
@@ -1615,33 +1621,66 @@
     let speed = p.speed;
 
     if ((keys.has(' ') || keys.has('shift')) && p.dashCooldown <= 0) {
-      p.dashTime = 0.13;
       p.dashCooldown = 1.1 * game.stats.dashCdMul;
-      p.invuln = Math.max(p.invuln, 0.18);
       p.dashHits = new Set();   // enemies hit by this dash (offensive dash)
       p.dashTrailCd = 0;        // lay first trail node immediately
-      game.screenShake = Math.max(game.screenShake, 2);
-      if (Math.abs(n.x) + Math.abs(n.y) > 0) { p.vx = n.x * 560; p.vy = n.y * 560; }
+      p.lungeStrike = false;
+      // Direction defaults to movement input (steer your dodge); aim is the fallback when standing still.
+      let dirX = n.x, dirY = n.y;
+      const refA = (Math.abs(n.x) + Math.abs(n.y) > 0) ? Math.atan2(n.y, n.x) : p.facing;
+      // Build coupling (A): in a brawler stance the dash becomes a 突進 — snaps onto the nearest
+      // enemy in a forward cone, closes the gap, and ends in a melee strike. This is melee's
+      // "long arm"; ranged/spell builds keep the short i-frame hop. Long range stays build-gated.
+      let lunge = false, gap = 0;
+      if (game.stats.mainMode !== 'spell') {
+        let best = null, bestD = 260;            // seek range
+        for (const e of game.enemies) {
+          if (e.dead) continue;
+          const d = Math.hypot(e.x - p.x, e.y - p.y);
+          if (d > bestD) continue;
+          const a = Math.atan2(e.y - p.y, e.x - p.x);
+          if (Math.abs(Math.atan2(Math.sin(a - refA), Math.cos(a - refA))) > 0.9) continue; // ~±51° cone
+          best = e; bestD = d;
+        }
+        if (best) { const nn = norm(best.x - p.x, best.y - p.y); dirX = nn.x; dirY = nn.y; lunge = true; gap = bestD; }
+      }
+      if (lunge) {
+        p.dashSpeed = 780;
+        p.dashTime = clamp(Math.max(0, gap - 44) / p.dashSpeed, 0.1, 0.3); // reach the target, stop a hair short
+        p.lungeStrike = true;
+      } else {
+        p.dashSpeed = 520;
+        p.dashTime = 0.13;
+      }
+      p.dashDirX = dirX; p.dashDirY = dirY;
+      p.invuln = Math.max(p.invuln, p.dashTime + 0.05); // i-frames cover the whole move
+      game.screenShake = Math.max(game.screenShake, lunge ? 3 : 2);
+      if (Math.abs(dirX) + Math.abs(dirY) > 0) { p.vx = dirX * p.dashSpeed; p.vy = dirY * p.dashSpeed; }
       const dc = ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color || '#b7d8ff';
       for (let i = 0; i < 12; i++) {
         game.particles.push({ x: p.x, y: p.y, vx: rnd(-90, 90), vy: rnd(-90, 90), r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: dc });
       }
     }
-    if (p.dashTime > 0) speed = 520;
+    const dashing = p.dashTime > 0;
+    if (dashing) speed = p.dashSpeed || 520;
 
+    // During a dash the direction is locked to the dash vector (a committed move); normal
+    // movement steers with WASD as usual.
+    const mvx = dashing ? p.dashDirX : n.x;
+    const mvy = dashing ? p.dashDirY : n.y;
     const onIce = tileAtPixel(p.x, p.y) === TILE_ICE;
     if (onIce) {
-      p.vx += n.x * speed * 4.4 * dt;
-      p.vy += n.y * speed * 4.4 * dt;
-      const maxSp = p.dashTime > 0 ? 620 : 340;
+      p.vx += mvx * speed * 4.4 * dt;
+      p.vy += mvy * speed * 4.4 * dt;
+      const maxSp = dashing ? Math.max(620, p.dashSpeed || 0) : 340;
       const sp = Math.hypot(p.vx, p.vy);
       if (sp > maxSp) { p.vx = p.vx / sp * maxSp; p.vy = p.vy / sp * maxSp; }
       p.vx *= Math.pow(0.16, dt);
       p.vy *= Math.pow(0.16, dt);
       if (Math.random() < 0.08) game.particles.push({ x: p.x, y: p.y + 10, vx: rnd(-45, 45), vy: rnd(-20, 25), r: rnd(1.5, 3), life: rnd(0.15, 0.32), maxLife: 0.32, color: '#d8fbff' });
     } else {
-      p.vx = n.x * speed;
-      p.vy = n.y * speed;
+      p.vx = mvx * speed;
+      p.vy = mvy * speed;
     }
     const nx = p.x + p.vx * dt;
     const ny = p.y + p.vy * dt;
