@@ -4,23 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Mini Mage Mayhem — a single-player, web, top-down magic roguelike (4 elements, fusions, elemental reactions, enemy waves, a boss). It is a **single self-contained HTML file** with an inline `<script>` IIFE. No framework, no bundler, no npm for the game itself. The only runtime dependency is Three.js, vendored at `vendor/three.min.js` (r149 UMD, exposes global `THREE`, loaded same-origin).
+Mini Mage Mayhem — a single-player, web, top-down magic roguelike (4 elements, fusions, elemental reactions, enemy waves, a boss). No framework, no bundler, no npm for the game itself; runtime deps are Three.js (vendored at `vendor/three.min.js`, r149 UMD global `THREE`) plus **build-free ES modules under `js/`**. The HTML files load the game via `<script type="module">` and `import` from `js/`.
+
+> **Refactor in progress** — the game JS is being split out of the single inline `<script>` into `js/` ES modules. The single source of truth for the boundaries/plan is `docs/module-boundaries.md`. Until the split finishes, the bulk of the game code is still inline (duplicated across the three HTML shells); only what's already extracted lives in `js/`.
 
 - `index.html` — the game (deployed as the site root `index.html`).
-- `camera-sandbox.html` — a copy of the game plus an on-screen camera-tuning panel (sliders for fov/angle/dist/azimuth/pan/lookY + pause). Keep its game logic in sync with `index.html` when changing shared behaviour.
+- `camera-sandbox.html` — a copy of the game plus an on-screen camera-tuning panel (sliders for fov/angle/dist/azimuth/pan/lookY + pause). Keep its game logic in sync with `index.html` when changing shared (still-inline) behaviour.
+- `training.html` — repo-only test arena (panel to spawn enemies/props, switch builds; exposes `window.__game`). Keep its inline game logic in sync too.
+- `js/` — extracted ES modules. So far: `constants.js` (W/H/TILE/tile-enum), `utils.js` (rnd/clamp/dist/angleTo/norm/circleRectOverlap), `data.js` (ELEMENT_INFO, arenaTemplates, fusionKind, isX­Kind classifiers).
 - `vendor/three.min.js` — vendored Three.js. CDNs are blocked by the egress proxy; the npm registry is allowed, so re-vendor via `npm i three@0.149.0` and copy `build/three.min.js`.
-- `docs/` — design + roadmap docs (repo-only, not deployed). Start at `docs/README.md`; `docs/roadmap.md` holds the current A/B/C direction decision.
+- `docs/` — design + roadmap docs (repo-only, not deployed). Start at `docs/README.md`; `docs/roadmap.md` holds the current A/B/C direction decision; `docs/module-boundaries.md` is the split plan.
 
 ## No build / test / lint
 
-There is no build, test, or lint tooling. To sanity-check a change to the game JS, extract the inline script and run Node's syntax checker:
+There is no build, test, or lint tooling. To sanity-check a change to the game JS, extract the inline module and run Node's syntax checker (treat as ESM — it has `import`s):
 
 ```bash
 python3 - <<'PY'
 import re; s=open("index.html",encoding="utf-8").read()
-open("/tmp/_game.js","w").write(re.findall(r"<script>(.*?)</script>", s, re.S)[-1])
+m=[x for x in re.findall(r"<script[^>]*>(.*?)</script>", s, re.S) if 'import' in x or '(() =>' in x]
+open("/tmp/_game.mjs","w").write(m[-1])
 PY
-node --check /tmp/_game.js
+node --check /tmp/_game.mjs   # and: node --check on each js/*.js (copy to .mjs)
 ```
 
 To actually *see* a change, render it headlessly with Puppeteer. **WebGL needs SwiftShader flags** — without them `WebGLRenderer` throws and the page is blank:
@@ -29,7 +34,7 @@ To actually *see* a change, render it headlessly with Puppeteer. **WebGL needs S
 --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --no-sandbox
 ```
 
-Load via `file://` so the vendored Three.js resolves. The egress proxy blocks `github.io` and CDNs, so you cannot load the live Pages URL headlessly — test the local file instead.
+**ES modules do not load over `file://`** (browser CORS) — serve locally first: `python3 -m http.server 8099` then point Puppeteer at `http://localhost:8099/index.html`. The egress proxy blocks `github.io` and CDNs, so you cannot load the live Pages URL headlessly — test the local server instead.
 
 ## Editing the file
 

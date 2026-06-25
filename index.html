@@ -51,18 +51,16 @@
   </div>
 </div>
 <script src="vendor/three.min.js"></script>
-<script>
+<script type="module">
+import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL } from './js/constants.js';
+import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './js/utils.js';
+import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './js/data.js';
 (() => {
   'use strict';
 
   const canvas = document.getElementById('game');   // WebGL (3D world) canvas
   const hud = document.getElementById('hud');        // 2D overlay (HUD/text)
-  const W = canvas.width;
-  const H = canvas.height;
   const screenCtx = hud.getContext('2d');
-  const TILE = 32;
-  const COLS = W / TILE;
-  const ROWS = H / TILE;
 
   // `ctx` is the active 2D draw target (HUD overlay). The 3D world is drawn
   // with WebGL/Three.js; only HUD/text/menus use this 2D context.
@@ -102,29 +100,7 @@
   });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-  const rnd = (min, max) => min + Math.random() * (max - min);
-  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
-  const norm = (x, y) => {
-    const len = Math.hypot(x, y) || 1;
-    return { x: x / len, y: y / len };
-  };
-  const circleRectOverlap = (cx, cy, r, rx, ry, rw, rh) => {
-    const px = clamp(cx, rx, rx + rw);
-    const py = clamp(cy, ry, ry + rh);
-    return Math.hypot(cx - px, cy - py) <= r;
-  };
 
-  const TILE_FLOOR = 0;
-  const TILE_WALL = 1;
-  const TILE_THIN = 2;
-  const TILE_GRASS = 3;
-  const TILE_BURNT = 4;
-  const TILE_WATER = 5;
-  const TILE_ICE = 6;
-  const TILE_ICEWALL = 7; // player-built ice wall (solid, melts to floor via fire/steam)
-  const TILE_OIL = 8;     // spilled oil (walkable; ignites into a big explosion on fire)
 
   const game = {
     state: 'title',
@@ -173,12 +149,6 @@
   };
 
 
-  const arenaTemplates = [
-    { id: 'garden', name: '失控溫室', desc: '草地很多，火焰會快速形成大片火場。' },
-    { id: 'toxic', name: '煉金毒液地窖', desc: '毒霧與毒蟲更多，火元素很容易引發連鎖爆炸。' },
-    { id: 'temple', name: '淹水魔法聖壇', desc: '水池很多，雷鏈很強；冰元素也能把水面凍成滑冰場。' },
-    { id: 'maze', name: '崩壞訓練場', desc: '薄牆很多，爆炸與衝鋒可以改變戰場路線。' }
-  ];
 
   const waveEvents = [
     {
@@ -538,41 +508,7 @@
   }
 
 
-  const ELEMENT_INFO = {
-    neutral: { name: '中性', color: '#f4e7ff', core: '#ffffff' },
-    fire: { name: '火', color: '#ff9d4d', core: '#fff0a3' },
-    ice: { name: '冰', color: '#9feeff', core: '#ffffff' },
-    lightning: { name: '雷', color: '#8fe8ff', core: '#eaffff' },
-    poison: { name: '毒', color: '#c07aff', core: '#f0c8ff' },
-    steam: { name: '蒸氣', color: '#d8f6ff', core: '#ffffff' },
-    toxic_boom: { name: '毒爆', color: '#d998ff', core: '#fff0a3' },
-    plasma: { name: '電漿', color: '#ffcf6f', core: '#eaffff' },
-    frost_shock: { name: '電霜', color: '#bff4ff', core: '#ffffff' },
-    toxic_shock: { name: '電毒', color: '#b794ff', core: '#eaffff' },
-    venom_frost: { name: '毒冰', color: '#b7ffd2', core: '#ffffff' },
-    earth: { name: '土', color: '#c79a5b', core: '#ffe1a8' },
-    magma: { name: '熔岩', color: '#ff7a3a', core: '#ffe08a' },
-    frost_rock: { name: '凍岩', color: '#a9d8e6', core: '#ffffff' },
-    magnet: { name: '磁暴', color: '#b8a0ff', core: '#eaffff' },
-    toxic_mire: { name: '毒沼', color: '#9fae5a', core: '#e6ffa8' }
-  };
 
-  function fusionKind(elements) {
-    const s = new Set(elements);
-    if (s.size === 0) return 'neutral';
-    if (s.size === 1) return [...s][0];
-    if (s.has('fire') && s.has('ice')) return 'steam';
-    if (s.has('fire') && s.has('poison')) return 'toxic_boom';
-    if (s.has('fire') && s.has('lightning')) return 'plasma';
-    if (s.has('lightning') && s.has('ice')) return 'frost_shock';
-    if (s.has('lightning') && s.has('poison')) return 'toxic_shock';
-    if (s.has('ice') && s.has('poison')) return 'venom_frost';
-    if (s.has('earth') && s.has('fire')) return 'magma';
-    if (s.has('earth') && s.has('ice')) return 'frost_rock';
-    if (s.has('earth') && s.has('lightning')) return 'magnet';
-    if (s.has('earth') && s.has('poison')) return 'toxic_mire';
-    return [...s].join('_');
-  }
 
   function spellDisplayName(kind) {
     const names = {
@@ -2243,11 +2179,6 @@
 
   // Earth fusions inherit their partner's reactions via these lists, then add the
   // shared "heavy impact" kicker (isEarthKind) on top.
-  function isFireKind(kind) { return ['fire','toxic_boom','plasma','magma'].includes(kind); }
-  function isIceKind(kind) { return ['ice','frost_shock','venom_frost','frost_rock'].includes(kind); }
-  function isLightningKind(kind) { return ['lightning','plasma','frost_shock','toxic_shock','magnet'].includes(kind); }
-  function isPoisonKind(kind) { return ['poison','toxic_boom','toxic_shock','venom_frost','toxic_mire'].includes(kind); }
-  function isEarthKind(kind) { return ['earth','magma','frost_rock','magnet','toxic_mire'].includes(kind); }
 
   function leaveSpellTrail(fb) {
     const k = fb.kind;

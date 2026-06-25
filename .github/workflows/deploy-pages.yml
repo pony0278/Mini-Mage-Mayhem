@@ -30,13 +30,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build site
-        # Publish the repo root (index.html + camera sandbox + vendor/ + .nojekyll).
+        # Publish the repo root (index.html + camera sandbox + vendor/ + js/ + .nojekyll).
         run: |
-          mkdir -p _site/vendor
+          mkdir -p _site/vendor _site/js
           cp index.html _site/index.html
           cp camera-sandbox.html _site/camera-sandbox.html
           cp .nojekyll _site/.nojekyll
           cp -r vendor/* _site/vendor/
+          cp -r js/* _site/js/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
