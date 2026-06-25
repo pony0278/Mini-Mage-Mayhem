@@ -482,6 +482,11 @@
 
     // Keep player spawn clean.
     fillRectTiles(13, 9, 4, 3, TILE_FLOOR);
+
+    // Scatter a few interactive crates (keystone props): push / break / charge them.
+    game.props.length = 0;
+    const crateN = 3 + Math.floor(Math.random() * 2); // 3–4
+    for (let i = 0; i < crateN; i++) { const s = randomOpenSpot(150); spawnCrate(s.x, s.y); }
   }
 
   function fillRectTiles(tx, ty, tw, th, tile) {
@@ -760,6 +765,7 @@
     if (wave === 4) { add('slime', 7); add('bug', 4); add('imp', 3); add('charger', 1); }
     if (wave === 5) { add('slime', 7); add('bug', 5); add('imp', 3); add('charger', 1); }
     for (let i = 0; i < game.waveMods.extraChargers; i++) spawnEnemy('charger');
+    while (game.props.length < 3) { const s = randomOpenSpot(150); spawnCrate(s.x, s.y); } // keep a few crates around
   }
 
   function spawnEnemy(type) {
