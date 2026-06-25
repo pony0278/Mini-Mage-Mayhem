@@ -113,7 +113,7 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 
 ## 6. 搬檔順序（已拍板，漸進、每步可驗證）
 
-0. **先刪死碼**（§7-4）：移除舊版 2D top-down 渲染器（清單見 §8），確認共用 helper（`onGround`/`TH`）連帶處理，行為零變化。先瘦身再拆。
+0. ✅ **先刪死碼**（§7-4，commit `9773c85`）：移除舊版 2D top-down 渲染器（§8 全部 12 函式 + `onGround` + `VIEW`/`TH` + 舊 ortho 註解），~501 行/檔。三檔同步、語法 OK、0 殘留引用、in-game 渲染無誤。**行為零變化**（原本就無人呼叫）。
 1. **最安全先抽**：`constants.js` + `utils.js` + `data.js`（純資料/純函式，零行為依賴）。
 2. **抽 render**：合併成**單一 `render.js`**（§7-1）。render 只讀 sim 狀態，搬完行為不變。
 3. **抽 sim.js**：把 278–2650 整塊搬出；**同時**做 §3 的 `update(dt, intent)` 接縫，斷開 CAM/mouse（§7-2，避免循環依賴）。
