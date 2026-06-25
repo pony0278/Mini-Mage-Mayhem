@@ -88,6 +88,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'cap_plasma', name: '電漿風暴', desc: '畢業大絕（火+雷）：一顆電漿球在場上自走，週期爆裂並雷鏈導電，獵殺敵人。', apply: () => { game.stats.capstone = 'plasma'; toast('電漿風暴！電漿球開始獵殺'); } },
     { id: 'cap_glacier', name: '冰川崩落', desc: '畢業大絕（土+冰）：週期在敵群外圍升起冰牆短暫關籠，隨即同時碎裂成大範圍冰爆。', apply: () => { game.stats.capstone = 'glacier'; toast('冰川崩落！冰牆將困敵碎裂'); } },
     { id: 'cap_boil', name: '沸騰領域', desc: '畢業大絕（火+冰）：全場籠罩蒸氣風暴，所有敵人持續減速並被灼燒。', apply: () => { game.stats.capstone = 'boil'; toast('沸騰領域！全場沸騰蒸騰'); } },
+    { id: 'cap_zero', name: '絕對零度', desc: '畢業大絕（雷+冰）：週期釋放冰凍新星，凍結並電擊全場敵人。', apply: () => { game.stats.capstone = 'zero'; toast('絕對零度！全場將被凍結電穿'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -157,7 +158,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰) / 'boil'(火+冰)
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷) / 'frostpoison'(冰+毒) / 'plasma'(火+雷) / 'glacier'(土+冰) / 'boil'(火+冰) / 'zero'(雷+冰)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -737,6 +738,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'cap_plasma') return !s.capstone && owns('fire') && owns('lightning'); // capstone: fire+lightning
     if (up.id === 'cap_glacier') return !s.capstone && owns('earth') && owns('ice'); // capstone: earth+ice
     if (up.id === 'cap_boil') return !s.capstone && owns('fire') && owns('ice'); // capstone: fire+ice
+    if (up.id === 'cap_zero') return !s.capstone && owns('lightning') && owns('ice'); // capstone: lightning+ice
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1467,6 +1469,31 @@ import { game, keys, mouse, CAM } from './state.js';
       if (game.boilTimer <= 0) { // scatter steam across the arena for the storm look (also reinforces the slow)
         game.boilTimer = 0.6;
         for (let i = 0; i < 2; i++) addSteamCloud(rnd(60, W - 60), rnd(60, H - 60), 40 + game.stats.size * 4, 1.6);
+      }
+    }
+    // capstone 絕對零度 (雷+冰): a periodic ice nova that freezes the whole field, then electrocutes the frozen.
+    // Only enemies are touched, so no telegraph is needed (it can never hurt you).
+    if (game.stats.capstone === 'zero' && game.state === 'playing') {
+      game.zeroTimer = (game.zeroTimer || 0) - dt;
+      if (game.zeroTimer <= 0) {
+        const live = game.enemies.filter(e => !e.dead);
+        if (!live.length) { game.zeroTimer = 1.0; } // nobody to freeze — re-check soon
+        else {
+          game.zeroTimer = 5.5;
+          const p = game.player;
+          for (const e of live) { // 凍結全場
+            e.slowTimer = Math.max(e.slowTimer || 0, 2.0 + game.stats.iceSlow * 0.4); e.chilled = true;
+            damageEnemy(e, 26 + game.stats.size * 5 + mLvl('ice') * 3, p.x, p.y, '絕對零度');
+          }
+          for (let i = 0; i < Math.min(3, live.length); i++) { // 電擊: a few seeds spread the chain across the field
+            const seed = live[Math.floor(i * live.length / 3)];
+            chainLightningFrom(seed.x, seed.y, seed, 18 + game.stats.storm * 3);
+            addElectricZone(seed.x, seed.y, 52, 0.6);
+          }
+          addRing(p.x, p.y, 210, '#bff4ff', 0.5, 5); addRing(p.x, p.y, 270, '#9fe7ff', 0.4, 4);
+          addText(p.x, p.y - 40, '絕對零度！', '#bff4ff'); game.screenShake = Math.max(game.screenShake, 7);
+          for (let i = 0; i < 16; i++) { const a = rnd(0, 6.28), s = rnd(120, 300); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: rnd(0.4, 0.8), maxLife: 0.8, color: i % 2 ? '#bff4ff' : '#9fe7ff' }); }
+        }
       }
     }
 
