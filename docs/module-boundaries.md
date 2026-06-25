@@ -115,7 +115,7 @@ utils.js ─────┼─→ data.js ─→ sim.js ─→ ┌─ render3d.j
 
 0. ✅ **先刪死碼**（§7-4，commit `9773c85`）：移除舊版 2D top-down 渲染器（§8 全部 12 函式 + `onGround` + `VIEW`/`TH` + 舊 ortho 註解），~501 行/檔。三檔同步、語法 OK、0 殘留引用、in-game 渲染無誤。**行為零變化**（原本就無人呼叫）。
 1. ✅ **最安全先抽**：`js/constants.js`（W/H/TILE/tile-enum）+ `js/utils.js`（rnd/clamp/dist/angleTo/norm/circleRectOverlap）+ `js/data.js`（ELEMENT_INFO/arenaTemplates/fusionKind/isX­Kind）。三檔 `<script>` 改 `type="module"` + `import`，移除內聯定義。HTTP 載入零錯誤、in-game 渲染無誤。**首次引入 ESM**：本地測試改走 `python -m http.server`；deploy workflow 加 copy `js/`（Pages 目前走分支直出，`js/` 已在 root，無破壞）。
-1.5. **抽 `state.js`**（§7-5，render 的前置）：`export const game / keys / mouse`（三個跨界共享的可變單例；已驗證只原地 mutate、從不重新賦值 → live-binding 安全）。`state.js` 只 import `constants`（mouse 初值用 W/H）。
+1.5. ✅ **抽 `state.js`**（§7-5，render 的前置）：`export const game / keys / mouse`（三個跨界共享的可變單例；已驗證只原地 mutate、從不重新賦值 → live-binding 安全）。`state.js` 只 import `constants`（mouse 初值用 W/H）。三檔加 `import { game, keys, mouse }`、移除內聯定義;HTTP 載入零錯誤、training 可玩、渲染不變。
 2. **抽 render**：合併成**單一 `render.js`**（§7-1）。`import { game, mouse } from state.js`；私有 module-level 持有 `scene/camera/renderer/ctx/CAM/幾何·材質快取/actorMeshes/project`。render 只讀 game，搬完行為不變。
    - **CAM 過渡**：CAM 歸 render.js;此時仍內聯的 sim 讀 `CAM.azimuth` → 暫時 `import { CAM } from './render.js'`（1 行，步驟 3 上 intent adapter 後移除）。
 3. **抽 sim.js**：把 278–2650 整塊搬出；**同時**做 §3 的 `update(dt, intent)` 接縫，斷開 CAM/mouse（§7-2，避免循環依賴）。

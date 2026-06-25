@@ -89,6 +89,7 @@
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL } from './js/constants.js';
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './js/utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './js/data.js';
+import { game, keys, mouse } from './js/state.js';
 (() => {
   'use strict';
 
@@ -107,8 +108,6 @@ import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLigh
     return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H, behind: v.z > 1 };
   }
 
-  const keys = new Set();
-  const mouse = { x: W / 2, y: H / 2, down: false, right: false };
 
   window.addEventListener('keydown', (e) => {
     keys.add(e.key.toLowerCase());
@@ -136,51 +135,6 @@ import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLigh
 
 
 
-  const game = {
-    state: 'title',
-    time: 0,
-    score: 0,
-    kills: 0,
-    biggestBoom: 0,
-    chainBooms: 0,
-    wave: 0,
-    waveClearTimer: 0,
-    screenShake: 0,
-    flash: 0,
-    message: '',
-    messageTimer: 0,
-    map: [],
-    player: null,
-    fireballs: [],
-    enemyProjectiles: [],
-    lightningBolts: [],
-    iceBolts: [],
-    enemies: [],
-    poisonClouds: [],
-    steamClouds: [],
-    fireZones: [],
-    electricZones: [],
-    explosions: [],
-    walls: [],
-    oils: [],
-    blackHoles: [],
-    props: [],
-    bossWarnings: [],
-    particles: [],
-    rings: [],
-    slams: [],
-    floatingTexts: [],
-    upgrades: [],
-    stats: null,
-    run: null,
-    waveMods: null,
-    fusionBanner: null,
-    bossPhaseBanner: null,
-    bossAttackLabel: '',
-    bossAttackTimer: 0,
-    bossStarted: false,
-    bossDefeated: false
-  };
 
 
 
