@@ -291,10 +291,10 @@
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => { game.stats.secondary = 'earthwall'; toast('副攻換成土牆！'); } },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => { game.stats.secondary = 'icewall'; toast('副攻換成冰牆！'); } },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => { game.stats.secondary = 'oil'; toast('副攻換成潑油！'); } },
-    { id: 'equip_wind', name: '副攻：風陣', desc: '副攻改成陣風；擊退敵人並把火/毒/蒸氣往前吹。', apply: () => { game.stats.secondary = 'wind'; toast('副攻換成風陣！'); } },
-    { id: 'equip_lightpalm', name: '副攻：雷掌', desc: '副攻改成近戰電掌；擊退 + 短雷鏈，踩水放會電整片水池（也會電到自己）。', apply: () => { game.stats.secondary = 'lightpalm'; toast('副攻換成雷掌！'); } },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => { game.stats.secondary = 'blackhole'; toast('副攻換成黑洞！'); } },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。放棄遠程飛彈，成為肉搏戰士。', apply: () => { game.stats.mainMode = 'fist'; toast('你成了肉搏戰士！'); } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 短雷鏈，踩水放電整片水池（也會電到自己）。放棄遠程飛彈。', apply: () => { game.stats.mainMode = 'lightpalm'; toast('主攻換成雷掌！'); } },
+    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。', apply: () => { game.stats.mainMode = 'windpalm'; toast('主攻換成風掌！'); } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
     { id: 'second_wind', name: '回春', desc: '立即回復 40% 最大生命。', apply: () => { healPlayer(game.player.maxHp * 0.4); toast('回復生命！'); } }
@@ -906,7 +906,9 @@
       const want = up.id.slice('equip_'.length);
       return s.secondary !== want;            // don't offer the secondary you already have
     }
-    if (up.id === 'fist_mode') return s.mainMode !== 'fist'; // already a brawler
+    if (up.id === 'fist_mode') return s.mainMode !== 'fist';        // already that brawler stance
+    if (up.id === 'lightpalm_mode') return s.mainMode !== 'lightpalm';
+    if (up.id === 'windpalm_mode') return s.mainMode !== 'windpalm';
     if (up.id === 'ice_lake' || up.id === 'ice_shatter') return owns('ice');
     if (up.id === 'shock') return owns('lightning');
     if (up.id === 'toxic_boom') return owns('poison');
@@ -1604,8 +1606,8 @@
     if (p.dashTime > 0) dashTrail(p);
 
     if (mouse.down && p.cooldown <= 0) {
-      if (game.stats.mainMode === 'fist') {
-        meleePunch(p.facing);
+      if (game.stats.mainMode !== 'spell') {
+        meleeAttack(p.facing);
         // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
         p.cooldown = Math.max(0.13, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
       } else {
@@ -1664,8 +1666,6 @@
     icewall:   { name: '冰牆', cd: 3.0, cast: (a) => buildWall(a, 'ice',   TILE_ICEWALL, 6, 4) },
     earthwall: { name: '土牆', cd: 3.4, cast: (a) => buildWall(a, 'earth', TILE_THIN,    8, 4) },
     oil:       { name: '潑油', cd: 2.6, cast: (a) => layOil(a) },
-    wind:      { name: '風陣', cd: 2.0, cast: (a) => windGust(a) },
-    lightpalm: { name: '雷掌', cd: 1.6, cast: (a) => lightningPalm(a) },
     blackhole: { name: '黑洞', cd: 6.0, cast: (a) => castBlackHole(a) }
   };
   function castSecondary(angle) {
@@ -1716,32 +1716,48 @@
     if (placed) { addText(cx, cy - 20, '潑油', '#cdb06a'); addRing(p.x, p.y, 22, '#caa45a', 0.3, 3); }
   }
 
-  // A forward gust: knock back enemies in a cone and shove hazard clouds the way you aim.
-  function windGust(angle) {
-    const p = game.player, range = 220, halfAng = 0.62;
+  // 風掌 (brawler MAIN): a melee palm that shoves a forward cone — strong knockback,
+  // pushes fire/poison/steam the way you aim, light contact damage. No projectile.
+  function windPalm(angle) {
+    const p = game.player, reach = 54, hitR = 44, range = 190, halfAng = 0.68;
+    const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
+    const dmg = 12 + game.stats.size * 2 + game.stats.dashPower * 2;
     for (const e of game.enemies) {
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d > range) continue;
       const a = Math.atan2(e.y - p.y, e.x - p.x);
       if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng) continue;
-      const f = 560 * (1 - d / range);
+      const f = 600 * (1 - d / range);
       e.vx = (e.vx || 0) + Math.cos(angle) * f; e.vy = (e.vy || 0) + Math.sin(angle) * f;
+      if (Math.hypot(e.x - fx, e.y - fy) < hitR + e.r) damageEnemy(e, dmg, p.x, p.y, '風掌');
     }
     const shove = (arr) => { for (const c of arr) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d > range) continue; const a = Math.atan2(c.y - p.y, c.x - p.x); if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.35) continue; c.x = clamp(c.x + Math.cos(angle) * 64, 0, W); c.y = clamp(c.y + Math.sin(angle) * 64, 0, H); } };
     shove(game.poisonClouds); shove(game.fireZones); shove(game.steamClouds);
     for (let i = 0; i < 16; i++) { const a = angle + rnd(-halfAng, halfAng), sp = rnd(140, 280); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#dff3ff' }); }
-    addRing(p.x, p.y, 30, '#dff3ff', 0.3, 3); game.screenShake = Math.max(game.screenShake, 2);
+    addRing(fx, fy, hitR, '#dff3ff', 0.24, 3); game.screenShake = Math.max(game.screenShake, 3);
   }
 
-  // Melee MAIN attack (brawler build): close-range punch that carries the current
-  // element, knocks back, and smashes thin/earth walls. Replaces the projectile.
-  function meleePunch(angle) {
-    const p = game.player, reach = 46, r = 36;
-    // drive the visible alternating palm thrust + combo timer (see updatePlayerMesh)
+  // Brawler dispatch: one palm-strike feel across all melee stances. palmSwing()
+  // drives the shared visible alternating thrust + flurry combo; each stance adds its FX.
+  function palmSwing() {
+    const p = game.player;
     p.fistHand = p.fistHand ? 0 : 1;
     p.fistAnim = p.fistAnimMax;
     p.fistCombo = p.fistComboTimer > 0 ? Math.min(p.fistCombo + 1, 6) : 1;
     p.fistComboTimer = 0.55;
+  }
+  function meleeAttack(angle) {
+    palmSwing();
+    const m = game.stats.mainMode;
+    if (m === 'lightpalm') lightningPalm(angle);
+    else if (m === 'windpalm') windPalm(angle);
+    else earthFist(angle);
+  }
+
+  // 土拳 (brawler MAIN): close-range punch that carries the current element, knocks
+  // back, and smashes thin/earth walls. Replaces the projectile.
+  function earthFist(angle) {
+    const p = game.player, reach = 46, r = 36;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
     const el = dashElement();
     const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2;
@@ -2738,11 +2754,11 @@
       fam.rotation.y += 0.05; fam.rotation.x += 0.035;
     }
     // brawler palm thrust: alternating hands shoot forward (local +Z = aim) on each punch
-    const fist = game.stats.mainMode === 'fist';
+    const brawler = game.stats.mainMode !== 'spell';
     const armL = playerMesh.userData.armL, armR = playerMesh.userData.armR;
     if (armL && armR) {
-      armL.visible = fist; armR.visible = fist;
-      if (fist) {
+      armL.visible = brawler; armR.visible = brawler;
+      if (brawler) {
         const baseL = playerMesh.userData.armLBase, baseR = playerMesh.userData.armRBase;
         armL.position.copy(baseL); armR.position.copy(baseR);
         const active = p.fistHand ? armR : armL, idle = p.fistHand ? armL : armR;
@@ -2751,7 +2767,11 @@
         active.position.z = base.z + prog * 34;          // thrust toward aim
         active.position.x = base.x * (1 - prog * 0.7);   // converge to centre
         active.position.y = base.y + prog * 3;
-        const ecol = colorHex((ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color) || '#ffe0bd');
+        // palm glow: stance colour for 雷掌/風掌, else the current element on the fist
+        const palmTint = game.stats.mainMode === 'lightpalm' ? '#9fe7ff'
+          : game.stats.mainMode === 'windpalm' ? '#dff3ff'
+          : (ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color) || '#ffe0bd';
+        const ecol = colorHex(palmTint);
         active.material.color.setHex(prog > 0.2 ? ecol : 0xffd7b0);
         if (active.material.emissive) { active.material.emissive.setHex(ecol); active.material.emissiveIntensity = prog * 0.6; }
         idle.material.color.setHex(0xffd7b0);
@@ -3731,12 +3751,14 @@
       ctx.fillText('提示：唯一主魔法可被火、冰、雷、毒覆蓋；兩種元素會融合成新法術。', W / 2, H - 34);
     }
 
-    // Brawler tag: main attack is melee.
-    if (game.state === 'playing' && game.stats.mainMode === 'fist') {
+    // Brawler tag: main attack is melee (土拳 / 雷掌 / 風掌).
+    if (game.state === 'playing' && game.stats.mainMode !== 'spell') {
+      const BRAWL = { fist: ['肉搏 土拳', '#e0b07a', '#ffdfa6'], lightpalm: ['肉搏 雷掌', '#9fe7ff', '#cdf3ff'], windpalm: ['肉搏 風掌', '#dff3ff', '#eafaff'] };
+      const b = BRAWL[game.stats.mainMode] || BRAWL.fist;
       roundRectPath(ctx, 16, H - 92, 150, 32, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
-      ctx.strokeStyle = '#e0b07a'; ctx.stroke();
-      ctx.textAlign = 'left'; ctx.font = '900 13px system-ui, sans-serif'; ctx.fillStyle = '#ffdfa6';
-      ctx.fillText('主攻 [左鍵]：肉搏 土拳', 26, H - 71);
+      ctx.strokeStyle = b[1]; ctx.stroke();
+      ctx.textAlign = 'left'; ctx.font = '900 13px system-ui, sans-serif'; ctx.fillStyle = b[2];
+      ctx.fillText('主攻 [左鍵]：' + b[0], 26, H - 71);
     }
 
     // Secondary-attack indicator (bottom-left) — only once a secondary is equipped.
@@ -3815,7 +3837,7 @@
     if (['inject_poison'].includes(up.id)) return { label: '元素', color: '#d998ff' };
     if (['split','explode','trail','big','spread','toxic_boom','ice_lake','ice_shatter','shock'].includes(up.id)) return { label: '改造', color: '#fff1bb' };
     if (up.id && up.id.indexOf('equip_') === 0) return { label: '副攻', color: '#8cecff' };
-    if (up.id === 'fist_mode') return { label: '肉搏', color: '#e0b07a' };
+    if (['fist_mode','lightpalm_mode','windpalm_mode'].includes(up.id)) return { label: '肉搏', color: '#e0b07a' };
     if (['dash_cd','dash_power'].includes(up.id)) return { label: '衝刺', color: '#b7d8ff' };
     if (['danger','vamp','haste','vitality','swift','second_wind'].includes(up.id)) return { label: '通用', color: '#d7a0ff' };
     return { label: '升級', color: '#fff1bb' };
@@ -3823,7 +3845,7 @@
 
   // Multiple build tags per upgrade card (max 3). See docs/design-vision §10.
   const TAGCOLOR = {
-    '火': '#ffbd66', '冰': '#bff4ff', '雷': '#9fe7ff', '毒': '#d998ff', '精通': '#ffd36d',
+    '火': '#ffbd66', '冰': '#bff4ff', '雷': '#9fe7ff', '毒': '#d998ff', '風': '#dff3ff', '精通': '#ffd36d',
     '元素': '#ffe6a7', '近戰': '#e0b07a', '環境': '#8ee07a', '控場': '#9fe7ff',
     '破壞': '#caa472', '高風險': '#ff7b72', '投擲': '#dff3ff', '衝刺': '#b7d8ff',
     '副攻': '#8cecff', '通用': '#d7a0ff', '改造': '#fff1bb'
@@ -3836,9 +3858,9 @@
       shock: ['雷', '控場'], ice_lake: ['冰', '環境'], ice_shatter: ['冰', '控場'], danger: ['高風險'],
       dash_cd: ['衝刺'], dash_power: ['衝刺', '近戰'],
       equip_icewall: ['冰', '環境', '副攻'], equip_earthwall: ['環境', '破壞', '副攻'],
-      equip_oil: ['火', '高風險', '副攻'], equip_wind: ['投擲', '環境', '副攻'],
-      equip_lightpalm: ['雷', '近戰', '副攻'], equip_blackhole: ['環境', '副攻'],
-      fist_mode: ['近戰', '破壞'], vitality: ['通用'], swift: ['通用'], second_wind: ['通用']
+      equip_oil: ['火', '高風險', '副攻'], equip_blackhole: ['環境', '副攻'],
+      fist_mode: ['近戰', '破壞'], lightpalm_mode: ['雷', '近戰', '控場'], windpalm_mode: ['風', '近戰', '控場'],
+      vitality: ['通用'], swift: ['通用'], second_wind: ['通用']
     };
     return T[up.id] || ['升級'];
   }
