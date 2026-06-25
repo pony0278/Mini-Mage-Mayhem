@@ -685,18 +685,24 @@ let ctx = screenCtx;
     }
     if (p.held.length >= cap) return;
     const pr = nearestLiftable(p);
-    // ★3: with no crate/foe in reach, fall back to highlighting a liftable thin/ice wall tile.
-    const wall = !pr && cap >= 3 ? nearestLiftableWallTile(p) : null;
+    // With no crate/foe in reach, look for a liftable wall. Lifting unlocks at ★3 — below that we still
+    // surface a dimmed "★3 可拔牆" lock prompt so the player knows the feature exists and how to unlock it.
+    const wall = !pr ? nearestLiftableWallTile(p) : null;
     const target = pr || wall;
     if (!target) return;
-    const label = pr ? 'E 舉起 ↑' : (wall.kind === 'ice' ? 'E 拔冰牆 ↑' : 'E 拔薄牆 ↑');
-    const tint = wall && wall.kind === 'ice' ? '191,244,255' : '223,243,255';
+    const locked = !!wall && cap < 3;
+    const label = pr ? 'E 舉起 ↑'
+      : locked ? '★3 可拔牆'
+      : (wall.kind === 'ice' ? 'E 拔冰牆 ↑' : 'E 拔薄牆 ↑');
+    const tint = locked ? '150,152,172'
+      : wall && wall.kind === 'ice' ? '191,244,255'
+      : '223,243,255';
     const s = project(target.x ?? target.cx, target.y ?? target.cy, (target.r ? target.r * 2.4 : 28) + 14);
     if (s.behind) return;
-    const pulse = 0.55 + 0.45 * Math.sin(game.time * 6);
+    const pulse = locked ? 0.7 : 0.55 + 0.45 * Math.sin(game.time * 6); // locked = steady & dim, no pulsing ring
     ctx.save();
-    ctx.strokeStyle = `rgba(${tint},${pulse})`; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(s.x, s.y + 10, 20 + 3 * Math.sin(game.time * 6), 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = `rgba(${tint},${locked ? 0.5 : pulse})`; ctx.lineWidth = locked ? 1.5 : 2.5;
+    ctx.beginPath(); ctx.arc(s.x, s.y + 10, (locked ? 16 : 20) + (locked ? 0 : 3 * Math.sin(game.time * 6)), 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
     ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 50, s.y - 14, 100, 20, 8); ctx.fill();
     ctx.textAlign = 'center'; ctx.font = '900 12px system-ui, sans-serif';
