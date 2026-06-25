@@ -168,6 +168,7 @@
     bossWarnings: [],
     particles: [],
     rings: [],
+    slams: [],
     floatingTexts: [],
     upgrades: [],
     stats: null,
@@ -301,6 +302,7 @@
     game.bossWarnings.length = 0;
     game.particles.length = 0;
     game.rings.length = 0;
+    game.slams.length = 0;
     game.floatingTexts.length = 0;
     game.upgrades.length = 0;
     game.run = {
@@ -1428,6 +1430,10 @@
     game.floatingTexts.push({ x, y, text, color, life: 0.82, maxLife: 0.82, vy: -34 });
   }
 
+  // Big directional palm-slam shock (brawler main attack) — rendered in syncZones.
+  function addSlam(x, y, angle, hex, power = 1) {
+    game.slams.push({ x, y, angle, hex, power, life: 0.28, maxLife: 0.28 });
+  }
   function addRing(x, y, r, color = '#fff', life = 0.35, width = 3) {
     game.rings.push({ x, y, r, color, life, maxLife: life, width });
   }
@@ -1720,7 +1726,11 @@
   }
   function meleeAttack(angle) {
     palmSwing();
-    const m = game.stats.mainMode;
+    const p = game.player, m = game.stats.mainMode;
+    const hex = m === 'lightpalm' ? 0x9fe7ff
+      : m === 'windpalm' ? 0xeafaff
+      : colorHex((ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color) || '#ffd7a0');
+    addSlam(p.x, p.y, angle, hex, 1 + Math.min(p.fistCombo, 5) * 0.12); // grows with the flurry
     if (m === 'lightpalm') lightningPalm(angle);
     else if (m === 'windpalm') windPalm(angle);
     else earthFist(angle);
@@ -2379,6 +2389,8 @@
   function updateRings(dt) {
     for (const r of game.rings) r.life -= dt;
     game.rings = game.rings.filter(r => r.life > 0);
+    for (const s of game.slams) s.life -= dt;
+    game.slams = game.slams.filter(s => s.life > 0);
   }
 
   function updateFloatingTexts(dt) {
@@ -2899,6 +2911,29 @@
       puff(ex.x, ex.y, ex.r, 0xff7640, 0.22 * (ex.life / ex.maxLife), 6, 30);
     }
     for (const rg of game.rings) disc(rg.x, rg.y, rg.r * (0.5 + (1 - rg.life / rg.maxLife) * 0.7), 0xffffff, 0.14 * clamp(rg.life / rg.maxLife, 0, 1));
+    for (const s of game.slams) {
+      const k = clamp(s.life / s.maxLife, 0, 1);   // 1→0 (fade)
+      const t = 1 - k;                              // 0→1 (expand)
+      const P = s.power;
+      // leading shock ring punched out along the aim
+      const lead = (40 + t * 70) * P;
+      const lx = s.x + Math.cos(s.angle) * lead, ly = s.y + Math.sin(s.angle) * lead;
+      const rr = (24 + t * 50) * P;
+      const ring = new THREE.Mesh(torusGeo, tmpMat(s.hex, 0.95 * k, true));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(lx, 6, ly); ring.scale.set(rr, rr, rr * 0.85);
+      zoneGroup.add(ring);
+      const ring2 = new THREE.Mesh(torusGeo, tmpMat(0xffffff, 0.55 * k, true));
+      ring2.rotation.x = -Math.PI / 2; ring2.position.set(lx, 7, ly); ring2.scale.set(rr * 0.62, rr * 0.62, rr * 0.55);
+      zoneGroup.add(ring2);
+      // forward "palm wind": discs marching outward = a cone of force, + white contact flash
+      disc(s.x + Math.cos(s.angle) * 24 * P, s.y + Math.sin(s.angle) * 24 * P, 28 * P * (0.8 + t * 0.4), 0xffffff, 0.5 * k);
+      for (let i = 0; i < 3; i++) {
+        const d = ((22 + i * 28) + t * 56) * P;
+        const dr = ((20 + i * 11) * (0.75 + t * 0.85)) * P;
+        disc(s.x + Math.cos(s.angle) * d, s.y + Math.sin(s.angle) * d, dr, s.hex, 0.42 * k * (1 - i * 0.2));
+      }
+      puff(lx, ly, 26 * P, s.hex, 0.3 * k, 6, 14);
+    }
     for (const bh of game.blackHoles) {
       disc(bh.x, bh.y, bh.r, 0x2a0f3a, 0.34);
       const t = 1 - bh.life / bh.maxLife;
