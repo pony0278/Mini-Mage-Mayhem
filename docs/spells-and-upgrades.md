@@ -2,6 +2,7 @@
 
 > 目前實作的所有法術、模式、副攻、元素精通與升級的一覽（由 `index.html` 整理，會隨版本更新）。
 > 想實際手感測試 → 用 [法術測試場](../training.html)（`training.html`，可即時切換全部）。
+> **本文件只列已實作內容。** 規劃中的「build 畢業大絕（capstone）」見 [capstones.md](capstones.md)；某個 capstone 實作上線後再補進這裡的表格。
 
 ---
 
