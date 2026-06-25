@@ -83,6 +83,7 @@ import { game, keys, mouse, CAM } from './state.js';
     { id: 'dash_charge', name: '疾風連步', desc: '衝刺多一段充能，可連續衝刺（雙閃/三閃）。', apply: () => { game.stats.dashCharges += 1; game.player.dashStock = game.stats.dashCharges; toast('衝刺多一段！'); } },
     { id: 'cap_meteor', name: '流星降臨', desc: '畢業大絕（火+土）：戰鬥中持續天降流星，落點預警後爆炸並留下岩漿池。', apply: () => { game.stats.capstone = 'meteor'; toast('流星降臨！從此天降災厄'); } },
     { id: 'cap_plague', name: '瘟疫核爆', desc: '畢業大絕（火+毒）：你佈下的毒霧會週期性自動連環引爆（距你太近的不引爆）。', apply: () => { game.stats.capstone = 'plague'; toast('瘟疫核爆！毒霧開始自爆'); } },
+    { id: 'cap_storm', name: '磁暴奇點', desc: '畢業大絕（土+雷）：週期生成磁力奇點把敵人吸成一團，塌縮時雷鏈貫穿引爆。', apply: () => { game.stats.capstone = 'storm'; toast('磁暴奇點！敵人將被吸攏電穿'); } },
     { id: 'equip_earthwall', name: '副攻：土牆', desc: '副攻改成土牆，更耐久、可被爆炸炸開重塑戰場。', apply: () => equipOrLevelSecondary('earthwall') },
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
@@ -150,7 +151,7 @@ import { game, keys, mouse, CAM } from './state.js';
       dashCdMul: 1,
       dashPower: 0,
       dashCharges: 1,
-      capstone: null,   // build 畢業大絕 id（一局一條）；目前：'meteor'（火+土 流星降臨）
+      capstone: null,   // build 畢業大絕 id（一局一條）：'meteor'(火+土) / 'plague'(火+毒) / 'storm'(土+雷)
       secondary: null,
       secondaryLvl: { icewall: 0, earthwall: 0, oil: 0, blackhole: 0 },
       mainMode: 'spell',
@@ -725,6 +726,7 @@ import { game, keys, mouse, CAM } from './state.js';
     if (up.id === 'split' || up.id === 'explode' || up.id === 'trail') return s.mainMode === 'spell'; // pure-projectile mechanics — dead once a brawler stance is picked
     if (up.id === 'cap_meteor') return !s.capstone && owns('fire') && owns('earth'); // capstone: one per run, gated on the fire+earth combo
     if (up.id === 'cap_plague') return !s.capstone && owns('fire') && owns('poison'); // capstone: fire+poison
+    if (up.id === 'cap_storm') return !s.capstone && owns('earth') && owns('lightning'); // capstone: earth+lightning
     return true; // inject_* (inject or mastery) and generics are always meaningful
   }
   export function openUpgrade() {
@@ -1339,6 +1341,22 @@ import { game, keys, mouse, CAM } from './state.js';
         if (n) addText(p.x, p.y - 40, `瘟疫核爆 ×${n}!`, '#d998ff');
       }
     }
+    // capstone 磁暴奇點 (土+雷): periodic singularity clumps foes, then chain-detonates on collapse
+    if (game.stats.capstone === 'storm' && game.state === 'playing') {
+      game.stormTimer = (game.stormTimer || 0) - dt;
+      if (game.stormTimer <= 0) {
+        const live = game.enemies.filter(e => !e.dead && e.type !== 'boss');
+        if (live.length >= 2) {
+          game.stormTimer = 3.6;
+          // aim at the densest clump: the foe with the most neighbours within 130px
+          let best = live[0], bestN = -1;
+          for (const e of live) { let c = 0; for (const o of live) if (Math.hypot(o.x - e.x, o.y - e.y) < 130) c++; if (c > bestN) { bestN = c; best = e; } }
+          const r = 130 + game.stats.size * 14 + spellMastery() * 6;
+          game.blackHoles.push({ x: clamp(best.x, 40, W - 40), y: clamp(best.y, 40, H - 40), r, life: 1.5, maxLife: 1.5, exploded: false, storm: true });
+          addRing(best.x, best.y, 36, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
+        } else { game.stormTimer = 1.2; } // no clump yet — re-check soon (don't waste the proc)
+      }
+    }
 
     updateProjectiles(dt);
     updateEnemies(dt);
@@ -1834,7 +1852,18 @@ import { game, keys, mouse, CAM } from './state.js';
       }
       const pull = (arr) => { for (const c of arr) { const dx = bh.x - c.x, dy = bh.y - c.y, d = Math.hypot(dx, dy); if (d < bh.r && d > 4) { const s = Math.min(d, 130 * dt); c.x += dx / d * s; c.y += dy / d * s; } } };
       pull(game.poisonClouds); pull(game.fireZones); pull(game.steamClouds);
-      if (bh.life <= 0 && !bh.exploded) { bh.exploded = true; addExplosion(bh.x, bh.y, bh.r * 0.9, 46, '黑洞塌縮'); applyElementalBurst(bh.x, bh.y, bh.r * 0.5); } // collapse takes the build's element
+      if (bh.life <= 0 && !bh.exploded) { // collapse takes the build's element
+        bh.exploded = true;
+        addExplosion(bh.x, bh.y, bh.r * 0.9, 46, bh.storm ? '磁暴奇點' : '黑洞塌縮');
+        applyElementalBurst(bh.x, bh.y, bh.r * 0.5);
+        if (bh.storm) { // 磁暴: a chain-lightning rips through the clumped foes + an electric field
+          addElectricZone(bh.x, bh.y, bh.r * 0.7, 0.9);
+          let seed = null, sd = bh.r;
+          for (const e of game.enemies) { if (e.dead) continue; const d = Math.hypot(e.x - bh.x, e.y - bh.y); if (d < sd) { sd = d; seed = e; } }
+          if (seed) chainLightningFrom(seed.x, seed.y, seed, 30 + game.stats.storm * 4);
+          game.screenShake = Math.max(game.screenShake, 6);
+        }
+      }
     }
     game.blackHoles = game.blackHoles.filter(bh => bh.life > -0.05);
   }

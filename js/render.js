@@ -1026,7 +1026,7 @@ let ctx = screenCtx;
       equip_oil: ['火', '高風險', '副攻'], equip_blackhole: ['環境', '副攻'],
       fist_mode: ['近戰', '破壞'], lightpalm_mode: ['雷', '近戰', '控場'], windpalm_mode: ['風', '近戰', '控場'],
       vitality: ['通用'], swift: ['通用'], second_wind: ['通用'],
-      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業']
+      cap_meteor: ['火', '土', '畢業'], cap_plague: ['火', '毒', '畢業'], cap_storm: ['土', '雷', '畢業']
     };
     return T[up.id] || ['升級'];
   }
