@@ -1879,13 +1879,45 @@ import { game, keys, mouse, CAM } from './state.js';
     }
     return best;
   }
-  export function tryGrab(p) {                    // grab nearest foe (preferred) else crate → push to p.held
+  export function tryGrab(p) {                    // grab nearest foe (preferred) → crate → (★3) pull a wall
     const it = nearestGrabbableEnemy(p) || nearestLiftable(p);
-    if (!it) return false;
-    it.held = true; it.vx = 0; it.vy = 0; it.thrown = 0;
-    p.held.push(it);
-    addText(p.x, p.y - 46, it.type ? '抓起 ↑' : '舉起 ↑', '#dff3ff');
-    addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
+    if (it) {
+      it.held = true; it.vx = 0; it.vy = 0; it.thrown = 0;
+      p.held.push(it);
+      addText(p.x, p.y - 46, it.type ? '抓起 ↑' : '舉起 ↑', '#dff3ff');
+      addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
+      game.screenShake = Math.max(game.screenShake, 2);
+      return true;
+    }
+    if ((game.stats.windpalmStar || 0) >= 3) return tryLiftWall(p); // ★3: terrain becomes ammo
+    return false;
+  }
+  // ★3: pull the nearest thin/ice wall tile out of the ground as a throwable chunk.
+  // Covers both player-built (土牆 TILE_THIN / 冰牆 TILE_ICEWALL) and arena-layout 薄牆 (TILE_THIN).
+  // Permanent walls (TILE_WALL / borders) are off-limits — the safety line (else you'd breach the arena).
+  export function nearestLiftableWallTile(p) {
+    const reach = p.r + 17 + 30;
+    const ptx = Math.floor(p.x / TILE), pty = Math.floor(p.y / TILE);
+    let best = null, bd = 1e9;
+    for (let ty = pty - 2; ty <= pty + 2; ty++) for (let tx = ptx - 2; tx <= ptx + 2; tx++) {
+      if (tx < 1 || ty < 1 || tx >= COLS - 1 || ty >= ROWS - 1) continue;
+      const t = game.map[ty][tx];
+      if (t !== TILE_THIN && t !== TILE_ICEWALL) continue;
+      const cx = tx * TILE + TILE / 2, cy = ty * TILE + TILE / 2;
+      const d = Math.hypot(cx - p.x, cy - p.y);
+      if (d < reach && d < bd) { bd = d; best = { tx, ty, cx, cy, kind: t === TILE_ICEWALL ? 'ice' : 'earth' }; }
+    }
+    return best;
+  }
+  function tryLiftWall(p) {
+    const w = nearestLiftableWallTile(p);
+    if (!w) return false;
+    game.map[w.ty][w.tx] = TILE_FLOOR;   // updateWalls drops any matching game.walls record next tick (no revert)
+    const chunk = { x: w.cx, y: w.cy, vx: 0, vy: 0, r: 15, hp: 40, maxHp: 40, charge: null, chargeTimer: 0, zapCd: 0, burn: 0, held: true, thrown: 0, wall: w.kind };
+    game.props.push(chunk);
+    p.held.push(chunk);
+    addText(p.x, p.y - 46, w.kind === 'ice' ? '拔起冰牆 ↑' : '拔起薄牆 ↑', w.kind === 'ice' ? '#bff4ff' : '#d1a06a');
+    addRing(p.x, p.y, 30, w.kind === 'ice' ? '#bff4ff' : '#caa472', 0.25, 3);
     game.screenShake = Math.max(game.screenShake, 2);
     return true;
   }
@@ -1926,7 +1958,7 @@ import { game, keys, mouse, CAM } from './state.js';
         if (charged) { e.stunTimer = Math.max(e.stunTimer || 0, 0.5); }
       }
     }
-    const shardCol = reason === 'fire' ? '#ff8a3a' : '#caa472';
+    const shardCol = reason === 'fire' ? '#ff8a3a' : (pr.wall === 'ice' ? '#bff4ff' : '#caa472');
     for (let i = 0; i < 16; i++) { const a = rnd(0, Math.PI * 2), sp = rnd(120, 320); game.particles.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: shardCol }); }
     addRing(cx, cy, 64, reason === 'fire' ? '#ff8a3a' : '#d8b888', 0.3, 4);
     if (reason === 'fire') addFireZone(cx, cy, 30, 1.0, true);
@@ -1941,6 +1973,7 @@ import { game, keys, mouse, CAM } from './state.js';
       const sp = pr.held ? 0 : Math.hypot(pr.vx, pr.vy);
       if (sp > 1) {                                   // sliding: move, bounce off walls, ram enemies
         let nx = pr.x + pr.vx * dt, ny = pr.y + pr.vy * dt;
+        if (pr.wall === 'earth' && sp > 120) breakThinWalls(nx, ny, pr.r); // 土碎塊砸穿薄牆(永久牆/邊界免疫)
         if (circleHitsSolid(nx, pr.y, pr.r)) { pr.vx *= -0.3; nx = pr.x; }
         if (circleHitsSolid(pr.x, ny, pr.r)) { pr.vy *= -0.3; ny = pr.y; }
         pr.x = clamp(nx, pr.r, W - pr.r); pr.y = clamp(ny, pr.r, H - pr.r);
@@ -1951,6 +1984,7 @@ import { game, keys, mouse, CAM } from './state.js';
             const a = Math.atan2(e.y - pr.y, e.x - pr.x);
             e.vx = (e.vx || 0) + Math.cos(a) * sp * 0.55; e.vy = (e.vy || 0) + Math.sin(a) * sp * 0.55;
             pr.vx *= 0.6; pr.vy *= 0.6;
+            if (pr.wall === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.4); e.chilled = true; } // 冰碎塊命中減速
             if (pr.charge === 'lightning') { e.stunTimer = Math.max(e.stunTimer || 0, 0.5); chainLightningFrom(e.x, e.y, e, 12); game.lightningBolts.push({ x1: pr.x, y1: pr.y, x2: e.x, y2: e.y, life: 0.12, maxLife: 0.12 }); }
           }
         }

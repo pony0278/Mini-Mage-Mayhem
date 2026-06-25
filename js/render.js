@@ -2,7 +2,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, T
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
 import { game, mouse, CAM } from './state.js';
-import { currentFlowName, dashElement, isMastery, isSecMastery, makeRunStory, nearestLiftable, previewSpellState, spellDescription, upgradeDesc, upgradeName, SECONDARY } from './sim.js';
+import { currentFlowName, dashElement, isMastery, isSecMastery, makeRunStory, nearestLiftable, nearestLiftableWallTile, previewSpellState, spellDescription, upgradeDesc, upgradeName, SECONDARY } from './sim.js';
 
 // 3D (Three.js voxel world) + 2D HUD render layer. Reads game state; owns the
 // scene/camera/renderer/ctx and the HUD draw fns. Imports sim only for HUD
@@ -412,17 +412,19 @@ let ctx = screenCtx;
     for (const pr of game.props) {
       const charged = pr.charge === 'lightning', burning = pr.charge === 'fire';
       const cracked = pr.hp < pr.maxHp;
-      const col = burning ? 0xff7a3a : charged ? 0x6fb8d8 : (cracked ? 0x9c7038 : 0xb98a52);
-      const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : 0x000000;
+      const ice = pr.wall === 'ice', earth = pr.wall === 'earth'; // ★3 風掌牆碎塊（冰=藍/土=石灰）
+      const col = burning ? 0xff7a3a : charged ? 0x6fb8d8 : ice ? 0x9fd8e8 : earth ? 0x8a8276 : (cracked ? 0x9c7038 : 0xb98a52);
+      const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : (ice ? 0x2a6a88 : 0x000000);
       const s = pr.r * 1.9;
       const lift = pr.held ? pr.r * 2.0 : 0;          // a carried crate floats above the mage
-      const box = makeBox(s, s, s, col, emis, (charged || burning) ? 0.7 : 0);
+      const box = makeBox(s, s, s, col, emis, (charged || burning || ice) ? 0.6 : 0);
       box.position.set(pr.x, pr.r * 0.95 + lift, pr.y);
       box.rotation.y = (pr.x + pr.y) * 0.01 + (pr.held ? game.time * 1.5 : 0);
       propGroup.add(box);
-      const cap = makeBox(s * 1.04, 3, s * 1.04, burning ? 0x9c4422 : charged ? 0x3a7a90 : 0x7a5a32);
+      const cap = makeBox(s * 1.04, 3, s * 1.04, burning ? 0x9c4422 : charged ? 0x3a7a90 : ice ? 0x6aa8c0 : earth ? 0x5a564e : 0x7a5a32);
       cap.position.set(pr.x, pr.r * 1.9 + lift, pr.y); cap.rotation.y = box.rotation.y; propGroup.add(cap);
       if (charged) { const g = makeGlowSphere(pr.r * 1.7, 0x9fe7ff, 0.3); g.position.set(pr.x, pr.r + lift, pr.y); propGroup.add(g); }
+      else if (ice) { const g = makeGlowSphere(pr.r * 1.7, 0xcdf2ff, 0.22); g.position.set(pr.x, pr.r + lift, pr.y); propGroup.add(g); }
       if (pr.held) { const g = makeGlowSphere(pr.r * 2.1, 0xdff3ff, 0.26); g.position.set(pr.x, pr.r * 0.95 + lift, pr.y); propGroup.add(g); }
     }
   }
@@ -654,17 +656,22 @@ let ctx = screenCtx;
     }
     if (p.held.length >= cap) return;
     const pr = nearestLiftable(p);
-    if (!pr) return;
-    const s = project(pr.x, pr.y, pr.r * 2.4 + 14);
+    // ★3: with no crate/foe in reach, fall back to highlighting a liftable thin/ice wall tile.
+    const wall = !pr && cap >= 3 ? nearestLiftableWallTile(p) : null;
+    const target = pr || wall;
+    if (!target) return;
+    const label = pr ? 'E 舉起 ↑' : (wall.kind === 'ice' ? 'E 拔冰牆 ↑' : 'E 拔薄牆 ↑');
+    const tint = wall && wall.kind === 'ice' ? '191,244,255' : '223,243,255';
+    const s = project(target.x ?? target.cx, target.y ?? target.cy, (target.r ? target.r * 2.4 : 28) + 14);
     if (s.behind) return;
     const pulse = 0.55 + 0.45 * Math.sin(game.time * 6);
     ctx.save();
-    ctx.strokeStyle = `rgba(223,243,255,${pulse})`; ctx.lineWidth = 2.5;
+    ctx.strokeStyle = `rgba(${tint},${pulse})`; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(s.x, s.y + 10, 20 + 3 * Math.sin(game.time * 6), 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
-    ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 46, s.y - 14, 92, 20, 8); ctx.fill();
+    ctx.fillStyle = 'rgba(10,8,14,.6)'; roundRectPath(ctx, s.x - 50, s.y - 14, 100, 20, 8); ctx.fill();
     ctx.textAlign = 'center'; ctx.font = '900 12px system-ui, sans-serif';
-    ctx.fillStyle = `rgba(223,243,255,${pulse})`; ctx.fillText('E 舉起 ↑', s.x, s.y);
+    ctx.fillStyle = `rgba(${tint},${pulse})`; ctx.fillText(label, s.x, s.y);
   }
 
   export function draw() {
@@ -905,7 +912,7 @@ let ctx = screenCtx;
       roundRectPath(ctx, 16, H - 128, 214, 30, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
       ctx.strokeStyle = '#dff3ff'; ctx.stroke();
       ctx.textAlign = 'left'; ctx.font = '900 12px system-ui, sans-serif'; ctx.fillStyle = '#eafaff';
-      ctx.fillText(heldN ? `[E] 投擲 ×${heldN} →` : `[E] 靠近箱子/小怪 → 撿起 (★${cap})`, 26, H - 108);
+      ctx.fillText(heldN ? `[E] 投擲 ×${heldN} →` : `[E] 靠近箱子/小怪${cap >= 3 ? '/牆' : ''} → 撿起 (★${cap})`, 26, H - 108);
     }
 
     // Brawler tag: main attack is melee (土拳 / 雷掌 / 風掌).
