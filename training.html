@@ -449,6 +449,7 @@
       fistComboTimer: 0,
       secondaryCooldown: 0,
       heldProp: null,
+      heldEnemy: null,
       eDown: false,
       invuln: 0,
       hurtTimer: 0,
@@ -1728,7 +1729,7 @@
 
     const wp = game.stats.mainMode === 'windpalm';
     // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
-    if (mouse.down && p.cooldown <= 0 && !(wp && p.heldProp)) {
+    if (mouse.down && p.cooldown <= 0 && !(wp && (p.heldProp || p.heldEnemy))) {
       if (game.stats.mainMode !== 'spell') {
         meleeAttack(p.facing);
         // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
@@ -1747,7 +1748,8 @@
     const eDown = keys.has('e'); const eEdge = eDown && !p.eDown; p.eDown = eDown;
     if (wp && eEdge) {
       if (p.heldProp) throwHeldProp(p.facing);
-      else { const pr = nearestLiftable(p); if (pr) liftProp(pr); }
+      else if (p.heldEnemy) throwHeldEnemy(p.facing);
+      else if (!liftNearestEnemy(p)) { const pr = nearestLiftable(p); if (pr) liftProp(pr); } // grab a foe first, else a crate
     }
     // Carry a lifted crate floating in front of the mage (follows the aim).
     if (p.heldProp) {
@@ -1755,6 +1757,18 @@
       pr.x = clamp(p.x + Math.cos(p.facing) * off, pr.r, W - pr.r);
       pr.y = clamp(p.y + Math.sin(p.facing) * off, pr.r, H - pr.r);
       pr.vx = 0; pr.vy = 0; pr.thrown = 0;
+    }
+    // Carry a grabbed enemy floating in front (風掌 丟人); drop it if it dies in your grip.
+    if (p.heldEnemy) {
+      const e = p.heldEnemy;
+      if (e.dead) { p.heldEnemy = null; }
+      else {
+        const off = p.r + e.r + 12;
+        e.x = clamp(p.x + Math.cos(p.facing) * off, e.r, W - e.r);
+        e.y = clamp(p.y + Math.sin(p.facing) * off, e.r, H - e.r);
+        e.vx = 0; e.vy = 0; e.thrown = 0;
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.3);
+      }
     }
   }
 
@@ -2117,6 +2131,34 @@
     game.screenShake = Math.max(game.screenShake, 4);
     for (let i = 0; i < 10; i++) { const a = angle + rnd(-0.4, 0.4), s = rnd(120, 260); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#dff3ff' }); }
   }
+  // 風掌 丟人: grab the nearest grabbable foe in arm's reach. Light types (slime/bug/imp)
+  // any time; chargers only while stunned; boss never. Returns true if one was grabbed.
+  function liftNearestEnemy(p) {
+    let best = null, bd = p.r + 17 + 34;
+    for (const e of game.enemies) {
+      if (e.dead || e.held || e.type === 'boss') continue;
+      const grabbable = e.type === 'slime' || e.type === 'bug' || e.type === 'imp' || e.stunTimer > 0 || e.chilled;
+      if (!grabbable) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d < bd) { bd = d; best = e; }
+    }
+    if (!best) return false;
+    p.heldEnemy = best; best.held = true; best.vx = 0; best.vy = 0; best.thrown = 0;
+    addText(p.x, p.y - 46, '抓起 ↑', '#dff3ff'); addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
+    game.screenShake = Math.max(game.screenShake, 2);
+    return true;
+  }
+  function throwHeldEnemy(angle) {
+    const p = game.player, e = p.heldEnemy; if (!e) return;
+    p.heldEnemy = null; e.held = false;
+    const sp = 720;
+    e.vx = Math.cos(angle) * sp; e.vy = Math.sin(angle) * sp; e.thrown = 0.6;
+    e.stunTimer = Math.max(e.stunTimer || 0, 0.8); // dazed after the flight
+    p.cooldown = Math.max(p.cooldown, 0.26);
+    addText(p.x, p.y - 46, '丟人 →', '#eafaff'); addRing(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, 26, '#eafaff', 0.22, 3);
+    game.screenShake = Math.max(game.screenShake, 4);
+    for (let i = 0; i < 10; i++) { const a = angle + rnd(-0.4, 0.4), s = rnd(120, 260); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#dff3ff' }); }
+  }
   function pushProp(pr, fromX, fromY, force) {
     const a = Math.atan2(pr.y - fromY, pr.x - fromX);
     pr.vx = (pr.vx || 0) + Math.cos(a) * force; pr.vy = (pr.vy || 0) + Math.sin(a) * force;
@@ -2358,6 +2400,23 @@
       e.blockTextCd = Math.max(0, (e.blockTextCd || 0) - dt);
       e.slowTimer = Math.max(0, (e.slowTimer || 0) - dt);
       if (e.dummy) { e.vx = 0; e.vy = 0; continue; } // training dummy: stand still, no AI
+      if (e.held) { e.vx = 0; e.vy = 0; continue; }  // carried by 風掌 — no AI while grabbed
+      if (e.thrown > 0) {                            // flung by 風掌: a body-projectile that rams others
+        e.thrown -= dt;
+        moveEnemyWithCollision(e, dt);               // wall-slam (①) applies to thrown bodies too
+        const sp = Math.hypot(e.vx, e.vy);
+        for (const o of game.enemies) {
+          if (o === e || o.dead || o.held) continue;
+          if (Math.hypot(o.x - e.x, o.y - e.y) < e.r + o.r) {
+            const dm = 12 + sp * 0.03;
+            damageEnemy(o, dm, e.x, e.y, '飛人撞擊'); damageEnemy(e, dm * 0.5, e.x, e.y, '飛人撞擊');
+            const a = Math.atan2(o.y - e.y, o.x - e.x); o.vx = (o.vx || 0) + Math.cos(a) * sp * 0.5; o.vy = (o.vy || 0) + Math.sin(a) * sp * 0.5;
+            e.vx *= 0.5; e.vy *= 0.5;
+          }
+        }
+        e.vx *= Math.pow(0.35, dt); e.vy *= Math.pow(0.35, dt);
+        continue;
+      }
 
       if (e.type === 'boss') {
         updateBoss(e, dt);
@@ -2578,12 +2637,25 @@
   }
 
   function moveEnemyWithCollision(e, dt, charging = false) {
+    e.slamCd = Math.max(0, (e.slamCd || 0) - dt);
+    const preSp = Math.hypot(e.vx, e.vy);
     const nx = e.x + e.vx * dt;
     const ny = e.y + e.vy * dt;
     let hit = false;
     if (!circleHitsSolid(nx, e.y, e.r)) e.x = nx; else { e.vx *= charging ? -0.15 : -0.25; hit = true; }
     if (!circleHitsSolid(e.x, ny, e.r)) e.y = ny; else { e.vy *= charging ? -0.15 : -0.25; hit = true; }
     blockByProps(e);                                // crates block enemies too
+    // Wall-slam: an enemy flung into a solid (arena wall / built 土牆·冰牆) at speed takes
+    // impact damage + a brief stun. Turns every knockback into an environment weapon —
+    // wind/fist/dash/thrown-body slams, and pairs with walls you build via the secondary.
+    if (hit && preSp > 230 && e.slamCd <= 0 && !e.dead) {
+      damageEnemy(e, Math.min(60, 6 + (preSp - 230) * 0.10), e.x, e.y, '撞牆');
+      e.stunTimer = Math.max(e.stunTimer || 0, 0.5);
+      e.slamCd = 0.4;
+      game.screenShake = Math.max(game.screenShake, 3);
+      addText(e.x, e.y - 30, '撞牆!', '#ffd7a0');
+      for (let i = 0; i < 8; i++) { const a = rnd(0, 6.28), s = rnd(80, 200); game.particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#ffe6c2' }); }
+    }
     return hit;
   }
 
