@@ -3,9 +3,10 @@
 // add-on modules (camera-panel.js / training-panel.js).
 import { W, H } from './constants.js';
 import { norm } from './utils.js';
-import { game, keys, mouse, CAM } from './state.js';
+import { game, keys, mouse, CAM, touch } from './state.js';
 import { resetGame, startRun, applyUpgrade, update } from './sim.js';
 import { draw, updateMouseWorld, mouseScreen } from './render.js';
+import { wireTouch } from './touch.js';
 
 window.__game = game; // debug / headless-test hook
 
@@ -54,22 +55,34 @@ window.addEventListener('keydown', (e) => {
 // headless sim reads. Touch controls and (later) the BR netcode populate the same struct.
 function buildInput() {
   const inp = game.input;
-  let mx = 0, my = 0;
-  if (keys.has('w') || keys.has('arrowup')) my -= 1;
-  if (keys.has('s') || keys.has('arrowdown')) my += 1;
-  if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
-  if (keys.has('d') || keys.has('arrowright')) mx += 1;
-  // camera-relative so WASD matches the screen at any azimuth (a client/render concern)
+  // camera-relative basis so screen-up = world-forward at any azimuth (client/render concern)
   const maz = (CAM.azimuth || 0) * Math.PI / 180;
   const fX = -Math.sin(maz), fY = -Math.cos(maz); // screen-up in world
   const rX = Math.cos(maz), rY = -Math.sin(maz);  // screen-right in world
-  const n = norm(rX * mx + fX * (-my), rY * mx + fY * (-my));
+  const rot = (sx, sy) => norm(rX * sx + fX * (-sy), rY * sx + fY * (-sy)); // screen dir → world dir
+
+  // move: touch left-stick overrides WASD when active
+  let mx = 0, my = 0;
+  if (touch.move.active) { mx = touch.move.dx; my = touch.move.dy; }
+  else {
+    if (keys.has('w') || keys.has('arrowup')) my -= 1;
+    if (keys.has('s') || keys.has('arrowdown')) my += 1;
+    if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
+    if (keys.has('d') || keys.has('arrowright')) mx += 1;
+  }
+  const n = rot(mx, my);
   inp.moveX = n.x; inp.moveY = n.y;
-  inp.aimX = mouse.x; inp.aimY = mouse.y;          // mouse.x/y are world coords (updateMouseWorld raycast)
-  inp.firing = mouse.down;
-  inp.secondaryFiring = mouse.right || keys.has('q');
-  inp.dash = keys.has(' ') || keys.has('shift');
-  inp.grab = keys.has('e');
+
+  // aim + fire: touch right-stick (aim a point ahead of the player) overrides the mouse
+  if (touch.aim.active && game.player) {
+    const a = rot(touch.aim.dx, touch.aim.dy);
+    inp.aimX = game.player.x + a.x * 300; inp.aimY = game.player.y + a.y * 300;
+  } else { inp.aimX = mouse.x; inp.aimY = mouse.y; } // mouse.x/y are world coords (updateMouseWorld raycast)
+
+  inp.firing = mouse.down || touch.aim.active;
+  inp.secondaryFiring = mouse.right || keys.has('q') || touch.btn.secondary;
+  inp.dash = keys.has(' ') || keys.has('shift') || touch.btn.dash;
+  inp.grab = keys.has('e') || touch.btn.grab;
 }
 
 // --- main loop --- (pause hook used by camera-sandbox's panel)
@@ -85,5 +98,6 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+wireTouch(canvas);
 resetGame();
 requestAnimationFrame(loop);

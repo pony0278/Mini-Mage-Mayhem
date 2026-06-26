@@ -81,7 +81,7 @@
 > 一句話：**輸入接縫先打通（BR 地基＋乾淨觸控的共同前提），再往上疊觸控/音效/英文/SDK，上架 CrazyGames 拿留存數據。**
 
 - [x] **W1 · B0 輸入接縫（intent adapter）✅** 🔵 BR 核心 —— `sim.js` 改吃中性 `game.input`（`{moveX, moveY, aimX, aimY, firing, secondaryFiring, dash, grab}`），**已移除所有 `keys`/`mouse`/`CAM` 直讀**（state import 也砍掉）；客戶端 `main.js` 的 `buildInput()` 算好相機相對移動與滑鼠→世界瞄準後寫入。端到端驗證移動/瞄準/開火/衝刺行為不變、零 error。
-- [ ] **W2 · 觸控操作** 🟢 —— 虛擬搖桿（移動）+ 拖曳/點擊瞄準施法 + 副攻/閃避/E 按鈕，全部只是「另一種方式產生 `game.input`」。
+- [x] **W2 · 觸控操作 ✅** 🟢 —— `js/touch.js`：左半屏動態搖桿（移動）+ 右半屏動態搖桿（瞄準＋自動開火）+ 固定按鈕（閃避/副攻/E）。原生 touch 多點、只在遊玩時接管、選單交給合成 click。全部只是「另一種方式產生 `game.input`」。端到端驗證移動/瞄準開火/衝刺鈕/點擊開始/升級選卡，零 error；桌面不受影響（`touch.enabled` 觸碰後才開）。
 - [ ] **W3 · 音效** 🟢 —— 命中/施法/融合/升級/死亡/UI 一組（WebAudio，輕量、無外部資產）。
 - [ ] **W4 · 英文字串表** 🟢 —— `strings.js`（`{en, zh}`），`render.js`/`sim.js` 字串改走 `T(key)`，預設 EN。
 - [ ] **W5 · CrazyGames SDK + 生命週期** 🔴 —— SDK init、`gameplayStart/Stop`、廣告中斷、`visibilitychange`/暫停。

@@ -1,7 +1,8 @@
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL } from './constants.js';
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
-import { game, mouse, CAM } from './state.js';
+import { game, mouse, CAM, touch } from './state.js';
+import { TOUCH_BTN, STICK_R } from './touch.js';
 import { currentFlowName, dashElement, isMastery, isSecMastery, makeRunStory, nearestLiftable, nearestLiftableWallTile, previewSpellState, spellDescription, upgradeDesc, upgradeName, SECONDARY } from './sim.js';
 
 // 3D (Three.js voxel world) + 2D HUD render layer. Reads game state; owns the
@@ -709,6 +710,32 @@ let ctx = screenCtx;
     ctx.fillStyle = `rgba(${tint},${pulse})`; ctx.fillText(label, s.x, s.y);
   }
 
+  // On-screen touch controls (mobile): dynamic move/aim sticks + fixed action buttons.
+  function drawTouchControls() {
+    if (!touch.enabled || game.state !== 'playing') return;
+    ctx.save();
+    const stick = (s, col) => {
+      if (!s.active) return;
+      ctx.strokeStyle = `rgba(${col},.4)`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(s.ox, s.oy, STICK_R, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = `rgba(${col},.5)`;
+      ctx.beginPath(); ctx.arc(s.ox + s.dx * STICK_R, s.oy + s.dy * STICK_R, 26, 0, Math.PI * 2); ctx.fill();
+    };
+    stick(touch.move, '160,200,255');
+    stick(touch.aim, '255,190,120');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '900 19px system-ui, sans-serif';
+    for (const k of ['dash', 'secondary', 'grab']) {
+      if (k === 'grab' && (!game.stats || game.stats.mainMode !== 'windpalm')) continue; // E only matters for 風掌
+      if (k === 'secondary' && (!game.stats || !game.stats.secondary)) continue;          // hide until a secondary is equipped
+      const bd = TOUCH_BTN[k], pressed = touch.btn[k];
+      ctx.fillStyle = pressed ? 'rgba(255,211,109,.45)' : 'rgba(20,16,26,.5)';
+      ctx.strokeStyle = 'rgba(223,243,255,.6)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(bd.x, bd.y, bd.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#eafaff'; ctx.fillText(bd.label, bd.x, bd.y);
+    }
+    ctx.restore();
+  }
+
   export function draw() {
     // 3D world (WebGL) ...
     render3D();
@@ -733,6 +760,7 @@ let ctx = screenCtx;
     drawFloatingTexts();
     drawReticle();
     drawUi();
+    drawTouchControls();
     drawFusionBanner();
     drawBossPhaseBanner();
 

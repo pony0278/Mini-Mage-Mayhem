@@ -59,6 +59,16 @@ export const game = {
 export const keys = new Set();
 export const mouse = { x: W / 2, y: H / 2, down: false, right: false };
 
+// Touch controls (client). touch.js (event wiring) writes these; main.js's buildInput
+// folds them into game.input; render draws the sticks/buttons. enabled = coarse-pointer
+// device or after the first touch. Stick dx/dy are normalised screen-space [-1,1].
+export const touch = {
+  enabled: false,
+  move: { active: false, ox: 0, oy: 0, dx: 0, dy: 0 },
+  aim: { active: false, ox: 0, oy: 0, dx: 0, dy: 0 },
+  btn: { dash: false, secondary: false, grab: false }
+};
+
 // Follow-camera config. Owned by render long-term; parked here transitionally
 // so the (still-inline) sim can read CAM.azimuth without a render↔sim import
 // cycle. Moves into render.js once the intent adapter removes sim's CAM read.
