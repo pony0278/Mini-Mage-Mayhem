@@ -37,7 +37,8 @@
 
 ### P1 · 打擊感 pass 🔵（最先做:最便宜、留存 ROI 最高）
 **目標**:每一拳/每一發都有「肉感」。
-- [ ] **hitstop / 頓幀系統**:命中(近戰/飛彈/爆炸)瞬間凍結 sim 幾十毫秒,依傷害量縮放;在 `update` 之前讀一個 `game.hitstop` 計時器,>0 時跳過該幀推進(或放慢)。
+- [x] **hitstop / 頓幀系統 ✅**:`game.hitstop` 計時器,`update` 在 `playing` 守衛後 >0 就跳過該幀 gameplay 推進(cosmetics 照跑);`addHitstop(s)` 用 Math.max + 0.12s 上限防疊加卡頓。命中點:近戰連擊(土拳 0.06 / 雷掌 0.045 / 風掌 0.05 slam beat)、飛彈命中 0.03(Boss 0.05)、爆炸依半徑 0.045–0.1、擊殺 0.03(Boss 死 0.12)。
+- [x] **🐛 修正:土拳一直崩潰** —— 模組拆分(4df80e8)後 `meleeAttack` 殘留呼叫 render 的 `colorHex`(sim 看不到)→ 土拳每拳丟 `colorHex is not defined` 卡死迴圈。改用 `parseInt(elColor.slice(1),16)` 在 sim 內轉色。**土拳現在真的能打了。**
 - [ ] **命中回饋微調**:命中閃光 / 接觸粒子 / 擊退曲線 / 擊殺「碎裂」感;大招/Boss 命中加重 hitstop。
 - [ ] **螢幕震動節流**:避免小事狂震、大事才重震。
 - [ ] **(選)大命中微慢動作**:Boss 致命一擊/大爆短暫放慢。

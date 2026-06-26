@@ -140,6 +140,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     game.slams.length = 0;
     game.floatingTexts.length = 0;
     game.sfx.length = 0;
+    game.hitstop = 0;
     game.upgrades.length = 0;
     game.run = {
       arena: null,
@@ -1084,6 +1085,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   export function addExplosion(x, y, r, damage = 42, source = '爆炸') {
     game.explosions.push({ x, y, r, life: 0.32, maxLife: 0.32 });
     sfx('explosion');
+    addHitstop(Math.min(0.1, 0.045 + r * 0.0006)); // bigger boom → longer freeze
     addRing(x, y, r, '#ffeea1', 0.42, 5);
     game.screenShake = Math.max(game.screenShake, Math.min(19, r * 0.16));
     game.flash = Math.max(game.flash, 0.12);
@@ -1236,6 +1238,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     game.kills++;
     game.score += e.value;
     sfx('enemyDie');
+    addHitstop(e.type === 'boss' ? 0.12 : 0.03); // a little crunch on kill; a big freeze when the boss dies
     addText(e.x, e.y - 16, '+' + e.value, '#ffe28a');
     addRing(e.x, e.y, e.r + 18, e.color, 0.32, 2.5);
     if (e.type === 'bug') {
@@ -1290,6 +1293,9 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   }
   // Headless SFX emit: push an abstract event name; the client drains game.sfx each frame and plays it.
   export function sfx(name) { game.sfx.push(name); }
+  // Hitstop (頓幀): freeze the gameplay sim for s seconds on a hit. Math.max (no stacking) + a hard cap
+  // so rapid multi-hits can't snowball into a laggy freeze.
+  export function addHitstop(s) { game.hitstop = Math.min(0.12, Math.max(game.hitstop, s)); }
 
   // Big directional palm-slam shock (brawler main attack) — rendered in syncZones.
   export function addSlam(x, y, angle, hex, power = 1) {
@@ -1354,6 +1360,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     updateFloatingTexts(dt);
 
     if (game.state !== 'playing') return;
+    if (game.hitstop > 0) { game.hitstop -= dt; return; } // freeze gameplay on impact (cosmetics above keep running)
     updatePlayer(dt);
     // capstone 流星降臨 (火+土): periodic telegraphed meteors while fighting
     if (game.stats.capstone === 'meteor' && game.state === 'playing') {
@@ -1953,7 +1960,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng) continue;
       const f = 600 * (1 - d / range);
       e.vx = (e.vx || 0) + Math.cos(angle) * f; e.vy = (e.vy || 0) + Math.sin(angle) * f;
-      if (Math.hypot(e.x - fx, e.y - fy) < hitR + e.r) damageEnemy(e, dmg, p.x, p.y, '風掌');
+      if (Math.hypot(e.x - fx, e.y - fy) < hitR + e.r) { addHitstop(0.05); damageEnemy(e, dmg, p.x, p.y, '風掌'); } // a "slam" beat on close contact = weight
     }
     const shove = (arr) => { for (const c of arr) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d > range) continue; const a = Math.atan2(c.y - p.y, c.x - p.x); if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.35) continue; c.x = clamp(c.x + Math.cos(angle) * 64, 0, W); c.y = clamp(c.y + Math.sin(angle) * 64, 0, H); } };
     shove(game.poisonClouds); shove(game.fireZones); shove(game.steamClouds);
@@ -1982,9 +1989,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     palmSwing();
     sfx('melee');
     const p = game.player, m = game.stats.mainMode;
+    const elColor = (ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color) || '#ffd7a0';
     const hex = m === 'lightpalm' ? 0x9fe7ff
       : m === 'windpalm' ? 0xeafaff
-      : colorHex((ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color) || '#ffd7a0');
+      : parseInt(elColor.slice(1), 16); // '#rrggbb' → 0xrrggbb (sim has no render colorHex helper)
     addSlam(p.x, p.y, angle, hex, 1 + Math.min(p.fistCombo, 5) * 0.12); // grows with the flurry
     if (m === 'lightpalm') lightningPalm(angle);
     else if (m === 'windpalm') windPalm(angle);
@@ -2001,6 +2009,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2 + (star - 1) * 6; // ★ heavier punch
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
+        addHitstop(0.06); // the heavy punch already feels best — keep it the strongest connect
         damageEnemy(e, dmg, p.x, p.y, '肉搏');
         const a = angleTo(p, e);
         e.vx = (e.vx || 0) + Math.cos(a) * 320; e.vy = (e.vy || 0) + Math.sin(a) * 320;
@@ -2046,6 +2055,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const dmg = 18 + game.stats.size * 2 + mLvl('lightning') * 3 + (star - 1) * 4; // ★ stronger palm
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
+        addHitstop(0.045); // crisp zap connect
         damageEnemy(e, dmg, p.x, p.y, '雷掌');
         const a = angleTo(p, e);
         e.vx = (e.vx || 0) + Math.cos(a) * 360; e.vy = (e.vy || 0) + Math.sin(a) * 360;
@@ -2424,6 +2434,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
 
   export function applySpellHit(fb, e) {
     sfx('hit');
+    addHitstop(e.type === 'boss' ? 0.05 : 0.03); // projectile connect — a touch more on the boss
     damageEnemy(e, fb.damage, fb.x, fb.y, spellDisplayName(fb.kind));
     if (isIceKind(fb.kind)) chillEnemy(e, 1.1 + game.stats.iceSlow * 0.5, fb.x, fb.y);
     if (isLightningKind(fb.kind)) chainLightningFrom(fb.x, fb.y, e, 10 + game.stats.storm * 3);

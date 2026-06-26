@@ -53,7 +53,9 @@ export const game = {
   // applied by the client); aimX/aimY = world aim point.
   input: { moveX: 0, moveY: 0, aimX: W / 2, aimY: H / 2, firing: false, secondaryFiring: false, dash: false, grab: false },
   // Outbound SFX event buffer (headless): sim pushes abstract names, the client drains + plays them.
-  sfx: []
+  sfx: [],
+  // Hitstop (頓幀): seconds the gameplay sim freezes on impact for "punch". Cosmetics keep animating.
+  hitstop: 0
 };
 
 // Shared input containers: DOM event handlers (input layer) write button/key
