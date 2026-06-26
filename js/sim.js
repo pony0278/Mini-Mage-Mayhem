@@ -2,6 +2,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, T
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
 import { game } from './state.js'; // headless: sim reads game.input (neutral intents), never raw keys/mouse/CAM
+import { T } from './strings.js';  // pure data lookup (no DOM) — used only to compose the translated death line
 
 // Headless-ish simulation core: state mutation + all game logic. Imports only
 // data/state/constants/utils; never imports render/input/main (DAG invariant).
@@ -95,9 +96,9 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
-    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。重選→升星，★2 重擊震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast('土拳升星 ★' + s.fistStar + '！'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
-    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 雷鏈，踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast('雷掌升星 ★' + s.lightStar + '！'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
-    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast('風掌升星！可累積撿取 ' + s.windpalmStar + ' 個齊射'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
+    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。重選→升星，★2 重擊震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 雷鏈，踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
+    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
     { id: 'second_wind', name: '回春', desc: '立即回復 40% 最大生命。', apply: () => { healPlayer(game.player.maxHp * 0.4); toast('回復生命！'); } }
@@ -716,12 +717,12 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
   // equip_X for the already-equipped secondary reads as a 強化 (mastery) card.
   export function isSecMastery(up) { return up.id && up.id.indexOf('equip_') === 0 && game.stats.secondary === up.id.slice('equip_'.length); }
   export function upgradeName(up) {
-    if (isMastery(up)) return ELEMENT_INFO[up.element].name + '精通 Lv' + (mLvl(up.element) + 1);
-    if (isSecMastery(up)) { const id = up.id.slice('equip_'.length); return SECONDARY[id].name + '強化 Lv' + (sLvl(id) + 1); }
-    if (up.id === 'windpalm_mode' && game.stats.mainMode === 'windpalm') return '風掌 ★' + Math.min(3, game.stats.windpalmStar + 1);
-    if (up.id === 'fist_mode' && game.stats.mainMode === 'fist') return '土拳 ★' + Math.min(3, game.stats.fistStar + 1);
-    if (up.id === 'lightpalm_mode' && game.stats.mainMode === 'lightpalm') return '雷掌 ★' + Math.min(3, game.stats.lightStar + 1);
-    return up.name;
+    if (isMastery(up)) return T(ELEMENT_INFO[up.element].name) + ' Mastery Lv' + (mLvl(up.element) + 1);
+    if (isSecMastery(up)) { const id = up.id.slice('equip_'.length); return T(SECONDARY[id].name) + ' Lv' + (sLvl(id) + 1); }
+    if (up.id === 'windpalm_mode' && game.stats.mainMode === 'windpalm') return T('風掌') + ' ★' + Math.min(3, game.stats.windpalmStar + 1);
+    if (up.id === 'fist_mode' && game.stats.mainMode === 'fist') return T('土拳') + ' ★' + Math.min(3, game.stats.fistStar + 1);
+    if (up.id === 'lightpalm_mode' && game.stats.mainMode === 'lightpalm') return T('雷掌') + ' ★' + Math.min(3, game.stats.lightStar + 1);
+    return T(up.name);
   }
   export function upgradeDesc(up) {
     if (isMastery(up)) return masteryDesc(up.element);
@@ -1302,29 +1303,30 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     const score = kills * 100 + Math.round(radius) + (source.includes('毒') ? 55 : 0) + (source.includes('水池') ? 35 : 0);
     if (score > game.stats.biggestDisasterScore) {
       game.stats.biggestDisasterScore = score;
-      const killText = kills > 0 ? `，炸死 ${kills} 隻敵人` : '，場面一片混亂';
-      game.stats.biggestDisaster = `${source}${killText}`;
+      const killText = kills > 0 ? ` — ${kills} foes blasted` : ' — total chaos';
+      game.stats.biggestDisaster = `${T(source)}${killText}`;
     }
   }
 
 
   export function makeDeathMessage(source) {
-    if (/Boss|哥布林|雷擊|火圈|毒瓶/.test(source)) return '你倒在元素哥布林法師的元素連招中。死因：' + source;
-    if (/爆|火焰地板|毒霧|水池導電/.test(source)) return '你被自己的魔法災難吞掉了。死因：' + source;
-    if (/衝撞|撞擊/.test(source)) return '你被怪物逼入混亂地形後擊倒。死因：' + source;
-    return '魔法失控，地牢吞沒了你。死因：' + source;
+    const tmpl = /Boss|哥布林|雷擊|火圈|毒瓶/.test(source) ? '你倒在元素哥布林法師的元素連招中。死因：'
+      : /爆|火焰地板|毒霧|水池導電/.test(source) ? '你被自己的魔法災難吞掉了。死因：'
+      : /衝撞|撞擊/.test(source) ? '你被怪物逼入混亂地形後擊倒。死因：'
+      : '魔法失控，地牢吞沒了你。死因：';
+    return T(tmpl) + T(source); // T respects lang: en → translated, zh → original
   }
 
   export function makeRunStory(win) {
-    const spell = game.stats.spellName || '魔法飛彈';
-    const arena = game.run && game.run.arena ? game.run.arena.name : '未知競技場';
+    const spell = T(game.stats.spellName || '魔法飛彈');
+    const arena = T(game.run && game.run.arena ? game.run.arena.name : '未知競技場');
     if (win) {
-      const source = game.stats.bossKillSource || game.stats.bossLastHit || spell;
-      return `你在${arena}用「${spell}」擊敗元素哥布林法師，最後一擊來自：${source}。`;
+      const source = T(game.stats.bossKillSource || game.stats.bossLastHit || (game.stats.spellName || ''));
+      return `You beat the Elemental Goblin Mage in ${arena} with "${spell}" — final blow: ${source}.`;
     }
-    const death = game.stats.deathSource || '未知災難';
-    if (game.bossStarted) return `你帶著「${spell}」打進 Boss 戰，但被 ${death} 終結。`;
-    return `你在${arena}把「${spell}」改造到失控，但被 ${death} 終結。`;
+    const death = T(game.stats.deathSource || '未知災難');
+    if (game.bossStarted) return `You reached the boss fight with "${spell}", but ${death} finished you.`;
+    return `You twisted "${spell}" into chaos in ${arena}, but ${death} finished you.`;
   }
 
   export function toast(message) {

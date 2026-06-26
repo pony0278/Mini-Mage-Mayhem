@@ -83,7 +83,7 @@
 - [x] **W1 · B0 輸入接縫（intent adapter）✅** 🔵 BR 核心 —— `sim.js` 改吃中性 `game.input`（`{moveX, moveY, aimX, aimY, firing, secondaryFiring, dash, grab}`），**已移除所有 `keys`/`mouse`/`CAM` 直讀**（state import 也砍掉）；客戶端 `main.js` 的 `buildInput()` 算好相機相對移動與滑鼠→世界瞄準後寫入。端到端驗證移動/瞄準/開火/衝刺行為不變、零 error。
 - [x] **W2 · 觸控操作 ✅** 🟢 —— `js/touch.js`：左半屏動態搖桿（移動）+ 右半屏動態搖桿（瞄準＋自動開火）+ 固定按鈕（閃避/副攻/E）。原生 touch 多點、只在遊玩時接管、選單交給合成 click。全部只是「另一種方式產生 `game.input`」。端到端驗證移動/瞄準開火/衝刺鈕/點擊開始/升級選卡，零 error；桌面不受影響（`touch.enabled` 觸碰後才開）。
 - [x] **W3 · 音效 ✅** 🟢 —— `js/audio.js`：WebAudio **程序合成**（無音檔→零載入、不碰 egress）。14 種音效：shoot/melee/hit/enemyDie/explosion/fusion/upgrade/hurt/dash/grab/throw/secondary/waveclear/gameover。sim **headless**：推事件名進 `game.sfx`，客戶端每幀抽出來播（同名每幀上限 3 防爆音）；首次手勢 unlock、`M` 靜音。驗證 14 種合成全不 throw、事件正確 emit+drain、零 error。
-- [ ] **W4 · 英文字串表** 🟢 —— `strings.js`（`{en, zh}`），`render.js`/`sim.js` 字串改走 `T(key)`，預設 EN。
+- [x] **W4 · 英文字串表 ✅** 🟢 —— `js/strings.js`（gettext 風格：中文字串即 key，`T()` 預設 EN、`lang='zh'` 原樣回傳）。render 的 UI literals 改英文、動態內容包 `T()`；sim 僅在組合字串（死亡訊息/戰報/卡名星級/最大災難）處用 `T()` 組譯。涵蓋標題/HUD/操作/升級卡名+敘述/法術說明/精通/副攻/戰鬥浮字/toast/Boss 旗標/傷害來源/死亡訊息/結算統計。**所有使用者文字皆英文**；剩餘僅程式碼註解片段（不顯示）。截圖驗證 title/HUD/upgrade/end/星級卡/死亡訊息全英文、零 error。
 - [ ] **W5 · CrazyGames SDK + 生命週期** 🔴 —— SDK init、`gameplayStart/Stop`、廣告中斷、`visibilitychange`/暫停。
 - [ ] **W6 · 上架 + 收數據**；之後 **B0 收尾**（種子化 RNG、`step()` 純化）→ 接 BR 探針一/二。
 

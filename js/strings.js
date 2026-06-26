@@ -122,7 +122,57 @@ const EN = {
   '劇毒精通：每級擴大毒霧範圍、提升毒傷與毒爆。': 'Poison Mastery: each level widens poison clouds and boosts poison damage and blasts.',
   '大地精通：每級提升巨石撞擊傷害、碎石與擊退。': 'Earth Mastery: each level boosts boulder impact damage, debris and knockback.',
   '強化目前元素。': 'Strengthen your current element.',
-  '副攻強化：範圍/耐久更大，冷卻更短。': 'Secondary up: bigger area / durability, shorter cooldown.'
+  '副攻強化：範圍/耐久更大，冷卻更短。': 'Secondary up: bigger area / durability, shorter cooldown.',
+
+  // --- boss banners / phase / labels ---
+  'BOSS 擊破！': 'BOSS DOWN!', 'Boss 前恢復': 'Pre-boss heal', 'Boss 已擊敗': 'Boss defeated', 'Boss 爆散': 'Boss shattered',
+  'Boss 登場：元素哥布林法師！': 'Boss appears: Elemental Goblin Mage!', 'Boss 進入第二階段：元素失控！': 'Boss phase 2: elements unleashed!',
+  'Boss火圈': 'Boss fire ring', '元素區域開始失控！': 'Elemental zones going wild!', '元素失控：預警更短、連招更多': 'Chaos: shorter telegraphs, more combos',
+  '你擊敗了元素哥布林法師！': 'You defeated the Elemental Goblin Mage!', '第二階段：連續元素災難': 'Phase 2: relentless elemental disasters',
+  '菁英擊破！': 'Elite down!', '觀察 Boss 預警圈': 'Watch the boss telegraph rings',
+  '先看地上的預警圈：毒、火、雷、水會連續改變戰場。': 'Watch the telegraph rings: poison/fire/lightning/water keep reshaping the field.',
+  // --- toasts ---
+  '主攻換成雷掌！': 'Main attack: Lightning Palm!', '主攻換成風掌！': 'Main attack: Wind Palm!', '你成了肉搏戰士！': "You're a melee brawler now!",
+  '你變強了，也更危險了！': 'Stronger — and more dangerous!', '冰凍敵人會碎裂！': 'Frozen foes shatter!', '威能變大了！': 'Bigger power!',
+  '施法速度提升！': 'Cast speed up!', '回復生命！': 'Healed!', '毒霧變得更危險！': 'Poison clouds got nastier!', '混亂正在餵養你！': 'Chaos is feeding you!',
+  '電流開始麻痺敵人！': 'Shocks now stun foes!', '腳程變快！': 'Faster on your feet!', '衝刺多一段！': 'An extra dash charge!',
+  '衝刺更頻繁了！': 'Dash more often!', '衝刺變成武器了！': 'Your dash is a weapon now!', '飛彈開始留下元素痕跡！': 'Your bolt leaves an element trail!',
+  '體質增強！': 'Toughened up!', '魔法飛彈開始分裂！': 'Your bolt splits!',
+  '流星降臨！從此天降災厄': 'Meteor Storm! Doom rains from the sky', '瘟疫核爆！毒霧開始自爆': 'Plague Nuke! Your poison self-detonates',
+  '磁暴奇點！敵人將被吸攏電穿': 'Magnetic Singularity! Foes pulled in and zapped', '凍毒領域！身周凝結劇毒寒霜': 'Frost-Venom Aura! Toxic frost coils around you',
+  '電漿風暴！電漿球開始獵殺': 'Plasma Storm! The orb starts hunting', '冰川崩落！冰牆將困敵碎裂': 'Glacial Collapse! Ice walls cage and shatter',
+  '沸騰領域！全場沸騰蒸騰': 'Boiling Domain! The whole arena boils', '絕對零度！全場將被凍結電穿': 'Absolute Zero! The field freezes and shocks',
+  '劇毒電網！身周張開帶電毒場': 'Venom Grid! A charged poison field opens', '大地崩毀！腳下毒沼蔓延崩裂': 'Earthshatter! A mire spreads and the ground cracks',
+  '冰川崩落！冰牆將困敵碎裂 ': 'Glacial Collapse! Ice walls cage and shatter',
+  // --- floating combat text ---
+  '抓起 ↑': 'Grab ↑', '投擲 →': 'Throw →', '拔起冰牆 ↑': 'Pull ice wall ↑', '拔起薄牆 ↑': 'Pull wall ↑', '舉起 ↑': 'Lift ↑',
+  '撞牆!': 'Wall slam!', '撞牆暈眩！': 'Wall-stunned!', '岩漿！': 'Magma!', '冰爆！': 'Ice blast!', '冰凍水池': 'Frozen pool',
+  '冰面滑倒！': 'Slipped on ice!', '冰面融化': 'Ice melted', '冰川崩落！': 'Glacial Collapse!', '水池導電': 'Water shock', '水池導電！': 'Water electrified!',
+  '水池結冰！': 'Water froze!', '水池開始結成大片冰面！': 'Water freezing into a sheet!', '油爆': 'Oil blast', '流星！': 'Meteor!', '燙手': 'Hot!',
+  '盾甲怪冰面滑倒': 'Charger slipped on ice', '瞬閃': 'Blink', '碎片': 'Shards', '磁暴吸引！': 'Magnetic pull!', '絕對零度！': 'Absolute Zero!',
+  '地震！': 'Earthquake!', '地震': 'Earthquake', '超新星': 'Supernova', '超新星！': 'Supernova!', '雷擊': 'Lightning', '雷擊麻痺！': 'Shock stun!',
+  '雷擊！': 'Lightning!', '雷神！': 'Thunder God!', '雷鏈落空': 'Chain fizzled', '電毒雲！': 'Venom cloud!', '電漿爆炸': 'Plasma blast',
+  '電霧！': 'Shock mist!', '蒸氣！': 'Steam!', '蓄力！': 'Charging!', '毒瓶': 'Poison flask', '毒瓶預備': 'Poison flask incoming', '毒瓶！': 'Poison flask!',
+  '毒霧爆燃': 'Poison ignites', '召喚小怪！': 'Summon minions!', '召喚水池': 'Summon pool', '黑洞塌縮': 'Black hole collapse', '緩速': 'Slow',
+  '撞牆': 'Wall slam', '震波': 'Shockwave', '肉搏': 'Melee', '充能': 'Charged', '土拳': 'Earth Fist', '雷掌': 'Lightning Palm', '風掌': 'Wind Palm',
+  '命中會爆炸！': 'Now explodes on hit!',
+  // --- damage sources / entities ---
+  '元素哥布林撞擊': 'Goblin Mage hit', '史萊姆撞擊': 'Slime hit', '毒蟲撞擊': 'Bug hit', '火焰小鬼撞擊': 'Imp hit', '火焰小鬼': 'Fire Imp',
+  '盾甲衝撞': 'Charger ram', '飛人撞擊': 'Flung-foe hit', '火焰地板': 'Fire floor', '友方火焰區': 'Friendly fire zone',
+  // --- boss attack labels (telegraph warnings) ---
+  '大火圈：橘圈會燃燒地板': 'Big fire ring: orange rings burn the floor', '大範圍導電：離開水池': 'Wide shock: leave the water',
+  '毒火連爆：紫圈後面接火圈': 'Poison-fire combo: fire follows the purple ring', '毒瓶：離開紫色落點': 'Poison flask: leave the purple target',
+  '水雷連招': 'Water-shock combo', '水雷連招：水池會被雷擊導電': 'Water-shock combo: pools get electrified',
+  '火圈': 'Fire ring', '火圈預備': 'Fire ring incoming', '火圈！': 'Fire ring!', '火圈：不要站在橘色圈內': "Fire ring: don't stand in the orange",
+  '電霧：蒸氣後接雷擊': 'Shock mist: lightning after steam',
+  // --- misc / stat fallbacks ---
+  '尚未命中 Boss': 'No boss hits yet', '尚未發生': 'None yet', '未知災難': 'Unknown disaster', '未知競技場': 'Unknown arena', '無': 'none',
+  '無事件': 'no events', '無升級': 'no upgrades', '無災難': 'no disasters',
+  // --- death-message templates (composed in sim with a source after 死因：) ---
+  '你倒在元素哥布林法師的元素連招中。死因：': 'Cut down by the Elemental Goblin Mage. Cause: ',
+  '你被怪物逼入混亂地形後擊倒。死因：': 'Cornered into chaotic terrain and struck down. Cause: ',
+  '你被自己的魔法災難吞掉了。死因：': 'Swallowed by your own magical disaster. Cause: ',
+  '魔法失控，地牢吞沒了你。死因：': 'Magic ran wild and the dungeon took you. Cause: '
 };
 
 export function T(s) { if (lang === 'zh' || s == null) return s; return (s in EN) ? EN[s] : s; }
