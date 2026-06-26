@@ -3,6 +3,7 @@ import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
 import { game, mouse, CAM, touch } from './state.js';
 import { TOUCH_BTN, STICK_R } from './touch.js';
+import { T } from './strings.js';
 import { currentFlowName, dashElement, isMastery, isSecMastery, makeRunStory, nearestLiftable, nearestLiftableWallTile, previewSpellState, spellDescription, upgradeDesc, upgradeName, SECONDARY } from './sim.js';
 
 // 3D (Three.js voxel world) + 2D HUD render layer. Reads game state; owns the
@@ -746,9 +747,9 @@ let ctx = screenCtx;
       ctx.fillStyle = '#1a1722'; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#fff1bb'; ctx.textAlign = 'center';
       ctx.font = '800 22px system-ui, sans-serif';
-      ctx.fillText('此瀏覽器未啟用 WebGL，無法顯示 3D 畫面', W / 2, H / 2 - 10);
+      ctx.fillText('WebGL is not enabled — the 3D view can\'t be shown', W / 2, H / 2 - 10);
       ctx.font = '600 15px system-ui, sans-serif';
-      ctx.fillText('請改用較新的瀏覽器，或在設定中開啟硬體加速 / WebGL', W / 2, H / 2 + 22);
+      ctx.fillText('Use a newer browser, or enable hardware acceleration / WebGL', W / 2, H / 2 + 22);
       return;
     }
     if (game.flash > 0) {
@@ -778,10 +779,11 @@ let ctx = screenCtx;
       const alpha = clamp(t.life / t.maxLife, 0, 1);
       const s = project(t.x, t.y, 30);
       ctx.globalAlpha = alpha;
+      const txt = T(t.text);
       ctx.fillStyle = 'rgba(0,0,0,.45)';
-      ctx.fillText(t.text, s.x + 1, s.y + 1);
+      ctx.fillText(txt, s.x + 1, s.y + 1);
       ctx.fillStyle = t.color;
-      ctx.fillText(t.text, s.x, s.y);
+      ctx.fillText(txt, s.x, s.y);
       ctx.globalAlpha = 1;
     }
   }
@@ -810,10 +812,10 @@ let ctx = screenCtx;
     ctx.textAlign = 'center';
     ctx.fillStyle = b.color || '#ffdf7a';
     ctx.font = '900 58px system-ui, sans-serif';
-    ctx.fillText(b.text, W / 2, H / 2 - 20);
+    ctx.fillText(T(b.text), W / 2, H / 2 - 20);
     ctx.fillStyle = '#fff1bb';
     ctx.font = '900 20px system-ui, sans-serif';
-    ctx.fillText(b.sub, W / 2, H / 2 + 20);
+    ctx.fillText(T(b.sub), W / 2, H / 2 + 20);
     ctx.restore();
   }
 
@@ -845,10 +847,10 @@ let ctx = screenCtx;
     ctx.shadowBlur = 0;
     ctx.fillStyle = fb.color;
     ctx.font = '900 20px system-ui, sans-serif';
-    ctx.fillText(fb.equation, 0, 8);
+    ctx.fillText(T(fb.equation), 0, 8);
     ctx.fillStyle = '#fff2cf';
     ctx.font = '800 12px system-ui, sans-serif';
-    ctx.fillText(fb.desc, 0, 33);
+    ctx.fillText(T(fb.desc), 0, 33);
     ctx.restore();
   }
 
@@ -898,7 +900,7 @@ let ctx = screenCtx;
     roundRectPath(ctx, x + 146, y + 38, 62, 42, 9); ctx.fillStyle = spellColor; ctx.fill(); ctx.strokeStyle = '#5a3326'; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = '900 22px system-ui, sans-serif'; ctx.fillText(elementIconInfo(game.stats.spellKind)[0], x + 177, y + 66);
     ctx.textAlign = 'right'; ctx.fillStyle = '#3b2530'; ctx.font = '900 13px system-ui, sans-serif';
-    ctx.fillText(game.stats.spellName, x + w - 16, y + h - 16);
+    ctx.fillText(T(game.stats.spellName), x + w - 16, y + h - 16);
     ctx.restore();
   }
 
@@ -942,31 +944,31 @@ let ctx = screenCtx;
       ctx.fillStyle = boss.phase === 2 ? '#ffdf7a' : '#66e0a6'; ctx.fillRect(310, 30, 244 * pct, 10);
       ctx.strokeStyle = '#e8ffe8'; ctx.strokeRect(310, 30, 244, 10);
       ctx.fillStyle = '#e8ffe8'; ctx.font = '900 13px system-ui, sans-serif'; ctx.textAlign = 'left';
-      ctx.fillText(`元素哥布林法師  P${boss.phase}`, 562, 39);
+      ctx.fillText(`${T('元素哥布林法師')}  P${boss.phase}`, 562, 39);
       if (game.bossAttackTimer > 0 && game.bossAttackLabel) {
         roundRectPath(ctx, 328, 56, 304, 26, 10); ctx.fillStyle = 'rgba(10, 8, 14, .78)'; ctx.fill();
         ctx.strokeStyle = boss.phase === 2 ? '#ffdf7a' : '#9fe7ff'; ctx.stroke();
         ctx.fillStyle = boss.phase === 2 ? '#ffdf7a' : '#d8f6ff'; ctx.textAlign = 'center'; ctx.font = '900 13px system-ui, sans-serif';
-        ctx.fillText(game.bossAttackLabel, 480, 74);
+        ctx.fillText(T(game.bossAttackLabel), 480, 74);
       }
     }
 
     drawSpellFormulaCard(704, 14, 244, 104);
-    const runLine = `${game.run && game.run.arena ? game.run.arena.name : '未選場'}｜${currentFlowName()}`;
+    const runLine = `${game.run && game.run.arena ? T(game.run.arena.name) : T('未選場')}｜${T(currentFlowName())}`;
     ctx.textAlign = 'right'; ctx.fillStyle = '#d7c7ff'; ctx.font = '800 12px system-ui, sans-serif';
     ctx.fillText(runLine, 936, 132);
 
     if (game.messageTimer > 0 && game.message) {
       ctx.textAlign = 'center';
       ctx.font = '900 26px system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,.52)'; ctx.fillText(game.message, W / 2 + 2, 154 + 2);
-      ctx.fillStyle = '#fff1bb'; ctx.fillText(game.message, W / 2, 154);
+      ctx.fillStyle = 'rgba(0,0,0,.52)'; ctx.fillText(T(game.message), W / 2 + 2, 154 + 2);
+      ctx.fillStyle = '#fff1bb'; ctx.fillText(T(game.message), W / 2, 154);
     }
 
     if (game.state === 'playing' && game.run && game.time - game.run.startTime < 7.5) {
       roundRectPath(ctx, 204, H - 58, 552, 38, 12); ctx.fillStyle = 'rgba(10, 8, 14, .76)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,211,109,.25)'; ctx.stroke();
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1bb'; ctx.font = '900 14px system-ui, sans-serif';
-      ctx.fillText('提示：唯一主魔法可被火、冰、雷、毒覆蓋；兩種元素會融合成新法術。', W / 2, H - 34);
+      ctx.fillText('Tip: your single spell can be overwritten by Fire/Ice/Lightning/Poison — two elements fuse into a new spell.', W / 2, H - 34);
     }
 
     // 風掌 crate-control reminder (lift / throw), sits above the brawler tag.
@@ -975,19 +977,19 @@ let ctx = screenCtx;
       roundRectPath(ctx, 16, H - 128, 214, 30, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
       ctx.strokeStyle = '#dff3ff'; ctx.stroke();
       ctx.textAlign = 'left'; ctx.font = '900 12px system-ui, sans-serif'; ctx.fillStyle = '#eafaff';
-      ctx.fillText(heldN ? `[E] 投擲 ×${heldN} →` : `[E] 靠近箱子/小怪${cap >= 3 ? '/牆' : ''} → 撿起 (★${cap})`, 26, H - 108);
+      ctx.fillText(heldN ? `[E] Throw ×${heldN} →` : `[E] Near crate/foe${cap >= 3 ? '/wall' : ''} → grab (★${cap})`, 26, H - 108);
     }
 
     // Brawler tag: main attack is melee (土拳 / 雷掌 / 風掌).
     if (game.state === 'playing' && game.stats.mainMode !== 'spell') {
-      const BRAWL = { fist: ['肉搏 土拳', '#e0b07a', '#ffdfa6'], lightpalm: ['肉搏 雷掌', '#9fe7ff', '#cdf3ff'], windpalm: ['肉搏 風掌', '#dff3ff', '#eafaff'] };
+      const BRAWL = { fist: ['Melee · Earth Fist', '#e0b07a', '#ffdfa6'], lightpalm: ['Melee · Lightning Palm', '#9fe7ff', '#cdf3ff'], windpalm: ['Melee · Wind Palm', '#dff3ff', '#eafaff'] };
       const b = BRAWL[game.stats.mainMode] || BRAWL.fist;
       const starN = { fist: game.stats.fistStar, lightpalm: game.stats.lightStar, windpalm: game.stats.windpalmStar }[game.stats.mainMode] || 0;
       const stars = starN > 1 ? ' ' + '★'.repeat(starN) : '';
       roundRectPath(ctx, 16, H - 92, 168, 32, 10); ctx.fillStyle = 'rgba(10,8,14,.72)'; ctx.fill();
       ctx.strokeStyle = b[1]; ctx.stroke();
       ctx.textAlign = 'left'; ctx.font = '900 13px system-ui, sans-serif'; ctx.fillStyle = b[2];
-      ctx.fillText('主攻 [左鍵]：' + b[0] + stars, 26, H - 71);
+      ctx.fillText('Main [LMB]: ' + b[0] + stars, 26, H - 71);
     }
 
     // Secondary-attack indicator (bottom-left) — only once a secondary is equipped.
@@ -999,9 +1001,9 @@ let ctx = screenCtx;
       ctx.strokeStyle = ready ? (icy ? '#bff4ff' : '#d1a06a') : 'rgba(255,255,255,.18)'; ctx.stroke();
       ctx.textAlign = 'left'; ctx.font = '900 13px system-ui, sans-serif';
       ctx.fillStyle = ready ? '#fff1e2' : 'rgba(255,255,255,.5)';
-      ctx.fillText('副攻 [右鍵]', 26, H - 34);
+      ctx.fillText('Secondary [RMB]', 26, H - 34);
       ctx.fillStyle = ready ? (icy ? '#bff4ff' : '#e0b07a') : 'rgba(255,255,255,.45)';
-      ctx.fillText(sec ? sec.name : '—', 26, H - 20);
+      ctx.fillText(sec ? T(sec.name) : '—', 26, H - 20);
       if (!ready && sec) {
         const f = 1 - p.secondaryCooldown / sec.cd;
         ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(108, H - 30, 48, 6);
@@ -1036,27 +1038,27 @@ let ctx = screenCtx;
     ctx.fillStyle = '#ffd36d'; ctx.font = '900 46px system-ui, sans-serif';
     ctx.fillText('Mini Mage Mayhem', W / 2, 142);
     ctx.fillStyle = '#9fe7ff'; ctx.font = '900 20px system-ui, sans-serif';
-    ctx.fillText('v0.8 Art Style：魔法玩具箱 / 元素失控', W / 2, 178);
+    ctx.fillText('A top-down magic roguelike — 4 elements, fusions, chaos', W / 2, 178);
     ctx.fillStyle = '#f7ecd6'; ctx.font = '15px system-ui, sans-serif';
-    ctx.fillText('新美術方向：大帽子小法師、桌上棋盤感、符文地板、元素彈體形狀差異、法術配方卡。', W / 2, 218);
-    ctx.fillText('玩法不變：通過升級覆蓋唯一主魔法飛彈，兩種元素會融合並改變戰場。', W / 2, 244);
+    ctx.fillText('You have one spell. Upgrades overwrite it with elements.', W / 2, 218);
+    ctx.fillText('Two elements fuse into a new spell that reshapes the battlefield.', W / 2, 244);
     const rows = [
-      ['🔥 火', '火球：點燃草地、引爆毒霧', '#ffbd66'],
-      ['❄ 冰', '冰箭：凍水成冰面、緩速敵人', '#bff4ff'],
-      ['☁ 火 + 冰', '蒸氣彈：產生蒸氣雲、融冰、緩速', '#d8f6ff'],
-      ['☣ 火 + 毒', '毒爆彈：製造毒霧並爆燃', '#d998ff'],
-      ['✦ 火 + 雷', '電漿彈：爆炸並導電', '#ffd36d'],
-      ['✹ 雷 + 冰', '電霜彈：導電、緩速、控場', '#9fe7ff']
+      ['🔥 Fire', 'Fireball: ignites grass, detonates poison', '#ffbd66'],
+      ['❄ Ice', 'Ice Shard: freezes water, slows foes', '#bff4ff'],
+      ['☁ Fire + Ice', 'Steam Bomb: steam clouds, melt, slow', '#d8f6ff'],
+      ['☣ Fire + Poison', 'Toxic Bomb: poison clouds that detonate', '#d998ff'],
+      ['✦ Fire + Lightning', 'Plasma Bolt: explodes and conducts', '#ffd36d'],
+      ['✹ Lightning + Ice', 'Frostvolt Bolt: conduct, slow, control', '#9fe7ff']
     ];
     for (let i = 0; i < rows.length; i++) {
       const y = 306 + i * 28;
-      ctx.fillStyle = rows[i][2]; ctx.font = '900 16px system-ui, sans-serif'; ctx.fillText(rows[i][0], 342, y);
-      ctx.fillStyle = '#f3e9dc'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(rows[i][1], 572, y);
+      ctx.fillStyle = rows[i][2]; ctx.font = '900 16px system-ui, sans-serif'; ctx.fillText(rows[i][0], 300, y);
+      ctx.fillStyle = '#f3e9dc'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(rows[i][1], 470, y);
     }
     ctx.fillStyle = '#ffd36d'; ctx.font = '900 24px system-ui, sans-serif';
-    ctx.fillText('點擊畫面或按 Enter 開始', W / 2, 522);
+    ctx.fillText('Tap or press Enter to start', W / 2, 522);
     ctx.fillStyle = '#c9c0d8'; ctx.font = '13px system-ui, sans-serif';
-    ctx.fillText('WASD 移動｜滑鼠瞄準｜左鍵主魔法飛彈｜Space/Shift 閃避｜R 重開', W / 2, 550);
+    ctx.fillText('WASD move · Mouse aim · LMB cast · Space/Shift dash · R restart · (mobile: on-screen sticks)', W / 2, 550);
   }
 
   function upgradeMeta(up) {
@@ -1102,17 +1104,17 @@ let ctx = screenCtx;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff0b5';
     ctx.font = '900 32px system-ui, sans-serif';
-    ctx.fillText(game.wave >= 5 && !game.bossStarted ? 'Boss 前最後升級！' : `第 ${game.wave} 波清除！選一個升級`, W / 2, 126);
+    ctx.fillText(game.wave >= 5 && !game.bossStarted ? 'Final upgrade before the boss!' : `Wave ${game.wave} cleared — pick an upgrade`, W / 2, 126);
     ctx.fillStyle = '#e9dcff';
     ctx.font = '700 15px system-ui, sans-serif';
     if (game.stats.mainMode === 'spell') {
-      ctx.fillText(`目前主法術：${game.stats.spellName}｜${spellDescription(game.stats.spellKind)}`, W / 2, 154);
+      ctx.fillText(`Spell: ${T(game.stats.spellName)} | ${T(spellDescription(game.stats.spellKind))}`, W / 2, 154);
     } else {
-      const BNAME = { fist: '土拳', lightpalm: '雷掌', windpalm: '風掌' }[game.stats.mainMode] || '肉搏';
+      const BNAME = { fist: 'Earth Fist', lightpalm: 'Lightning Palm', windpalm: 'Wind Palm' }[game.stats.mainMode] || 'Melee';
       const els = game.stats.spellElements || [];
-      const elTxt = els.length ? els.map(e => (ELEMENT_INFO[e] && ELEMENT_INFO[e].name) || e).join('+') : '無';
-      const reach = game.stats.mainMode === 'fist' ? '拳擊/衝刺/副攻' : '衝刺/副攻';
-      ctx.fillText(`目前主攻：${BNAME}（肉搏）｜注入元素：${elTxt}（作用於${reach}）`, W / 2, 154);
+      const elTxt = els.length ? els.map(e => T((ELEMENT_INFO[e] && ELEMENT_INFO[e].name) || e)).join('+') : 'none';
+      const reach = game.stats.mainMode === 'fist' ? 'punch/dash/secondary' : 'dash/secondary';
+      ctx.fillText(`Main: ${BNAME} (melee) | element: ${elTxt} (affects ${reach})`, W / 2, 154);
     }
     for (let i = 0; i < game.upgrades.length; i++) {
       const up = game.upgrades[i];
@@ -1125,17 +1127,17 @@ let ctx = screenCtx;
       ctx.font = '900 11px system-ui, sans-serif';
       let chipX = x + 14;
       for (const t of tags) {
-        const w = ctx.measureText(t).width + 12;
+        const w = ctx.measureText(T(t)).width + 12;
         roundRectPath(ctx, chipX, y + 12, w, 18, 5);
         ctx.fillStyle = TAGCOLOR[t] || '#fff1bb'; ctx.fill();
         ctx.fillStyle = '#1b1420';
-        ctx.fillText(t, chipX + 6, y + 25);
+        ctx.fillText(T(t), chipX + 6, y + 25);
         chipX += w + 4;
       }
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffd36d';
       ctx.font = '900 19px system-ui, sans-serif';
-      ctx.fillText(`${i + 1}. ${upgradeName(up)}`, x + 98, y + 58);
+      ctx.fillText(`${i + 1}. ${T(upgradeName(up))}`, x + 98, y + 58);
 
       if (up.element && !isMastery(up) && game.stats.mainMode === 'spell') { // projectile preview only when you actually have a projectile
         const preview = previewSpellState(up.element);
@@ -1148,31 +1150,31 @@ let ctx = screenCtx;
         ctx.strokeRect(x + 16, y + 78, 163, 62);
         ctx.fillStyle = preview.fused ? color : '#fff08a';
         ctx.font = '900 13px system-ui, sans-serif';
-        ctx.fillText(preview.fused ? '融合預覽' : '法術變化', x + 98, y + 96);
+        ctx.fillText(preview.fused ? 'Fusion preview' : 'Spell change', x + 98, y + 96);
         ctx.fillStyle = '#f3e9dc';
         ctx.font = '700 12px system-ui, sans-serif';
-        ctx.fillText(`${before} →`, x + 98, y + 116);
+        ctx.fillText(`${T(before)} →`, x + 98, y + 116);
         ctx.fillStyle = color;
         ctx.font = '900 16px system-ui, sans-serif';
-        ctx.fillText(preview.name, x + 98, y + 134);
+        ctx.fillText(T(preview.name), x + 98, y + 134);
         ctx.fillStyle = '#e9dcff';
         ctx.font = '13px system-ui, sans-serif';
-        wrapText(preview.desc, x + 98, y + 166, 158, 17);
+        wrapText(T(preview.desc), x + 98, y + 166, 158, 17);
       } else {
         ctx.fillStyle = '#e9dcff';
         ctx.font = '14px system-ui, sans-serif';
-        wrapText(upgradeDesc(up), x + 98, y + 92, 158, 18);
+        wrapText(T(upgradeDesc(up)), x + 98, y + 92, 158, 18);
       }
 
       ctx.fillStyle = '#8cecff';
       ctx.font = '800 13px system-ui, sans-serif';
-      ctx.fillText('點擊或按 ' + (i + 1), x + 98, y + 214);
+      ctx.fillText('Tap or press ' + (i + 1), x + 98, y + 214);
     }
     ctx.fillStyle = '#c9c0d8';
     ctx.font = '700 13px system-ui, sans-serif';
     ctx.fillText(game.stats.mainMode === 'spell'
-      ? '提示：元素升級會直接改變唯一主攻擊；兩種元素會融合，第三種元素會替換最舊元素。'
-      : '提示：近戰主攻不吃元素；元素會注入你的衝刺與副攻（土拳拳擊也吃），仍可融合/替換。', W / 2, 478);
+      ? 'Tip: element upgrades reshape your single attack; two fuse, a third replaces the oldest.'
+      : 'Tip: melee main attack ignores elements; they infuse your dash & secondary (and the Earth Fist punch).', W / 2, 478);
   }
 
   function wrapText(text, x, y, maxWidth, lineHeight) {
@@ -1199,34 +1201,34 @@ let ctx = screenCtx;
     ctx.textAlign = 'center';
     ctx.fillStyle = win ? '#afff9d' : '#ffb29d';
     ctx.font = '900 38px system-ui, sans-serif';
-    ctx.fillText(win ? '勝利！災難倖存者' : '死亡！魔法失控', W / 2, 138);
+    ctx.fillText(win ? 'Victory! Disaster Survivor' : 'You Died — Magic Unleashed', W / 2, 138);
     ctx.fillStyle = '#f3e9dc';
     ctx.font = '17px system-ui, sans-serif';
-    wrapText(makeRunStory(win), W / 2, 174, 456, 20);
-    ctx.fillText(`主法術：${game.stats.spellName}｜地圖：${game.run && game.run.arena ? game.run.arena.name : '未知'}｜流派：${currentFlowName()}`, W / 2, 224);
-    ctx.fillText(`擊殺數：${game.kills}　分數：${game.score}`, W / 2, 258);
-    ctx.fillText(`最大單次爆炸擊殺：${game.biggestBoom}　毒霧引爆：${game.chainBooms}`, W / 2, 292);
-    ctx.fillText(`水池導電：${game.stats.waterElectrocutes}　凍結水面：${game.stats.frozenWater}　蒸氣雲：${game.stats.steamClouds}`, W / 2, 326);
-    ctx.fillText(`燒草/破牆：${game.stats.burnedGrass}/${game.stats.shatteredWalls}　融合次數：${game.stats.fusions}`, W / 2, 360);
-    ctx.fillText(`菁英擊殺 / 背面命中 / 格擋：${game.stats.elitesKilled} / ${game.stats.backHits} / ${game.stats.frontBlocks}`, W / 2, 384);
-    ctx.fillText(`Boss傷害：${Math.round(game.stats.bossDamage)}　最後命中：${game.stats.bossLastHit}`, W / 2, 406);
+    wrapText(T(makeRunStory(win)), W / 2, 174, 456, 20);
+    ctx.fillText(`Spell: ${T(game.stats.spellName)} | Arena: ${game.run && game.run.arena ? T(game.run.arena.name) : T('未知')} | Flow: ${T(currentFlowName())}`, W / 2, 224);
+    ctx.fillText(`Kills: ${game.kills}   Score: ${game.score}`, W / 2, 258);
+    ctx.fillText(`Biggest boom kills: ${game.biggestBoom}   Poison detonations: ${game.chainBooms}`, W / 2, 292);
+    ctx.fillText(`Water shocks: ${game.stats.waterElectrocutes}   Frozen pools: ${game.stats.frozenWater}   Steam clouds: ${game.stats.steamClouds}`, W / 2, 326);
+    ctx.fillText(`Grass burnt / Walls broken: ${game.stats.burnedGrass}/${game.stats.shatteredWalls}   Fusions: ${game.stats.fusions}`, W / 2, 360);
+    ctx.fillText(`Elite kills / Back hits / Blocks: ${game.stats.elitesKilled} / ${game.stats.backHits} / ${game.stats.frontBlocks}`, W / 2, 384);
+    ctx.fillText(`Boss damage: ${Math.round(game.stats.bossDamage)}   Last hit: ${T(game.stats.bossLastHit)}`, W / 2, 406);
     ctx.fillStyle = '#fff08a';
     ctx.font = '800 16px system-ui, sans-serif';
-    wrapText(`本局最大災難：${game.stats.biggestDisaster}`, W / 2, 434, 450, 20);
+    wrapText(`Biggest disaster: ${T(game.stats.biggestDisaster)}`, W / 2, 434, 450, 20);
     ctx.fillStyle = '#f3e9dc';
     ctx.font = '17px system-ui, sans-serif';
     ctx.fillStyle = '#fff1bb';
     ctx.font = '700 15px system-ui, sans-serif';
-    const evText = game.run && game.run.events.length ? game.run.events.join(' → ') : '無事件';
-    wrapText('本局事件：' + evText, W / 2, 466, 440, 20);
+    const evText = game.run && game.run.events.length ? game.run.events.map(T).join(' → ') : 'none';
+    wrapText('Events: ' + evText, W / 2, 466, 440, 20);
     ctx.fillStyle = '#d7c7ff';
-    const buildText = game.stats.upgradeNames.length ? game.stats.upgradeNames.join(' / ') : '無升級';
-    const spellText = game.stats.spellHistory ? game.stats.spellHistory.join(' → ') : game.stats.spellName;
-    const fusionText = game.stats.fusionLog && game.stats.fusionLog.length ? '｜融合：' + game.stats.fusionLog.join(' / ') : '';
-    wrapText('法術演化：' + spellText + fusionText, W / 2, 506, 440, 20);
-    wrapText('Build：' + buildText, W / 2, 544, 440, 20);
+    const buildText = game.stats.upgradeNames.length ? game.stats.upgradeNames.map(T).join(' / ') : 'none';
+    const spellText = game.stats.spellHistory ? game.stats.spellHistory.map(T).join(' → ') : T(game.stats.spellName);
+    const fusionText = game.stats.fusionLog && game.stats.fusionLog.length ? ' | Fusions: ' + game.stats.fusionLog.map(T).join(' / ') : '';
+    wrapText('Spell evo: ' + spellText + fusionText, W / 2, 506, 440, 20);
+    wrapText('Build: ' + buildText, W / 2, 544, 440, 20);
     ctx.fillStyle = '#9fe7ff';
     ctx.font = '800 20px system-ui, sans-serif';
-    ctx.fillText('按 R 重開', W / 2, 574);
+    ctx.fillText('Press R / tap to restart', W / 2, 574);
   }
 

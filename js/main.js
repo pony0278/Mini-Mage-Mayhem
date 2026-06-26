@@ -41,6 +41,7 @@ canvas.addEventListener('click', (e) => {
   const x = (e.clientX - rect.left) / rect.width * W;
   const y = (e.clientY - rect.top) / rect.height * H;
   if (game.state === 'title') { startRun(); return; }
+  if (game.state === 'over' || game.state === 'win') { resetGame(); return; } // tap-to-restart (mobile)
   if (game.state !== 'upgrade') return;
   for (let i = 0; i < game.upgrades.length; i++) {
     const bx = 210 + i * 185, by = 220;
