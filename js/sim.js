@@ -722,6 +722,14 @@ import { game, keys, mouse, CAM } from './state.js';
   export function upgradeDesc(up) {
     if (isMastery(up)) return masteryDesc(up.element);
     if (isSecMastery(up)) return '副攻強化：範圍/耐久更大，冷卻更短。';
+    // Brawler stance: an injected element no longer reshapes a projectile (you have none) — it feeds
+    // your dash + secondary (and 土拳's punch). Describe that instead of the misleading 「魔法飛彈→X」.
+    if (up.element && up.id && up.id.indexOf('inject_') === 0 && game.stats.mainMode !== 'spell') {
+      const elName = (ELEMENT_INFO[up.element] && ELEMENT_INFO[up.element].name) || up.element;
+      return game.stats.mainMode === 'fist'
+        ? `近戰中：${elName}附在土拳拳擊上，並注入你的衝刺與副攻（環境/反應效果）。`
+        : `近戰中：主攻不吃元素，但${elName}會注入你的衝刺與副攻（環境/反應效果）。`;
+    }
     return up.desc;
   }
   // Would this upgrade actually do something for the current build?

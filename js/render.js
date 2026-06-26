@@ -1077,7 +1077,15 @@ let ctx = screenCtx;
     ctx.fillText(game.wave >= 5 && !game.bossStarted ? 'Boss 前最後升級！' : `第 ${game.wave} 波清除！選一個升級`, W / 2, 126);
     ctx.fillStyle = '#e9dcff';
     ctx.font = '700 15px system-ui, sans-serif';
-    ctx.fillText(`目前主法術：${game.stats.spellName}｜${spellDescription(game.stats.spellKind)}`, W / 2, 154);
+    if (game.stats.mainMode === 'spell') {
+      ctx.fillText(`目前主法術：${game.stats.spellName}｜${spellDescription(game.stats.spellKind)}`, W / 2, 154);
+    } else {
+      const BNAME = { fist: '土拳', lightpalm: '雷掌', windpalm: '風掌' }[game.stats.mainMode] || '肉搏';
+      const els = game.stats.spellElements || [];
+      const elTxt = els.length ? els.map(e => (ELEMENT_INFO[e] && ELEMENT_INFO[e].name) || e).join('+') : '無';
+      const reach = game.stats.mainMode === 'fist' ? '拳擊/衝刺/副攻' : '衝刺/副攻';
+      ctx.fillText(`目前主攻：${BNAME}（肉搏）｜注入元素：${elTxt}（作用於${reach}）`, W / 2, 154);
+    }
     for (let i = 0; i < game.upgrades.length; i++) {
       const up = game.upgrades[i];
       const x = 165 + i * 215;
@@ -1101,7 +1109,7 @@ let ctx = screenCtx;
       ctx.font = '900 19px system-ui, sans-serif';
       ctx.fillText(`${i + 1}. ${upgradeName(up)}`, x + 98, y + 58);
 
-      if (up.element && !isMastery(up)) {
+      if (up.element && !isMastery(up) && game.stats.mainMode === 'spell') { // projectile preview only when you actually have a projectile
         const preview = previewSpellState(up.element);
         const color = ELEMENT_INFO[preview.kind]?.color || '#fff1bb';
         const before = game.stats.spellName;
@@ -1134,7 +1142,9 @@ let ctx = screenCtx;
     }
     ctx.fillStyle = '#c9c0d8';
     ctx.font = '700 13px system-ui, sans-serif';
-    ctx.fillText('提示：元素升級會直接改變唯一主攻擊；兩種元素會融合，第三種元素會替換最舊元素。', W / 2, 478);
+    ctx.fillText(game.stats.mainMode === 'spell'
+      ? '提示：元素升級會直接改變唯一主攻擊；兩種元素會融合，第三種元素會替換最舊元素。'
+      : '提示：近戰主攻不吃元素；元素會注入你的衝刺與副攻（土拳拳擊也吃），仍可融合/替換。', W / 2, 478);
   }
 
   function wrapText(text, x, y, maxWidth, lineHeight) {
