@@ -2,7 +2,8 @@
 // (index / camera-sandbox / training); page-specific panels load as separate
 // add-on modules (camera-panel.js / training-panel.js).
 import { W, H } from './constants.js';
-import { game, keys, mouse } from './state.js';
+import { norm } from './utils.js';
+import { game, keys, mouse, CAM } from './state.js';
 import { resetGame, startRun, applyUpgrade, update } from './sim.js';
 import { draw, updateMouseWorld, mouseScreen } from './render.js';
 
@@ -49,6 +50,28 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// Intent adapter (B0 seam): translate raw keys/mouse/CAM into the neutral game.input the
+// headless sim reads. Touch controls and (later) the BR netcode populate the same struct.
+function buildInput() {
+  const inp = game.input;
+  let mx = 0, my = 0;
+  if (keys.has('w') || keys.has('arrowup')) my -= 1;
+  if (keys.has('s') || keys.has('arrowdown')) my += 1;
+  if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
+  if (keys.has('d') || keys.has('arrowright')) mx += 1;
+  // camera-relative so WASD matches the screen at any azimuth (a client/render concern)
+  const maz = (CAM.azimuth || 0) * Math.PI / 180;
+  const fX = -Math.sin(maz), fY = -Math.cos(maz); // screen-up in world
+  const rX = Math.cos(maz), rY = -Math.sin(maz);  // screen-right in world
+  const n = norm(rX * mx + fX * (-my), rY * mx + fY * (-my));
+  inp.moveX = n.x; inp.moveY = n.y;
+  inp.aimX = mouse.x; inp.aimY = mouse.y;          // mouse.x/y are world coords (updateMouseWorld raycast)
+  inp.firing = mouse.down;
+  inp.secondaryFiring = mouse.right || keys.has('q');
+  inp.dash = keys.has(' ') || keys.has('shift');
+  inp.grab = keys.has('e');
+}
+
 // --- main loop --- (pause hook used by camera-sandbox's panel)
 let paused = false;
 export function setPaused(p) { paused = p; }
@@ -57,7 +80,7 @@ let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
-  if (!paused) { updateMouseWorld(); update(dt); } // mouse-world + sim only when running
+  if (!paused) { updateMouseWorld(); buildInput(); update(dt); } // mouse-world → intents → sim, only when running
   draw();
   requestAnimationFrame(loop);
 }

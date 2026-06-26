@@ -1,7 +1,7 @@
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL } from './constants.js';
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
-import { game, keys, mouse, CAM } from './state.js';
+import { game } from './state.js'; // headless: sim reads game.input (neutral intents), never raw keys/mouse/CAM
 
 // Headless-ish simulation core: state mutation + all game logic. Imports only
 // data/state/constants/utils; never imports render/input/main (DAG invariant).
@@ -974,7 +974,7 @@ import { game, keys, mouse, CAM } from './state.js';
       if (d > 390) continue;
       const da = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - angle), Math.cos(Math.atan2(dy, dx) - angle)));
       if (da > 0.62) continue;
-      const mouseBias = Math.hypot(e.x - mouse.x, e.y - mouse.y) * 0.45;
+      const mouseBias = Math.hypot(e.x - game.input.aimX, e.y - game.input.aimY) * 0.45;
       const score = d + mouseBias + da * 120;
       if (score < bestScore) { bestScore = score; best = e; }
     }
@@ -993,7 +993,7 @@ import { game, keys, mouse, CAM } from './state.js';
   }
 
   export function findWaterTarget(angle) {
-    if (tileAtPixel(mouse.x, mouse.y) === TILE_WATER) return { x: mouse.x, y: mouse.y };
+    if (tileAtPixel(game.input.aimX, game.input.aimY) === TILE_WATER) return { x: game.input.aimX, y: game.input.aimY };
     for (let d = 24; d <= 380; d += 16) {
       const x = game.player.x + Math.cos(angle) * d;
       const y = game.player.y + Math.sin(angle) * d;
@@ -1349,7 +1349,7 @@ import { game, keys, mouse, CAM } from './state.js';
       if (game.meteorTimer <= 0) {
         game.meteorTimer = 2.6;
         const live = game.enemies.filter(e => !e.dead && e.type !== 'boss');
-        const t = live.length ? live[Math.floor(Math.random() * live.length)] : { x: mouse.x, y: mouse.y };
+        const t = live.length ? live[Math.floor(Math.random() * live.length)] : { x: game.input.aimX, y: game.input.aimY };
         const r = 58 + game.stats.size * 6 + spellMastery() * 4;
         addBossWarning('meteor', clamp(t.x, 30, W - 30), clamp(t.y, 30, H - 30), r, 0.85, '#ff7a3a');
       }
@@ -1647,7 +1647,7 @@ import { game, keys, mouse, CAM } from './state.js';
     p.secondaryCooldown = Math.max(0, p.secondaryCooldown - dt);
     p.invuln = Math.max(0, p.invuln - dt);
     p.hurtTimer = Math.max(0, p.hurtTimer - dt);
-    p.facing = Math.atan2(mouse.y - p.y, mouse.x - p.x);
+    p.facing = Math.atan2(game.input.aimY - p.y, game.input.aimX - p.x);
     if (p.dashTime <= 0) {
       // Lunge payoff (A): a 突進 ends with a gap-closing melee strike toward the cursor.
       if (p.lungeStrike) { p.lungeStrike = false; meleeAttack(p.facing); }
@@ -1655,19 +1655,11 @@ import { game, keys, mouse, CAM } from './state.js';
       if (p.dashArrive) { p.dashArrive = false; dashArrival(p); }
     }
 
-    let mx = 0, my = 0;
-    if (keys.has('w') || keys.has('arrowup')) my -= 1;
-    if (keys.has('s') || keys.has('arrowdown')) my += 1;
-    if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
-    if (keys.has('d') || keys.has('arrowright')) mx += 1;
-    // Camera-relative movement so WASD matches the screen at any azimuth.
-    const _maz = (CAM.azimuth || 0) * Math.PI / 180;
-    const _fX = -Math.sin(_maz), _fY = -Math.cos(_maz); // screen-up in world
-    const _rX = Math.cos(_maz), _rY = -Math.sin(_maz);  // screen-right in world
-    const n = norm(_rX * mx + _fX * (-my), _rY * mx + _fY * (-my));
+    // Move intent comes in world-space already (the client adapter applied camera-relative rotation).
+    const n = norm(game.input.moveX, game.input.moveY);
     let speed = p.speed;
 
-    if ((keys.has(' ') || keys.has('shift')) && p.dashStock >= 1 && p.dashTapCd <= 0 && p.dashTime <= 0) {
+    if (game.input.dash && p.dashStock >= 1 && p.dashTapCd <= 0 && p.dashTime <= 0) {
       p.dashStock -= 1;
       p.dashTapCd = 0.22;                                                   // brief rhythm gate between chained dashes
       if (p.dashRecharge <= 0) p.dashRecharge = 1.1 * game.stats.dashCdMul; // begin recharge if idle
@@ -1748,7 +1740,7 @@ import { game, keys, mouse, CAM } from './state.js';
 
     const wp = game.stats.mainMode === 'windpalm';
     // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
-    if (mouse.down && p.cooldown <= 0 && !(wp && p.held.length)) {
+    if (game.input.firing && p.cooldown <= 0 && !(wp && p.held.length)) {
       if (game.stats.mainMode !== 'spell') {
         meleeAttack(p.facing);
         // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
@@ -1759,11 +1751,11 @@ import { game, keys, mouse, CAM } from './state.js';
       }
     }
     // Secondary slot (RMB or Q) — build-defined spell, unchanged in every stance.
-    if ((mouse.right || keys.has('q')) && p.secondaryCooldown <= 0) {
+    if (game.input.secondaryFiring && p.secondaryCooldown <= 0) {
       castSecondary(p.facing);
     }
     // 風掌 E（edge-triggered）：撿取（累積到星級上限）→ 滿了/沒得撿就齊射丟出。
-    const eDown = keys.has('e'); const eEdge = eDown && !p.eDown; p.eDown = eDown;
+    const eDown = game.input.grab; const eEdge = eDown && !p.eDown; p.eDown = eDown;
     if (wp && eEdge) {
       const cap = game.stats.windpalmStar || 1;
       let grabbed = false;

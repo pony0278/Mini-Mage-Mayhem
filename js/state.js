@@ -46,7 +46,12 @@ export const game = {
   bossAttackLabel: '',
   bossAttackTimer: 0,
   bossStarted: false,
-  bossDefeated: false
+  bossDefeated: false,
+  // Neutral input intents — the headless seam (B0). The client adapter (main.js buildInput)
+  // fills these from keys/mouse/CAM (or touch, or network for BR); the SIM reads ONLY these,
+  // never raw keys/mouse/CAM. moveX/moveY = world-space move dir (camera-relative already
+  // applied by the client); aimX/aimY = world aim point.
+  input: { moveX: 0, moveY: 0, aimX: W / 2, aimY: H / 2, firing: false, secondaryFiring: false, dash: false, grab: false }
 };
 
 // Shared input containers: DOM event handlers (input layer) write button/key
