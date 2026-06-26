@@ -7,7 +7,8 @@ import { game, keys, mouse, CAM, touch } from './state.js';
 import { resetGame, startRun, applyUpgrade, update } from './sim.js';
 import { draw, updateMouseWorld, mouseScreen } from './render.js';
 import { wireTouch } from './touch.js';
-import { playSfx, unlock as unlockAudio, toggleMute } from './audio.js';
+import { playSfx, unlock as unlockAudio, toggleMute, setAudioDucked } from './audio.js';
+import * as platform from './platform.js';
 
 window.__game = game; // debug / headless-test hook
 
@@ -94,10 +95,31 @@ function buildInput() {
 let paused = false;
 export function setPaused(p) { paused = p; }
 
+// Platform lifecycle (CrazyGames): pause/duck the game during ad breaks; report active gameplay so
+// the portal knows when to insert ads. All no-ops when the SDK isn't present.
+platform.configure({
+  pause: () => { setPaused(true); setAudioDucked(true); },
+  resume: () => { setPaused(false); setAudioDucked(false); }
+});
+let prevState = game.state;
+function trackLifecycle() {
+  if (game.state === prevState) return;
+  if (game.state === 'playing') platform.gameplayStart();
+  else if (prevState === 'playing') platform.gameplayStop();
+  if (prevState === 'over' || prevState === 'win') platform.midgameAd(); // restart = a natural ad break
+  prevState = game.state;
+}
+// Tab hidden / app backgrounded: pause + duck + stop gameplay; restore on return.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { setPaused(true); setAudioDucked(true); platform.gameplayStop(); }
+  else { setPaused(false); setAudioDucked(false); if (game.state === 'playing') platform.gameplayStart(); }
+});
+
 let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
+  trackLifecycle();
   if (!paused) { updateMouseWorld(); buildInput(); update(dt); } // mouse-world → intents → sim, only when running
   // drain the sim's SFX events (also covers menu-time events like upgrade pick); cap repeats so a
   // big multi-kill doesn't stack into a clipping wall of sound.
@@ -112,4 +134,5 @@ function loop(now) {
 
 wireTouch(canvas);
 resetGame();
+platform.init().then(() => platform.loadingStop()); // load CrazyGames SDK (degrades to no-op if absent)
 requestAnimationFrame(loop);

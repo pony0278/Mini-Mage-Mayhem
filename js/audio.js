@@ -1,20 +1,24 @@
 // Procedural SFX (client-only, no asset files → zero load, no egress). The sim stays headless:
 // it pushes abstract event names into game.sfx; main.js drains them each frame and calls playSfx.
 // WebAudio needs a user gesture to start — main.js calls unlock() on the first input.
-let ctx = null, master = null, muted = false;
+let ctx = null, master = null, muted = false, ducked = false;
 const VOL = 0.32;
+const applyGain = () => { if (master) master.gain.value = (muted || ducked) ? 0 : VOL; };
 
 function ensure() {
   if (ctx) return ctx;
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;
   ctx = new AC();
-  master = ctx.createGain(); master.gain.value = muted ? 0 : VOL; master.connect(ctx.destination);
+  master = ctx.createGain(); applyGain(); master.connect(ctx.destination);
   return ctx;
 }
 export function unlock() { const c = ensure(); if (c && c.state === 'suspended') c.resume(); }
 export function isMuted() { return muted; }
-export function toggleMute() { muted = !muted; if (master) master.gain.value = muted ? 0 : VOL; return muted; }
+export function toggleMute() { muted = !muted; applyGain(); return muted; }
+// Duck audio independently of the user mute — for ad breaks / tab hidden. setAudioDucked(false)
+// restores to the user's mute state, not unconditionally on.
+export function setAudioDucked(d) { ducked = d; applyGain(); }
 
 // --- synthesis primitives ---
 function tone({ freq = 440, f1, type = 'square', dur = 0.12, gain = 0.5, attack = 0.005, release = 0.06, at = 0 }) {
