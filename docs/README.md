@@ -5,6 +5,7 @@
 | 文件 | 內容 | 對應階段 |
 |---|---|---|
 | [roadmap.md](roadmap.md) | 路線決策記錄 — 打磨單機 / 上架 / 做 BR 的三條路 (A/B/C) 取捨與建議 | 🧭 待決策 |
+| [shipping-readiness.md](shipping-readiness.md) | 上架就緒缺口盤點（C）— BR 已確定為終點下的取捨；音效/觸控/SDK/i18n 缺口 + 排序 + B0 橋接 | 🚢 C 動工依據 |
 | [design-vision.md](design-vision.md) | 法術與環境互動的設計願景 — 北極星 + 現況標記（已實作/keystone/岔路）| ⭐ 願景 |
 | [content-backlog.md](content-backlog.md) | 內容待辦 — 在「按鍵極簡（手機友善）」下要加的法術/環境互動、副攻插槽、複合組合、分批 | 📝 規劃中 |
 | [capstones.md](capstones.md) | 畢業組合（capstones）— build 投資到位解鎖的被動大絕（流星降臨等）；框架 + 全菜單 + Tier-0 | 📝 規劃中 |
