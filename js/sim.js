@@ -138,6 +138,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     game.rings.length = 0;
     game.slams.length = 0;
     game.floatingTexts.length = 0;
+    game.sfx.length = 0;
     game.upgrades.length = 0;
     game.run = {
       arena: null,
@@ -487,6 +488,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     if (isFusion) {
       game.fusionBanner = { title: 'FUSION!', equation, desc: spellDescription(game.stats.spellKind), life: 2.15, maxLife: 2.15, color: ELEMENT_INFO[game.stats.spellKind]?.color || '#fff1bb' };
       toast(`融合完成：${equation}`);
+      sfx('fusion');
     } else {
       game.fusionBanner = { title: 'SPELL SHIFT', equation, desc: spellDescription(game.stats.spellKind), life: 1.45, maxLife: 1.45, color: ELEMENT_INFO[game.stats.spellKind]?.color || '#fff1bb' };
       toast(`目前主法術：${after}`);
@@ -548,11 +550,13 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     game.flash = Math.max(game.flash, 0.07);
     addRing(p.x, p.y, 24, '#ffb3a1', 0.28, 3);
     addText(p.x, p.y - 26, '-' + Math.round(amount), '#ffb3a1');
+    sfx('hurt');
     if (p.hp <= 0) {
       p.hp = 0;
       game.state = 'over';
       game.stats.deathSource = source;
       game.message = makeDeathMessage(source);
+      sfx('gameover');
     }
   }
 
@@ -773,6 +777,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     if (!up) return;
     game.stats.upgradeNames.push(upgradeName(up));
     up.apply();
+    sfx('upgrade');
     game.state = 'playing';
     if (game.training) return; // training arena: apply effect only, no wave progression
     if (game.wave >= 5 && !game.bossStarted) {
@@ -796,6 +801,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
       spawnSpellProjectile(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, angle + offset);
     }
     game.stats.shots++;
+    sfx('shoot');
   }
 
   export function spawnSpellProjectile(x, y, angle) {
@@ -1076,6 +1082,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
 
   export function addExplosion(x, y, r, damage = 42, source = '爆炸') {
     game.explosions.push({ x, y, r, life: 0.32, maxLife: 0.32 });
+    sfx('explosion');
     addRing(x, y, r, '#ffeea1', 0.42, 5);
     game.screenShake = Math.max(game.screenShake, Math.min(19, r * 0.16));
     game.flash = Math.max(game.flash, 0.12);
@@ -1227,6 +1234,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     e.dead = true;
     game.kills++;
     game.score += e.value;
+    sfx('enemyDie');
     addText(e.x, e.y - 16, '+' + e.value, '#ffe28a');
     addRing(e.x, e.y, e.r + 18, e.color, 0.32, 2.5);
     if (e.type === 'bug') {
@@ -1279,6 +1287,8 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
   export function addText(x, y, text, color = '#fff') {
     game.floatingTexts.push({ x, y, text, color, life: 0.82, maxLife: 0.82, vy: -34 });
   }
+  // Headless SFX emit: push an abstract event name; the client drains game.sfx each frame and plays it.
+  export function sfx(name) { game.sfx.push(name); }
 
   // Big directional palm-slam shock (brawler main attack) — rendered in syncZones.
   export function addSlam(x, y, angle, hex, power = 1) {
@@ -1612,6 +1622,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     if (game.enemies.length === 0 && game.wave > 0) {
       game.waveClearTimer += dt;
       if (game.waveClearTimer > 0.9) {
+        sfx('waveclear'); // fires once — the state change below stops update() re-entering this block
         if (game.bossStarted && game.bossDefeated) {
           game.state = 'win';
           game.message = '你擊敗了元素哥布林法師！';
@@ -1661,6 +1672,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
 
     if (game.input.dash && p.dashStock >= 1 && p.dashTapCd <= 0 && p.dashTime <= 0) {
       p.dashStock -= 1;
+      sfx('dash');
       p.dashTapCd = 0.22;                                                   // brief rhythm gate between chained dashes
       if (p.dashRecharge <= 0) p.dashRecharge = 1.1 * game.stats.dashCdMul; // begin recharge if idle
       p.dashHits = new Set();   // enemies hit by this dash (offensive dash)
@@ -1867,6 +1879,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     const def = SECONDARY[game.stats.secondary];
     if (!def) return; // no secondary equipped yet (gained via upgrades)
     game.player.secondaryCooldown = def.cd * Math.max(0.5, 1 - 0.08 * sLvl()); // mastery shortens cd
+    sfx('secondary');
     def.cast(angle);
   }
   // Element coupling: a secondary inherits the player's current spell element(s) and
@@ -1965,6 +1978,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
   }
   export function meleeAttack(angle) {
     palmSwing();
+    sfx('melee');
     const p = game.player, m = game.stats.mainMode;
     const hex = m === 'lightpalm' ? 0x9fe7ff
       : m === 'windpalm' ? 0xeafaff
@@ -2166,6 +2180,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
       addText(p.x, p.y - 46, it.type ? '抓起 ↑' : '舉起 ↑', '#dff3ff');
       addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
       game.screenShake = Math.max(game.screenShake, 2);
+      sfx('grab');
       return true;
     }
     if ((game.stats.windpalmStar || 0) >= 3) return tryLiftWall(p); // ★3: terrain becomes ammo
@@ -2198,10 +2213,12 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
     addText(p.x, p.y - 46, w.kind === 'ice' ? '拔起冰牆 ↑' : '拔起薄牆 ↑', w.kind === 'ice' ? '#bff4ff' : '#d1a06a');
     addRing(p.x, p.y, 30, w.kind === 'ice' ? '#bff4ff' : '#caa472', 0.25, 3);
     game.screenShake = Math.max(game.screenShake, 2);
+    sfx('grab');
     return true;
   }
   export function throwHeld(angle) {              // volley-throw everything held, fanned along the aim
     const p = game.player; const n = p.held.length; if (!n) return;
+    sfx('throw');
     p.held.forEach((it, i) => {
       const a = angle + (n === 1 ? 0 : (i - (n - 1) / 2) * 0.20);
       it.held = false;
@@ -2404,6 +2421,7 @@ import { game } from './state.js'; // headless: sim reads game.input (neutral in
   }
 
   export function applySpellHit(fb, e) {
+    sfx('hit');
     damageEnemy(e, fb.damage, fb.x, fb.y, spellDisplayName(fb.kind));
     if (isIceKind(fb.kind)) chillEnemy(e, 1.1 + game.stats.iceSlow * 0.5, fb.x, fb.y);
     if (isLightningKind(fb.kind)) chainLightningFrom(fb.x, fb.y, e, 10 + game.stats.storm * 3);

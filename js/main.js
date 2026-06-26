@@ -7,6 +7,7 @@ import { game, keys, mouse, CAM, touch } from './state.js';
 import { resetGame, startRun, applyUpgrade, update } from './sim.js';
 import { draw, updateMouseWorld, mouseScreen } from './render.js';
 import { wireTouch } from './touch.js';
+import { playSfx, unlock as unlockAudio, toggleMute } from './audio.js';
 
 window.__game = game; // debug / headless-test hook
 
@@ -14,11 +15,14 @@ const canvas = document.getElementById('game');
 
 // --- input ---
 window.addEventListener('keydown', (e) => {
+  unlockAudio(); // WebAudio needs a user gesture to start
   keys.add(e.key.toLowerCase());
   if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
   if (e.key.toLowerCase() === 'r' && (game.state === 'over' || game.state === 'win')) resetGame();
+  if (e.key.toLowerCase() === 'm') toggleMute();
   if (game.state === 'title' && e.key === 'Enter') startRun();
 });
+window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -94,6 +98,13 @@ function loop(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
   if (!paused) { updateMouseWorld(); buildInput(); update(dt); } // mouse-world → intents → sim, only when running
+  // drain the sim's SFX events (also covers menu-time events like upgrade pick); cap repeats so a
+  // big multi-kill doesn't stack into a clipping wall of sound.
+  if (game.sfx.length) {
+    const seen = {};
+    for (const e of game.sfx) { seen[e] = (seen[e] || 0) + 1; if (seen[e] <= 3) playSfx(e); }
+    game.sfx.length = 0;
+  }
   draw();
   requestAnimationFrame(loop);
 }

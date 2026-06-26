@@ -51,7 +51,9 @@ export const game = {
   // fills these from keys/mouse/CAM (or touch, or network for BR); the SIM reads ONLY these,
   // never raw keys/mouse/CAM. moveX/moveY = world-space move dir (camera-relative already
   // applied by the client); aimX/aimY = world aim point.
-  input: { moveX: 0, moveY: 0, aimX: W / 2, aimY: H / 2, firing: false, secondaryFiring: false, dash: false, grab: false }
+  input: { moveX: 0, moveY: 0, aimX: W / 2, aimY: H / 2, firing: false, secondaryFiring: false, dash: false, grab: false },
+  // Outbound SFX event buffer (headless): sim pushes abstract names, the client drains + plays them.
+  sfx: []
 };
 
 // Shared input containers: DOM event handlers (input layer) write button/key
