@@ -97,7 +97,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：點擊出拳（短而重、附帶當前元素），長按蓄力放「裂地上勾拳」把敵人擊飛、裂地破牆。重選→升星，★2 震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
-    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：點擊瞬間穿越最近敵人到身後（上雷印＋連鎖＋釘住、不擊退）；長按蓄力放「雷閃穿刺」化雷光貫穿一直線（最多3名、終點電爆、過水整條導電）。衝刺穿過帶雷印的敵人會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：點擊瞬間穿越最近敵人到身後（上雷印＋連鎖＋釘住、不擊退）；長按蓄力放「雷閃穿刺」：在範圍內連續閃現穿刺最多3名（★更多）各放電留雷印，再閃回原點＋終點電爆（過水導電、全程無敵）。衝刺穿過帶雷印的敵人會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
@@ -260,9 +260,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       atkLungeTime: 0,
       blink: false,      // 雷掌 (The Flash): true while blinking THROUGH foes
       blinkZap: null,    // enemies already zapped by the current blink
-      pierce: false,     // 雷閃穿刺 重擊: true while piercing a charged line
-      pierceHits: null,  // enemies hit by the current pierce
-      pierceMax: 3,      // 雷閃穿刺: max foes per pierce (★ raises it)
+      zip: false,        // 雷閃穿刺 重擊: true while flash-striking through a group then returning
+      zipRoute: null,    // ordered waypoints {x,y,enemy} of the flash route (last = return to start)
+      zipIdx: 0,         // current waypoint
+      zipTimer: 0,       // countdown to the next flash hop
       firePrev: false,   // edge-detect the main attack (tap vs hold)
       heavyCharge: 0,    // 土拳 重擊: seconds the attack has been held
       heavyReady: false, // 土拳 重擊: charge reached the release threshold
@@ -1727,13 +1728,12 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (p.atkLungeTime > 0) {
       p.atkLungeTime -= dt;
       if (p.blink) lightningBlinkSweep(p);
-      else if (p.pierce) lightningPierceSweep(p);
       if (p.atkLungeTime <= 0) {
         if (p.blink) { p.blink = false; lightningBlinkArrive(p); }
-        else if (p.pierce) { p.pierce = false; lightningPierceArrive(p); }
         else meleeAttack(p.facing);
       }
     }
+    if (p.zip) updateLightningZip(p, dt); // 雷閃穿刺: flash-strike route through a group, then home
     if (p.dashTime <= 0) {
       // Lunge payoff (A): a 突進 ends with a gap-closing melee strike toward the cursor.
       if (p.lungeStrike) { p.lungeStrike = false; meleeAttack(p.facing); }
@@ -1820,6 +1820,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       p.vx = mvx * speed;
       p.vy = mvy * speed;
     }
+    if (p.zip) { p.vx = 0; p.vy = 0; }              // 雷閃穿刺: the flash route teleports the player; freeze normal movement
     const nx = p.x + p.vx * dt;
     const ny = p.y + p.vy * dt;
     if (!circleHitsSolid(nx, p.y, p.r)) p.x = nx; else p.vx *= -0.15;
@@ -2171,10 +2172,12 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   // wind up the stance's 重擊, release to unleash. Runs every frame (charges through cooldown, detects
   // the release edge). 土拳: tap=auto-lunge punch / 重擊=裂地上勾拳. 雷掌: tap=雷步閃現 / 重擊=雷閃穿刺.
   export function handleChargeAttack(p, dt) {
+    if (p.zip) { p.firePrev = game.input.firing; return; } // mid 雷閃穿刺 — ignore input until it resolves
     const light = game.stats.mainMode === 'lightpalm';
     const firing = game.input.firing;
     const edge = firing && !p.firePrev;
     if (firing) {
+      if (edge) { p.attackStartX = p.x; p.attackStartY = p.y; } // where the gesture began — 雷閃穿刺 returns here
       if (edge && p.cooldown <= 0) {
         if (light) { lightningBlink(p); p.cooldown = Math.max(0.16, 0.26 * game.stats.cooldownMul); } // tap = blink (The Flash)
         else {
@@ -2326,43 +2329,50 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     for (let i = 0; i < 9; i++) { const a = rnd(0, 6.28), s = rnd(120, 250); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.26, maxLife: 0.26, color: '#bfe6ff' }); }
   }
 
-  // 雷 重擊 雷閃穿刺: a charged line-pierce — turn to lightning and rip down a long straight line,
-  // skewering up to N foes (★ raises N) with heavy damage + 雷印 + chain, a 電爆 at the end, and the
-  // whole path electrified where it crosses water. Reuses the blink/atkLunge movement (walls stop it).
+  const ZIP_HOP = 0.05; // seconds between flash-strike hops
+  // 雷 重擊 雷閃穿刺: flash-strike — pick the nearest N foes IN RANGE (★ raises N), then blink from one
+  // to the next zapping each (heavy dmg + 雷印 + chain), and finally blink HOME to the start point with
+  // a 電爆. i-frames cover the whole route; each hop leaves a bolt + afterimage. Ending at the start =
+  // safe + flashy (no being dumped into the crowd).
   export function lightningPierce(angle) {
     const p = game.player, star = game.stats.lightStar || 1;
-    const dx = Math.cos(angle), dy = Math.sin(angle);
-    // length, clipped so it stops at the first wall (不穿牆)
-    let dist = 320 + (star - 1) * 30;
-    for (let s = 24; s <= dist; s += 12) { if (circleHitsSolid(p.x + dx * s, p.y + dy * s, p.r)) { dist = Math.max(40, s - 14); break; } }
-    p.facing = angle;
-    p.atkLungeDirX = dx; p.atkLungeDirY = dy;
-    p.atkLungeSpeed = 2200;                              // faster than the basic blink
-    p.atkLungeTime = clamp(dist / p.atkLungeSpeed, 0.06, 0.2);
-    p.invuln = Math.max(p.invuln, p.atkLungeTime + 0.08); // i-frames cover the whole pierce
-    p.pierce = true; p.pierceHits = new Set(); p.pierceMax = 3 + (star - 1); // ★ more skewers
-    // 過水導電: electrify water tiles along the line (on-brand risk — but i-frames cover transit)
-    const steps = Math.max(6, Math.round(dist / 26));
-    for (let i = 0; i <= steps; i++) { const wx = p.x + dx * (i / steps) * dist, wy = p.y + dy * (i / steps) * dist; if (tileAtPixel(wx, wy) === TILE_WATER) addElectricZone(wx, wy, 48, 0.7); }
+    const sx = p.x, sy = p.y, R = 230 + (star - 1) * 30, maxN = 3 + (star - 1);
+    const foes = game.enemies
+      .filter(e => !e.dead && Math.hypot(e.x - sx, e.y - sy) <= R)
+      .sort((a, b) => (Math.hypot(a.x - sx, a.y - sy) - Math.hypot(b.x - sx, b.y - sy)))
+      .slice(0, maxN);
+    const route = foes.map(e => ({ x: e.x, y: e.y, enemy: e }));
+    if (route.length === 0) { // no foes in range → a flashy forward blink instead of wasting the charge
+      const fx = clamp(sx + Math.cos(angle) * 170, 24, W - 24), fy = clamp(sy + Math.sin(angle) * 170, 24, H - 24);
+      route.push({ x: fx, y: fy, enemy: null });
+    }
+    const homeX = (p.attackStartX != null) ? p.attackStartX : sx, homeY = (p.attackStartY != null) ? p.attackStartY : sy;
+    route.push({ x: homeX, y: homeY, enemy: null, ret: true }); // return to where the gesture began
+    p.zip = true; p.zipRoute = route; p.zipIdx = 0; p.zipTimer = 0;
+    p.invuln = Math.max(p.invuln, route.length * ZIP_HOP + 0.12);
     sfx('dash'); addShake(4);
   }
-  // Per-frame during a pierce: skewer foes on the line (up to pierceMax), heavy hit + 雷印 + chain.
-  export function lightningPierceSweep(p) {
-    if (!p.pierceHits) p.pierceHits = new Set();
-    const star = game.stats.lightStar || 1;
-    const dmg = 30 + game.stats.size * 3 + mLvl('lightning') * 4 + (star - 1) * 6; // heavier than the basic zap
-    for (const e of game.enemies) {
-      if (e.dead || p.pierceHits.has(e)) continue;
-      if (p.pierceHits.size >= p.pierceMax) break;       // 最多 N 名 (★ raises N)
-      if (Math.hypot(e.x - p.x, e.y - p.y) > p.r + e.r + 16) continue;
-      p.pierceHits.add(e);
-      addHitstop(0.04); hitSpark(e.x, e.y, '#bdf5ff', 1.9);
-      damageEnemy(e, dmg, p.x - p.atkLungeDirX, p.y - p.atkLungeDirY, '雷閃穿刺');
-      if (!e.dead) { e.lightMark = LIGHT_MARK; e.stunTimer = Math.max(e.stunTimer || 0, 0.8); e.vx = (e.vx || 0) * 0.1; e.vy = (e.vy || 0) * 0.1; }
-      game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.14, maxLife: 0.14 });
-      chainLightningFrom(e.x, e.y, e.dead ? null : e, 14 + mLvl('lightning') * 2 + star * 2);
+  // One flash hop per ZIP_HOP: leave a bolt + afterimage trail, teleport to the waypoint, zap the foe there.
+  export function updateLightningZip(p, dt) {
+    p.zipTimer -= dt;
+    if (p.zipTimer > 0) return;
+    const wp = p.zipRoute[p.zipIdx];
+    game.lightningBolts.push({ x1: p.x, y1: p.y, x2: wp.x, y2: wp.y, life: 0.16, maxLife: 0.16 }); // bolt across the hop
+    for (let i = 1; i < 5; i++) { const t = i / 5; game.particles.push({ x: p.x + (wp.x - p.x) * t, y: p.y + (wp.y - p.y) * t, vx: rnd(-25, 25), vy: rnd(-25, 25), r: rnd(2, 4), life: 0.2, maxLife: 0.2, color: '#bfe6ff' }); }
+    if (tileAtPixel(wp.x, wp.y) === TILE_WATER) addElectricZone(wp.x, wp.y, 48, 0.6); // 過水導電 at the landing
+    p.x = wp.x; p.y = wp.y;                                 // teleport (flash)
+    if (wp.enemy && !wp.enemy.dead) {
+      const star = game.stats.lightStar || 1;
+      const dmg = 30 + game.stats.size * 3 + mLvl('lightning') * 4 + (star - 1) * 6; // heavier than the basic zap
+      addHitstop(0.04); hitSpark(wp.x, wp.y, '#bdf5ff', 1.9);
+      damageEnemy(wp.enemy, dmg, p.x, p.y, '雷閃穿刺');
+      if (!wp.enemy.dead) { wp.enemy.lightMark = LIGHT_MARK; wp.enemy.stunTimer = Math.max(wp.enemy.stunTimer || 0, 0.8); wp.enemy.vx = (wp.enemy.vx || 0) * 0.1; wp.enemy.vy = (wp.enemy.vy || 0) * 0.1; }
+      chainLightningFrom(wp.x, wp.y, wp.enemy.dead ? null : wp.enemy, 14 + mLvl('lightning') * 2 + star * 2);
     }
-    game.particles.push({ x: p.x, y: p.y, vx: rnd(-40, 40), vy: rnd(-40, 40), r: rnd(3, 5.5), life: 0.24, maxLife: 0.24, color: '#bfe6ff' }); // bolt afterimage
+    if (wp.ret) lightningPierceArrive(p);                   // home → 電爆 + chain
+    p.zipIdx++;
+    if (p.zipIdx >= p.zipRoute.length) { p.zip = false; p.zipRoute = null; }
+    else p.zipTimer = ZIP_HOP;
   }
   // Pierce lands: a small 電爆 (burst + chain) at the endpoint — no ground zone, so it can't self-shock.
   export function lightningPierceArrive(p) {
