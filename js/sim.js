@@ -98,7 +98,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：點擊出拳（短而重、附帶當前元素），長按蓄力放「裂地上勾拳」把敵人擊飛、裂地破牆。重選→升星，★2 震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
     { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：點擊瞬間穿越最近敵人到身後（上雷印＋連鎖＋釘住、不擊退）；長按蓄力放「雷閃穿刺」：在範圍內連續閃現穿刺最多3名（★更多）各放電留雷印，再閃回原點＋終點電爆（過水導電、全程無敵）。衝刺穿過帶雷印的敵人會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
-    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
+    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：點擊錐形擊退、把火/毒/蒸氣往前吹；長按蓄力放「真空掌」先吸引聚怪再一掌氣爆吹飛（Boss 只硬直）。E 撿取／齊射，放棄遠程飛彈。重選→升星，一次可撿更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
     { id: 'second_wind', name: '回春', desc: '立即回復 40% 最大生命。', apply: () => { healPlayer(game.player.maxHp * 0.4); toast('回復生命！'); } }
@@ -1829,33 +1829,12 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
 
     if (p.dashTime > 0) dashTrail(p);
 
-    const wp = game.stats.mainMode === 'windpalm';
-    // 土拳 / 雷掌 use a tap-vs-hold scheme: tap = normal attack, HOLD = charge the stance's 重擊.
-    if (game.stats.mainMode === 'fist' || game.stats.mainMode === 'lightpalm') {
+    // All three brawler stances use a tap-vs-hold scheme: tap = normal attack, HOLD = charge the stance's 重擊.
+    if (game.stats.mainMode !== 'spell') {
       handleChargeAttack(p, dt);
-    } else
-    // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
-    if (game.input.firing && p.cooldown <= 0 && !(wp && p.held.length)) {
-      if (game.stats.mainMode !== 'spell') {
-        // Auto-lunge: snap onto the nearest foe in the aim cone and close the gap, then strike on
-        // arrival. Already in reach → strike now. Makes melee feel like it commits to the target.
-        const tgt = nearestLungeTarget(p, p.facing);
-        const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) : 0;
-        if (tgt && gap > 58) {
-          const a = Math.atan2(tgt.y - p.y, tgt.x - p.x);
-          p.facing = a; p.atkLungeDirX = Math.cos(a); p.atkLungeDirY = Math.sin(a);
-          p.atkLungeSpeed = 820;
-          p.atkLungeTime = clamp((gap - 46) / p.atkLungeSpeed, 0.03, 0.14); // reach it, stop a hair short
-          sfx('dash');
-        } else {
-          meleeAttack(p.facing); // already adjacent → strike in place
-        }
-        // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
-        p.cooldown = Math.max(0.13, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
-      } else {
-        shoot(p.facing);
-        p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
-      }
+    } else if (game.input.firing && p.cooldown <= 0) {
+      shoot(p.facing);
+      p.cooldown = Math.max(0.08, 0.28 * game.stats.cooldownMul);
     }
     // Secondary slot (RMB or Q) — build-defined spell, unchanged in every stance.
     if (game.input.secondaryFiring && p.secondaryCooldown <= 0) {
@@ -1863,7 +1842,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     }
     // 風掌 E（edge-triggered）：撿取（累積到星級上限）→ 滿了/沒得撿就齊射丟出。
     const eDown = game.input.grab; const eEdge = eDown && !p.eDown; p.eDown = eDown;
-    if (wp && eEdge) {
+    if (game.stats.mainMode === 'windpalm' && eEdge) {
       const cap = game.stats.windpalmStar || 1;
       let grabbed = false;
       if (p.held.length < cap) grabbed = tryGrab(p);
@@ -2173,7 +2152,8 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   // the release edge). 土拳: tap=auto-lunge punch / 重擊=裂地上勾拳. 雷掌: tap=雷步閃現 / 重擊=雷閃穿刺.
   export function handleChargeAttack(p, dt) {
     if (p.zip) { p.firePrev = game.input.firing; return; } // mid 雷閃穿刺 — ignore input until it resolves
-    const light = game.stats.mainMode === 'lightpalm';
+    const light = game.stats.mainMode === 'lightpalm', wind = game.stats.mainMode === 'windpalm';
+    if (wind && p.held.length) { p.firePrev = game.input.firing; p.charging = false; return; } // 風掌 carrying crates — no attack
     const firing = game.input.firing;
     const edge = firing && !p.firePrev;
     if (firing) {
@@ -2198,8 +2178,9 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       }
       p.heavyCharge += dt;
       p.charging = p.heavyCharge >= 0.14;          // planted (slows movement) once you commit to a wind-up
-      const rdyCol = light ? '#bdf5ff' : '#ffe0a0', dustCol = light ? '#9fe7ff' : '#9c7a4d';
+      const rdyCol = light ? '#bdf5ff' : wind ? '#eafaff' : '#ffe0a0', dustCol = light ? '#9fe7ff' : wind ? '#dff3ff' : '#9c7a4d';
       if (p.heavyCharge >= HEAVY_CHARGE && !p.heavyReady) { p.heavyReady = true; addRing(p.x, p.y, 34, rdyCol, 0.3, 4); sfx('melee'); } // ready pulse
+      if (p.charging && wind) vacuumPull(p, dt);   // 真空掌: the wind-up SUCKS foes/props/clouds inward
       if (p.charging && Math.random() < 0.7) {     // gathering telegraph (inward); brighter once ready
         const a = rnd(0, 6.28), d = rnd(36, 56);
         game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: -Math.cos(a) * rnd(90, 170), vy: -Math.sin(a) * rnd(90, 170), r: rnd(2.5, 5), life: 0.22, maxLife: 0.22, color: p.heavyReady ? rdyCol : dustCol });
@@ -2208,7 +2189,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       if (p.heavyReady) {                           // release a loaded 重擊 — auto-aim at the nearest foe
         const tgt = nearestLungeTarget(p, p.facing, 240, 1.0);
         const a = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing;
-        if (light) lightningPierce(a); else earthUppercut(a);
+        if (light) lightningPierce(a); else if (wind) vacuumPalm(a); else earthUppercut(a);
       }
       p.heavyCharge = 0; p.heavyReady = false; p.charging = false;
     }
@@ -2385,6 +2366,47 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     chainLightningFrom(p.x, p.y, null, 16 + mLvl('lightning') * 2);
     addRing(p.x, p.y, r, '#bdf5ff', 0.32, 5); addShake(5);
     for (let i = 0; i < 14; i++) { const a = rnd(0, 6.28), s = rnd(140, 300); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4.5), life: rnd(0.25, 0.4), maxLife: 0.4, color: i % 2 ? '#bfe6ff' : '#9fe7ff' }); }
+  }
+
+  // 真空掌 wind-up: while charging, SUCK nearby foes / props / hazard clouds inward (gather them).
+  // Foes stop at a ~40px ring (so the vacuum itself never drags them onto you); Boss barely budges.
+  export function vacuumPull(p, dt) {
+    const R = 210;
+    for (const e of game.enemies) {
+      if (e.dead) continue;
+      const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy);
+      if (d > R || d < 44) continue;
+      const m = Math.min((e.type === 'boss' ? 45 : 340) * (0.45 + 0.55 * (1 - d / R)) * dt, d - 40);
+      if (m > 0) { e.x += dx / d * m; e.y += dy / d * m; }
+    }
+    for (const pr of game.props) {
+      const dx = p.x - pr.x, dy = p.y - pr.y, d = Math.hypot(dx, dy);
+      if (d > R || d < 30) continue;
+      const m = Math.min(360 * dt, d - 26); if (m > 0) { pr.x += dx / d * m; pr.y += dy / d * m; }
+    }
+    const suck = (arr) => { for (const c of arr) { const dx = p.x - c.x, dy = p.y - c.y, d = Math.hypot(dx, dy); if (d > R || d < 8) continue; const m = Math.min(220 * dt, d - 6); c.x = clamp(c.x + dx / d * m, 0, W); c.y = clamp(c.y + dy / d * m, 0, H); } };
+    suck(game.poisonClouds); suck(game.fireZones); suck(game.steamClouds);
+    if (Math.random() < 0.5) { const a = rnd(0, 6.28), d = rnd(80, R); game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: -Math.cos(a) * rnd(180, 320), vy: -Math.sin(a) * rnd(180, 320), r: rnd(2, 3.5), life: 0.26, maxLife: 0.26, color: '#dff3ff' }); } // inward gust streak
+  }
+  // 風 重擊 真空掌: after the gather, a radial 氣爆 — damage + blow all foes outward, scatter hazard clouds,
+  // shove props. Boss takes damage + a brief 硬直 only (no big displacement), per design.
+  export function vacuumPalm(angle) {
+    const p = game.player, star = game.stats.windpalmStar || 1, R = 200;
+    const dmg = 16 + game.stats.size * 2 + game.stats.dashPower * 2 + (star - 1) * 4;
+    for (const e of game.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > R) continue;
+      damageEnemy(e, dmg, p.x, p.y, '真空掌');
+      if (e.dead) continue;
+      if (e.type === 'boss') { e.stunTimer = Math.max(e.stunTimer || 0, 0.6); }     // Boss: 硬直 only
+      else { const a = Math.atan2(e.y - p.y, e.x - p.x) || angle, f = 560 * (1 - d / R) + 220; e.vx = (e.vx || 0) + Math.cos(a) * f; e.vy = (e.vy || 0) + Math.sin(a) * f; e.stunTimer = Math.max(e.stunTimer || 0, 0.3); }
+    }
+    const blow = (arr) => { for (const c of arr) { const dx = c.x - p.x, dy = c.y - p.y, d = Math.hypot(dx, dy); if (d > R || d < 1) continue; c.x = clamp(c.x + dx / d * 90, 0, W); c.y = clamp(c.y + dy / d * 90, 0, H); } };
+    blow(game.poisonClouds); blow(game.fireZones); blow(game.steamClouds);
+    for (const pr of game.props) { const dx = pr.x - p.x, dy = pr.y - p.y, d = Math.hypot(dx, dy); if (d > R || d < 1) continue; const f = 520 * (1 - d / R) + 220; pr.vx = (pr.vx || 0) + dx / d * f; pr.vy = (pr.vy || 0) + dy / d * f; }
+    addRing(p.x, p.y, R, '#dff3ff', 0.42, 7); addRing(p.x, p.y, R * 0.6, '#eafaff', 0.3, 5); addShake(6); sfx('explosion');
+    for (let i = 0; i < 30; i++) { const a = rnd(0, 6.28), sp = rnd(220, 480); game.particles.push({ x: p.x + Math.cos(a) * 18, y: p.y + Math.sin(a) * 18, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: rnd(0.25, 0.45), maxLife: 0.45, color: i % 3 ? '#dff3ff' : '#eafaff' }); }
   }
   export function updateWalls(dt) {
     let dirty = false;
