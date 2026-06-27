@@ -97,7 +97,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。重選→升星，★2 重擊震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
-    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 雷鏈，並替敵人掛上「雷印」；衝刺穿過帶雷印的敵人會引爆雷爆＋跳電。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：瞬間穿越最近敵人到其身後，沿途敵人上「雷印」＋連鎖電擊、原地釘住（不擊退）；再用衝刺穿過帶雷印的敵人引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
@@ -257,6 +257,9 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       invuln: 0,
       hurtTimer: 0,
       facing: 0,
+      atkLungeTime: 0,
+      blink: false,      // 雷掌 (The Flash): true while blinking THROUGH foes
+      blinkZap: null,    // enemies already zapped by the current blink
       vx: 0,
       vy: 0
     };
@@ -1712,7 +1715,15 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     // Aim tracks the cursor, EXCEPT during an attack-lunge (facing is locked onto the snapped target).
     if (!(p.atkLungeTime > 0)) p.facing = Math.atan2(game.input.aimY - p.y, game.input.aimX - p.x);
     // Attack-lunge: a short gap-closer that fires the melee strike on arrival (no i-frames, no dash cost).
-    if (p.atkLungeTime > 0) { p.atkLungeTime -= dt; if (p.atkLungeTime <= 0) meleeAttack(p.facing); }
+    // 雷掌 blink (The Flash) reuses this movement but ZAPS foes it passes through, and has no arrival strike.
+    if (p.atkLungeTime > 0) {
+      p.atkLungeTime -= dt;
+      if (p.blink) lightningBlinkSweep(p);
+      if (p.atkLungeTime <= 0) {
+        if (p.blink) { p.blink = false; lightningBlinkArrive(p); }
+        else meleeAttack(p.facing);
+      }
+    }
     if (p.dashTime <= 0) {
       // Lunge payoff (A): a 突進 ends with a gap-closing melee strike toward the cursor.
       if (p.lungeStrike) { p.lungeStrike = false; meleeAttack(p.facing); }
@@ -1809,7 +1820,11 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const wp = game.stats.mainMode === 'windpalm';
     // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
     if (game.input.firing && p.cooldown <= 0 && !(wp && p.held.length)) {
-      if (game.stats.mainMode !== 'spell') {
+      if (game.stats.mainMode === 'lightpalm') {
+        // 雷掌 = The Flash: blink THROUGH the nearest foe to the far side, zapping everyone on the path.
+        lightningBlink(p);
+        p.cooldown = Math.max(0.16, 0.26 * game.stats.cooldownMul);
+      } else if (game.stats.mainMode !== 'spell') {
         // Auto-lunge: snap onto the nearest foe in the aim cone and close the gap, then strike on
         // arrival. Already in reach → strike now. Makes melee feel like it commits to the target.
         const tgt = nearestLungeTarget(p, p.facing);
@@ -2108,11 +2123,12 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2 + (star - 1) * 6; // ★ heavier punch
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
-        addHitstop(0.06); // the heavy punch already feels best — keep it the strongest connect
+        addHitstop(0.09); // heaviest connect — the freeze IS the weight, not the distance
         hitSpark(e.x, e.y, (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888', 1.8);
         damageEnemy(e, dmg, p.x, p.y, '肉搏');
         const a = angleTo(p, e);
-        e.vx = (e.vx || 0) + Math.cos(a) * 150; e.vy = (e.vy || 0) + Math.sin(a) * 150; // a firm shove, not a launch — the big knockback is reserved for ★2 震波 / 撞牆
+        // a short, heavy thud: small shove, then damp so the foe jolts and STOPS (no long slide).
+        e.vx = (e.vx || 0) * 0.35 + Math.cos(a) * 70; e.vy = (e.vy || 0) * 0.35 + Math.sin(a) * 70;
         if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.0); e.chilled = true; }
         else if (el === 'poison') addPoisonCloud(e.x, e.y, 16, 1.8);
       }
@@ -2176,6 +2192,46 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     for (const pr of game.props) { if (Math.hypot(pr.x - fx, pr.y - fy) < r + pr.r + 8) { pr.charge = 'lightning'; pr.chargeTimer = 5; pr.zapCd = 0; addRing(pr.x, pr.y, pr.r + 8, '#9fe7ff', 0.3, 3); } } // 雷充能: charge crate → mobile electric wall
     addRing(fx, fy, r, '#9fe7ff', 0.25, 3); addShake(3);
     for (let i = 0; i < 8; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#bdf5ff' });
+  }
+
+  // 雷掌 main attack = The Flash blink: dart THROUGH the nearest foe to the far side, zapping every
+  // enemy on the path (pin + mark + chain). Reuses the attack-lunge movement so walls still stop it
+  // (不能穿牆). The per-frame zap + arrival burst are driven from updatePlayer's atkLunge handler.
+  export function lightningBlink(p) {
+    const tgt = nearestLungeTarget(p, p.facing, 240, 1.0) || nearestEnemy(p.x, p.y, 240);
+    let a, dist;
+    if (tgt) { a = Math.atan2(tgt.y - p.y, tgt.x - p.x); dist = Math.min(190, Math.hypot(tgt.x - p.x, tgt.y - p.y) + 52); } // end past the foe
+    else { a = p.facing; dist = 130; } // no target → a forward blink
+    p.facing = a;
+    p.atkLungeDirX = Math.cos(a); p.atkLungeDirY = Math.sin(a);
+    p.atkLungeSpeed = 1600;                                  // Flash-fast
+    p.atkLungeTime = clamp(dist / p.atkLungeSpeed, 0.05, 0.13);
+    p.invuln = Math.max(p.invuln, p.atkLungeTime + 0.05);    // i-frames through the blink
+    p.blink = true; p.blinkZap = new Set();
+    sfx('dash'); addShake(2);
+  }
+  // Per-frame during a blink: zap each foe swept through (once), leaving a 雷印, pinned + chained.
+  export function lightningBlinkSweep(p) {
+    if (!p.blinkZap) p.blinkZap = new Set();
+    const star = game.stats.lightStar || 1;
+    const dmg = 18 + game.stats.size * 2 + mLvl('lightning') * 3 + (star - 1) * 4;
+    for (const e of game.enemies) {
+      if (e.dead || p.blinkZap.has(e)) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y) > p.r + e.r + 12) continue;
+      p.blinkZap.add(e);
+      addHitstop(0.03); hitSpark(e.x, e.y, '#bdf5ff', 1.3);
+      damageEnemy(e, dmg, p.x - p.atkLungeDirX, p.y - p.atkLungeDirY, '雷掌'); // knock direction ~ travel, but pinned below
+      if (!e.dead) { e.lightMark = LIGHT_MARK; e.stunTimer = Math.max(e.stunTimer || 0, 0.7); e.vx = (e.vx || 0) * 0.1; e.vy = (e.vy || 0) * 0.1; }
+      game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.12, maxLife: 0.12 });
+      chainLightningFrom(e.x, e.y, e.dead ? null : e, 12 + mLvl('lightning') * 2 + star * 2);
+    }
+    game.particles.push({ x: p.x, y: p.y, vx: rnd(-30, 30), vy: rnd(-30, 30), r: rnd(2.5, 4.5), life: 0.22, maxLife: 0.22, color: '#9fe7ff' }); // afterimage
+  }
+  // Blink lands: a small electric pop where you reappear.
+  export function lightningBlinkArrive(p) {
+    addRing(p.x, p.y, 30, '#bdf5ff', 0.22, 3);
+    if (tileAtPixel(p.x, p.y) === TILE_WATER) addElectricZone(p.x, p.y, 60, 0.5);
+    for (let i = 0; i < 9; i++) { const a = rnd(0, 6.28), s = rnd(120, 250); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.26, maxLife: 0.26, color: '#bfe6ff' }); }
   }
   export function updateWalls(dt) {
     let dirty = false;
