@@ -96,7 +96,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_icewall', name: '副攻：冰牆', desc: '副攻改成冰牆，遇火融成蒸氣、附近減速。', apply: () => equipOrLevelSecondary('icewall') },
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
-    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。重選→升星，★2 重擊震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
+    { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：點擊出拳（短而重、附帶當前元素），長按蓄力放「裂地上勾拳」把敵人擊飛、裂地破牆。重選→升星，★2 震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
     { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：瞬間穿越最近敵人到其身後，沿途敵人上「雷印」＋連鎖電擊、原地釘住（不擊退）；再用衝刺穿過帶雷印的敵人引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
@@ -260,6 +260,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       atkLungeTime: 0,
       blink: false,      // 雷掌 (The Flash): true while blinking THROUGH foes
       blinkZap: null,    // enemies already zapped by the current blink
+      firePrev: false,   // edge-detect the main attack (tap vs hold)
+      heavyCharge: 0,    // 土拳 重擊: seconds the attack has been held
+      heavyReady: false, // 土拳 重擊: charge reached the release threshold
+      charging: false,   // planted while winding up a 重擊 (slows movement)
       vx: 0,
       vy: 0
     };
@@ -1323,6 +1327,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   const SHAKE_BIG = 6;         // >= this = a "big" event: always lands, uncapped
   const SHAKE_SMALL_CAP = 3.5; // small events can't push the shake past this
   const LIGHT_MARK = 4;        // 雷印 lifetime (s): a lightning hit marks a foe; dashing through it detonates (雷掌 signature)
+  const HEAVY_CHARGE = 0.45;   // 重擊 (長按) charge time: hold the main attack this long to load a heavy
   export function addShake(s) {
     if (s >= SHAKE_BIG) { game.screenShake = Math.max(game.screenShake, s); return; } // big: always
     if (game.shakeSmallCd > 0) return;                 // a small shake already fired this window — coalesce
@@ -1791,6 +1796,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const lunging = p.atkLungeTime > 0;
     if (dashing) speed = p.dashSpeed || 520;
     else if (lunging) speed = p.atkLungeSpeed || 760;
+    else if (p.charging) speed *= 0.45; // planted while winding up the 重擊 (蓄力 commitment)
 
     // Dash / attack-lunge lock the direction to a committed vector; normal movement steers with WASD.
     const mvx = dashing ? p.dashDirX : lunging ? p.atkLungeDirX : n.x;
@@ -1818,6 +1824,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (p.dashTime > 0) dashTrail(p);
 
     const wp = game.stats.mainMode === 'windpalm';
+    // 土拳 uses a tap-vs-hold scheme: tap = punch, HOLD = charge the 裂地上勾拳 重擊 (handled every frame).
+    if (game.stats.mainMode === 'fist') {
+      handleFistCharge(p, dt);
+    } else
     // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
     if (game.input.firing && p.cooldown <= 0 && !(wp && p.held.length)) {
       if (game.stats.mainMode === 'lightpalm') {
@@ -2154,6 +2164,64 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       breakThinWalls(p.x, p.y, sr);
       addRing(p.x, p.y, sr, '#d8b888', 0.3, 4); addShake(4);
     }
+  }
+
+  // 土拳 input: tap = punch; HOLD ≥ HEAVY_CHARGE = wind up the 裂地上勾拳 重擊, release to unleash.
+  // Runs every frame (so it can charge while on cooldown and detect the release edge). This is the
+  // shared 長按蓄力 framework — 雷/風 重擊 will reuse it later.
+  export function handleFistCharge(p, dt) {
+    const firing = game.input.firing;
+    const edge = firing && !p.firePrev;
+    if (firing) {
+      if (edge && p.cooldown <= 0) { meleeAttack(p.facing); p.cooldown = Math.max(0.16, 0.26 * game.stats.cooldownMul); } // tap = a punch (flurry by tapping; 土系 is slow)
+      p.heavyCharge += dt;
+      p.charging = p.heavyCharge >= 0.14;          // planted (slows movement) once you commit to a wind-up
+      if (p.heavyCharge >= HEAVY_CHARGE && !p.heavyReady) { p.heavyReady = true; addRing(p.x, p.y, 34, '#ffe0a0', 0.3, 4); sfx('melee'); } // ready pulse
+      if (p.charging && Math.random() < 0.7) {     // gathering-dust telegraph (inward); brighter once ready
+        const a = rnd(0, 6.28), d = rnd(36, 56);
+        game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: -Math.cos(a) * rnd(90, 170), vy: -Math.sin(a) * rnd(90, 170), r: rnd(2.5, 5), life: 0.22, maxLife: 0.22, color: p.heavyReady ? '#ffe0a0' : '#9c7a4d' });
+      }
+    } else {
+      if (p.heavyReady) earthUppercut(p.facing);   // release a loaded heavy
+      p.heavyCharge = 0; p.heavyReady = false; p.charging = false;
+    }
+    p.firePrev = firing;
+  }
+
+  // 土 重擊 裂地上勾拳: a charged uppercut — high damage in a forward arc, LAUNCHES foes (big knockback),
+  // stuns/interrupts (incl. chargers), rips a fissure that smashes terrain + crates, leaves a rock gash.
+  export function earthUppercut(angle) {
+    const p = game.player, star = game.stats.fistStar || 1;
+    const dx = Math.cos(angle), dy = Math.sin(angle), len = 150, halfW = 0.72;
+    const cx = p.x + dx * 70, cy = p.y + dy * 70;
+    const dmg = 46 + game.stats.size * 4 + game.stats.dashPower * 3 + (star - 1) * 10;
+    palmSwing();
+    for (const e of game.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > len) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfW) continue;
+      addHitstop(0.11);
+      hitSpark(e.x, e.y, '#caa06a', 2.2);
+      damageEnemy(e, dmg, p.x, p.y, '裂地上勾拳');
+      if (!e.dead) {
+        e.vx = (e.vx || 0) + Math.cos(a) * 520; e.vy = (e.vy || 0) + Math.sin(a) * 520; // 擊飛
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.9);                                   // 打斷衝鋒怪 / 短暫定身
+      }
+    }
+    // 裂地: a forward fissure that smashes thin/earth walls + crates along the line (對障礙高傷)
+    for (let i = 0; i <= 7; i++) {
+      const gx = p.x + dx * (28 + i * 18), gy = p.y + dy * (28 + i * 18);
+      breakThinWalls(gx, gy, 20);
+      for (const pr of game.props) { if (Math.hypot(pr.x - gx, pr.y - gy) < pr.r + 22) shatterProp(pr, 'break'); }
+      for (let k = 0; k < 3; k++) { const a2 = angle + rnd(-0.5, 0.5), sp = rnd(70, 200); game.particles.push({ x: gx, y: gy, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp, r: rnd(4, 8), life: rnd(0.35, 0.7), maxLife: 0.7, color: ['#6b5230', '#8a6a3e', '#5e4a2e'][k % 3] }); }
+    }
+    addSlam(p.x, p.y, angle, 0xc89a5a, 1.7);   // big earthy slam cone
+    addRing(cx, cy, 54, '#caa06a', 0.42, 6);
+    addShake(8);                               // big event — bypasses the small-shake throttle
+    sfx('explosion');
+    p.cooldown = Math.max(p.cooldown, 0.45);   // brief recovery / commit
   }
 
   // Spawn a black hole that pulls enemies + hazards together, then collapses (explodes).
