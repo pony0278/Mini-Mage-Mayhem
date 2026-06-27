@@ -2087,7 +2087,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const p = game.player;
     p.fistHand = p.fistHand ? 0 : 1;
     p.fistAnim = p.fistAnimMax;
-    p.fistCombo = p.fistComboTimer > 0 ? Math.min(p.fistCombo + 1, 6) : 1;
+    p.fistCombo = p.fistComboTimer > 0 ? (p.fistCombo % 3) + 1 : 1; // cycle 1→2→3 (崩石三連拳 stages)
     p.fistComboTimer = 0.55;
   }
   export function meleeAttack(angle) {
@@ -2104,47 +2104,63 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     else earthFist(angle);
   }
 
-  // 土拳 (brawler MAIN): close-range punch that carries the current element, knocks
-  // back, and smashes thin/earth walls. Replaces the projectile.
+  const ROCK_COLS = ['#6b5230', '#8a6a3e', '#5e4a2e', '#7c6242']; // dark earthy browns = solid rock chunks
+  // 土拳 崩石三連拳: a 3-stage combo cycled by consecutive taps (fistCombo wraps 1→2→3).
+  //  1 左重拳: short heavy jab (small thud).  2 右勾拳: harder hook that knocks the foe in the AIM dir,
+  //  pronounced pause.  3 雙拳砸地: a forward fan shockwave that smashes walls/crates (the finisher; ★2 adds a radial slam).
   export function earthFist(angle) {
-    const p = game.player, reach = 46, r = 36;
-    const star = game.stats.fistStar || 1;
+    const p = game.player, star = game.stats.fistStar || 1;
+    const el = dashElement(), col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888';
+    const stage = ((p.fistCombo - 1) % 3) + 1;
+    if (stage === 3) { earthSlam(angle, star, el, col); return; } // 雙拳砸地 finisher
+    // stages 1 & 2 — a punch (jab / hook)
+    const hook = stage === 2, reach = 46, r = hook ? 40 : 36;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
-    const el = dashElement();
-    const dmg = 16 + game.stats.size * 3 + game.stats.dashPower * 2 + (star - 1) * 6; // ★ heavier punch
+    const dmg = (hook ? 24 : 16) + game.stats.size * 3 + game.stats.dashPower * 2 + (star - 1) * 6;
     for (const e of game.enemies) {
-      if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
-        addHitstop(0.09); // heaviest connect — the freeze IS the weight, not the distance
-        hitSpark(e.x, e.y, (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888', 1.8);
-        damageEnemy(e, dmg, p.x, p.y, '肉搏');
-        const a = angleTo(p, e);
-        // a short, heavy thud: small shove, then damp so the foe jolts and STOPS (no long slide).
-        e.vx = (e.vx || 0) * 0.35 + Math.cos(a) * 70; e.vy = (e.vy || 0) * 0.35 + Math.sin(a) * 70;
-        if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.0); e.chilled = true; }
-        else if (el === 'poison') addPoisonCloud(e.x, e.y, 16, 1.8);
-      }
+      if (e.dead || Math.hypot(e.x - fx, e.y - fy) >= r + e.r) continue;
+      addHitstop(hook ? 0.11 : 0.09); // 右勾拳 = a more pronounced pause (命中明顯停頓)
+      hitSpark(e.x, e.y, col, hook ? 2.0 : 1.7);
+      damageEnemy(e, dmg, p.x, p.y, '肉搏');
+      if (e.dead) continue;
+      if (hook) { e.vx = (e.vx || 0) * 0.3 + Math.cos(angle) * 150; e.vy = (e.vy || 0) * 0.3 + Math.sin(angle) * 150; } // 打向指定方向 (aim)
+      else { const a = angleTo(p, e); e.vx = (e.vx || 0) * 0.35 + Math.cos(a) * 70; e.vy = (e.vy || 0) * 0.35 + Math.sin(a) * 70; } // short thud
+      if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.0); e.chilled = true; }
+      else if (el === 'poison') addPoisonCloud(e.x, e.y, 16, 1.8);
     }
     breakThinWalls(fx, fy, r);
-    for (const pr of game.props) { if (Math.hypot(pr.x - fx, pr.y - fy) < r + pr.r + 8) shatterProp(pr, 'break'); } // 土碎: smash crates → 碎片
+    for (const pr of game.props) { if (Math.hypot(pr.x - fx, pr.y - fy) < r + pr.r + 8) shatterProp(pr, 'break'); } // 土碎
     if (el === 'fire') { addFireZone(fx, fy, 18, 0.7, true); igniteGrass(fx, fy, 20); }
     else if (el === 'lightning' && tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 40, 0.6);
-    const col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888';
-    addRing(fx, fy, r, '#caa06a', 0.26, 4); addShake(3); // earthy dust ring (anchors the 土 identity even when an element is injected)
-    // 土 impact: chunky rock shards flung forward + a low dust puff — the "earth" read
-    const ROCK = ['#6b5230', '#8a6a3e', '#5e4a2e', '#7c6242']; // dark earthy browns → read as solid rock chunks against the gold pop + floor
-    for (let i = 0; i < 8; i++) { const a = angle + rnd(-1.2, 1.2), sp = rnd(130, 320); game.particles.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(4, 7.5), life: rnd(0.32, 0.6), maxLife: 0.6, color: ROCK[i % ROCK.length] }); }
+    addRing(fx, fy, r, hook ? '#e0b878' : '#caa06a', 0.26, hook ? 5 : 4); addShake(hook ? 4 : 3);
+    for (let i = 0; i < (hook ? 9 : 8); i++) { const a = angle + rnd(-1.2, 1.2), sp = rnd(130, hook ? 360 : 320); game.particles.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(4, hook ? 8 : 7.5), life: rnd(0.32, 0.6), maxLife: 0.6, color: ROCK_COLS[i % 4] }); }
     for (let i = 0; i < 7; i++) { const a = rnd(0, 6.28), sp = rnd(30, 120); game.particles.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: rnd(0.25, 0.5), maxLife: 0.5, color: '#d8c39a' }); }
-    if (el && el !== 'earth') for (let i = 0; i < 5; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-130, 130), vy: rnd(-130, 130), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col }); // injected element still reads
-    if (star >= 2) { // ★2+: a radial shockwave around the mage — wider knockback + smashes a ring of thin walls
-      const sr = 70 + star * 22;
-      for (const e of game.enemies) {
-        if (e.dead || Math.hypot(e.x - p.x, e.y - p.y) >= sr + e.r) continue;
-        damageEnemy(e, 8 + star * 3, p.x, p.y, '震波');
-        const a = angleTo(p, e); e.vx = (e.vx || 0) + Math.cos(a) * 240; e.vy = (e.vy || 0) + Math.sin(a) * 240;
-      }
-      breakThinWalls(p.x, p.y, sr);
-      addRing(p.x, p.y, sr, '#d8b888', 0.3, 4); addShake(4);
+    if (el && el !== 'earth') for (let i = 0; i < 5; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-130, 130), vy: rnd(-130, 130), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col });
+  }
+  // 第3段 雙拳砸地: a forward fan shockwave — medium damage, knocks foes back, smashes thin walls + crates
+  // in the fan, throws a rock gash. The combo finisher (heavier hitstop + shake). ★2 adds the radial slam.
+  export function earthSlam(angle, star, el, col) {
+    const p = game.player, dx = Math.cos(angle), dy = Math.sin(angle), len = 112 + star * 14, halfW = 0.85;
+    const dmg = 22 + game.stats.size * 3 + game.stats.dashPower * 2 + (star - 1) * 7;
+    for (const e of game.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > len) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfW) continue;
+      addHitstop(0.1); hitSpark(e.x, e.y, col, 2.1);
+      damageEnemy(e, dmg, p.x, p.y, '肉搏');
+      if (!e.dead) { e.vx = (e.vx || 0) + Math.cos(a) * 260; e.vy = (e.vy || 0) + Math.sin(a) * 260; e.stunTimer = Math.max(e.stunTimer || 0, 0.25); }
     }
+    for (let i = 0; i <= 5; i++) { const gx = p.x + dx * (28 + i * 16), gy = p.y + dy * (28 + i * 16); breakThinWalls(gx, gy, 22); for (const pr of game.props) { if (Math.hypot(pr.x - gx, pr.y - gy) < pr.r + 20) shatterProp(pr, 'break'); } }
+    if (el === 'fire') { addFireZone(p.x + dx * 50, p.y + dy * 50, 22, 0.8, true); igniteGrass(p.x + dx * 50, p.y + dy * 50, 24); }
+    if (star >= 2) { // ★2+: an extra radial slam around the mage (folded the old per-punch shockwave into the finisher)
+      const sr = 70 + star * 22;
+      for (const e of game.enemies) { if (e.dead || Math.hypot(e.x - p.x, e.y - p.y) >= sr + e.r) continue; damageEnemy(e, 8 + star * 3, p.x, p.y, '震波'); const a = angleTo(p, e); e.vx = (e.vx || 0) + Math.cos(a) * 200; e.vy = (e.vy || 0) + Math.sin(a) * 200; }
+      breakThinWalls(p.x, p.y, sr); addRing(p.x, p.y, sr, '#d8b888', 0.3, 4);
+    }
+    addRing(p.x + dx * 56, p.y + dy * 56, 50, '#caa06a', 0.4, 6); addShake(7); sfx('explosion');
+    for (let i = 0; i <= 6; i++) { const t = i / 6, gx = p.x + dx * (20 + t * len), gy = p.y + dy * (20 + t * len); for (let k = 0; k < 3; k++) { const a = angle + rnd(-0.55, 0.55), sp = rnd(70, 210); game.particles.push({ x: gx, y: gy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(4, 8), life: rnd(0.35, 0.7), maxLife: 0.7, color: ROCK_COLS[k % 4] }); } }
   }
 
   // Shared 長按蓄力 framework (土拳 + 雷掌): tap = the stance's normal attack; HOLD ≥ HEAVY_CHARGE =
