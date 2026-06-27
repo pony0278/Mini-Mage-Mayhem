@@ -97,7 +97,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。重選→升星，★2 重擊震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
-    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 雷鏈，踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成近戰電掌：擊退 + 雷鏈，並替敵人掛上「雷印」；衝刺穿過帶雷印的敵人會引爆雷爆＋跳電。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
@@ -922,6 +922,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       hit.add(current);
       game.lightningBolts.push({ x1: fromX, y1: fromY, x2: current.x, y2: current.y, life: 0.14, maxLife: 0.14 });
       damageEnemy(current, damage, fromX, fromY);
+      if (!current.dead) current.lightMark = LIGHT_MARK; // chains spread the 雷印 too
       fromX = current.x; fromY = current.y;
       current = nearestEnemy(fromX, fromY, 145 + game.stats.storm * 18, hit);
     }
@@ -1318,6 +1319,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   // reads calm; BIG events (Boss, big booms, earthquakes, 絕對零度…) bypass both and still punch.
   const SHAKE_BIG = 6;         // >= this = a "big" event: always lands, uncapped
   const SHAKE_SMALL_CAP = 3.5; // small events can't push the shake past this
+  const LIGHT_MARK = 4;        // 雷印 lifetime (s): a lightning hit marks a foe; dashing through it detonates (雷掌 signature)
   export function addShake(s) {
     if (s >= SHAKE_BIG) { game.screenShake = Math.max(game.screenShake, s); return; } // big: always
     if (game.shakeSmallCd > 0) return;                 // a small shake already fired this window — coalesce
@@ -1728,6 +1730,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       p.dashTapCd = 0.22;                                                   // brief rhythm gate between chained dashes
       if (p.dashRecharge <= 0) p.dashRecharge = 1.1 * game.stats.dashCdMul; // begin recharge if idle
       p.dashHits = new Set();   // enemies hit by this dash (offensive dash)
+      p.zapHits = new Set();    // enemies whose 雷印 this dash already detonated (雷步穿身)
       p.dashTrailCd = 0;        // lay first trail node immediately
       p.lungeStrike = false;
       // Direction defaults to movement input (steer your dodge); aim is the fallback when standing still.
@@ -1881,6 +1884,24 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const charge = p.dashCharge;                                                      // 土衝撞 hits harder + knocks back hard
     const dmg = (8 + game.stats.dashPower * 6 + game.stats.size * 2) * (charge ? 1.6 : 1);
     const kb = charge ? 520 : 240;
+    // 雷步穿身 (雷掌 signature): while in 雷掌 (or a lightning dash), passing near a 雷印-marked foe
+    // consumes the mark → 雷爆 + chain. Generous reach (own hit-set) so even a gap-closing lunge that
+    // stops a hair short still pops marks it swept through. NO ground zone → can't self-shock the dasher.
+    const zap = game.stats.mainMode === 'lightpalm' || el === 'lightning';
+    if (zap) {
+      if (!p.zapHits) p.zapHits = new Set();
+      for (const e of game.enemies) {
+        if (e.dead || p.zapHits.has(e) || !(e.lightMark > 0)) continue;
+        if (Math.hypot(e.x - p.x, e.y - p.y) >= p.r + e.r + 26) continue;
+        p.zapHits.add(e); e.lightMark = 0;
+        damageEnemy(e, 16 + game.stats.dashPower * 4 + mLvl('lightning') * 3, p.x, p.y, '雷步穿身');
+        chainLightningFrom(e.x, e.y, e.dead ? null : e, 12 + mLvl('lightning') * 2);
+        hitSpark(e.x, e.y, '#bdf5ff', 1.6);
+        game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.12, maxLife: 0.12 });
+        addText(e.x, e.y - e.r - 16, '雷爆!', '#bdf5ff');
+        addShake(3);
+      }
+    }
     for (const e of game.enemies) {
       if (e.dead || p.dashHits.has(e)) continue;
       if (Math.hypot(e.x - p.x, e.y - p.y) < p.r + e.r + 4) {
@@ -2136,6 +2157,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         addHitstop(0.045); // crisp zap connect
         hitSpark(e.x, e.y, '#9fe7ff', 1.3);
         damageEnemy(e, dmg, p.x, p.y, '雷掌');
+        if (!e.dead) e.lightMark = LIGHT_MARK; // 雷印: dash through it to detonate (雷步穿身)
         const a = angleTo(p, e);
         e.vx = (e.vx || 0) + Math.cos(a) * 360; e.vy = (e.vy || 0) + Math.sin(a) * 360;
         e.stunTimer = Math.max(e.stunTimer || 0, 0.5);
@@ -2564,6 +2586,8 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       e.hurt = Math.max(0, e.hurt - dt);
       e.blockTextCd = Math.max(0, (e.blockTextCd || 0) - dt);
       e.slowTimer = Math.max(0, (e.slowTimer || 0) - dt);
+      if (e.lightMark > 0) e.lightMark = Math.max(0, e.lightMark - dt); // 雷印 fades over time
+
       if (e.dummy) { // training dummy: no AI pursuit, but let hits knock it back (then settle) so feedback is visible
         if (Math.hypot(e.vx, e.vy) > 4) moveEnemyWithCollision(e, dt);
         e.vx *= Math.pow(0.25, dt); e.vy *= Math.pow(0.25, dt);

@@ -617,6 +617,16 @@ let ctx = screenCtx;
       ringm.rotation.x = -Math.PI / 2; ringm.position.set(bh.x, 4, bh.y);
       const rr = bh.r * (0.62 - t * 0.4); ringm.scale.set(rr, rr, rr); zoneGroup.add(ringm);
     }
+    // 雷印 (lightning mark): a crackling cyan ring hovering over marked foes — dash through them
+    // while in 雷掌 (or a lightning dash) to detonate the mark. (雷掌 signature, B 招牌差異化)
+    for (const e of game.enemies) {
+      if (e.dead || !(e.lightMark > 0)) continue;
+      const fl = 0.55 + 0.45 * Math.sin(game.time * 24 + e.x * 0.3); // electric crackle flicker
+      const m = new THREE.Mesh(torusGeo, tmpMat(0x9fe7ff, 0.4 + fl * 0.45, true));
+      m.rotation.x = -Math.PI / 2; const s = 8 + fl * 3;
+      m.position.set(e.x, 32, e.y); m.scale.set(s, s, s * 0.9);
+      zoneGroup.add(m);
+    }
   }
 
   // --- mouse -> world ground point via camera raycast ---

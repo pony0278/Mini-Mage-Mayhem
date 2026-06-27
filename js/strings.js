@@ -91,7 +91,7 @@ const EN = {
   '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。': 'Secondary becomes an Oil Slick — ignites into a wide blaze (arson build).',
   '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。': 'Secondary becomes a Black Hole — pulls foes and hazards together, then collapses.',
   '主攻擊改成近戰土拳：高傷擊退、打破牆、附帶當前元素效果。重選→升星，★2 重擊震波、★3 週期地震。': 'Main attack becomes a melee Earth Fist: high knockback, smashes walls, carries your current element. Re-pick to star up — ★2 shockwave, ★3 periodic earthquake.',
-  '主攻擊改成近戰電掌：擊退 + 雷鏈，踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。': 'Main attack becomes a melee Lightning Palm: knockback + chain lightning, electrifies water (shocks you too). Re-pick to star up — fiercer chains, ★3 periodic Thunder God discharge.',
+  '主攻擊改成近戰電掌：擊退 + 雷鏈，並替敵人掛上「雷印」；衝刺穿過帶雷印的敵人會引爆雷爆＋跳電。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。': 'Main attack becomes a melee Lightning Palm: knockback + chain lightning that brands foes with a Lightning Mark; dash THROUGH a marked foe to detonate it (zap + chain). Electrifies water (shocks you too). Re-pick to star up — fiercer chains, ★3 periodic Thunder God discharge.',
   '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。': 'Main attack becomes a melee Wind Palm: cone knockback, blows fire/poison/steam forward. No projectile. Re-pick to star up — hold and volley more pickups.',
   '最大生命 +25，並立即回復同等生命。': 'Max HP +25, and heal that much now.',
   '移動速度 +12%。': 'Move speed +12%.',
@@ -155,6 +155,7 @@ const EN = {
   '電霧！': 'Shock mist!', '蒸氣！': 'Steam!', '蓄力！': 'Charging!', '毒瓶': 'Poison flask', '毒瓶預備': 'Poison flask incoming', '毒瓶！': 'Poison flask!',
   '毒霧爆燃': 'Poison ignites', '召喚小怪！': 'Summon minions!', '召喚水池': 'Summon pool', '黑洞塌縮': 'Black hole collapse', '緩速': 'Slow',
   '撞牆': 'Wall slam', '震波': 'Shockwave', '肉搏': 'Melee', '充能': 'Charged', '土拳': 'Earth Fist', '雷掌': 'Lightning Palm', '風掌': 'Wind Palm',
+  '雷爆!': 'Zap!', '雷步穿身': 'Lightning Step', '風助火勢': 'Fanned flames', '撞牆!': 'Wall slam!', '燒!': 'Burn!',
   '命中會爆炸！': 'Now explodes on hit!',
   // --- damage sources / entities ---
   '元素哥布林撞擊': 'Goblin Mage hit', '史萊姆撞擊': 'Slime hit', '毒蟲撞擊': 'Bug hit', '火焰小鬼撞擊': 'Imp hit', '火焰小鬼': 'Fire Imp',
