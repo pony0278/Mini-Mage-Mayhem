@@ -584,7 +584,7 @@ let ctx = screenCtx;
       disc(ex.x, ex.y, ex.r * (0.45 + t * 0.75), 0xffd36d, 0.28 * (ex.life / ex.maxLife));
       puff(ex.x, ex.y, ex.r, 0xff7640, 0.22 * (ex.life / ex.maxLife), 6, 30);
     }
-    for (const rg of game.rings) disc(rg.x, rg.y, rg.r * (0.5 + (1 - rg.life / rg.maxLife) * 0.7), 0xffffff, 0.14 * clamp(rg.life / rg.maxLife, 0, 1));
+    for (const rg of game.rings) disc(rg.x, rg.y, rg.r * (0.5 + (1 - rg.life / rg.maxLife) * 0.7), colorHex(rg.color), 0.16 * clamp(rg.life / rg.maxLife, 0, 1)); // was hardcoded white → every ring read as a white circle
     for (const s of game.slams) {
       const k = clamp(s.life / s.maxLife, 0, 1);   // 1→0 (fade)
       const t = 1 - k;                              // 0→1 (expand)
@@ -596,11 +596,12 @@ let ctx = screenCtx;
       const ring = new THREE.Mesh(torusGeo, tmpMat(s.hex, 0.95 * k, true));
       ring.rotation.x = -Math.PI / 2; ring.position.set(lx, 6, ly); ring.scale.set(rr, rr, rr * 0.85);
       zoneGroup.add(ring);
-      const ring2 = new THREE.Mesh(torusGeo, tmpMat(0xffffff, 0.55 * k, true));
+      const ring2 = new THREE.Mesh(torusGeo, tmpMat(s.hex, 0.6 * k, true)); // inner ring takes the stance colour (was always white)
       ring2.rotation.x = -Math.PI / 2; ring2.position.set(lx, 7, ly); ring2.scale.set(rr * 0.62, rr * 0.62, rr * 0.55);
       zoneGroup.add(ring2);
-      // forward "palm wind": discs marching outward = a cone of force, + white contact flash
-      disc(s.x + Math.cos(s.angle) * 24 * P, s.y + Math.sin(s.angle) * 24 * P, 28 * P * (0.8 + t * 0.4), 0xffffff, 0.5 * k);
+      // forward contact pop tinted by stance, + a SMALL white hot-core (so 土拳 reads earthy, not "a white circle")
+      disc(s.x + Math.cos(s.angle) * 24 * P, s.y + Math.sin(s.angle) * 24 * P, 28 * P * (0.8 + t * 0.4), s.hex, 0.45 * k);
+      disc(s.x + Math.cos(s.angle) * 20 * P, s.y + Math.sin(s.angle) * 20 * P, 11 * P, 0xffffff, 0.4 * k);
       for (let i = 0; i < 3; i++) {
         const d = ((22 + i * 28) + t * 56) * P;
         const dr = ((20 + i * 11) * (0.75 + t * 0.85)) * P;
@@ -625,6 +626,17 @@ let ctx = screenCtx;
       const m = new THREE.Mesh(torusGeo, tmpMat(0x9fe7ff, 0.4 + fl * 0.45, true));
       m.rotation.x = -Math.PI / 2; const s = 8 + fl * 3;
       m.position.set(e.x, 32, e.y); m.scale.set(s, s, s * 0.9);
+      zoneGroup.add(m);
+    }
+    // Particles (dust, rock bits, sparks, gust streaks, death bursts…). The sim emits + updates these,
+    // but the 3D build never had a draw pass for them — so ALL particle FX were invisible. Draw them as
+    // small element-coloured voxel chunks (on-brand with the voxel art); opacity fades with life.
+    for (const pa of game.particles) {
+      const op = clamp(pa.life / pa.maxLife, 0, 1);
+      // non-additive so solid bits (rock/dust) read as their real colour instead of blowing out to white when they pile up
+      const m = new THREE.Mesh(boxGeo, tmpMat(colorHex(pa.color), 0.92 * op, false));
+      const s = Math.max(1.5, pa.r * 1.7);
+      m.position.set(pa.x, 9, pa.y); m.scale.set(s, s, s);
       zoneGroup.add(m);
     }
   }

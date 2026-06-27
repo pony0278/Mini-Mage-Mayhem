@@ -2087,10 +2087,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     palmSwing();
     sfx('melee');
     const p = game.player, m = game.stats.mainMode;
-    const elColor = (ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color) || '#ffd7a0';
+    const fistEl = ELEMENT_INFO[dashElement()];
     const hex = m === 'lightpalm' ? 0x9fe7ff
       : m === 'windpalm' ? 0xeafaff
-      : parseInt(elColor.slice(1), 16); // '#rrggbb' → 0xrrggbb (sim has no render colorHex helper)
+      : (fistEl ? parseInt(fistEl.color.slice(1), 16) : 0xc89a5a); // 土拳: earthy default, or the injected element's colour
     addSlam(p.x, p.y, angle, hex, 1 + Math.min(p.fistCombo, 5) * 0.12); // grows with the flurry
     if (m === 'lightpalm') lightningPalm(angle);
     else if (m === 'windpalm') windPalm(angle);
@@ -2121,8 +2121,12 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (el === 'fire') { addFireZone(fx, fy, 18, 0.7, true); igniteGrass(fx, fy, 20); }
     else if (el === 'lightning' && tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 40, 0.6);
     const col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888';
-    addRing(fx, fy, r, col, 0.24, 3); addShake(3);
-    for (let i = 0; i < 6; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-130, 130), vy: rnd(-130, 130), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col });
+    addRing(fx, fy, r, '#caa06a', 0.26, 4); addShake(3); // earthy dust ring (anchors the 土 identity even when an element is injected)
+    // 土 impact: chunky rock shards flung forward + a low dust puff — the "earth" read
+    const ROCK = ['#6b5230', '#8a6a3e', '#5e4a2e', '#7c6242']; // dark earthy browns → read as solid rock chunks against the gold pop + floor
+    for (let i = 0; i < 8; i++) { const a = angle + rnd(-1.2, 1.2), sp = rnd(130, 320); game.particles.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(4, 7.5), life: rnd(0.32, 0.6), maxLife: 0.6, color: ROCK[i % ROCK.length] }); }
+    for (let i = 0; i < 7; i++) { const a = rnd(0, 6.28), sp = rnd(30, 120); game.particles.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: rnd(0.25, 0.5), maxLife: 0.5, color: '#d8c39a' }); }
+    if (el && el !== 'earth') for (let i = 0; i < 5; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-130, 130), vy: rnd(-130, 130), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col }); // injected element still reads
     if (star >= 2) { // ★2+: a radial shockwave around the mage — wider knockback + smashes a ring of thin walls
       const sr = 70 + star * 22;
       for (const e of game.enemies) {
