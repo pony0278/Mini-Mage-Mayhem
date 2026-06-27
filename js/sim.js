@@ -1230,7 +1230,8 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       game.stats.bossLastHit = sourceName;
     }
     e.hp -= finalAmount;
-    e.hurt = 0.18;
+    // damage-scaled flash (P1.3): big hits flash brighter/longer than chip damage.
+    e.hurt = Math.max(e.hurt || 0, Math.min(0.3, 0.12 + finalAmount * 0.0045));
     if (finalAmount >= 20) addText(e.x, e.y - e.r - 10, Math.round(finalAmount), '#fff3e2');
     if (finalAmount >= 28) addRing(e.x, e.y, e.r + 10, '#fff3e2', 0.18, 2);
     if (sourceX !== null) {
@@ -1316,6 +1317,17 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   }
   export function addRing(x, y, r, color = '#fff', life = 0.35, width = 3) {
     game.rings.push({ x, y, r, color, life, maxLife: life, width });
+  }
+  // Per-hit contact feedback (P1.3): a tight element-coloured spark burst + a fast
+  // contact ring at the exact strike point. All procedural (no models). `power` ~ hit
+  // weight (1 = light, ~2 = heavy/boss): scales spark count, speed and ring size.
+  export function hitSpark(x, y, color = '#fff3e2', power = 1) {
+    const n = Math.round(4 + power * 4);
+    for (let i = 0; i < n; i++) {
+      const a = rnd(0, Math.PI * 2), sp = rnd(70, 120) * (0.7 + power * 0.5);
+      game.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(1.5, 3.4), life: rnd(0.1, 0.24), maxLife: 0.24, color });
+    }
+    addRing(x, y, 8 + power * 7, color, 0.13, 2);
   }
 
   export function recordDisaster(source, kills, radius) {
@@ -1989,7 +2001,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng) continue;
       const f = 600 * (1 - d / range);
       e.vx = (e.vx || 0) + Math.cos(angle) * f; e.vy = (e.vy || 0) + Math.sin(angle) * f;
-      if (Math.hypot(e.x - fx, e.y - fy) < hitR + e.r) { addHitstop(0.05); damageEnemy(e, dmg, p.x, p.y, '風掌'); } // a "slam" beat on close contact = weight
+      if (Math.hypot(e.x - fx, e.y - fy) < hitR + e.r) { addHitstop(0.05); hitSpark(e.x, e.y, '#dff3ff', 1.0); damageEnemy(e, dmg, p.x, p.y, '風掌'); } // a "slam" beat on close contact = weight
     }
     const shove = (arr) => { for (const c of arr) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d > range) continue; const a = Math.atan2(c.y - p.y, c.x - p.x); if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.35) continue; c.x = clamp(c.x + Math.cos(angle) * 64, 0, W); c.y = clamp(c.y + Math.sin(angle) * 64, 0, H); } };
     shove(game.poisonClouds); shove(game.fireZones); shove(game.steamClouds);
@@ -2039,6 +2051,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
         addHitstop(0.06); // the heavy punch already feels best — keep it the strongest connect
+        hitSpark(e.x, e.y, (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888', 1.8);
         damageEnemy(e, dmg, p.x, p.y, '肉搏');
         const a = angleTo(p, e);
         e.vx = (e.vx || 0) + Math.cos(a) * 320; e.vy = (e.vy || 0) + Math.sin(a) * 320;
@@ -2085,6 +2098,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     for (const e of game.enemies) {
       if (Math.hypot(e.x - fx, e.y - fy) < r + e.r) {
         addHitstop(0.045); // crisp zap connect
+        hitSpark(e.x, e.y, '#9fe7ff', 1.3);
         damageEnemy(e, dmg, p.x, p.y, '雷掌');
         const a = angleTo(p, e);
         e.vx = (e.vx || 0) + Math.cos(a) * 360; e.vy = (e.vy || 0) + Math.sin(a) * 360;
@@ -2464,6 +2478,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   export function applySpellHit(fb, e) {
     sfx('hit');
     addHitstop(e.type === 'boss' ? 0.05 : 0.03); // projectile connect — a touch more on the boss
+    hitSpark(e.x, e.y, fb.coreColor || fb.color || '#fff3e2', clamp(0.6 + fb.damage * 0.012, 0.6, 2.2));
     damageEnemy(e, fb.damage, fb.x, fb.y, spellDisplayName(fb.kind));
     if (isIceKind(fb.kind)) chillEnemy(e, 1.1 + game.stats.iceSlow * 0.5, fb.x, fb.y);
     if (isLightningKind(fb.kind)) chainLightningFrom(fb.x, fb.y, e, 10 + game.stats.storm * 3);
