@@ -114,6 +114,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     game.wave = 0;
     game.waveClearTimer = 0;
     game.screenShake = 0;
+    game.shakeSmallCd = 0;
     game.flash = 0;
     game.message = '';
     game.messageTimer = 0;
@@ -548,7 +549,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     p.hp -= amount;
     p.hurtTimer = 0.22;
     p.invuln = 0.35;
-    game.screenShake = Math.max(game.screenShake, 7.5);
+    addShake(7.5);
     game.flash = Math.max(game.flash, 0.07);
     addRing(p.x, p.y, 24, '#ffb3a1', 0.28, 3);
     addText(p.x, p.y - 26, '-' + Math.round(amount), '#ffb3a1');
@@ -669,7 +670,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     game.fusionBanner = { title: 'BOSS!', equation: '元素哥布林法師', desc: '先看地上的預警圈：毒、火、雷、水會連續改變戰場。', life: 2.8, maxLife: 2.8, color: '#66e0a6' };
     addText(W / 2, 140, 'BOSS FIGHT', '#66e0a6');
     addRing(e.x, e.y, 96, '#66e0a6', 0.75, 5);
-    game.screenShake = Math.max(game.screenShake, 8);
+    addShake(8);
   }
 
   export function spawnEnemyNear(type, x, y) {
@@ -826,7 +827,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       boomRadius: 42 + game.stats.explosive * 15 + sizeLevel * 8,
       fromPlayer: true
     });
-    game.screenShake = Math.max(game.screenShake, 1.1);
+    addShake(1.1);
     for (let i = 0; i < 5; i++) {
       const a = angle + rnd(-0.9, 0.9);
       game.particles.push({ x, y, vx: Math.cos(a) * rnd(-60, 40), vy: Math.sin(a) * rnd(-60, 40), r: rnd(1.5, 3), life: rnd(0.12, 0.28), maxLife: 0.28, color: info.color });
@@ -848,7 +849,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       freezeRadius: 48 + game.stats.iceRadius * 18,
       slowTime: 1.25 + game.stats.iceSlow * 0.55
     });
-    game.screenShake = Math.max(game.screenShake, 1.1);
+    addShake(1.1);
     for (let i = 0; i < 8; i++) {
       const a = angle + rnd(-0.75, 0.75);
       game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * rnd(70, 210), vy: Math.sin(a) * rnd(70, 210), r: rnd(1.5, 3), life: rnd(0.18, 0.42), maxLife: 0.42, color: '#bff4ff' });
@@ -895,7 +896,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
 
   export function addIceBurst(x, y, r = 52, damage = 18) {
     addRing(x, y, r, '#bff4ff', 0.44, 4);
-    game.screenShake = Math.max(game.screenShake, 4.5);
+    addShake(4.5);
     game.stats.iceKills++;
     for (const e of game.enemies) {
       const d = Math.hypot(e.x - x, e.y - y);
@@ -965,7 +966,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       game.lightningBolts.push({ x1: p.x, y1: p.y, x2, y2, life: 0.12, maxLife: 0.12 });
       addText(p.x + Math.cos(angle) * 70, p.y + Math.sin(angle) * 70, '雷鏈落空', '#a9c7ff');
     }
-    game.screenShake = Math.max(game.screenShake, 2.6);
+    addShake(2.6);
     for (let i = 0; i < 12; i++) {
       const a = angle + rnd(-0.8, 0.8);
       game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * rnd(80, 240), vy: Math.sin(a) * rnd(80, 240), r: rnd(1.5, 3.5), life: rnd(0.16, 0.38), maxLife: 0.38, color: '#9fe7ff' });
@@ -1028,7 +1029,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     game.electricZones.push({ x, y, r, life, maxLife: life, tick: 0, pulse: 0 });
     game.stats.waterElectrocutes++;
     game.flash = Math.max(game.flash, 0.08);
-    game.screenShake = Math.max(game.screenShake, 5);
+    addShake(5);
     addRing(x, y, r, '#9fe7ff', 0.42, 4);
   }
 
@@ -1100,7 +1101,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     sfx('explosion');
     addHitstop(Math.min(0.1, 0.045 + r * 0.0006)); // bigger boom → longer freeze
     addRing(x, y, r, '#ffeea1', 0.42, 5);
-    game.screenShake = Math.max(game.screenShake, Math.min(19, r * 0.16));
+    addShake(Math.min(19, r * 0.16));
     game.flash = Math.max(game.flash, 0.12);
     igniteGrass(x, y, r);
     breakThinWalls(x, y, r);
@@ -1268,12 +1269,12 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       game.fusionBanner = { title: 'VICTORY!', equation: 'Boss 已擊敗', desc: `主法術 ${game.stats.spellName} 完成最後一擊。`, life: 2.6, maxLife: 2.6, color: '#afff9d' };
       addText(e.x, e.y - 62, 'BOSS 擊破！', '#afff9d');
       addExplosion(e.x, e.y, 112, 0, 'Boss 爆散');
-      game.screenShake = Math.max(game.screenShake, 18);
+      addShake(18);
     }
     if (e.type === 'charger') {
       game.stats.elitesKilled++;
       addText(e.x, e.y - 42, '菁英擊破！', '#ffd36d');
-      game.screenShake = Math.max(game.screenShake, 7);
+      addShake(7);
       for (let i = 0; i < 18; i++) {
         const a = rnd(0, Math.PI * 2);
         game.particles.push({
@@ -1310,6 +1311,19 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   // Hitstop (頓幀): freeze the gameplay sim for s seconds on a hit. Math.max (no stacking) + a hard cap
   // so rapid multi-hits can't snowball into a laggy freeze.
   export function addHitstop(s) { game.hitstop = Math.min(0.12, Math.max(game.hitstop, s)); }
+
+  // Screen-shake throttle (P1 finish): every swing/cast/hit used to Math.max into screenShake,
+  // so during sustained combat the screen never settled — constant small jitter. Now SMALL shakes
+  // (< SHAKE_BIG) are rate-limited (one per shakeSmallCd window) AND soft-capped, so routine combat
+  // reads calm; BIG events (Boss, big booms, earthquakes, 絕對零度…) bypass both and still punch.
+  const SHAKE_BIG = 6;         // >= this = a "big" event: always lands, uncapped
+  const SHAKE_SMALL_CAP = 3.5; // small events can't push the shake past this
+  export function addShake(s) {
+    if (s >= SHAKE_BIG) { game.screenShake = Math.max(game.screenShake, s); return; } // big: always
+    if (game.shakeSmallCd > 0) return;                 // a small shake already fired this window — coalesce
+    game.shakeSmallCd = 0.1;
+    game.screenShake = Math.max(game.screenShake, Math.min(s, SHAKE_SMALL_CAP));
+  }
 
   // Big directional palm-slam shock (brawler main attack) — rendered in syncZones.
   export function addSlam(x, y, angle, hex, power = 1) {
@@ -1368,6 +1382,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   export function update(dt) {
     game.time += dt;
     game.screenShake = Math.max(0, game.screenShake - dt * 28);
+    if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt; // throttle window for small shakes (addShake)
     game.flash = Math.max(0, game.flash - dt * 1.7);
     if (game.messageTimer > 0) game.messageTimer -= dt;
     if (game.bossAttackTimer > 0) game.bossAttackTimer -= dt;
@@ -1426,7 +1441,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
           for (const e of live) { let c = 0; for (const o of live) if (Math.hypot(o.x - e.x, o.y - e.y) < 130) c++; if (c > bestN) { bestN = c; best = e; } }
           const r = 130 + game.stats.size * 14 + spellMastery() * 6;
           game.blackHoles.push({ x: clamp(best.x, 40, W - 40), y: clamp(best.y, 40, H - 40), r, life: 1.5, maxLife: 1.5, exploded: false, storm: true });
-          addRing(best.x, best.y, 36, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
+          addRing(best.x, best.y, 36, '#b07aff', 0.4, 4); addShake(3);
         } else { game.stormTimer = 1.2; } // no clump yet — re-check soon (don't waste the proc)
       }
     }
@@ -1473,7 +1488,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         chainLightningFrom(orb.x, orb.y, null, 16 + game.stats.storm * 3);
         if (tileAtPixel(orb.x, orb.y) === TILE_WATER) addElectricZone(orb.x, orb.y, 52, 0.6);
         addRing(orb.x, orb.y, br, '#9fe7ff', 0.22, 3);
-        game.screenShake = Math.max(game.screenShake, 2);
+        addShake(2);
       }
     }
     // capstone 冰川崩落 (土+冰): raise a cage of ice walls around a foe cluster, then shatter it into a wide ice burst.
@@ -1512,7 +1527,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
           }
           if (tiles.length) {
             game.glaciers.push({ x: best.x, y: best.y, r: 2.7 * TILE + game.stats.size * 5, fuse: 0.9, done: false, tiles });
-            addRing(best.x, best.y, 2.7 * TILE, '#bff4ff', 0.3, 3); game.screenShake = Math.max(game.screenShake, 2);
+            addRing(best.x, best.y, 2.7 * TILE, '#bff4ff', 0.3, 3); addShake(2);
           } else { game.glacierTimer = 1.2; } // all ring tiles blocked — re-check soon
         }
       }
@@ -1552,7 +1567,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
             addElectricZone(seed.x, seed.y, 52, 0.6);
           }
           addRing(p.x, p.y, 210, '#bff4ff', 0.5, 5); addRing(p.x, p.y, 270, '#9fe7ff', 0.4, 4);
-          addText(p.x, p.y - 40, '絕對零度！', '#bff4ff'); game.screenShake = Math.max(game.screenShake, 7);
+          addText(p.x, p.y - 40, '絕對零度！', '#bff4ff'); addShake(7);
           for (let i = 0; i < 16; i++) { const a = rnd(0, 6.28), s = rnd(120, 300); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: rnd(0.4, 0.8), maxLife: 0.8, color: i % 2 ? '#bff4ff' : '#9fe7ff' }); }
         }
       }
@@ -1601,7 +1616,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
             const ka = Math.atan2(e.y - ey, e.x - ex); e.vx = (e.vx || 0) + Math.cos(ka) * 300; e.vy = (e.vy || 0) + Math.sin(ka) * 300;
           }
         }
-        addRing(ex, ey, 40, '#caa472', 0.3, 3); game.screenShake = Math.max(game.screenShake, 3);
+        addRing(ex, ey, 40, '#caa472', 0.3, 3); addShake(3);
         for (let i = 0; i < 8; i++) { const pa = rnd(0, 6.28), s = rnd(80, 220); game.particles.push({ x: ex, y: ey, vx: Math.cos(pa) * s, vy: Math.sin(pa) * s, r: rnd(2, 5), life: rnd(0.3, 0.6), maxLife: 0.6, color: pa % 2 < 1 ? '#caa472' : '#a7c044' }); }
       }
     }
@@ -1618,7 +1633,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         }
         breakThinWalls(p.x, p.y, 220);
         addRing(p.x, p.y, 90, '#d8b888', 0.4, 5); addRing(p.x, p.y, 190, '#caa472', 0.3, 4);
-        addText(p.x, p.y - 40, '地震！', '#e0b07a'); game.screenShake = Math.max(game.screenShake, 9);
+        addText(p.x, p.y - 40, '地震！', '#e0b07a'); addShake(9);
         for (let i = 0; i < 14; i++) { const a = rnd(0, 6.28), s = rnd(90, 260); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 5), life: rnd(0.3, 0.7), maxLife: 0.7, color: '#caa472' }); }
       }
     }
@@ -1637,7 +1652,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
             game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.16, maxLife: 0.16 });
             chainLightningFrom(e.x, e.y, e, 20 + game.stats.storm * 3);
           }
-          addRing(p.x, p.y, 60, '#9fe7ff', 0.3, 4); addText(p.x, p.y - 40, '雷神！', '#bdf5ff'); game.screenShake = Math.max(game.screenShake, 5);
+          addRing(p.x, p.y, 60, '#9fe7ff', 0.3, 4); addText(p.x, p.y - 40, '雷神！', '#bdf5ff'); addShake(5);
         }
       }
     }
@@ -1751,7 +1766,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       else if (dEl === 'fire') { p.dashArrive = true; }                                         // 火尾 + 結尾小爆
       p.dashDirX = dirX; p.dashDirY = dirY;
       p.invuln = Math.max(p.invuln, p.dashTime + 0.05); // i-frames cover the whole move
-      game.screenShake = Math.max(game.screenShake, lunge ? 3 : 2);
+      addShake(lunge ? 3 : 2);
       if (Math.abs(dirX) + Math.abs(dirY) > 0) { p.vx = dirX * p.dashSpeed; p.vy = dirY * p.dashSpeed; }
       const dc = ELEMENT_INFO[dashElement()] && ELEMENT_INFO[dashElement()].color || '#b7d8ff';
       for (let i = 0; i < 12; i++) {
@@ -1876,7 +1891,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         e.vy = (e.vy || 0) + Math.sin(a) * kb;
         if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.1); e.chilled = true; }
         if (el === 'poison') addPoisonCloud(e.x, e.y, 18, 2.0);
-        if (charge) game.screenShake = Math.max(game.screenShake, 3);
+        if (charge) addShake(3);
       }
     }
     for (const pr of game.props) { if (Math.hypot(pr.x - p.x, pr.y - p.y) < p.r + pr.r + 4) pushProp(pr, p.x - p.vx * 0.05, p.y - p.vy * 0.05, 360); } // dash shoves crates
@@ -1898,7 +1913,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       addRing(p.x, p.y, r * 0.6, '#bfe6ff', 0.25, 4);
       for (let i = 0; i < 10; i++) { const a = rnd(0, 6.28), sp = rnd(140, 280); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#bfe6ff' }); }
     }
-    game.screenShake = Math.max(game.screenShake, 3);
+    addShake(3);
   }
 
   // --- Secondary slot: build-defined spell on one button ------------------
@@ -1964,7 +1979,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (placed) {
       addText(cx, cy - 20, kind === 'ice' ? '冰牆' : '土牆', kind === 'ice' ? '#bff4ff' : '#d1a06a');
       addRing(p.x, p.y, 24, kind === 'ice' ? '#bff4ff' : '#caa472', 0.3, 3);
-      game.screenShake = Math.max(game.screenShake, 2);
+      addShake(2);
       applyElementalBurst(cx, cy, Math.max(TILE, len * TILE * 0.42)); // element-coupled barrier
     }
   }
@@ -2012,7 +2027,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         e.stunTimer = Math.max(e.stunTimer || 0, 0.6); e.vx *= 0.2; e.vy *= 0.2;
         addText(e.x, e.y - e.r - 14, '撞牆!', '#eafaff');
         for (let i = 0; i < 8; i++) { const sa = angle + Math.PI + rnd(-1, 1), sp = rnd(80, 180); game.particles.push({ x: ax, y: ay, vx: Math.cos(sa) * sp, vy: Math.sin(sa) * sp, r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#d8cda8' }); }
-        game.screenShake = Math.max(game.screenShake, 4);
+        addShake(4);
       }
       if (e.dead) continue;
       // 硬反應②吹進火場: shoved into a fire zone → it burns (bonus fire dmg, once per swing)
@@ -2035,7 +2050,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       const ox = -dy * spread * 26, oy = dx * spread * 26; // fan across the cone's mouth (perp to aim)
       game.particles.push({ x: p.x + dx * 14 + ox, y: p.y + dy * 14 + oy, vx: Math.cos(ja) * sp, vy: Math.sin(ja) * sp, r: rnd(1.5, 3.5), life: rnd(0.22, 0.42), maxLife: 0.42, color: i % 3 ? '#dff3ff' : '#eafaff' });
     }
-    game.screenShake = Math.max(game.screenShake, 3);
+    addShake(3);
   }
 
   // Brawler dispatch: one palm-strike feel across all melee stances. palmSwing()
@@ -2085,7 +2100,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (el === 'fire') { addFireZone(fx, fy, 18, 0.7, true); igniteGrass(fx, fy, 20); }
     else if (el === 'lightning' && tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 40, 0.6);
     const col = (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888';
-    addRing(fx, fy, r, col, 0.24, 3); game.screenShake = Math.max(game.screenShake, 3);
+    addRing(fx, fy, r, col, 0.24, 3); addShake(3);
     for (let i = 0; i < 6; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-130, 130), vy: rnd(-130, 130), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: col });
     if (star >= 2) { // ★2+: a radial shockwave around the mage — wider knockback + smashes a ring of thin walls
       const sr = 70 + star * 22;
@@ -2095,7 +2110,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         const a = angleTo(p, e); e.vx = (e.vx || 0) + Math.cos(a) * 240; e.vy = (e.vy || 0) + Math.sin(a) * 240;
       }
       breakThinWalls(p.x, p.y, sr);
-      addRing(p.x, p.y, sr, '#d8b888', 0.3, 4); game.screenShake = Math.max(game.screenShake, 4);
+      addRing(p.x, p.y, sr, '#d8b888', 0.3, 4); addShake(4);
     }
   }
 
@@ -2106,7 +2121,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const y = clamp(p.y + Math.sin(angle) * 160, 36, H - 36);
     const lv = sLvl(); // mastery: bigger reach + longer pull before collapse; ★ (lv≥2) → 超新星 collapse
     game.blackHoles.push({ x, y, r: 120 + game.stats.size * 14 + lv * 22, life: 1.6 + lv * 0.3, maxLife: 1.6 + lv * 0.3, exploded: false, supernova: lv >= 2 });
-    addRing(x, y, 30, '#b07aff', 0.4, 4); game.screenShake = Math.max(game.screenShake, 3);
+    addRing(x, y, 30, '#b07aff', 0.4, 4); addShake(3);
   }
 
   // Close-range electric palm: knockback + short chain; electrifies water you
@@ -2131,7 +2146,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (tileAtPixel(fx, fy) === TILE_WATER) addElectricZone(fx, fy, 72, 0.9);
     else if (tileAtPixel(p.x, p.y) === TILE_WATER) addElectricZone(p.x, p.y, 72, 0.9);
     for (const pr of game.props) { if (Math.hypot(pr.x - fx, pr.y - fy) < r + pr.r + 8) { pr.charge = 'lightning'; pr.chargeTimer = 5; pr.zapCd = 0; addRing(pr.x, pr.y, pr.r + 8, '#9fe7ff', 0.3, 3); } } // 雷充能: charge crate → mobile electric wall
-    addRing(fx, fy, r, '#9fe7ff', 0.25, 3); game.screenShake = Math.max(game.screenShake, 3);
+    addRing(fx, fy, r, '#9fe7ff', 0.25, 3); addShake(3);
     for (let i = 0; i < 8; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#bdf5ff' });
   }
   export function updateWalls(dt) {
@@ -2193,7 +2208,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         applyElementalBurst(bh.x, bh.y, bh.r * (sup ? 0.8 : 0.5));
         if (sup) { // 超新星: a far bigger blast + flash
           addRing(bh.x, bh.y, bh.r * 1.5, '#ffe0ff', 0.5, 6); addRing(bh.x, bh.y, bh.r * 0.9, '#b07aff', 0.4, 5);
-          addText(bh.x, bh.y - 40, '超新星！', '#e6b0ff'); game.screenShake = Math.max(game.screenShake, 9);
+          addText(bh.x, bh.y - 40, '超新星！', '#e6b0ff'); addShake(9);
           for (let i = 0; i < 22; i++) { const a = rnd(0, 6.28), s = rnd(140, 360); game.particles.push({ x: bh.x, y: bh.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 5), life: rnd(0.4, 0.85), maxLife: 0.85, color: i % 2 ? '#e6b0ff' : '#ffd9ff' }); }
         }
         if (bh.storm) { // 磁暴: a chain-lightning rips through the clumped foes + an electric field
@@ -2201,7 +2216,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
           let seed = null, sd = bh.r;
           for (const e of game.enemies) { if (e.dead) continue; const d = Math.hypot(e.x - bh.x, e.y - bh.y); if (d < sd) { sd = d; seed = e; } }
           if (seed) chainLightningFrom(seed.x, seed.y, seed, 30 + game.stats.storm * 4);
-          game.screenShake = Math.max(game.screenShake, 6);
+          addShake(6);
         }
       }
     }
@@ -2255,7 +2270,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       p.held.push(it);
       addText(p.x, p.y - 46, it.type ? '抓起 ↑' : '舉起 ↑', '#dff3ff');
       addRing(p.x, p.y, 30, '#dff3ff', 0.25, 3);
-      game.screenShake = Math.max(game.screenShake, 2);
+      addShake(2);
       sfx('grab');
       return true;
     }
@@ -2288,7 +2303,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     p.held.push(chunk);
     addText(p.x, p.y - 46, w.kind === 'ice' ? '拔起冰牆 ↑' : '拔起薄牆 ↑', w.kind === 'ice' ? '#bff4ff' : '#d1a06a');
     addRing(p.x, p.y, 30, w.kind === 'ice' ? '#bff4ff' : '#caa472', 0.25, 3);
-    game.screenShake = Math.max(game.screenShake, 2);
+    addShake(2);
     sfx('grab');
     return true;
   }
@@ -2305,7 +2320,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     p.cooldown = Math.max(p.cooldown, 0.26);
     addText(p.x, p.y - 46, n > 1 ? `齊射 ×${n} →` : '投擲 →', '#eafaff');
     addRing(p.x + Math.cos(angle) * 20, p.y + Math.sin(angle) * 20, 26, '#eafaff', 0.22, 3);
-    game.screenShake = Math.max(game.screenShake, 4);
+    addShake(4);
     for (let i = 0; i < 10; i++) { const a = angle + rnd(-0.4, 0.4), s = rnd(120, 260); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#dff3ff' }); }
   }
   export function pushProp(pr, fromX, fromY, force) {
@@ -2335,7 +2350,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     addRing(cx, cy, 64, reason === 'fire' ? '#ff8a3a' : '#d8b888', 0.3, 4);
     if (reason === 'fire') addFireZone(cx, cy, 30, 1.0, true);
     if (charged) addElectricZone(cx, cy, 64, 0.6);
-    game.screenShake = Math.max(game.screenShake, 4);
+    addShake(4);
   }
   export function updateProps(dt) {
     if (!game.props.length) return;
@@ -2634,7 +2649,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       game.bossPhaseBanner = { life: 2.2, maxLife: 2.2, text: 'PHASE 2', sub: '元素失控：預警更短、連招更多', color: '#ffdf7a' };
       addText(e.x, e.y - 54, 'PHASE 2', '#ffdf7a');
       addRing(e.x, e.y, 128, '#ffdf7a', 0.95, 6);
-      game.screenShake = Math.max(game.screenShake, 12);
+      addShake(12);
       for (let i = 0; i < 2; i++) spawnEnemyNear(i === 0 ? 'bug' : 'imp', e.x, e.y);
     }
 
@@ -2746,7 +2761,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         const n = norm(Math.cos(e.facing), Math.sin(e.facing));
         e.vx = n.x * 520 * speedMul;
         e.vy = n.y * 520 * speedMul;
-        game.screenShake = Math.max(game.screenShake, 3);
+        addShake(3);
       }
       return;
     }
@@ -2806,7 +2821,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       damageEnemy(e, Math.min(60, 6 + (preSp - 230) * 0.10), e.x, e.y, '撞牆');
       e.stunTimer = Math.max(e.stunTimer || 0, 0.5);
       e.slamCd = 0.4;
-      game.screenShake = Math.max(game.screenShake, 3);
+      addShake(3);
       addText(e.x, e.y - 30, '撞牆!', '#ffd7a0');
       for (let i = 0; i < 8; i++) { const a = rnd(0, 6.28), s = rnd(80, 200); game.particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.3, maxLife: 0.3, color: '#ffe6c2' }); }
     }
@@ -2819,7 +2834,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     e.vx *= -0.22;
     e.vy *= -0.22;
     game.stats.chargerStuns++;
-    game.screenShake = Math.max(game.screenShake, 8);
+    addShake(8);
     addText(e.x, e.y - 36, text, '#d7ff8c');
     for (let i = 0; i < 12; i++) {
       game.particles.push({
@@ -2900,7 +2915,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       } else if (w.type === 'fire') {
         addFireZone(w.x, w.y, w.r, 2.1, false);
         addText(w.x, w.y - w.r, '火圈！', '#ffbd66');
-        game.screenShake = Math.max(game.screenShake, 4);
+        addShake(4);
       } else if (w.type === 'steam') {
         addSteamCloud(w.x, w.y, w.r, 3.0);
         addText(w.x, w.y - w.r, '蒸氣！', '#d8f6ff');
@@ -2908,7 +2923,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         addExplosion(w.x, w.y, w.r, 38 + game.stats.size * 6 + spellMastery() * 4, '流星');
         addFireZone(w.x, w.y, w.r * 0.6, 2.4, true); // lava pool
         addText(w.x, w.y - w.r, '流星！', '#ff7a3a');
-        game.screenShake = Math.max(game.screenShake, 8);
+        addShake(8);
       }
     }
     game.bossWarnings = game.bossWarnings.filter(w => !w.dead);

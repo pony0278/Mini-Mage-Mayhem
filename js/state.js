@@ -55,7 +55,9 @@ export const game = {
   // Outbound SFX event buffer (headless): sim pushes abstract names, the client drains + plays them.
   sfx: [],
   // Hitstop (頓幀): seconds the gameplay sim freezes on impact for "punch". Cosmetics keep animating.
-  hitstop: 0
+  hitstop: 0,
+  // Screen-shake small-event throttle: cooldown so frequent small shakes coalesce (see addShake).
+  shakeSmallCd: 0
 };
 
 // Shared input containers: DOM event handlers (input layer) write button/key
