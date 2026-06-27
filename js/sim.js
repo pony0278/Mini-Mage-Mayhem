@@ -2484,7 +2484,11 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       e.hurt = Math.max(0, e.hurt - dt);
       e.blockTextCd = Math.max(0, (e.blockTextCd || 0) - dt);
       e.slowTimer = Math.max(0, (e.slowTimer || 0) - dt);
-      if (e.dummy) { e.vx = 0; e.vy = 0; continue; } // training dummy: stand still, no AI
+      if (e.dummy) { // training dummy: no AI pursuit, but let hits knock it back (then settle) so feedback is visible
+        if (Math.hypot(e.vx, e.vy) > 4) moveEnemyWithCollision(e, dt);
+        e.vx *= Math.pow(0.25, dt); e.vy *= Math.pow(0.25, dt);
+        continue;
+      }
       if (e.held) { e.vx = 0; e.vy = 0; continue; }  // carried by 風掌 — no AI while grabbed
       if (e.thrown > 0) {                            // flung by 風掌: a body-projectile that rams others
         e.thrown -= dt;
