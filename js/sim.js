@@ -999,6 +999,19 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     }
     return best;
   }
+  // Nearest foe in a forward cone around `facing`, within lunge range — drives the melee auto-lunge.
+  export function nearestLungeTarget(p, facing, range = 150, cone = 0.8) {
+    let best = null, bd = range;
+    for (const e of game.enemies) {
+      if (e.dead || e.hp <= 0) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > bd) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - facing), Math.cos(a - facing))) > cone) continue;
+      bd = d; best = e;
+    }
+    return best;
+  }
 
   export function findWaterTarget(angle) {
     if (tileAtPixel(game.input.aimX, game.input.aimY) === TILE_WATER) return { x: game.input.aimX, y: game.input.aimY };
@@ -1667,7 +1680,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     p.secondaryCooldown = Math.max(0, p.secondaryCooldown - dt);
     p.invuln = Math.max(0, p.invuln - dt);
     p.hurtTimer = Math.max(0, p.hurtTimer - dt);
-    p.facing = Math.atan2(game.input.aimY - p.y, game.input.aimX - p.x);
+    // Aim tracks the cursor, EXCEPT during an attack-lunge (facing is locked onto the snapped target).
+    if (!(p.atkLungeTime > 0)) p.facing = Math.atan2(game.input.aimY - p.y, game.input.aimX - p.x);
+    // Attack-lunge: a short gap-closer that fires the melee strike on arrival (no i-frames, no dash cost).
+    if (p.atkLungeTime > 0) { p.atkLungeTime -= dt; if (p.atkLungeTime <= 0) meleeAttack(p.facing); }
     if (p.dashTime <= 0) {
       // Lunge payoff (A): a 突進 ends with a gap-closing melee strike toward the cursor.
       if (p.lungeStrike) { p.lungeStrike = false; meleeAttack(p.facing); }
@@ -1731,12 +1747,13 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       }
     }
     const dashing = p.dashTime > 0;
+    const lunging = p.atkLungeTime > 0;
     if (dashing) speed = p.dashSpeed || 520;
+    else if (lunging) speed = p.atkLungeSpeed || 760;
 
-    // During a dash the direction is locked to the dash vector (a committed move); normal
-    // movement steers with WASD as usual.
-    const mvx = dashing ? p.dashDirX : n.x;
-    const mvy = dashing ? p.dashDirY : n.y;
+    // Dash / attack-lunge lock the direction to a committed vector; normal movement steers with WASD.
+    const mvx = dashing ? p.dashDirX : lunging ? p.atkLungeDirX : n.x;
+    const mvy = dashing ? p.dashDirY : lunging ? p.atkLungeDirY : n.y;
     const onIce = tileAtPixel(p.x, p.y) === TILE_ICE;
     if (onIce) {
       p.vx += mvx * speed * 4.4 * dt;
@@ -1763,7 +1780,19 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
     if (game.input.firing && p.cooldown <= 0 && !(wp && p.held.length)) {
       if (game.stats.mainMode !== 'spell') {
-        meleeAttack(p.facing);
+        // Auto-lunge: snap onto the nearest foe in the aim cone and close the gap, then strike on
+        // arrival. Already in reach → strike now. Makes melee feel like it commits to the target.
+        const tgt = nearestLungeTarget(p, p.facing);
+        const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) : 0;
+        if (tgt && gap > 58) {
+          const a = Math.atan2(tgt.y - p.y, tgt.x - p.x);
+          p.facing = a; p.atkLungeDirX = Math.cos(a); p.atkLungeDirY = Math.sin(a);
+          p.atkLungeSpeed = 820;
+          p.atkLungeTime = clamp((gap - 46) / p.atkLungeSpeed, 0.03, 0.14); // reach it, stop a hair short
+          sfx('dash');
+        } else {
+          meleeAttack(p.facing); // already adjacent → strike in place
+        }
         // flurry: rapid presses ramp the combo and shorten the cadence (相撲突っ張り)
         p.cooldown = Math.max(0.13, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
       } else {
