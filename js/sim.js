@@ -2173,7 +2173,21 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     const firing = game.input.firing;
     const edge = firing && !p.firePrev;
     if (firing) {
-      if (edge && p.cooldown <= 0) { meleeAttack(p.facing); p.cooldown = Math.max(0.16, 0.26 * game.stats.cooldownMul); } // tap = a punch (flurry by tapping; 土系 is slow)
+      if (edge && p.cooldown <= 0) {
+        // tap = a punch that auto-lunges onto the nearest foe in the aim cone (P1.2), like the other stances
+        const tgt = nearestLungeTarget(p, p.facing);
+        const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) : 0;
+        if (tgt && gap > 58) {
+          const a = Math.atan2(tgt.y - p.y, tgt.x - p.x);
+          p.facing = a; p.atkLungeDirX = Math.cos(a); p.atkLungeDirY = Math.sin(a);
+          p.atkLungeSpeed = 820;
+          p.atkLungeTime = clamp((gap - 46) / p.atkLungeSpeed, 0.03, 0.14); // reach it, strike on arrival
+          sfx('dash');
+        } else {
+          meleeAttack(p.facing); // already adjacent → strike in place
+        }
+        p.cooldown = Math.max(0.16, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
+      }
       p.heavyCharge += dt;
       p.charging = p.heavyCharge >= 0.14;          // planted (slows movement) once you commit to a wind-up
       if (p.heavyCharge >= HEAVY_CHARGE && !p.heavyReady) { p.heavyReady = true; addRing(p.x, p.y, 34, '#ffe0a0', 0.3, 4); sfx('melee'); } // ready pulse
@@ -2182,7 +2196,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: -Math.cos(a) * rnd(90, 170), vy: -Math.sin(a) * rnd(90, 170), r: rnd(2.5, 5), life: 0.22, maxLife: 0.22, color: p.heavyReady ? '#ffe0a0' : '#9c7a4d' });
       }
     } else {
-      if (p.heavyReady) earthUppercut(p.facing);   // release a loaded heavy
+      if (p.heavyReady) {                           // release a loaded heavy — auto-aim at the nearest foe
+        const tgt = nearestLungeTarget(p, p.facing, 200, 1.0);
+        earthUppercut(tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing);
+      }
       p.heavyCharge = 0; p.heavyReady = false; p.charging = false;
     }
     p.firePrev = firing;
