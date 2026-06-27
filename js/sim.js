@@ -97,7 +97,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：點擊出拳（短而重、附帶當前元素），長按蓄力放「裂地上勾拳」把敵人擊飛、裂地破牆。重選→升星，★2 震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
-    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：瞬間穿越最近敵人到其身後，沿途敵人上「雷印」＋連鎖電擊、原地釘住（不擊退）；再用衝刺穿過帶雷印的敵人引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：點擊瞬間穿越最近敵人到身後（上雷印＋連鎖＋釘住、不擊退）；長按蓄力放「雷閃穿刺」化雷光貫穿一直線（最多3名、終點電爆、過水整條導電）。衝刺穿過帶雷印的敵人會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
@@ -260,6 +260,9 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       atkLungeTime: 0,
       blink: false,      // 雷掌 (The Flash): true while blinking THROUGH foes
       blinkZap: null,    // enemies already zapped by the current blink
+      pierce: false,     // 雷閃穿刺 重擊: true while piercing a charged line
+      pierceHits: null,  // enemies hit by the current pierce
+      pierceMax: 3,      // 雷閃穿刺: max foes per pierce (★ raises it)
       firePrev: false,   // edge-detect the main attack (tap vs hold)
       heavyCharge: 0,    // 土拳 重擊: seconds the attack has been held
       heavyReady: false, // 土拳 重擊: charge reached the release threshold
@@ -1724,8 +1727,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (p.atkLungeTime > 0) {
       p.atkLungeTime -= dt;
       if (p.blink) lightningBlinkSweep(p);
+      else if (p.pierce) lightningPierceSweep(p);
       if (p.atkLungeTime <= 0) {
         if (p.blink) { p.blink = false; lightningBlinkArrive(p); }
+        else if (p.pierce) { p.pierce = false; lightningPierceArrive(p); }
         else meleeAttack(p.facing);
       }
     }
@@ -1824,17 +1829,13 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (p.dashTime > 0) dashTrail(p);
 
     const wp = game.stats.mainMode === 'windpalm';
-    // 土拳 uses a tap-vs-hold scheme: tap = punch, HOLD = charge the 裂地上勾拳 重擊 (handled every frame).
-    if (game.stats.mainMode === 'fist') {
-      handleFistCharge(p, dt);
+    // 土拳 / 雷掌 use a tap-vs-hold scheme: tap = normal attack, HOLD = charge the stance's 重擊.
+    if (game.stats.mainMode === 'fist' || game.stats.mainMode === 'lightpalm') {
+      handleChargeAttack(p, dt);
     } else
     // Main attack (LMB) — suppressed while 風掌 is carrying a crate (both hands full).
     if (game.input.firing && p.cooldown <= 0 && !(wp && p.held.length)) {
-      if (game.stats.mainMode === 'lightpalm') {
-        // 雷掌 = The Flash: blink THROUGH the nearest foe to the far side, zapping everyone on the path.
-        lightningBlink(p);
-        p.cooldown = Math.max(0.16, 0.26 * game.stats.cooldownMul);
-      } else if (game.stats.mainMode !== 'spell') {
+      if (game.stats.mainMode !== 'spell') {
         // Auto-lunge: snap onto the nearest foe in the aim cone and close the gap, then strike on
         // arrival. Already in reach → strike now. Makes melee feel like it commits to the target.
         const tgt = nearestLungeTarget(p, p.facing);
@@ -2166,39 +2167,45 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     }
   }
 
-  // 土拳 input: tap = punch; HOLD ≥ HEAVY_CHARGE = wind up the 裂地上勾拳 重擊, release to unleash.
-  // Runs every frame (so it can charge while on cooldown and detect the release edge). This is the
-  // shared 長按蓄力 framework — 雷/風 重擊 will reuse it later.
-  export function handleFistCharge(p, dt) {
+  // Shared 長按蓄力 framework (土拳 + 雷掌): tap = the stance's normal attack; HOLD ≥ HEAVY_CHARGE =
+  // wind up the stance's 重擊, release to unleash. Runs every frame (charges through cooldown, detects
+  // the release edge). 土拳: tap=auto-lunge punch / 重擊=裂地上勾拳. 雷掌: tap=雷步閃現 / 重擊=雷閃穿刺.
+  export function handleChargeAttack(p, dt) {
+    const light = game.stats.mainMode === 'lightpalm';
     const firing = game.input.firing;
     const edge = firing && !p.firePrev;
     if (firing) {
       if (edge && p.cooldown <= 0) {
-        // tap = a punch that auto-lunges onto the nearest foe in the aim cone (P1.2), like the other stances
-        const tgt = nearestLungeTarget(p, p.facing);
-        const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) : 0;
-        if (tgt && gap > 58) {
-          const a = Math.atan2(tgt.y - p.y, tgt.x - p.x);
-          p.facing = a; p.atkLungeDirX = Math.cos(a); p.atkLungeDirY = Math.sin(a);
-          p.atkLungeSpeed = 820;
-          p.atkLungeTime = clamp((gap - 46) / p.atkLungeSpeed, 0.03, 0.14); // reach it, strike on arrival
-          sfx('dash');
-        } else {
-          meleeAttack(p.facing); // already adjacent → strike in place
+        if (light) { lightningBlink(p); p.cooldown = Math.max(0.16, 0.26 * game.stats.cooldownMul); } // tap = blink (The Flash)
+        else {
+          // tap = a punch that auto-lunges onto the nearest foe in the aim cone (P1.2)
+          const tgt = nearestLungeTarget(p, p.facing);
+          const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) : 0;
+          if (tgt && gap > 58) {
+            const a = Math.atan2(tgt.y - p.y, tgt.x - p.x);
+            p.facing = a; p.atkLungeDirX = Math.cos(a); p.atkLungeDirY = Math.sin(a);
+            p.atkLungeSpeed = 820;
+            p.atkLungeTime = clamp((gap - 46) / p.atkLungeSpeed, 0.03, 0.14); // reach it, strike on arrival
+            sfx('dash');
+          } else {
+            meleeAttack(p.facing); // already adjacent → strike in place
+          }
+          p.cooldown = Math.max(0.16, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
         }
-        p.cooldown = Math.max(0.16, (0.24 - Math.min(p.fistCombo, 5) * 0.02) * game.stats.cooldownMul);
       }
       p.heavyCharge += dt;
       p.charging = p.heavyCharge >= 0.14;          // planted (slows movement) once you commit to a wind-up
-      if (p.heavyCharge >= HEAVY_CHARGE && !p.heavyReady) { p.heavyReady = true; addRing(p.x, p.y, 34, '#ffe0a0', 0.3, 4); sfx('melee'); } // ready pulse
-      if (p.charging && Math.random() < 0.7) {     // gathering-dust telegraph (inward); brighter once ready
+      const rdyCol = light ? '#bdf5ff' : '#ffe0a0', dustCol = light ? '#9fe7ff' : '#9c7a4d';
+      if (p.heavyCharge >= HEAVY_CHARGE && !p.heavyReady) { p.heavyReady = true; addRing(p.x, p.y, 34, rdyCol, 0.3, 4); sfx('melee'); } // ready pulse
+      if (p.charging && Math.random() < 0.7) {     // gathering telegraph (inward); brighter once ready
         const a = rnd(0, 6.28), d = rnd(36, 56);
-        game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: -Math.cos(a) * rnd(90, 170), vy: -Math.sin(a) * rnd(90, 170), r: rnd(2.5, 5), life: 0.22, maxLife: 0.22, color: p.heavyReady ? '#ffe0a0' : '#9c7a4d' });
+        game.particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: -Math.cos(a) * rnd(90, 170), vy: -Math.sin(a) * rnd(90, 170), r: rnd(2.5, 5), life: 0.22, maxLife: 0.22, color: p.heavyReady ? rdyCol : dustCol });
       }
     } else {
-      if (p.heavyReady) {                           // release a loaded heavy — auto-aim at the nearest foe
-        const tgt = nearestLungeTarget(p, p.facing, 200, 1.0);
-        earthUppercut(tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing);
+      if (p.heavyReady) {                           // release a loaded 重擊 — auto-aim at the nearest foe
+        const tgt = nearestLungeTarget(p, p.facing, 240, 1.0);
+        const a = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing;
+        if (light) lightningPierce(a); else earthUppercut(a);
       }
       p.heavyCharge = 0; p.heavyReady = false; p.charging = false;
     }
@@ -2317,6 +2324,57 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     addRing(p.x, p.y, 30, '#bdf5ff', 0.22, 3);
     if (tileAtPixel(p.x, p.y) === TILE_WATER) addElectricZone(p.x, p.y, 60, 0.5);
     for (let i = 0; i < 9; i++) { const a = rnd(0, 6.28), s = rnd(120, 250); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4), life: 0.26, maxLife: 0.26, color: '#bfe6ff' }); }
+  }
+
+  // 雷 重擊 雷閃穿刺: a charged line-pierce — turn to lightning and rip down a long straight line,
+  // skewering up to N foes (★ raises N) with heavy damage + 雷印 + chain, a 電爆 at the end, and the
+  // whole path electrified where it crosses water. Reuses the blink/atkLunge movement (walls stop it).
+  export function lightningPierce(angle) {
+    const p = game.player, star = game.stats.lightStar || 1;
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    // length, clipped so it stops at the first wall (不穿牆)
+    let dist = 320 + (star - 1) * 30;
+    for (let s = 24; s <= dist; s += 12) { if (circleHitsSolid(p.x + dx * s, p.y + dy * s, p.r)) { dist = Math.max(40, s - 14); break; } }
+    p.facing = angle;
+    p.atkLungeDirX = dx; p.atkLungeDirY = dy;
+    p.atkLungeSpeed = 2200;                              // faster than the basic blink
+    p.atkLungeTime = clamp(dist / p.atkLungeSpeed, 0.06, 0.2);
+    p.invuln = Math.max(p.invuln, p.atkLungeTime + 0.08); // i-frames cover the whole pierce
+    p.pierce = true; p.pierceHits = new Set(); p.pierceMax = 3 + (star - 1); // ★ more skewers
+    // 過水導電: electrify water tiles along the line (on-brand risk — but i-frames cover transit)
+    const steps = Math.max(6, Math.round(dist / 26));
+    for (let i = 0; i <= steps; i++) { const wx = p.x + dx * (i / steps) * dist, wy = p.y + dy * (i / steps) * dist; if (tileAtPixel(wx, wy) === TILE_WATER) addElectricZone(wx, wy, 48, 0.7); }
+    sfx('dash'); addShake(4);
+  }
+  // Per-frame during a pierce: skewer foes on the line (up to pierceMax), heavy hit + 雷印 + chain.
+  export function lightningPierceSweep(p) {
+    if (!p.pierceHits) p.pierceHits = new Set();
+    const star = game.stats.lightStar || 1;
+    const dmg = 30 + game.stats.size * 3 + mLvl('lightning') * 4 + (star - 1) * 6; // heavier than the basic zap
+    for (const e of game.enemies) {
+      if (e.dead || p.pierceHits.has(e)) continue;
+      if (p.pierceHits.size >= p.pierceMax) break;       // 最多 N 名 (★ raises N)
+      if (Math.hypot(e.x - p.x, e.y - p.y) > p.r + e.r + 16) continue;
+      p.pierceHits.add(e);
+      addHitstop(0.04); hitSpark(e.x, e.y, '#bdf5ff', 1.9);
+      damageEnemy(e, dmg, p.x - p.atkLungeDirX, p.y - p.atkLungeDirY, '雷閃穿刺');
+      if (!e.dead) { e.lightMark = LIGHT_MARK; e.stunTimer = Math.max(e.stunTimer || 0, 0.8); e.vx = (e.vx || 0) * 0.1; e.vy = (e.vy || 0) * 0.1; }
+      game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.14, maxLife: 0.14 });
+      chainLightningFrom(e.x, e.y, e.dead ? null : e, 14 + mLvl('lightning') * 2 + star * 2);
+    }
+    game.particles.push({ x: p.x, y: p.y, vx: rnd(-40, 40), vy: rnd(-40, 40), r: rnd(3, 5.5), life: 0.24, maxLife: 0.24, color: '#bfe6ff' }); // bolt afterimage
+  }
+  // Pierce lands: a small 電爆 (burst + chain) at the endpoint — no ground zone, so it can't self-shock.
+  export function lightningPierceArrive(p) {
+    const r = 66 + game.stats.size * 6;
+    for (const e of game.enemies) {
+      if (e.dead || Math.hypot(e.x - p.x, e.y - p.y) >= r) continue;
+      damageEnemy(e, 16 + game.stats.size * 2 + mLvl('lightning') * 2, p.x, p.y, '雷閃穿刺');
+      if (!e.dead) e.lightMark = LIGHT_MARK;
+    }
+    chainLightningFrom(p.x, p.y, null, 16 + mLvl('lightning') * 2);
+    addRing(p.x, p.y, r, '#bdf5ff', 0.32, 5); addShake(5);
+    for (let i = 0; i < 14; i++) { const a = rnd(0, 6.28), s = rnd(140, 300); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: rnd(2, 4.5), life: rnd(0.25, 0.4), maxLife: 0.4, color: i % 2 ? '#bfe6ff' : '#9fe7ff' }); }
   }
   export function updateWalls(dt) {
     let dirty = false;

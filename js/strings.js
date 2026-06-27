@@ -91,7 +91,7 @@ const EN = {
   '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。': 'Secondary becomes an Oil Slick — ignites into a wide blaze (arson build).',
   '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。': 'Secondary becomes a Black Hole — pulls foes and hazards together, then collapses.',
   '主攻擊改成近戰土拳：點擊出拳（短而重、附帶當前元素），長按蓄力放「裂地上勾拳」把敵人擊飛、裂地破牆。重選→升星，★2 震波、★3 週期地震。': 'Main attack becomes a melee Earth Fist: tap to punch (short, heavy, carries your element); HOLD to charge the Earthsplitter Uppercut — launches foes and rips a fissure through walls. Re-pick to star up — ★2 shockwave, ★3 periodic earthquake.',
-  '主攻擊改成「雷步閃現」：瞬間穿越最近敵人到其身後，沿途敵人上「雷印」＋連鎖電擊、原地釘住（不擊退）；再用衝刺穿過帶雷印的敵人引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。': 'Main attack becomes Lightning Step (The Flash): blink THROUGH the nearest foe to the far side, zapping everyone on the path — they get a Lightning Mark, chain lightning, and are pinned (no knockback). Then dash through a marked foe to detonate it. Electrifies water (shocks you too). Re-pick to star up — fiercer chains, ★3 periodic Thunder God discharge.',
+  '主攻擊改成「雷步閃現」：點擊瞬間穿越最近敵人到身後（上雷印＋連鎖＋釘住、不擊退）；長按蓄力放「雷閃穿刺」化雷光貫穿一直線（最多3名、終點電爆、過水整條導電）。衝刺穿過帶雷印的敵人會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。': 'Main attack becomes Lightning Step (The Flash): TAP to blink through the nearest foe to the far side (mark + chain + pinned, no knockback); HOLD to charge the Lightning Lance — become a bolt and skewer a straight line (up to 3 foes, blast at the end, the whole line conducts through water). Dash through a marked foe to detonate it. Electrifies water (shocks you too). Re-pick to star up — fiercer chains, ★3 periodic Thunder God discharge.',
   '主攻擊改成近戰風掌：錐形強力擊退、把火/毒/蒸氣往前吹。放棄遠程飛彈。重選→升星，一次可累積撿取更多並齊射。': 'Main attack becomes a melee Wind Palm: cone knockback, blows fire/poison/steam forward. No projectile. Re-pick to star up — hold and volley more pickups.',
   '最大生命 +25，並立即回復同等生命。': 'Max HP +25, and heal that much now.',
   '移動速度 +12%。': 'Move speed +12%.',
@@ -155,7 +155,7 @@ const EN = {
   '電霧！': 'Shock mist!', '蒸氣！': 'Steam!', '蓄力！': 'Charging!', '毒瓶': 'Poison flask', '毒瓶預備': 'Poison flask incoming', '毒瓶！': 'Poison flask!',
   '毒霧爆燃': 'Poison ignites', '召喚小怪！': 'Summon minions!', '召喚水池': 'Summon pool', '黑洞塌縮': 'Black hole collapse', '緩速': 'Slow',
   '撞牆': 'Wall slam', '震波': 'Shockwave', '肉搏': 'Melee', '充能': 'Charged', '土拳': 'Earth Fist', '雷掌': 'Lightning Palm', '風掌': 'Wind Palm',
-  '雷爆!': 'Zap!', '雷步穿身': 'Lightning Step', '風助火勢': 'Fanned flames', '撞牆!': 'Wall slam!', '燒!': 'Burn!', '裂地上勾拳': 'Earthsplitter Uppercut',
+  '雷爆!': 'Zap!', '雷步穿身': 'Lightning Step', '風助火勢': 'Fanned flames', '撞牆!': 'Wall slam!', '燒!': 'Burn!', '裂地上勾拳': 'Earthsplitter Uppercut', '雷閃穿刺': 'Lightning Lance',
   '命中會爆炸！': 'Now explodes on hit!',
   // --- damage sources / entities ---
   '元素哥布林撞擊': 'Goblin Mage hit', '史萊姆撞擊': 'Slime hit', '毒蟲撞擊': 'Bug hit', '火焰小鬼撞擊': 'Imp hit', '火焰小鬼': 'Fire Imp',
