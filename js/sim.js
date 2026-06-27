@@ -1908,8 +1908,9 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         p.dashHits.add(e);
         damageEnemy(e, dmg, p.x, p.y, '衝刺');
         const a = angleTo(p, e);
-        e.vx = (e.vx || 0) + Math.cos(a) * kb;
-        e.vy = (e.vy || 0) + Math.sin(a) * kb;
+        const ekb = zap ? kb * 0.25 : kb; // a lightning dash PIERCES through foes (pass-through), it doesn't shove them
+        e.vx = (e.vx || 0) + Math.cos(a) * ekb;
+        e.vy = (e.vy || 0) + Math.sin(a) * ekb;
         if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.1); e.chilled = true; }
         if (el === 'poison') addPoisonCloud(e.x, e.y, 18, 2.0);
         if (charge) addShake(3);
@@ -2111,7 +2112,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         hitSpark(e.x, e.y, (ELEMENT_INFO[el] && ELEMENT_INFO[el].color) || '#d8b888', 1.8);
         damageEnemy(e, dmg, p.x, p.y, '肉搏');
         const a = angleTo(p, e);
-        e.vx = (e.vx || 0) + Math.cos(a) * 320; e.vy = (e.vy || 0) + Math.sin(a) * 320;
+        e.vx = (e.vx || 0) + Math.cos(a) * 150; e.vy = (e.vy || 0) + Math.sin(a) * 150; // a firm shove, not a launch — the big knockback is reserved for ★2 震波 / 撞牆
         if (el === 'ice') { e.slowTimer = Math.max(e.slowTimer || 0, 1.0); e.chilled = true; }
         else if (el === 'poison') addPoisonCloud(e.x, e.y, 16, 1.8);
       }
@@ -2162,9 +2163,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
         hitSpark(e.x, e.y, '#9fe7ff', 1.3);
         damageEnemy(e, dmg, p.x, p.y, '雷掌');
         if (!e.dead) e.lightMark = LIGHT_MARK; // 雷印: dash through it to detonate (雷步穿身)
-        const a = angleTo(p, e);
-        e.vx = (e.vx || 0) + Math.cos(a) * 360; e.vy = (e.vy || 0) + Math.sin(a) * 360;
-        e.stunTimer = Math.max(e.stunTimer || 0, 0.5);
+        // 雷掌 doesn't shove — it pins the foe (stun) and the bolt arcs THROUGH the group (chain). Pass-through,
+        // not knockback. Cancel damageEnemy's baseline knock so the target stays put to be chained / dashed through.
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.7);
+        e.vx = (e.vx || 0) * 0.1; e.vy = (e.vy || 0) * 0.1;
         game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.14, maxLife: 0.14 });
         chainLightningFrom(e.x, e.y, e, 14 + mLvl('lightning') * 2 + star * 4); // ★ fiercer chain
       }
