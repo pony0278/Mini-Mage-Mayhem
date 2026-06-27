@@ -1993,17 +1993,32 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   export function windPalm(angle) {
     const p = game.player, reach = 54, hitR = 44, range = 190, halfAng = 0.68;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
+    const dx = Math.cos(angle), dy = Math.sin(angle);
     const dmg = 12 + game.stats.size * 2 + game.stats.dashPower * 2;
     for (const e of game.enemies) {
+      if (e.dead) continue;
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d > range) continue;
       const a = Math.atan2(e.y - p.y, e.x - p.x);
       if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng) continue;
       const f = 600 * (1 - d / range);
-      e.vx = (e.vx || 0) + Math.cos(angle) * f; e.vy = (e.vy || 0) + Math.sin(angle) * f;
+      e.vx = (e.vx || 0) + dx * f; e.vy = (e.vy || 0) + dy * f;
       if (Math.hypot(e.x - fx, e.y - fy) < hitR + e.r) { addHitstop(0.05); hitSpark(e.x, e.y, '#dff3ff', 1.0); damageEnemy(e, dmg, p.x, p.y, '風掌'); } // a "slam" beat on close contact = weight
+      if (e.dead) continue;
+      const ax = e.x + dx * (e.r + 18), ay = e.y + dy * (e.r + 18); // sample where the gust drives them
+      // 硬反應①撞牆: blown into a wall → slam impact (dmg + stun + dust) = the wind's weight
+      if (isSolidTile(tileAtPixel(ax, ay))) {
+        damageEnemy(e, 14 + game.stats.size * 2, p.x, p.y, '撞牆');
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.6); e.vx *= 0.2; e.vy *= 0.2;
+        addText(e.x, e.y - e.r - 14, '撞牆!', '#eafaff');
+        for (let i = 0; i < 8; i++) { const sa = angle + Math.PI + rnd(-1, 1), sp = rnd(80, 180); game.particles.push({ x: ax, y: ay, vx: Math.cos(sa) * sp, vy: Math.sin(sa) * sp, r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#d8cda8' }); }
+        game.screenShake = Math.max(game.screenShake, 4);
+      }
+      if (e.dead) continue;
+      // 硬反應②吹進火場: shoved into a fire zone → it burns (bonus fire dmg, once per swing)
+      for (const fz of game.fireZones) { if (Math.hypot(ax - fz.x, ay - fz.y) < fz.r + e.r) { damageEnemy(e, 10, fz.x, fz.y, '風助火勢'); addText(e.x, e.y - e.r - 26, '燒!', '#ff9a3a'); break; } }
     }
-    const shove = (arr) => { for (const c of arr) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d > range) continue; const a = Math.atan2(c.y - p.y, c.x - p.x); if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.35) continue; c.x = clamp(c.x + Math.cos(angle) * 64, 0, W); c.y = clamp(c.y + Math.sin(angle) * 64, 0, H); } };
+    const shove = (arr) => { for (const c of arr) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d > range) continue; const a = Math.atan2(c.y - p.y, c.x - p.x); if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.35) continue; const push = 50 + 50 * (1 - d / range); c.x = clamp(c.x + dx * push, 0, W); c.y = clamp(c.y + dy * push, 0, H); } };
     shove(game.poisonClouds); shove(game.fireZones); shove(game.steamClouds);
     for (const pr of game.props) {                    // 風推: shove crates along the aim (→ ram enemies)
       const d = Math.hypot(pr.x - p.x, pr.y - p.y);
@@ -2011,10 +2026,16 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       const a = Math.atan2(pr.y - p.y, pr.x - p.x);
       if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > halfAng + 0.2) continue;
       const f = 540 * (1 - d / range) + 180;
-      pr.vx = (pr.vx || 0) + Math.cos(angle) * f; pr.vy = (pr.vy || 0) + Math.sin(angle) * f;
+      pr.vx = (pr.vx || 0) + dx * f; pr.vy = (pr.vy || 0) + dy * f;
     }
-    for (let i = 0; i < 16; i++) { const a = angle + rnd(-halfAng, halfAng), sp = rnd(140, 280); game.particles.push({ x: p.x + Math.cos(angle) * 16, y: p.y + Math.sin(angle) * 16, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#dff3ff' }); }
-    addRing(fx, fy, hitR, '#dff3ff', 0.24, 3); game.screenShake = Math.max(game.screenShake, 3);
+    // 方向陣風: a forward-streaking gust (not a ring) — particles launch ALONG the aim,
+    // fanned across the cone mouth, so the read is "a blast of wind blows that way".
+    for (let i = 0; i < 22; i++) {
+      const spread = rnd(-1, 1), sp = rnd(260, 460), ja = angle + spread * 0.5;
+      const ox = -dy * spread * 26, oy = dx * spread * 26; // fan across the cone's mouth (perp to aim)
+      game.particles.push({ x: p.x + dx * 14 + ox, y: p.y + dy * 14 + oy, vx: Math.cos(ja) * sp, vy: Math.sin(ja) * sp, r: rnd(1.5, 3.5), life: rnd(0.22, 0.42), maxLife: 0.42, color: i % 3 ? '#dff3ff' : '#eafaff' });
+    }
+    game.screenShake = Math.max(game.screenShake, 3);
   }
 
   // Brawler dispatch: one palm-strike feel across all melee stances. palmSwing()
