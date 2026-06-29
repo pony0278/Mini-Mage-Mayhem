@@ -189,7 +189,7 @@ function frame(now) {
 }
 
 // --- boot ---
-window.__v2 = { game, fighters }; // debug / headless-test hook
+window.__v2 = { game, fighters, CAM }; // debug / headless-test hook (CAM for live camera tuning)
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   keys.add(e.key.toLowerCase());
@@ -203,8 +203,11 @@ game.player = null;     // camera centres on the arena, no player voxel
 game.stats = null;
 buildArena();
 game.enemies = fighters.slice();
-// frame the whole arena (the loved 45° look, just pulled back to see both players + the pit)
-CAM.dist = 980; CAM.lookY = 0; CAM.panX = 0; CAM.panZ = 30;
+// Front-on "diorama" framing (hero-brawler look): low rake + face-on so the arena's depth
+// recedes away from camera and the near edge reads as foreground (NOT a steep top-down).
+// v2-only — index.html keeps its follow-cam. Background set-dressing TODO (the empty band above
+// the far wall is the known cost of dropping the rake; we accept it for the laugh-gate test).
+CAM.fov = 42; CAM.angle = 30; CAM.dist = 760; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -90; CAM.lookY = 0;
 
 let last = performance.now();
 requestAnimationFrame(frame);
