@@ -119,6 +119,57 @@ let ctx = screenCtx;
   groundMesh.position.set(W / 2, 0, H / 2);
   scene.add(groundMesh);
 
+  // --- floating-island mode (v2 arenas): the playable floor is a thick slab above open air;
+  // VOID tiles render as transparent gaps (see sky/sea), and the slab's rim shows cliff faces, so
+  // being knocked off an edge reads as falling into the abyss. Scoped behind a flag — single-player
+  // (index.html) keeps the full opaque ground plane + dark void pits. Toggled via setIslandMode().
+  let islandMode = false;
+  const islandGroup = new THREE.Group(); scene.add(islandGroup);
+  const cliffMat = new THREE.MeshLambertMaterial({ color: 0x3c3340 });
+  const SLAB_DEPTH = 76;
+  let islandSig = '';
+  function syncIslandSlab() {
+    let sig = '';
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (game.map[y][x] === TILE_VOID) sig += x + '.' + y + ';';
+    if (sig === islandSig) return;
+    islandSig = sig;
+    islandGroup.clear();
+    // Only tiles bordering the abyss (or the map edge) need a visible cliff — interior undersides are hidden.
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      if (game.map[y][x] === TILE_VOID) continue; // no slab under open air
+      const rim = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+        const nx = x + dx, ny = y + dy;
+        return nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || game.map[ny][nx] === TILE_VOID;
+      });
+      if (!rim) continue;
+      const body = new THREE.Mesh(boxGeo, cliffMat);
+      body.scale.set(TILE, SLAB_DEPTH, TILE);
+      body.position.set(x * TILE + TILE / 2, -SLAB_DEPTH / 2, y * TILE + TILE / 2);
+      islandGroup.add(body);
+    }
+  }
+  let seaMesh = null;
+  function ensureSea() {
+    if (seaMesh) return;
+    seaMesh = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshLambertMaterial({ color: 0x1d4f6b }));
+    seaMesh.rotation.x = -Math.PI / 2; seaMesh.position.set(W / 2, -230, H / 2); seaMesh.visible = false;
+    scene.add(seaMesh);
+  }
+  ensureSea();
+  export function setIslandMode(on) {
+    islandMode = on;
+    seaMesh.visible = on;
+    islandGroup.visible = on;
+    decorGroup.visible = !on;            // toybox vials sit at fixed spots that may now be over the abyss
+    groundMesh.material.transparent = on;
+    groundMesh.material.alphaTest = on ? 0.5 : 0; // discard the transparent VOID texels → see sky/sea through the gaps
+    groundMesh.material.needsUpdate = true;
+    if (on) { scene.background = new THREE.Color(0x3a5a7e); scene.fog = new THREE.Fog(0x3a5a7e, 700, 1900); }
+    else { scene.background = new THREE.Color(0x100e18); scene.fog = new THREE.Fog(0x100e18, 820, 1580); }
+    islandSig = ''; // force slab rebuild on next render
+    drawGroundTexture();
+  }
+
   function tileNoise(x, y) { return ((x * 1103515245 + y * 12345 + 97) >>> 0) % 1000 / 1000; }
 
   function drawGroundTexture() {
@@ -127,6 +178,7 @@ let ctx = screenCtx;
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const t = game.map[y][x];
       const px = x * s, py = y * s;
+      if (islandMode && t === TILE_VOID) continue; // leave the abyss transparent → sky/sea shows through the gap
       let c;
       if (t === TILE_GRASS) c = ART.grass;
       else if (t === TILE_BURNT) c = ART.burnt;
@@ -668,6 +720,7 @@ let ctx = screenCtx;
     if (!gl3dOk) return;
     drawGroundTexture();
     syncWalls();
+    if (islandMode) syncIslandSlab();
     syncProps();
     const px = game.player ? game.player.x : W / 2;
     const pz = game.player ? game.player.y : H / 2;

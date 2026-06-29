@@ -15,7 +15,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_VOID } from './cons
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -30,17 +30,18 @@ const SHOVE_CD = 0.55;    // gust cooldown
 const RESPAWN = 1.3;      // delay before a fallen fighter pops back in
 const FRICTION = 0.25;    // per-second velocity multiplier for the knockback slide
 
-// --- arena ---
+// --- arena: a floating island (no outer walls — the edges are cliffs; step/get knocked off → fall) ---
+const ISLE = { x0: 3, x1: 26, y0: 3, y1: 16 };   // floor footprint (inclusive tile range)
+const PIT = { x0: 13, x1: 16, y0: 8, y1: 11 };    // central chasm
 const SPAWN = [ { x: 6 * TILE, y: 10 * TILE }, { x: 23 * TILE, y: 10 * TILE } ];
 function buildArena() {
   game.map = [];
   for (let y = 0; y < ROWS; y++) {
     const row = [];
     for (let x = 0; x < COLS; x++) {
-      const border = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
-      // a central rectangular chasm — the executioner
-      const pit = x >= 11 && x <= 18 && y >= 7 && y <= 12;
-      row.push(border ? TILE_WALL : pit ? TILE_VOID : TILE_FLOOR);
+      const onIsle = x >= ISLE.x0 && x <= ISLE.x1 && y >= ISLE.y0 && y <= ISLE.y1;
+      const inPit = x >= PIT.x0 && x <= PIT.x1 && y >= PIT.y0 && y <= PIT.y1;
+      row.push(onIsle && !inPit ? TILE_FLOOR : TILE_VOID); // everything off-island is open air
     }
     game.map.push(row);
   }
@@ -202,11 +203,12 @@ game.state = 'v2';      // not 'playing' → render's capstone/HUD branches stay
 game.player = null;     // camera centres on the arena, no player voxel
 game.stats = null;
 buildArena();
+setIslandMode(true); // float the arena above open air: VOID = transparent gap, edges = cliffs, fall = drop into sky/sea
 game.enemies = fighters.slice();
 // Front-on "diorama" framing (hero-brawler look): low rake + face-on so the arena's depth
 // recedes away from camera and the near edge reads as foreground (NOT a steep top-down).
-// v2-only — index.html keeps its follow-cam. Background set-dressing TODO (the empty band above
-// the far wall is the known cost of dropping the rake; we accept it for the laugh-gate test).
+// v2-only — index.html keeps its follow-cam. The floating-island slab + sky/sea backdrop (setIslandMode)
+// fills what used to be the empty band above the far edge.
 CAM.fov = 35; CAM.angle = 25; CAM.dist = 950; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -100; CAM.lookY = 30;
 
 let last = performance.now();
