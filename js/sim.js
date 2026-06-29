@@ -97,7 +97,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_oil', name: '副攻：潑油', desc: '副攻改成潑油；油遇火會大範圍爆燃（佈場縱火流）。', apply: () => equipOrLevelSecondary('oil') },
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：點擊出拳（短而重、附帶當前元素），長按蓄力放「裂地上勾拳」把敵人擊飛、裂地破牆。重選→升星，★2 震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
-    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「雷步閃現」：點擊瞬間穿越最近敵人到身後（上雷印＋連鎖＋釘住、不擊退）；長按蓄力放「雷閃穿刺」：在範圍內連續閃現穿刺最多3名（★更多）各放電留雷印，再閃回原點＋終點電爆（過水導電、全程無敵）。衝刺穿過帶雷印的敵人會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
+    { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「閃雷三段斬」：連點 手刀→橫斬→雷步穿身（第3段穿越敵人到身後並引爆前兩段的雷印），沿途上雷印＋連鎖＋釘住（不擊退）；長按蓄力放「雷閃穿刺」：範圍內連續閃現穿刺最多3名（★更多）再閃回原點＋終點電爆（過水導電、全程無敵）。衝刺穿過帶雷印的敵人也會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
     { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：點擊錐形擊退、把火/毒/蒸氣往前吹；長按蓄力放「真空掌」先吸引聚怪再一掌氣爆吹飛（Boss 只硬直）。E 撿取／齊射，放棄遠程飛彈。重選→升星，一次可撿更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
@@ -2175,8 +2175,13 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     if (firing) {
       if (edge) { p.attackStartX = p.x; p.attackStartY = p.y; } // where the gesture began — 雷閃穿刺 returns here
       if (edge && p.cooldown <= 0) {
-        if (light) { lightningBlink(p); p.cooldown = Math.max(0.16, 0.26 * game.stats.cooldownMul); } // tap = blink (The Flash)
-        else {
+        if (light) {
+          // 閃雷三段斬: taps cycle 1 直線手刀 → 2 橫斬 → 3 雷步穿身 (only stage 3 blinks through)
+          p.fistCombo = p.fistComboTimer > 0 ? (p.fistCombo % 3) + 1 : 1;
+          p.fistComboTimer = 0.55;
+          if (p.fistCombo === 3) { lightningBlink(p); p.cooldown = Math.max(0.16, 0.24 * game.stats.cooldownMul); }
+          else { lightningChop(p.facing, p.fistCombo === 2); p.cooldown = Math.max(0.12, 0.17 * game.stats.cooldownMul); }
+        } else {
           // tap = a punch that auto-lunges onto the nearest foe in the aim cone (P1.2)
           const tgt = nearestLungeTarget(p, p.facing);
           const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) : 0;
@@ -2286,6 +2291,36 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     for (let i = 0; i < 8; i++) game.particles.push({ x: fx, y: fy, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 4), life: rnd(0.2, 0.4), maxLife: 0.4, color: '#bdf5ff' });
   }
 
+  // 閃雷三段斬 stages 1 & 2 (手刀 / 橫斬): a quick lightning slash that brands foes with 雷印 + chains,
+  // pins them (no shove). wide=false 直線手刀: a narrow forward chop + a small dart forward. wide=true
+  // 橫斬: a wide arc sweep that catches a cluster. Stage 3 is the blink (set up in handleChargeAttack).
+  export function lightningChop(angle, wide) {
+    const p = game.player, star = game.stats.lightStar || 1;
+    const dmg = (wide ? 14 : 16) + game.stats.size * 2 + mLvl('lightning') * 3 + (star - 1) * 3;
+    if (!wide) { // 直線手刀: a small forward dart (突進一小段), wall-blocked
+      const sx = p.x + Math.cos(angle) * 26, sy = p.y + Math.sin(angle) * 26;
+      if (!circleHitsSolid(sx, p.y, p.r)) p.x = sx;
+      if (!circleHitsSolid(p.x, sy, p.r)) p.y = sy;
+    }
+    const reach = wide ? 76 : 72, half = wide ? 1.35 : 0.5; // 直線手刀 = a narrow forward cone; 橫斬 = a wide arc
+    const fx = p.x + Math.cos(angle) * (wide ? 0 : 50), fy = p.y + Math.sin(angle) * (wide ? 0 : 50); // VFX anchor
+    let first = null;
+    for (const e of game.enemies) {
+      if (e.dead || Math.hypot(e.x - p.x, e.y - p.y) > reach + e.r) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > half) continue;
+      addHitstop(0.03); hitSpark(e.x, e.y, '#bdf5ff', wide ? 1.4 : 1.7);
+      damageEnemy(e, dmg, p.x, p.y, '雷掌');
+      if (!e.dead) { e.lightMark = LIGHT_MARK; e.stunTimer = Math.max(e.stunTimer || 0, wide ? 0.25 : 0.2); e.vx = (e.vx || 0) * 0.2; e.vy = (e.vy || 0) * 0.2; } // 雷印 + pin (no shove)
+      game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.1, maxLife: 0.1 });
+      if (!first) first = e;
+    }
+    if (wide && first) chainLightningFrom(first.x, first.y, first.dead ? null : first, 12 + mLvl('lightning') * 2); // 第2段橫斬才連敵；第1段手刀只上雷印
+    if (wide) { addRing(p.x, p.y, reach, '#bdf5ff', 0.2, 4); for (let i = 0; i < 14; i++) { const aa = angle + rnd(-half, half), sp = rnd(180, 340); game.particles.push({ x: p.x, y: p.y, vx: Math.cos(aa) * sp, vy: Math.sin(aa) * sp, r: rnd(2, 3.5), life: 0.2, maxLife: 0.2, color: i % 2 ? '#bdf5ff' : '#eaffff' }); } }
+    else { addRing(fx, fy, 30, '#bdf5ff', 0.16, 3); for (let i = 0; i < 9; i++) { const aa = angle + rnd(-0.4, 0.4), sp = rnd(220, 400); game.particles.push({ x: p.x + Math.cos(angle) * 18, y: p.y + Math.sin(angle) * 18, vx: Math.cos(aa) * sp, vy: Math.sin(aa) * sp, r: rnd(2, 3.5), life: 0.18, maxLife: 0.18, color: '#bfe6ff' }); } }
+    addShake(wide ? 3 : 2); sfx('melee');
+  }
+
   // 雷掌 main attack = The Flash blink: dart THROUGH the nearest foe to the far side, zapping every
   // enemy on the path (pin + mark + chain). Reuses the attack-lunge movement so walls still stop it
   // (不能穿牆). The per-frame zap + arrival burst are driven from updatePlayer's atkLunge handler.
@@ -2311,8 +2346,10 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       if (e.dead || p.blinkZap.has(e)) continue;
       if (Math.hypot(e.x - p.x, e.y - p.y) > p.r + e.r + 12) continue;
       p.blinkZap.add(e);
-      addHitstop(0.03); hitSpark(e.x, e.y, '#bdf5ff', 1.3);
+      const wasMarked = e.lightMark > 0; // 第3段穿身: foes branded by 手刀/橫斬 detonate for bonus 雷爆
+      addHitstop(0.03); hitSpark(e.x, e.y, '#bdf5ff', wasMarked ? 1.8 : 1.3);
       damageEnemy(e, dmg, p.x - p.atkLungeDirX, p.y - p.atkLungeDirY, '雷掌'); // knock direction ~ travel, but pinned below
+      if (wasMarked && !e.dead) { damageEnemy(e, 12 + mLvl('lightning') * 3, p.x, p.y, '雷掌'); addText(e.x, e.y - e.r - 16, '雷爆!', '#bdf5ff'); }
       if (!e.dead) { e.lightMark = LIGHT_MARK; e.stunTimer = Math.max(e.stunTimer || 0, 0.7); e.vx = (e.vx || 0) * 0.1; e.vy = (e.vy || 0) * 0.1; }
       game.lightningBolts.push({ x1: p.x, y1: p.y, x2: e.x, y2: e.y, life: 0.12, maxLife: 0.12 });
       chainLightningFrom(e.x, e.y, e.dead ? null : e, 12 + mLvl('lightning') * 2 + star * 2);
