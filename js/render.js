@@ -702,7 +702,7 @@ let ctx = screenCtx;
   // 凸眼 (panic faces): when an entity is launched hard / about to fall, billboard a pair of
   // cartoon bulging white eyes with trembling pupils over its head — the "oh no" beat that
   // sells a dumb death (v2 spec A). Cosmetic only; driven by sim's e.faceT countdown.
-  function drawPanicFaces() {
+  export function drawPanicFaces() {
     for (const e of game.enemies) {
       if (!(e.faceT > 0)) continue;
       const s = project(e.x, e.y, (e.r || 14) * 2.2 + 6);
