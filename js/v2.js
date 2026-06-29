@@ -207,7 +207,7 @@ game.enemies = fighters.slice();
 // recedes away from camera and the near edge reads as foreground (NOT a steep top-down).
 // v2-only — index.html keeps its follow-cam. Background set-dressing TODO (the empty band above
 // the far wall is the known cost of dropping the rake; we accept it for the laugh-gate test).
-CAM.fov = 42; CAM.angle = 30; CAM.dist = 760; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -90; CAM.lookY = 0;
+CAM.fov = 35; CAM.angle = 25; CAM.dist = 950; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -100; CAM.lookY = 30;
 
 let last = performance.now();
 requestAnimationFrame(frame);
