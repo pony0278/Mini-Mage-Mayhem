@@ -1,4 +1,4 @@
-import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL } from './constants.js';
+import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL, TILE_VOID } from './constants.js';
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
 import { game, mouse, CAM, touch } from './state.js';
@@ -136,9 +136,11 @@ let ctx = screenCtx;
       else if (t === TILE_THIN) c = '#43342e';
       else if (t === TILE_ICEWALL) c = '#7fb6c9';
       else if (t === TILE_OIL) c = '#241f17';
+      else if (t === TILE_VOID) c = '#05040a';
       else c = ((x + y) % 2 === 0) ? ART.floorA : ART.floorB;
       gtx.fillStyle = c;
       gtx.fillRect(px, py, s, s);
+      if (t === TILE_VOID) { gtx.fillStyle = '#000'; gtx.fillRect(px + 1, py + 1, s - 2, s - 2); } // 空洞:暗坑
       if (t === TILE_FLOOR) {
         gtx.strokeStyle = ART.floorEdge;
         gtx.globalAlpha = 0.36;
@@ -374,6 +376,13 @@ let ctx = screenCtx;
     return g;
   }
   function updateActor(e, g) {
+    if (e.falling) { // v2 死亡劇場 A: 縮小 + 旋轉 + 沉進洞裡
+      const k = Math.max(0, Math.min(1, (e.fallT || 0) / 0.6));
+      g.position.set(e.x, -120 * (1 - k), e.y);
+      g.rotation.set(0, e.spin || 0, 0);
+      g.scale.setScalar(Math.max(0.05, k));
+      return;
+    }
     g.position.set(e.x, 0, e.y);
     if (e.type === 'slime') g.position.y = Math.abs(Math.sin(game.time * 4 + e.x * 0.1)) * 4;
     if (e.type === 'boss') {
@@ -690,6 +699,26 @@ let ctx = screenCtx;
     }
   }
 
+  // 凸眼 (panic faces): when an entity is launched hard / about to fall, billboard a pair of
+  // cartoon bulging white eyes with trembling pupils over its head — the "oh no" beat that
+  // sells a dumb death (v2 spec A). Cosmetic only; driven by sim's e.faceT countdown.
+  function drawPanicFaces() {
+    for (const e of game.enemies) {
+      if (!(e.faceT > 0)) continue;
+      const s = project(e.x, e.y, (e.r || 14) * 2.2 + 6);
+      if (s.behind) continue;
+      const er = 6, off = 5;
+      // tremble: tiny jitter on the pupils so the eyes read as panicked, not dead.
+      const jx = Math.cos(game.time * 40) * 1.4, jy = Math.sin(game.time * 47) * 1.4;
+      for (const dx of [-off, off]) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(s.x + dx, s.y, er, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#0a0a12';
+        ctx.beginPath(); ctx.arc(s.x + dx + jx, s.y + jy, er * 0.45, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+
 
   // 風掌 crate prompts, billboarded onto the world: highlight a liftable crate, or
   // remind you that you can throw the one you're carrying.
@@ -779,6 +808,7 @@ let ctx = screenCtx;
       ctx.fillRect(0, 0, W, H);
     }
     drawEnemyBars();
+    drawPanicFaces();
     drawCrateHints();
     drawFloatingTexts();
     drawReticle();

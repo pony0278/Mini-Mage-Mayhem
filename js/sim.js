@@ -1,4 +1,4 @@
-import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL } from './constants.js';
+import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL, TILE_VOID } from './constants.js';
 import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
 import { game } from './state.js'; // headless: sim reads game.input (neutral intents), never raw keys/mouse/CAM
@@ -2912,6 +2912,40 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     else addRing(fb.x, fb.y, fb.r * 3.2, fb.color, 0.18, 2);
   }
 
+  // --- v2 死亡劇場 A (docs/v2-spec-A-dumb-deaths.md): 空洞墜落 + 凸眼 ---
+  const VOID_LAUNCH_THRESH = 280; // 擊退速度超過 → 凸眼 (panic face)
+  const VOID_FALL_TIME = 0.6;     // 墜落:縮小 + 旋轉 + 下沉
+  const VOID_FALL_GRACE = 0.07;   // 懸空多久才確定墜落 (防邊緣抖動)
+  const VOID_FACE_TIME = 0.35;    // 凸眼臉持續
+  export function overVoid(e) { return tileAtPixel(e.x, e.y) === TILE_VOID; }
+  // 每幀對每個實體跑。回傳 true 表示在死亡劇場中(呼叫端跳過 AI)。
+  export function updateDeathTheater(e, dt) {
+    if (e.faceT > 0) e.faceT -= dt;
+    if (e.falling) {
+      e.fallT -= dt; e.spin = (e.spin || 0) + 18 * dt;
+      if (e.fallT <= 0) { e.dead = true; addText(e.x, e.y - 8, '墜落!', '#eafaff'); }
+      return true;
+    }
+    if (Math.hypot(e.vx || 0, e.vy || 0) >= VOID_LAUNCH_THRESH) e.faceT = VOID_FACE_TIME; // 凸眼:被轟飛瞬間
+    if (overVoid(e)) {
+      e.voidT = (e.voidT || 0) + dt;
+      if (e.voidT > VOID_FALL_GRACE) {
+        e.falling = true; e.fallT = VOID_FALL_TIME; e.faceT = Math.max(e.faceT || 0, VOID_FACE_TIME);
+        addHitstop(0.05); addShake(4); sfx('dash'); // 致死 beat:小頓幀 + 一聲 whoosh
+        return true;
+      }
+    } else e.voidT = 0;
+    return false;
+  }
+  // 沙盒用:在玩家前方挖一個空洞坑(training only)。
+  export function spawnVoidPit() {
+    const p = game.player, a = p.facing || 0;
+    const tx = Math.floor((p.x + Math.cos(a) * 110) / TILE), ty = Math.floor((p.y + Math.sin(a) * 110) / TILE);
+    for (let y = ty - 1; y <= ty + 1; y++) for (let x = tx - 2; x <= tx + 2; x++) {
+      if (x > 0 && y > 0 && x < COLS - 1 && y < ROWS - 1) game.map[y][x] = TILE_VOID;
+    }
+  }
+
   export function updateEnemies(dt) {
     const p = game.player;
     for (const e of game.enemies) {
@@ -2919,6 +2953,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
       e.blockTextCd = Math.max(0, (e.blockTextCd || 0) - dt);
       e.slowTimer = Math.max(0, (e.slowTimer || 0) - dt);
       if (e.lightMark > 0) e.lightMark = Math.max(0, e.lightMark - dt); // 雷印 fades over time
+      if (updateDeathTheater(e, dt)) continue; // 墜落中 → 跳過 AI
 
       if (e.dummy) { // training dummy: no AI pursuit, but let hits knock it back (then settle) so feedback is visible
         if (Math.hypot(e.vx, e.vy) > 4) moveEnemyWithCollision(e, dt);

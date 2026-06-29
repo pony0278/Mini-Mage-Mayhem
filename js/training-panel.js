@@ -5,7 +5,7 @@ import { W, H } from './constants.js';
 import { clamp } from './utils.js';
 import { ELEMENT_INFO } from './data.js';
 import { game } from './state.js';
-import { SECONDARY, upgradePool, startRun, resetGame, spawnCrate, injectElement, syncSpell, openUpgrade } from './sim.js';
+import { SECONDARY, upgradePool, startRun, resetGame, spawnCrate, injectElement, syncSpell, openUpgrade, spawnVoidPit } from './sim.js';
 
 (function trainingPanel() {
   const panel = document.getElementById('train-panel');
@@ -80,6 +80,7 @@ import { SECONDARY, upgradePool, startRun, resetGame, spawnCrate, injectElement,
     else if (k === 'sec') { game.stats.secondary = v === 'none' ? null : v; }
     else if (k === 'dummy') { if (v === 'add') { for (let i = 0; i < 3; i++) spawnDummy(); } else { game.enemies = game.enemies.filter(e => !e.dummy); } }
     else if (k === 'prop') { if (v === 'add') addCrates(); else game.props.length = 0; }
+    else if (k === 'void') { spawnVoidPit(); }
     else if (k === 'heal') { game.player.hp = game.player.maxHp; }
     else if (k === 'open') { openUpgrade(); }
     else if (k === 'list') { listEl.classList.toggle('hidden'); }

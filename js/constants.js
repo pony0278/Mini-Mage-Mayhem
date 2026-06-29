@@ -16,3 +16,4 @@ export const TILE_WATER = 5;
 export const TILE_ICE = 6;
 export const TILE_ICEWALL = 7; // player-built ice wall (solid, melts to floor via fire/steam)
 export const TILE_OIL = 8;     // spilled oil (walkable; ignites into a big explosion on fire)
+export const TILE_VOID = 9;    // a pit / hole — entities over it fall (環境處決 v2: dumb-death A)
