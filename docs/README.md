@@ -4,6 +4,7 @@
 
 | 文件 | 內容 | 對應階段 |
 |---|---|---|
+| [game-overview.md](game-overview.md) | **遊戲介紹總覽**（對外介紹用）— 賣點/流程/操作/元素與融合全表/近戰流派/副攻/升級/畢業大絕/敵人Boss/場地/反應/技術 | 📣 介紹 |
 | [roadmap.md](roadmap.md) | 路線決策記錄 — 打磨單機 / 上架 / 做 BR 的三條路 (A/B/C) 取捨與建議 | 🧭 待決策 |
 | [shipping-readiness.md](shipping-readiness.md) | 上架就緒缺口盤點（C）— BR 已確定為終點下的取捨；音效/觸控/SDK/i18n 缺口 + 排序 + B0 橋接 | 🚢 C 動工依據 |
 | [melee-combo-reference.md](melee-combo-reference.md) | 近戰流派 combo 設計參考（土拳/雷手刀/風掌）— 3段普攻+重擊、動畫、MVP 順序、現況對照 | 🥊 近戰依據 |
