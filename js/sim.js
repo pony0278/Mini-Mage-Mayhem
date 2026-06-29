@@ -98,7 +98,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     { id: 'equip_blackhole', name: '副攻：黑洞', desc: '副攻改成黑洞；吸聚敵人與災難後塌縮爆炸。', apply: () => equipOrLevelSecondary('blackhole') },
     { id: 'fist_mode', name: '土拳・肉搏', desc: '主攻擊改成近戰土拳：點擊出拳（短而重、附帶當前元素），長按蓄力放「裂地上勾拳」把敵人擊飛、裂地破牆。重選→升星，★2 震波、★3 週期地震。', apply: () => { const s = game.stats; if (s.mainMode === 'fist') { s.fistStar = Math.min(3, s.fistStar + 1); toast(T('土拳') + ' up ★' + s.fistStar + '!'); } else { s.mainMode = 'fist'; s.fistStar = 1; toast('你成了肉搏戰士！'); } } },
     { id: 'lightpalm_mode', name: '雷掌・肉搏', desc: '主攻擊改成「閃雷三段斬」：連點 手刀→橫斬→雷步穿身（第3段穿越敵人到身後並引爆前兩段的雷印），沿途上雷印＋連鎖＋釘住（不擊退）；長按蓄力放「雷閃穿刺」：範圍內連續閃現穿刺最多3名（★更多）再閃回原點＋終點電爆（過水導電、全程無敵）。衝刺穿過帶雷印的敵人也會引爆雷爆。踩水放電（也會電到自己）。重選→升星，雷鏈更強、★3 雷神週期放電。', apply: () => { const s = game.stats; if (s.mainMode === 'lightpalm') { s.lightStar = Math.min(3, s.lightStar + 1); toast(T('雷掌') + ' up ★' + s.lightStar + '!'); } else { s.mainMode = 'lightpalm'; s.lightStar = 1; toast('主攻換成雷掌！'); } } },
-    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：點擊錐形擊退、把火/毒/蒸氣往前吹；長按蓄力放「真空掌」先吸引聚怪再一掌氣爆吹飛（Boss 只硬直）。E 撿取／齊射，放棄遠程飛彈。重選→升星，一次可撿更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
+    { id: 'windpalm_mode', name: '風掌・肉搏', desc: '主攻擊改成近戰風掌：連點三段 推掌→旋掌（把敵人往側邊帶）→氣爆掌（錐形風壓＋把火/毒/蒸氣往前吹、撞牆、推物）；長按蓄力放「真空掌」先吸引聚怪再一掌氣爆吹飛（Boss 只硬直）。E 撿取／齊射，放棄遠程飛彈。重選→升星，一次可撿更多並齊射。', apply: () => { const s = game.stats; if (s.mainMode === 'windpalm') { s.windpalmStar = Math.min(3, s.windpalmStar + 1); toast(T('風掌') + ' up — hold ' + s.windpalmStar + ' for the volley'); } else { s.mainMode = 'windpalm'; s.windpalmStar = 1; toast('主攻換成風掌！'); } } },
     { id: 'vitality', name: '強健體魄', desc: '最大生命 +25，並立即回復同等生命。', apply: () => { game.player.maxHp += 25; healPlayer(25); toast('體質增強！'); } },
     { id: 'swift', name: '迅捷', desc: '移動速度 +12%。', apply: () => { game.player.speed *= 1.12; toast('腳程變快！'); } },
     { id: 'second_wind', name: '回春', desc: '立即回復 40% 最大生命。', apply: () => { healPlayer(game.player.maxHp * 0.4); toast('回復生命！'); } }
@@ -2033,7 +2033,49 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
 
   // 風掌 (brawler MAIN): a melee palm that shoves a forward cone — strong knockback,
   // pushes fire/poison/steam the way you aim, light contact damage. No projectile.
+  // 風掌 流風三連掌: taps cycle 1 推掌 → 2 旋掌 → 3 氣爆掌 (combo wraps via palmSwing).
   export function windPalm(angle) {
+    const stage = ((game.player.fistCombo - 1) % 3) + 1;
+    if (stage === 1) windPush(angle);       // 推掌: a short forward shove
+    else if (stage === 2) windSpin(angle);  // 旋掌: a sweep that carries foes sideways
+    else windBurst(angle);                  // 氣爆掌: the full cone burst (gust + hazards + props)
+  }
+  // 第1段 推掌: a short forward gust — small knockback (敵人滑一段), light damage up close.
+  export function windPush(angle) {
+    const p = game.player, dx = Math.cos(angle), dy = Math.sin(angle), range = 130, half = 0.6;
+    const dmg = 8 + game.stats.size * 2;
+    for (const e of game.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y); if (d > range) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > half) continue;
+      const f = 360 * (1 - d / range) + 120;
+      e.vx = (e.vx || 0) + dx * f; e.vy = (e.vy || 0) + dy * f;
+      if (d < 72) { addHitstop(0.03); hitSpark(e.x, e.y, '#dff3ff', 0.9); damageEnemy(e, dmg, p.x, p.y, '風掌'); }
+    }
+    for (let i = 0; i < 12; i++) { const spread = rnd(-1, 1), sp = rnd(200, 360), ja = angle + spread * 0.45, ox = -dy * spread * 20, oy = dx * spread * 20; game.particles.push({ x: p.x + dx * 12 + ox, y: p.y + dy * 12 + oy, vx: Math.cos(ja) * sp, vy: Math.sin(ja) * sp, r: rnd(1.5, 3), life: rnd(0.2, 0.35), maxLife: 0.35, color: '#dff3ff' }); }
+    addRing(p.x + dx * 40, p.y + dy * 40, 36, '#dff3ff', 0.2, 3); addShake(2);
+  }
+  // 第2段 旋掌: a half-circle sweep that carries foes SIDEWAYS (tangentially), alternating L/R per swing.
+  export function windSpin(angle) {
+    const p = game.player, range = 124, dmg = 9 + game.stats.size * 2;
+    const side = p.fistHand ? 1 : -1; // palmSwing toggles fistHand → sweep alternates
+    for (const e of game.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y) || 1; if (d > range) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > 1.5) continue; // forward hemisphere
+      addHitstop(0.03); hitSpark(e.x, e.y, '#dff3ff', 1.0); damageEnemy(e, dmg, p.x, p.y, '風掌');
+      if (e.dead) continue;
+      const rx = (e.x - p.x) / d, ry = (e.y - p.y) / d, tx = -ry * side, ty = rx * side; // tangential (sideways)
+      const f = 420 * (1 - d / range) + 160;
+      e.vx = (e.vx || 0) + tx * f + rx * 60; e.vy = (e.vy || 0) + ty * f + ry * 60; // mostly sideways + a little outward
+    }
+    for (let i = 0; i < 18; i++) { const aa = angle - side * 1.4 + side * (i / 18) * 2.8, rr = rnd(40, range); game.particles.push({ x: p.x + Math.cos(aa) * rr * 0.5, y: p.y + Math.sin(aa) * rr * 0.5, vx: -Math.sin(aa) * side * rnd(160, 300), vy: Math.cos(aa) * side * rnd(160, 300), r: rnd(1.5, 3), life: 0.22, maxLife: 0.22, color: i % 2 ? '#dff3ff' : '#eafaff' }); }
+    addRing(p.x, p.y, range * 0.7, '#dff3ff', 0.22, 3); addShake(2);
+  }
+  // 第3段 氣爆掌: the full forward cone burst — strong knockback + 撞牆/吹進火場 reactions + shove clouds & props.
+  export function windBurst(angle) {
     const p = game.player, reach = 54, hitR = 44, range = 190, halfAng = 0.68;
     const fx = p.x + Math.cos(angle) * reach, fy = p.y + Math.sin(angle) * reach;
     const dx = Math.cos(angle), dy = Math.sin(angle);
