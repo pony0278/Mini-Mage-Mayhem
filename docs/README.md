@@ -2,6 +2,24 @@
 
 這個資料夾收錄 Mini Mage Mayhem 的設計與技術規劃文件。
 
+## 🔀 v2 設計包（環境處決 PvP — 現行方向）
+
+> 方向轉向：單機 roguelike → 2–4 人「玩家用環境互相送死」的短局混亂 PvP。先驗好笑 → 再驗同步 → 才提交完整棧。
+
+| 文件 | 內容 |
+|---|---|
+| [v2-environmental-pvp.md](v2-environmental-pvp.md) | **主文件**：北極星、路線決定、複雜度搬軸、三層傷害、瓶頸地圖、紅燈、速查尺（先讀 §0.5）|
+| [v2-spec-A-dumb-deaths.md](v2-spec-A-dumb-deaths.md) | **規格 A（最高優先）**：蠢死法 + 畫面糖果（空洞墜落/誇張擊飛/凸眼）狀態機 + 數值 + DoD |
+| [v2-spec-B-ownership.md](v2-spec-B-ownership.md) | **規格 B（測試計畫）**：鋪設→累積→引爆的 ownership；旋鈕起始值 + A/B 測法 + kill-criteria |
+| [v2-spec-C-share.md](v2-spec-C-share.md) | **規格 C（增長引擎）**：最大災難回顧 / 一鍵分享截圖卡（站在 A 鏡頭 + B 歸因上）|
+| [v2-spec-elements.md](v2-spec-elements.md) | **元素/融合/取得**：融合搬到地板成環境反應；元素＝空間動詞；MVP 對稱固定 kit |
+
+> 落地優先序：**A（好笑，先驗 3–4 人笑出聲）→ B（測 ownership）→ C（輸出分享）**。元素 spec 貫穿三者。單機版（下表）降為**零件捐贈庫**。
+
+---
+
+## 單機 v1 / 通用設計文件
+
 | 文件 | 內容 | 對應階段 |
 |---|---|---|
 | [game-overview.md](game-overview.md) | **遊戲介紹總覽**（對外介紹用）— 賣點/流程/操作/元素與融合全表/近戰流派/副攻/升級/畢業大絕/敵人Boss/場地/反應/技術 | 📣 介紹 |
