@@ -13,6 +13,7 @@
 | [v2-spec-B-ownership.md](v2-spec-B-ownership.md) | **規格 B（測試計畫）**：鋪設→累積→引爆的 ownership；旋鈕起始值 + A/B 測法 + kill-criteria |
 | [v2-spec-C-share.md](v2-spec-C-share.md) | **規格 C（增長引擎）**：最大災難回顧 / 一鍵分享截圖卡（站在 A 鏡頭 + B 歸因上）|
 | [v2-spec-elements.md](v2-spec-elements.md) | **元素/融合/取得**：融合搬到地板成環境反應；元素＝空間動詞；MVP 對稱固定 kit |
+| [v2-spec-D-arenas.md](v2-spec-D-arenas.md) | **規格 D（地圖 + loop）**：搶獎盃→Boss 甦醒→追逐；浮島四周墜落（render-only）；斷橋孤島落地 + 型錄 + 落地順序 |
 
 > 落地優先序：**A（好笑，先驗 3–4 人笑出聲）→ B（測 ownership）→ C（輸出分享）**。元素 spec 貫穿三者。單機版（下表）降為**零件捐贈庫**。
 
