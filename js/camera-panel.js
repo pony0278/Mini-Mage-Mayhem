@@ -1,7 +1,8 @@
 // camera-sandbox.html only: on-screen camera-tuning panel. Mutates CAM (live
 // binding → render reads it) and drives the main loop's pause via setPaused().
-import { CAM } from './state.js';
+import { CAM, game } from './state.js';
 import { setPaused } from './main.js';
+import { spawnWave } from './sim.js';
 
 (function camPanel() {
   const $ = (id) => document.getElementById(id);
@@ -36,6 +37,32 @@ import { setPaused } from './main.js';
     $('cp-copy').textContent = '已複製!'; setTimeout(() => { $('cp-copy').textContent = '複製設定'; }, 1200);
   };
   $('cp-reset').onclick = () => { Object.assign(CAM, DEFAULT); refresh(); };
+
+  // 取消怪物: keep the arena empty so monsters don't clutter / occlude the camera framing.
+  let noMob = false;
+  function setNoMob(on) {
+    noMob = on;
+    game.noMonsters = on;
+    if (on) { game.enemies.length = 0; game.enemyProjectiles.length = 0; game.bossWarnings.length = 0; }
+    else if (game.state === 'playing') spawnWave(); // bring foes back when turned off mid-run
+    $('cp-nomob').textContent = on ? '👹 怪物：關' : '👹 怪物：開';
+    $('cp-nomob').classList.toggle('on', on);
+  }
+  $('cp-nomob').onclick = () => setNoMob(!noMob);
+
+  // 參數帶入: paste a "CAM = { ... }" line (the copy output, or any key:value list) and apply it.
+  const KEYS = ['fov', 'angle', 'dist', 'azimuth', 'panX', 'panZ', 'lookY'];
+  $('cp-apply').onclick = () => {
+    const txt = $('cp-import').value;
+    let n = 0;
+    for (const k of KEYS) {
+      const m = txt.match(new RegExp(k + '\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)', 'i'));
+      if (m) { CAM[k] = +m[1]; n++; }
+    }
+    $('cp-apply').textContent = n ? `已套用 ${n} 項` : '沒讀到參數';
+    setTimeout(() => { $('cp-apply').textContent = '套用貼入的參數'; }, 1300);
+    refresh();
+  };
   let paused = false;
   function setPause(p) {
     paused = p;

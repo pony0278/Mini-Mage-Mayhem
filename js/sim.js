@@ -582,6 +582,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   }
 
   export function spawnWave() {
+    if (game.noMonsters) { game.enemies.length = 0; return; } // camera-sandbox: keep the arena empty for tuning
     game.wave += 1;
     game.waveClearTimer = 0;
     game.fireballs.length = 0;
@@ -1682,7 +1683,7 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
 
     game.enemies = game.enemies.filter(e => !e.dead);
 
-    if (game.enemies.length === 0 && game.wave > 0) {
+    if (game.enemies.length === 0 && game.wave > 0 && !game.noMonsters) {
       game.waveClearTimer += dt;
       if (game.waveClearTimer > 0.9) {
         sfx('waveclear'); // fires once — the state change below stops update() re-entering this block

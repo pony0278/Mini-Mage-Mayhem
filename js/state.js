@@ -57,7 +57,10 @@ export const game = {
   // Hitstop (頓幀): seconds the gameplay sim freezes on impact for "punch". Cosmetics keep animating.
   hitstop: 0,
   // Screen-shake small-event throttle: cooldown so frequent small shakes coalesce (see addShake).
-  shakeSmallCd: 0
+  shakeSmallCd: 0,
+  // camera-sandbox only: when true, spawnWave is a no-op and the wave-clear progression is skipped,
+  // so the arena stays empty for camera tuning. Never set in the shipped game.
+  noMonsters: false
 };
 
 // Shared input containers: DOM event handlers (input layer) write button/key
