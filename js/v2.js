@@ -574,7 +574,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: contain-1', W - 10, H - 4);
+  hctx.fillText('build: contain-2', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -625,7 +625,7 @@ if (TERRAIN === 'isles') {
   CAM.fov = 26; CAM.angle = 24; CAM.dist = 1150; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -10; CAM.lookY = 20;
 } else {                                            // 'flat' — plain walled platform, no falling (best for testing)
   buildFlatArena();
-  CAM.fov = 32; CAM.angle = 40; CAM.dist = 760; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = 0; CAM.lookY = 0;
+  CAM.fov = 36; CAM.angle = 32; CAM.dist = 620; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = 0; CAM.lookY = 20;
 }
 game.camTarget = fighters[0]; // follow the (local) controlled player; the rival comes into view as it nears
 game.enemies = fighters.slice();
