@@ -129,6 +129,21 @@ function readMove(pid) {
   return camRel(sx, sy);
 }
 
+// invisible bridge "rails": when a fighter is over a gap and near a bridge (and not being knocked hard),
+// ease it toward the plank centreline so crossing a diagonal bridge with axis-aligned input doesn't slide
+// off the side. Skipped during big knockback so intentional shove-offs near bridges still work.
+function bridgeAssist(f) {
+  for (const I of ISLANDS) if (Math.hypot(f.x - I.x, f.y - I.z) <= I.r) return; // on an island → no rails
+  if (Math.hypot(f.vx, f.vy) > 240) return;                                     // being flung → don't fight it
+  let bcx = 0, bcy = 0, bd = Infinity, half = 0;
+  for (const B of BRIDGES) {
+    const dx = B.bx - B.ax, dz = B.bz - B.az, L2 = dx * dx + dz * dz || 1;
+    let t = ((f.x - B.ax) * dx + (f.y - B.az) * dz) / L2; t = Math.max(0, Math.min(1, t));
+    const cx = B.ax + dx * t, cy = B.az + dz * t, d = Math.hypot(f.x - cx, f.y - cy);
+    if (d < bd) { bd = d; bcx = cx; bcy = cy; half = B.w * 0.5; }
+  }
+  if (bd < half + 34) { f.x += (bcx - f.x) * 0.3; f.y += (bcy - f.y) * 0.3; } // capture & ease to centreline
+}
 function moveFighter(f, dt) {
   const m = f.ai ? aiMove(f) : readMove(f.pid);
   if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);
@@ -138,6 +153,7 @@ function moveFighter(f, dt) {
   if (!circleHitsSolid(f.x + stepX, f.y, f.r)) f.x += stepX; else f.vx = 0;
   if (!circleHitsSolid(f.x, f.y + stepY, f.r)) f.y += stepY; else f.vy = 0;
   f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
+  if (FREEFORM) bridgeAssist(f);
   const k = Math.pow(FRICTION, dt); f.vx *= k; f.vy *= k;
   if (f.shoveCd > 0) f.shoveCd -= dt;
 }
@@ -384,6 +400,9 @@ function drawHud() {
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
   hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
+  // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
+  hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
+  hctx.fillText('build: isles-rails-1', W - 10, H - 4);
 }
 
 function frame(now) {
