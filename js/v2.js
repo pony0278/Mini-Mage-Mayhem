@@ -11,7 +11,7 @@
 // single-player update()/main.js loop. Both fighters live in game.enemies so the
 // existing voxel renderer + death-theater draw them for free; game.player is null
 // so render3D centres the camera on the arena.
-import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_VOID } from './constants.js';
+import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_VOID } from './constants.js';
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
@@ -30,21 +30,31 @@ const SHOVE_CD = 0.55;    // gust cooldown
 const RESPAWN = 1.3;      // delay before a fallen fighter pops back in
 const FRICTION = 0.25;    // per-second velocity multiplier for the knockback slide
 
-// --- arena: a floating island (no outer walls — the edges are cliffs; step/get knocked off → fall) ---
-const ISLE = { x0: 3, x1: 26, y0: 3, y1: 16 };   // floor footprint (inclusive tile range)
-const PIT = { x0: 13, x1: 16, y0: 8, y1: 11 };    // central chasm
-const SPAWN = [ { x: 6 * TILE, y: 10 * TILE }, { x: 23 * TILE, y: 10 * TILE } ];
+// --- arena: BROKEN ISLES — several grass-topped islands over open air, linked by narrow stone
+// bridges. The gaps between islands are the executioner: get knocked off an island/bridge → fall.
+// No central pit; the voids between islands do the work. (docs/v2-spec-D-arenas.md §3)
+const SPAWN = [ { x: 5 * TILE, y: 14 * TILE }, { x: 24 * TILE, y: 14 * TILE } ];
+function fillTiles(x0, y0, x1, y1, tile) {
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
+    if (x >= 0 && y >= 0 && x < COLS && y < ROWS) game.map[y][x] = tile;
+}
+function island(x0, y0, x1, y1) { // grass-topped island with its 4 corners trimmed for an organic silhouette
+  fillTiles(x0, y0, x1, y1, TILE_GRASS);
+  game.map[y0][x0] = TILE_VOID; game.map[y0][x1] = TILE_VOID;
+  game.map[y1][x0] = TILE_VOID; game.map[y1][x1] = TILE_VOID;
+}
 function buildArena() {
   game.map = [];
-  for (let y = 0; y < ROWS; y++) {
-    const row = [];
-    for (let x = 0; x < COLS; x++) {
-      const onIsle = x >= ISLE.x0 && x <= ISLE.x1 && y >= ISLE.y0 && y <= ISLE.y1;
-      const inPit = x >= PIT.x0 && x <= PIT.x1 && y >= PIT.y0 && y <= PIT.y1;
-      row.push(onIsle && !inPit ? TILE_FLOOR : TILE_VOID); // everything off-island is open air
-    }
-    game.map.push(row);
-  }
+  for (let y = 0; y < ROWS; y++) { const row = []; for (let x = 0; x < COLS; x++) row.push(TILE_VOID); game.map.push(row); }
+  // four islands
+  island(2, 11, 9, 17);    // near-left  (P1 spawn)
+  island(20, 11, 27, 17);  // near-right (P2 spawn)
+  island(12, 8, 17, 13);   // centre
+  island(10, 2, 19, 6);    // far (future trophy island)
+  // stone bridges (2 wide) spanning the gaps
+  fillTiles(10, 12, 11, 13, TILE_FLOOR); // left ↔ centre
+  fillTiles(18, 12, 19, 13, TILE_FLOOR); // centre ↔ right
+  fillTiles(13, 6, 14, 8, TILE_FLOOR);   // centre ↔ far
 }
 
 // --- fighters ---
