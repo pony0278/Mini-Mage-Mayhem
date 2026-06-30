@@ -124,6 +124,10 @@ let ctx = screenCtx;
   // being knocked off an edge reads as falling into the abyss. Scoped behind a flag — single-player
   // (index.html) keeps the full opaque ground plane + dark void pits. Toggled via setIslandMode().
   let islandMode = false;
+  // Camera follow vs fixed framing. Default true = follow the controlled player (single-player behaviour).
+  // false = lock onto the arena centre (the v2 fixed-diorama framing). Toggled from the camera sandbox.
+  let camFollow = true;
+  export function setCamFollow(on) { camFollow = on; }
   const islandGroup = new THREE.Group(); scene.add(islandGroup);
   // Warm, terraced cliff (stacked layers flaring outward downward) — evokes the layered-rock island
   // look instead of a flat grey wall. Three shades = sunlit rock → mid → shaded base.
@@ -768,8 +772,8 @@ let ctx = screenCtx;
     syncWalls();
     if (islandMode) syncIsland();
     syncProps();
-    const px = game.player ? game.player.x : W / 2;
-    const pz = game.player ? game.player.y : H / 2;
+    const px = (camFollow && game.player) ? game.player.x : W / 2;
+    const pz = (camFollow && game.player) ? game.player.y : H / 2;
     let shx = 0, shz = 0;
     if (game.screenShake > 0) { shx = rnd(-game.screenShake, game.screenShake); shz = rnd(-game.screenShake, game.screenShake); }
     const _pit = CAM.angle * Math.PI / 180, _az = CAM.azimuth * Math.PI / 180;

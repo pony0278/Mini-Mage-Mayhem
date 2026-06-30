@@ -3,6 +3,7 @@
 import { CAM, game } from './state.js';
 import { setPaused } from './main.js';
 import { spawnWave } from './sim.js';
+import { setCamFollow } from './render.js';
 
 (function camPanel() {
   const $ = (id) => document.getElementById(id);
@@ -49,6 +50,16 @@ import { spawnWave } from './sim.js';
     $('cp-nomob').classList.toggle('on', on);
   }
   $('cp-nomob').onclick = () => setNoMob(!noMob);
+
+  // 鏡頭跟隨 vs 固定:跟隨=追操控角色(單機預設);固定=鎖場地中心(v2 島取景)。
+  let follow = true;
+  function setFollow(on) {
+    follow = on;
+    setCamFollow(on);
+    $('cp-follow').textContent = on ? '🎯 跟隨：開' : '🎯 跟隨：關';
+    $('cp-follow').classList.toggle('on', !on); // highlight when in the non-default (fixed) mode
+  }
+  $('cp-follow').onclick = () => setFollow(!follow);
 
   // 參數帶入: paste a "CAM = { ... }" line (the copy output, or any key:value list) and apply it.
   const KEYS = ['fov', 'angle', 'dist', 'azimuth', 'panX', 'panZ', 'lookY'];

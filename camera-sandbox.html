@@ -56,7 +56,7 @@
     #cam-panel textarea{width:100%;box-sizing:border-box;margin-top:3px;background:rgba(0,0,0,.38);
       color:#bfead0;border:1px solid #5a4f6a;border-radius:6px;padding:5px 7px;resize:vertical;
       font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace}
-    #cp-pause.on,#cp-nomob.on{background:#6a4d2a;border-color:#ffd36d;color:#ffe6a7}
+    #cp-pause.on,#cp-nomob.on,#cp-follow.on{background:#6a4d2a;border-color:#ffd36d;color:#ffe6a7}
     #cp-show{position:absolute;top:14px;left:14px;z-index:30;pointer-events:auto;display:none}
   </style>
 </head>
@@ -78,6 +78,7 @@
   <label>取景偏移Z PanZ：<span id="v-panz"></span><input id="s-panz" type="range" min="-300" max="300" step="10"></label>
   <div class="cp-readout" id="cp-readout"></div>
   <div class="cp-row"><button id="cp-pause" style="flex:1">⏸ 暫停 (P)</button><button id="cp-nomob">👹 怪物：開</button></div>
+  <div class="cp-row"><button id="cp-follow" style="flex:1">🎯 跟隨：開</button></div>
   <div class="cp-row"><button id="cp-copy">複製設定</button><button id="cp-reset">重設</button></div>
   <label>參數帶入：<textarea id="cp-import" rows="2" placeholder="貼入：CAM = { fov:42, angle:30, dist:760, azimuth:0, panX:0, panZ:-90, lookY:0 }"></textarea></label>
   <div class="cp-row"><button id="cp-apply" style="flex:1">套用貼入的參數</button></div>
