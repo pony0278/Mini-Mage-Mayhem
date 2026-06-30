@@ -238,7 +238,15 @@ function aiMove(f) {
   // route across bridges toward the goal island (incl. the fleeing holder, so it actually crosses, not camps)
   let tx = gx, ty = gy;
   const fromI = islandIndexAt(f.x, f.y), toI = islandIndexAt(gx, gy);
-  if (fromI >= 0 && toI >= 0 && fromI !== toI) { const wp = nextWaypoint(fromI, toI); if (wp) { tx = wp.x; ty = wp.y; } }
+  if (fromI < 0) {
+    // ON A BRIDGE → commit to walking straight to the exit island (the end nearer the goal); stops the
+    // "head to goal → veer off bridge → correct → repeat" jitter that made the bot vibrate mid-bridge.
+    let nb = null, nbd = Infinity;
+    for (const B of BRIDGES) { const d = segDist(f.x, f.y, B.ax, B.az, B.bx, B.bz); if (d < nbd) { nbd = d; nb = B; } }
+    if (nb) { const ci = ISLANDS[nb.i], cj = ISLANDS[nb.j];
+      const exit = Math.hypot(ci.x - gx, ci.z - gy) <= Math.hypot(cj.x - gx, cj.z - gy) ? ci : cj;
+      tx = exit.x; ty = exit.z; }
+  } else if (toI >= 0 && fromI !== toI) { const wp = nextWaypoint(fromI, toI); if (wp) { tx = wp.x; ty = wp.y; } }
   let dx = tx - f.x, dy = ty - f.y;
   // when carrying and the boss is closing in, add an away-from-boss nudge (don't fully override the route)
   if (holding && boss.awake && Math.hypot(f.x - boss.x, f.y - boss.y) < 130) {
@@ -351,7 +359,15 @@ function step(dt) {
         }
         continue;
       }
+      const px0 = f.x, py0 = f.y;
       moveFighter(f, dt);
+      if (f.ai) { // stuck/vibrating detector for the bot
+        if (Math.hypot(f.x - px0, f.y - py0) < 0.5) f._stillT = (f._stillT || 0) + dt; else { f._stillT = 0; f._stuckLogged = false; }
+        if (f._stillT > 0.7 && !f._stuckLogged) {
+          f._stuckLogged = true;
+          dlog('AI STUCK @', Math.round(f.x) + ',' + Math.round(f.y), 'onBridge', islandIndexAt(f.x, f.y) < 0, 'facing', Math.round(f.facing * 57) + '°', 'holder', holderPid, 'goalIsHolder', holderPid >= 0);
+        }
+      }
     }
     // trophy: pick up when loose, ride + tick the hold meter when held
     if (holderPid < 0) {
@@ -440,7 +456,7 @@ function drawHud() {
   hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: isles-ai2', W - 10, H - 4);
+  hctx.fillText('build: isles-bridge3', W - 10, H - 4);
 }
 
 function frame(now) {
