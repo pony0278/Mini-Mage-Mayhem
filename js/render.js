@@ -247,8 +247,10 @@ let ctx = screenCtx;
     }
     bodyGeo.computeVertexNormals();
     const body = new THREE.Mesh(bodyGeo, freeRockMat); body.position.set(cx, 0, cz); freeGroup.add(body);
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(R * 1.02, R * 0.16, 13), freeGrassMat);
-    cap.position.set(cx, R * 0.07, cz); freeGroup.add(cap); // shallow dome, base ≈ y0 (fighters stand at y0)
+    // FLAT grass top at the walkable plane (y≈0) — a raised dome would bury fighters (who stand at y0)
+    // toward the island centre. Keep the surface flush so characters sit cleanly on top.
+    const cap = new THREE.Mesh(new THREE.CircleGeometry(R, 13), freeGrassMat);
+    cap.rotation.x = -Math.PI / 2; cap.position.set(cx, 1, cz); freeGroup.add(cap);
     addRockMesh(freeGroup, cx - R * 0.5, cz - R * 0.35, 7);
     addRockMesh(freeGroup, cx + R * 0.45, cz + R * 0.3, 6);
     addPlantMesh(freeGroup, cx - R * 0.3, cz + R * 0.45, 1);
@@ -536,6 +538,12 @@ let ctx = screenCtx;
       g.userData.orbs = orbs;
     }
     g.userData.tints = tints;
+    // free-form islands: a soft contact shadow grounds the fighter so it pops off the bright grass
+    // (the voxels otherwise read as "sunk into" the terrain). v2-only; single-player enemies unchanged.
+    if (freeIslands) {
+      const sh = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }));
+      sh.rotation.x = -Math.PI / 2; sh.position.y = 1.6; sh.scale.set(r * 1.15, r * 0.82, 1); g.add(sh);
+    }
     return g;
   }
   function updateActor(e, g) {
