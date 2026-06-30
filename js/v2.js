@@ -71,7 +71,8 @@ function rimBridge(a, b, w) { // a rope bridge spanning the gap between two isla
   return { ax: a.x + ux * a.r * 0.9, az: a.z + uz * a.r * 0.9, bx: b.x - ux * b.r * 0.9, bz: b.z - uz * b.r * 0.9, w };
 }
 const BRIDGE_DEFS = [[0, 2], [1, 2], [2, 3]]; // island index pairs (centre=2 is the hub)
-const BRIDGES = BRIDGE_DEFS.map(([i, j]) => ({ ...rimBridge(ISLANDS[i], ISLANDS[j], 30), i, j }));
+const BRIDGE_W = 52;                          // chunky bridges so they're comfortable to cross
+const BRIDGES = BRIDGE_DEFS.map(([i, j]) => ({ ...rimBridge(ISLANDS[i], ISLANDS[j], BRIDGE_W), i, j }));
 function segDist(px, pz, ax, az, bx, bz) {
   const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
   let t = ((px - ax) * dx + (pz - az) * dz) / L2; t = Math.max(0, Math.min(1, t));
@@ -79,7 +80,8 @@ function segDist(px, pz, ax, az, bx, bz) {
 }
 function onSolid(x, y) {
   for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r) return true;
-  for (const B of BRIDGES) if (segDist(x, y, B.ax, B.az, B.bx, B.bz) <= B.w * 0.5 + 2) return true;
+  // corridor half-width = plank half + a generous margin (≈ player radius) so you don't fall from a slight drift
+  for (const B of BRIDGES) if (segDist(x, y, B.ax, B.az, B.bx, B.bz) <= B.w * 0.5 + 12) return true;
   return false;
 }
 function buildFlatMap() { // dummy all-floor grid so grid-reading helpers (circleHitsSolid) don't choke
@@ -388,7 +390,7 @@ function frame(now) {
 }
 
 // --- boot ---
-window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, // debug / headless-test hook (CAM for live camera tuning)
+window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   state: () => ({ holderPid, holdMeter: [holdMeter[0], holdMeter[1]], winnerPid, awake: boss.awake, scores: [fighters[0].score, fighters[1].score] }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
