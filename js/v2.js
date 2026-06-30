@@ -32,6 +32,9 @@ const FRICTION = 0.25;    // per-second velocity multiplier for the knockback sl
 const LOCAL = 0;          // the human-controlled fighter (camera follows it)
 let localFlash = 0;       // red screen pulse when YOU get knocked (so a hit is never invisible)
 let fallReason = '', fallReasonT = 0; // on-screen "why did I fall" readout (diagnostic + feedback)
+const DEBUG = true;       // console event log (open DevTools) — copy lines to report issues
+const dlog = (...a) => { if (DEBUG) console.log('[v2]', ...a); };
+let prevLocalSolid = true; // track when YOU step off solid ground (the "boarding then falling" moment)
 
 // --- arena: BROKEN ISLES — several grass-topped islands over open air, linked by narrow stone
 // bridges. The gaps between islands are the executioner: get knocked off an island/bridge → fall.
@@ -177,7 +180,7 @@ function shove(f) {
     o.faceT = 0.35; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     hitSpark(o.x, o.y, '#dff3ff', 1.3);
     addText(o.x, o.y - 26, '推飛！', '#dff3ff'); addRing(o.x, o.y, 30, '#dff3ff', 0.3, 4); // clear "you got gusted" feedback
-    if (o.pid === LOCAL) localFlash = 0.28; // flash the screen when YOU are the one hit
+    if (o.pid === LOCAL) { localFlash = 0.28; dlog('SHOVED by', NAMES[f.pid], 'at', Math.round(o.x) + ',' + Math.round(o.y), '→ v', Math.round(o.vx) + ',' + Math.round(o.vy)); } // flash the screen when YOU are the one hit
   }
   addRing(f.x + Math.cos(a) * 26, f.y + Math.sin(a) * 26, 46, '#dff3ff', 0.22, 4);
   addShake(3);
@@ -304,7 +307,7 @@ function updateBoss(dt) {
   if (d <= BOSS_CONTACT + t.r) { // caught the holder → fling them off + drop the trophy
     t.vx += (dx / d) * BOSS_KNOCK; t.vy += (dy / d) * BOSS_KNOCK;
     t.faceT = 0.4; t.hurt = 0.15; t.lastHitBy = -2; t.lastHitT = game.time; // -2 = boss (≠ rival point)
-    if (t.pid === LOCAL) localFlash = 0.32;
+    if (t.pid === LOCAL) { localFlash = 0.32; dlog('BOSS HIT you at', Math.round(t.x) + ',' + Math.round(t.y)); }
     addShake(6); addHitstop(0.06); game.sfx.push('hit');
     addText(t.x, t.y - 30, 'Boss 命中！', '#ff7b72');
     dropTrophy(t.x, t.y);
@@ -334,6 +337,7 @@ function step(dt) {
               : recent && f.lastHitBy >= 0 ? `被${NAMES[f.lastHitBy]}推落！`
               : '走出邊緣墜落';
             fallReasonT = 3;
+            dlog('FELL:', fallReason, '@', Math.round(f.x) + ',' + Math.round(f.y), 'lastHitBy', f.lastHitBy, 'Δhit', (game.time - (f.lastHitT || -9)).toFixed(2) + 's');
           }
           if (f.pid === holderPid) dropTrophy(f.x, f.y); // holder fell → trophy drops where they died
           if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) {
@@ -351,6 +355,7 @@ function step(dt) {
         if (f.state !== 'alive' || f.falling) continue;
         if (Math.hypot(f.x - trophy.x, f.y - trophy.y) <= TROPHY_R + f.r) {
           holderPid = f.pid; trophy.held = true; boss.awake = true; boss.wakeT = BOSS_WAKE; boss.x = FAR.x; boss.y = FAR.z - 12;
+          dlog(NAMES[f.pid], 'GRABBED trophy → Boss wakes');
           addText(f.x, f.y - 30, NAMES[f.pid] + ' 搶到獎盃！', COLORS[f.pid]);
           addText(boss.x, boss.y - 36, 'Boss 甦醒！', '#9affd0'); addRing(boss.x, boss.y, 60, '#9affd0', 0.4, 4);
           game.sfx.push('upgrade'); addShake(4);
@@ -362,6 +367,13 @@ function step(dt) {
       if (h.state === 'alive') { trophy.x = h.x; trophy.y = h.y; holdMeter[holderPid] += dt; if (holdMeter[holderPid] >= HOLD_WIN) winRound(holderPid); }
     }
     updateBoss(dt);
+  }
+  // log the exact frame YOU step off solid ground (the "boarding then falling" moment)
+  const lf = fighters[LOCAL];
+  if (lf.state === 'alive' && !lf.falling) {
+    const s = onSolid(lf.x, lf.y);
+    if (prevLocalSolid && !s) dlog('OFF-EDGE @', Math.round(lf.x) + ',' + Math.round(lf.y), 'v', Math.round(lf.vx) + ',' + Math.round(lf.vy), 'Δhit', (game.time - (lf.lastHitT || -9)).toFixed(2) + 's');
+    prevLocalSolid = s;
   }
   // present live fighters + the boss (when awake) for the renderer
   game.enemies = fighters.filter(f => f.state !== 'down');
@@ -424,7 +436,7 @@ function drawHud() {
   hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: isles-diag-1', W - 10, H - 4);
+  hctx.fillText('build: isles-log-1', W - 10, H - 4);
 }
 
 function frame(now) {
