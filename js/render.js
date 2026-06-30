@@ -125,27 +125,73 @@ let ctx = screenCtx;
   // (index.html) keeps the full opaque ground plane + dark void pits. Toggled via setIslandMode().
   let islandMode = false;
   const islandGroup = new THREE.Group(); scene.add(islandGroup);
-  const cliffMat = new THREE.MeshLambertMaterial({ color: 0x3c3340 });
-  const SLAB_DEPTH = 76;
+  // Warm, terraced cliff (stacked layers flaring outward downward) — evokes the layered-rock island
+  // look instead of a flat grey wall. Three shades = sunlit rock → mid → shaded base.
+  const TAU2 = Math.PI * 2;
+  const cliffMats = [
+    new THREE.MeshLambertMaterial({ color: 0xb07a44 }),
+    new THREE.MeshLambertMaterial({ color: 0x8f5f34 }),
+    new THREE.MeshLambertMaterial({ color: 0x6d4827 }),
+  ];
+  const CLIFF_LAYERS = [{ top: 0, h: 24, grow: 1.0 }, { top: -24, h: 26, grow: 1.2 }, { top: -50, h: 34, grow: 1.44 }];
+  const rockMat = new THREE.MeshLambertMaterial({ color: 0x9a969c });
+  const archMat = new THREE.MeshLambertMaterial({ color: 0xa8a4ab });
+  const leafMat = new THREE.MeshLambertMaterial({ color: 0x4fae40 });
   let islandSig = '';
-  function syncIslandSlab() {
+  function addRockMesh(g, x, z, r) {
+    const m = new THREE.Mesh(octaGeo, rockMat); m.scale.set(r, r * 0.78, r);
+    m.position.set(x, r * 0.62, z); m.rotation.y = x * 0.13 + z * 0.07; g.add(m);
+  }
+  function addPlantMesh(g, x, z, s) { // a little fan of upright leaves
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * TAU2, leaf = new THREE.Mesh(boxGeo, leafMat);
+      leaf.scale.set(2.4 * s, 13 * s, 2.4 * s);
+      leaf.position.set(x + Math.cos(a) * 3.4 * s, 6 * s, z + Math.sin(a) * 3.4 * s);
+      leaf.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); g.add(leaf);
+    }
+  }
+  function addArchMesh(g, x, z, s) { // a ruined stone arch — the island landmark
+    const pL = new THREE.Mesh(boxGeo, archMat); pL.scale.set(8 * s, 46 * s, 8 * s); pL.position.set(x - 15 * s, 23 * s, z); g.add(pL);
+    const pR = new THREE.Mesh(boxGeo, archMat); pR.scale.set(8 * s, 46 * s, 8 * s); pR.position.set(x + 15 * s, 23 * s, z); g.add(pR);
+    const top = new THREE.Mesh(boxGeo, archMat); top.scale.set(46 * s, 9 * s, 9 * s); top.position.set(x, 48 * s, z); g.add(top);
+  }
+  function syncIsland() {
     let sig = '';
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (game.map[y][x] === TILE_VOID) sig += x + '.' + y + ';';
     if (sig === islandSig) return;
     islandSig = sig;
     islandGroup.clear();
-    // Only tiles bordering the abyss (or the map edge) need a visible cliff — interior undersides are hidden.
+    let minGrassY = ROWS, backXs = [];
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-      if (game.map[y][x] === TILE_VOID) continue; // no slab under open air
+      const t = game.map[y][x];
+      if (t === TILE_VOID) continue;
+      const cx = x * TILE + TILE / 2, cz = y * TILE + TILE / 2;
       const rim = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
         const nx = x + dx, ny = y + dy;
         return nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || game.map[ny][nx] === TILE_VOID;
       });
-      if (!rim) continue;
-      const body = new THREE.Mesh(boxGeo, cliffMat);
-      body.scale.set(TILE, SLAB_DEPTH, TILE);
-      body.position.set(x * TILE + TILE / 2, -SLAB_DEPTH / 2, y * TILE + TILE / 2);
-      islandGroup.add(body);
+      if (rim) { // terraced cliff under any tile bordering the abyss
+        for (let li = 0; li < CLIFF_LAYERS.length; li++) {
+          const L = CLIFF_LAYERS[li], s = TILE * L.grow;
+          const body = new THREE.Mesh(boxGeo, cliffMats[li]);
+          body.scale.set(s, L.h, s);
+          body.position.set(cx, L.top - L.h / 2, cz);
+          islandGroup.add(body);
+        }
+      }
+      if (t === TILE_GRASS) { // sparse, deterministic decor on interior grass
+        const hsh = (x * 73856093 ^ y * 19349663) >>> 0;
+        if (!rim) {
+          if (hsh % 17 === 0) addRockMesh(islandGroup, cx, cz, 7 + (hsh % 5));
+          else if (hsh % 13 === 0) addPlantMesh(islandGroup, cx, cz, 1);
+        }
+        if (y < minGrassY) { minGrassY = y; backXs = [cx]; }
+        else if (y === minGrassY) backXs.push(cx);
+      }
+    }
+    if (backXs.length) { // arch landmark on the back-most island
+      const ax = backXs.reduce((a, b) => a + b, 0) / backXs.length;
+      addArchMesh(islandGroup, ax, (minGrassY + 1) * TILE, 1);
     }
   }
   let seaMesh = null;
@@ -720,7 +766,7 @@ let ctx = screenCtx;
     if (!gl3dOk) return;
     drawGroundTexture();
     syncWalls();
-    if (islandMode) syncIslandSlab();
+    if (islandMode) syncIsland();
     syncProps();
     const px = game.player ? game.player.x : W / 2;
     const pz = game.player ? game.player.y : H / 2;
