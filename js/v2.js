@@ -11,7 +11,7 @@
 // single-player update()/main.js loop. Both fighters live in game.enemies so the
 // existing voxel renderer + death-theater draw them for free; game.player is null
 // so render3D centres the camera on the arena.
-import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_VOID } from './constants.js';
+import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } from './constants.js';
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
@@ -65,7 +65,8 @@ function buildArena() {
 
 // --- free-form round islands (EXPERIMENT, docs/v2-spec-D). Flip FREEFORM=false to revert to the grid
 // broken-isles above. Islands are discs in world px; collision/fall use disc + bridge-segment geometry. ---
-const FREEFORM = true;
+const TERRAIN = 'flat';                  // 'flat'(平台,好測收容) | 'isles'(浮島) | 'grid'(格子斷橋)
+const FREEFORM = TERRAIN === 'isles';    // island routing / bridge-rails / fall only apply in isles mode
 const ISLANDS = [
   { x: 200, z: 460, r: 120 }, // near-left  (P1 spawn ≈ here)
   { x: 760, z: 460, r: 120 }, // near-right (P2 spawn ≈ here)
@@ -85,6 +86,7 @@ function segDist(px, pz, ax, az, bx, bz) {
   return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
 }
 function onSolid(x, y) {
+  if (TERRAIN !== 'isles') return x > 0 && y > 0 && x < W && y < H; // flat/grid: whole arena is ground
   for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r) return true;
   // corridor half-width = plank half + a generous margin (≈ player radius) so you don't fall from a slight drift
   for (const B of BRIDGES) if (segDist(x, y, B.ax, B.az, B.bx, B.bz) <= B.w * 0.5 + 12) return true;
@@ -93,6 +95,14 @@ function onSolid(x, y) {
 function buildFlatMap() { // dummy all-floor grid so grid-reading helpers (circleHitsSolid) don't choke
   game.map = [];
   for (let y = 0; y < ROWS; y++) { const row = []; for (let x = 0; x < COLS; x++) row.push(TILE_FLOOR); game.map.push(row); }
+}
+function buildFlatArena() { // plain walled platform — no void/falling; easiest for testing the containment loop
+  game.map = [];
+  for (let y = 0; y < ROWS; y++) {
+    const row = [];
+    for (let x = 0; x < COLS; x++) row.push(x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1 ? TILE_WALL : TILE_FLOOR);
+    game.map.push(row);
+  }
 }
 
 // --- fighters ---
@@ -205,7 +215,10 @@ function nearestIslandCenter(x, y) {
   for (const I of ISLANDS) { const d = Math.hypot(x - I.x, y - I.z); if (d < bd) { bd = d; best = I; } }
   return best;
 }
-function wellOnIsland(x, y) { for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r - 26) return true; return false; }
+function wellOnIsland(x, y) {
+  if (TERRAIN !== 'isles') return x > 40 && y > 40 && x < W - 40 && y < H - 40; // flat: anywhere not hugging the wall
+  for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r - 26) return true; return false;
+}
 function aiSafeDir(f, dx, dy) { // pick a heading near (dx,dy) that won't step off the island
   const base = Math.atan2(dy, dx);
   for (const off of [0, 0.4, -0.4, 0.9, -0.9, 1.5, -1.5, 2.3, -2.3, Math.PI]) {
@@ -237,8 +250,8 @@ function aiMove(f) {
   else { gx = trophy.x; gy = trophy.y; }                                               // loose → go grab
   // route across bridges toward the goal island (incl. the fleeing holder, so it actually crosses, not camps)
   let tx = gx, ty = gy;
-  const fromI = islandIndexAt(f.x, f.y), toI = islandIndexAt(gx, gy);
-  if (fromI < 0) {
+  const fromI = FREEFORM ? islandIndexAt(f.x, f.y) : 0, toI = FREEFORM ? islandIndexAt(gx, gy) : 0;
+  if (FREEFORM && fromI < 0) {
     // ON A BRIDGE → commit to walking straight to the exit island (the end nearer the goal); stops the
     // "head to goal → veer off bridge → correct → repeat" jitter that made the bot vibrate mid-bridge.
     let nb = null, nbd = Infinity;
@@ -528,7 +541,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: incident-1', W - 10, H - 4);
+  hctx.fillText('build: flat-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -563,21 +576,21 @@ window.addEventListener('pointerdown', unlockAudio);
 game.state = 'v2';      // not 'playing' → render's capstone/HUD branches stay off
 game.player = null;     // camera centres on the arena, no player voxel
 game.stats = null;
-if (FREEFORM) {
-  buildFlatMap();                                   // no walls; falling is governed by onSolid below
+if (TERRAIN === 'isles') {
+  buildFlatMap();                                   // no walls; falling is governed by onSolid
   setIslandShapes(ISLANDS, BRIDGES);                // organic round islands + rope bridges (mesh)
   game.isVoidAt = (e) => !onSolid(e.x, e.y);        // off any island/bridge → fall
-} else {
+  CAM.fov = 22; CAM.angle = 22; CAM.dist = 860; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -60; CAM.lookY = 10;
+} else if (TERRAIN === 'grid') {
   buildArena();                                     // grid broken-isles
   setIslandMode(true);                              // tile-slab floating island
+  CAM.fov = 26; CAM.angle = 24; CAM.dist = 1150; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -10; CAM.lookY = 20;
+} else {                                            // 'flat' — plain walled platform, no falling (best for testing)
+  buildFlatArena();
+  CAM.fov = 32; CAM.angle = 40; CAM.dist = 760; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = 0; CAM.lookY = 0;
 }
 game.camTarget = fighters[0]; // follow the (local) controlled player; the rival comes into view as it nears
 game.enemies = fighters.slice();
-// Front-on "diorama" framing (hero-brawler look): low rake + face-on so the arena's depth
-// recedes away from camera and the near edge reads as foreground (NOT a steep top-down).
-// v2-only — index.html keeps its own follow-cam. Telephoto follow on one fighter (game.camTarget):
-// keeps the tight diorama look while always framing the controlled player; the rival enters view as it nears.
-CAM.fov = 22; CAM.angle = 22; CAM.dist = 860; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -60; CAM.lookY = 10;
 
 let last = performance.now();
 requestAnimationFrame(frame);
