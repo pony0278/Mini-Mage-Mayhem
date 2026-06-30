@@ -29,6 +29,7 @@ const SHOVE_CONE = 1.05;  // forward half-cone (rad) — you must roughly face t
 const SHOVE_CD = 0.55;    // gust cooldown
 const RESPAWN = 1.3;      // delay before a fallen fighter pops back in
 const FRICTION = 0.25;    // per-second velocity multiplier for the knockback slide
+const AI_SHOVE_CD = 1.6;  // 機制薄修:AI 出陣風間隔(↑=較不壓迫,你有更多空間削弱它/喘息)
 const LOCAL = 0;          // the human-controlled fighter (camera follows it)
 let localFlash = 0;       // red screen pulse when YOU get knocked (so a hit is never invisible)
 let fallReason = '', fallReasonT = 0; // on-screen "why did I fall" readout (diagnostic + feedback)
@@ -271,7 +272,7 @@ function aiMove(f) {
   const dir = aiSafeDir(f, dx / dl, dy / dl);
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
   // shove: weaken the rival, or (if they're weak) gust them toward the pod
-  if (f.shoveCd <= 0 && game.time - (f.aiLastShove || -9) > 0.9 && o.state === 'alive' && !o.falling && !lockedSelf) {
+  if (f.shoveCd <= 0 && game.time - (f.aiLastShove || -9) > AI_SHOVE_CD && o.state === 'alive' && !o.falling && !lockedSelf) {
     const od = Math.hypot(o.x - f.x, o.y - f.y);
     if (od <= SHOVE_RANGE) {
       f.aiLastShove = game.time;
@@ -574,7 +575,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: contain-2', W - 10, H - 4);
+  hctx.fillText('build: contain-3', W - 10, H - 4);
 }
 
 function frame(now) {
