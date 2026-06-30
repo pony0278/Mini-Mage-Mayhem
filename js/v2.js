@@ -70,7 +70,8 @@ function rimBridge(a, b, w) { // a rope bridge spanning the gap between two isla
   const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz) || 1, ux = dx / d, uz = dz / d;
   return { ax: a.x + ux * a.r * 0.9, az: a.z + uz * a.r * 0.9, bx: b.x - ux * b.r * 0.9, bz: b.z - uz * b.r * 0.9, w };
 }
-const BRIDGES = [ rimBridge(ISLANDS[0], ISLANDS[2], 30), rimBridge(ISLANDS[1], ISLANDS[2], 30), rimBridge(ISLANDS[2], ISLANDS[3], 30) ];
+const BRIDGE_DEFS = [[0, 2], [1, 2], [2, 3]]; // island index pairs (centre=2 is the hub)
+const BRIDGES = BRIDGE_DEFS.map(([i, j]) => ({ ...rimBridge(ISLANDS[i], ISLANDS[j], 30), i, j }));
 function segDist(px, pz, ax, az, bx, bz) {
   const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
   let t = ((px - ax) * dx + (pz - az) * dz) / L2; t = Math.max(0, Math.min(1, t));
@@ -90,7 +91,7 @@ function buildFlatMap() { // dummy all-floor grid so grid-reading helpers (circl
 const COLORS = ['#5e8bff', '#ff6b6b'];
 const NAMES = ['藍法師', '紅法師'];
 function makeFighter(pid) {
-  const f = { pid, type: 'imp', r: 15, color: COLORS[pid], score: 0, state: 'alive' };
+  const f = { pid, type: 'imp', r: 15, color: COLORS[pid], score: 0, state: 'alive', ai: false };
   resetFighter(f);
   return f;
 }
@@ -104,6 +105,7 @@ function resetFighter(f) {
   f.state = 'alive';
 }
 const fighters = [makeFighter(0), makeFighter(1)];
+fighters[1].ai = true; // solo testing: red is a bot (flip to false for hot-seat 2-player)
 
 // camera-relative basis (mirrors main.js buildInput) so screen-up = forward at any azimuth
 function camRel(sx, sy) {
@@ -126,7 +128,7 @@ function readMove(pid) {
 }
 
 function moveFighter(f, dt) {
-  const m = readMove(f.pid);
+  const m = f.ai ? aiMove(f) : readMove(f.pid);
   if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);
   // walk intent + lingering knockback velocity, integrated with axis-separated wall collision
   const stepX = (m.x * SPEED + f.vx) * dt;
@@ -159,14 +161,68 @@ function shove(f) {
   game.sfx.push('dash');
 }
 
-// edge-triggered shove (so a held key doesn't auto-fire every frame)
+// edge-triggered shove (so a held key doesn't auto-fire every frame); AI fighters shove via aiMove, not keys
 const shovePrev = [false, false];
 function pollShove() {
   const pressed = [keys.has('f'), keys.has('/')];
   for (let i = 0; i < 2; i++) {
+    if (fighters[i].ai) continue;
     if (pressed[i] && !shovePrev[i]) shove(fighters[i]);
     shovePrev[i] = pressed[i];
   }
+}
+
+// --- simple test AI (so you can play solo): seek the trophy / chase the holder / flee the boss when
+// carrying, shove rivals in range, and steer to avoid walking off island edges. ---
+function nearestIslandCenter(x, y) {
+  let best = ISLANDS[0], bd = Infinity;
+  for (const I of ISLANDS) { const d = Math.hypot(x - I.x, y - I.z); if (d < bd) { bd = d; best = I; } }
+  return best;
+}
+function aiSafeDir(f, dx, dy) { // pick a heading near (dx,dy) that won't step off the island
+  const base = Math.atan2(dy, dx);
+  for (const off of [0, 0.4, -0.4, 0.9, -0.9, 1.5, -1.5, 2.3, -2.3, Math.PI]) {
+    const a = base + off, c = Math.cos(a), s = Math.sin(a);
+    // require solid ground at both a near and a far probe so it won't clip a gap beside a bridge
+    if (onSolid(f.x + c * 20, f.y + s * 20) && onSolid(f.x + c * 42, f.y + s * 42)) return { x: c, y: s };
+  }
+  return { x: 0, y: 0 }; // boxed in → hold still
+}
+function islandIndexAt(x, y) { for (let i = 0; i < ISLANDS.length; i++) { const I = ISLANDS[i]; if (Math.hypot(x - I.x, y - I.z) <= I.r) return i; } return -1; }
+function bridgeBetween(a, b) { return BRIDGES.find(B => (B.i === a && B.j === b) || (B.i === b && B.j === a)); }
+function bridgeFarEnd(B, fromI) { return fromI === B.i ? { x: B.bx, y: B.bz } : { x: B.ax, y: B.az }; }
+function nextWaypoint(fromI, toI) { // bridge crossing toward the goal island (star graph: hub = centre/2)
+  const direct = bridgeBetween(fromI, toI);
+  if (direct) return bridgeFarEnd(direct, fromI);
+  const viaHub = bridgeBetween(fromI, 2);          // not adjacent → first hop to the centre hub
+  if (viaHub) return bridgeFarEnd(viaHub, fromI);
+  return null;
+}
+function aiMove(f) {
+  let gx, gy, fleeBoss = false;
+  if (holderPid === f.pid) { const c = nearestIslandCenter(f.x, f.y); gx = c.x; gy = c.z; fleeBoss = boss.awake; }
+  else if (holderPid >= 0) { gx = fighters[holderPid].x; gy = fighters[holderPid].y; } // human holds → chase to steal
+  else { gx = trophy.x; gy = trophy.y; }                                               // loose → go grab
+  // route across bridges when the goal is on another island (not while fleeing — then just hug centre)
+  let tx = gx, ty = gy;
+  if (!fleeBoss) {
+    const fromI = islandIndexAt(f.x, f.y), toI = islandIndexAt(gx, gy);
+    if (fromI >= 0 && toI >= 0 && fromI !== toI) { const wp = nextWaypoint(fromI, toI); if (wp) { tx = wp.x; ty = wp.y; } }
+  }
+  let dx = tx - f.x, dy = ty - f.y;
+  if (fleeBoss) { const bx = f.x - boss.x, by = f.y - boss.y, bl = Math.hypot(bx, by) || 1; dx += bx / bl * 200; dy += by / bl * 200; }
+  const dl = Math.hypot(dx, dy) || 1;
+  const dir = aiSafeDir(f, dx / dl, dy / dl);
+  if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
+  if (f.shoveCd <= 0) { // shove a rival if one is in reach + cone (aim the gust at them)
+    for (const o of fighters) {
+      if (o === f || o.state !== 'alive' || o.falling) continue;
+      const ox = o.x - f.x, oy = o.y - f.y, od = Math.hypot(ox, oy);
+      if (od > SHOVE_RANGE) continue;
+      f.facing = Math.atan2(oy, ox); shove(f); break;
+    }
+  }
+  return dir;
 }
 
 // ===== 玩法 loop:搶獎盃 → Boss 甦醒追持有者 → 撐滿持有時間者勝 (docs/v2-spec-D §2/§5) =====
@@ -175,9 +231,10 @@ const HOLD_WIN = 12;      // cumulative seconds holding the trophy → win the r
 const BOSS_SPEED = 132;   // boss chase speed (px/s)
 const BOSS_CONTACT = 34;  // boss strike radius
 const BOSS_KNOCK = 640;   // boss contact knockback — can fling the holder clean off an island
+const BOSS_WAKE = 1.3;    // grace after pickup before the boss starts chasing (it sleeps on the trophy)
 const FAR = ISLANDS ? ISLANDS[3] : { x: 480, z: 150 }; // trophy/boss island (free-form coords; ≈far grid island)
 const trophy = { x: FAR.x, y: FAR.z, held: false };
-const boss = { type: 'boss', x: FAR.x, y: FAR.z - 12, r: 22, color: '#66e0a6', awake: false, facing: 0, hurt: 0, slowTimer: 0 };
+const boss = { type: 'boss', x: FAR.x, y: FAR.z - 12, r: 22, color: '#66e0a6', awake: false, wakeT: 0, facing: 0, hurt: 0, slowTimer: 0 };
 let holderPid = -1;
 const holdMeter = [0, 0];
 let winnerPid = -1, winBannerT = 0;
@@ -186,7 +243,7 @@ const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // fr
 function resetRound() {
   holderPid = -1; holdMeter[0] = 0; holdMeter[1] = 0;
   trophy.held = false; trophy.x = FAR.x; trophy.y = FAR.z;
-  boss.awake = false; boss.x = FAR.x; boss.y = FAR.z - 12;
+  boss.awake = false; boss.wakeT = 0; boss.x = FAR.x; boss.y = FAR.z - 12;
   for (const f of fighters) resetFighter(f);
 }
 function dropTrophy(x, y) {
@@ -203,6 +260,11 @@ function winRound(pid) {
 function updateBoss(dt) {
   if (!boss.awake) return;
   boss.hurt = Math.max(0, boss.hurt - dt);
+  if (boss.wakeT > 0) { // rising telegraph: hold position so the holder gets a head start
+    boss.wakeT -= dt;
+    if ((boss.wakeT * 8 | 0) % 2 === 0) addRing(boss.x, boss.y, 30, '#9affd0', 0.2, 3);
+    return;
+  }
   const t = holderPid >= 0 ? fighters[holderPid] : null;
   if (!t || t.state !== 'alive' || t.falling) return;
   const dx = t.x - boss.x, dy = t.y - boss.y, d = Math.hypot(dx, dy) || 1;
@@ -247,8 +309,10 @@ function step(dt) {
       for (const f of fighters) {
         if (f.state !== 'alive' || f.falling) continue;
         if (Math.hypot(f.x - trophy.x, f.y - trophy.y) <= TROPHY_R + f.r) {
-          holderPid = f.pid; trophy.held = true; boss.awake = true; boss.x = FAR.x; boss.y = FAR.z - 12;
-          addText(f.x, f.y - 30, NAMES[f.pid] + ' 搶到獎盃！', COLORS[f.pid]); game.sfx.push('upgrade'); addShake(4);
+          holderPid = f.pid; trophy.held = true; boss.awake = true; boss.wakeT = BOSS_WAKE; boss.x = FAR.x; boss.y = FAR.z - 12;
+          addText(f.x, f.y - 30, NAMES[f.pid] + ' 搶到獎盃！', COLORS[f.pid]);
+          addText(boss.x, boss.y - 36, 'Boss 甦醒！', '#9affd0'); addRing(boss.x, boss.y, 60, '#9affd0', 0.4, 4);
+          game.sfx.push('upgrade'); addShake(4);
           break;
         }
       }
@@ -308,7 +372,7 @@ function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍：WASD · F 陣風　　紅：方向鍵 · / 陣風', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
 }
 
 function frame(now) {
