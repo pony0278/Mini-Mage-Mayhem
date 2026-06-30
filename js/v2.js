@@ -219,7 +219,7 @@ game.enemies = fighters.slice();
 // recedes away from camera and the near edge reads as foreground (NOT a steep top-down).
 // v2-only — index.html keeps its follow-cam. The floating-island slab + sky/sea backdrop (setIslandMode)
 // fills what used to be the empty band above the far edge.
-CAM.fov = 35; CAM.angle = 25; CAM.dist = 950; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -100; CAM.lookY = 30;
+CAM.fov = 22; CAM.angle = 21; CAM.dist = 950; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -100; CAM.lookY = 30;
 
 let last = performance.now();
 requestAnimationFrame(frame);
