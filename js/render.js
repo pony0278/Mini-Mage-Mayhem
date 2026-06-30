@@ -220,6 +220,67 @@ let ctx = screenCtx;
     drawGroundTexture();
   }
 
+  // === Free-form round islands (v2 experiment, docs/v2-spec-D) — organic floating islands as real
+  // meshes (lathe rock body + grass cap + rope bridges), instead of the tile-grid slab. Driven by an
+  // explicit shape list from v2; gameplay collision (overVoid) uses matching disc/segment geometry there. ===
+  let freeIslands = null;
+  const freeGroup = new THREE.Group(); scene.add(freeGroup);
+  const freeRockMat = new THREE.MeshLambertMaterial({ color: 0x8a6a44, flatShading: true });
+  const freeGrassMat = new THREE.MeshLambertMaterial({ color: 0x6fbb3c, flatShading: true });
+  const freeWoodMat = new THREE.MeshLambertMaterial({ color: 0x9c6f3e });
+  const freeRopeMat = new THREE.MeshLambertMaterial({ color: 0xcaa35e });
+  const freePostMat = new THREE.MeshLambertMaterial({ color: 0x7a5630 });
+  function buildFreeIsland(I) {
+    const R = I.r, depth = I.depth || I.r * 1.45, cx = I.x, cz = I.z;
+    const pts = [
+      new THREE.Vector2(0.02, -depth),
+      new THREE.Vector2(R * 0.42, -depth * 0.66),
+      new THREE.Vector2(R * 0.82, -depth * 0.34),
+      new THREE.Vector2(R * 0.99, -depth * 0.12),
+      new THREE.Vector2(R, 0),
+    ];
+    const bodyGeo = new THREE.LatheGeometry(pts, 13);
+    const pos = bodyGeo.attributes.position; // mild radial wobble → organic, not a clean cone
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), z = pos.getZ(i), rr = Math.hypot(x, z);
+      if (rr > 0.5) { const f = 1 + Math.sin(x * 0.7 + z * 1.1) * 0.05; pos.setX(i, x * f); pos.setZ(i, z * f); }
+    }
+    bodyGeo.computeVertexNormals();
+    const body = new THREE.Mesh(bodyGeo, freeRockMat); body.position.set(cx, 0, cz); freeGroup.add(body);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(R * 1.02, R * 0.16, 13), freeGrassMat);
+    cap.position.set(cx, R * 0.07, cz); freeGroup.add(cap); // shallow dome, base ≈ y0 (fighters stand at y0)
+    addRockMesh(freeGroup, cx - R * 0.5, cz - R * 0.35, 7);
+    addRockMesh(freeGroup, cx + R * 0.45, cz + R * 0.3, 6);
+    addPlantMesh(freeGroup, cx - R * 0.3, cz + R * 0.45, 1);
+    addPlantMesh(freeGroup, cx + R * 0.35, cz - R * 0.4, 1);
+  }
+  function buildRopeBridge(B) {
+    const ax = B.ax, az = B.az, bx = B.bx, bz = B.bz, w = B.w || 26;
+    const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz) || 1, nx = -dz / len, nz = dx / len;
+    const sag = Math.min(40, len * 0.12), seg = Math.max(8, Math.round(len / 14));
+    const P = (t, side, lift) => new THREE.Vector3(ax + dx * t + nx * side * w * 0.5, -Math.sin(t * Math.PI) * sag + (lift || 0), az + dz * t + nz * side * w * 0.5);
+    for (let i = 0; i < seg; i++) { // planks
+      const c = P((i + 0.5) / seg, 0, 0), plank = new THREE.Mesh(boxGeo, freeWoodMat);
+      plank.scale.set(w, 3, len / seg * 0.82); plank.position.copy(c); plank.rotation.y = Math.atan2(dx, dz); freeGroup.add(plank);
+    }
+    for (const side of [1, -1]) for (let i = 0; i < seg; i++) { // rope rails
+      const a = P(i / seg, side, 18), b = P((i + 1) / seg, side, 18), mid = a.clone().add(b).multiplyScalar(0.5);
+      const rope = new THREE.Mesh(boxGeo, freeRopeMat); rope.scale.set(2.5, 2.5, a.distanceTo(b)); rope.position.copy(mid); rope.lookAt(b); freeGroup.add(rope);
+    }
+    for (const t of [0, 1]) for (const side of [1, -1]) { // end posts
+      const p = P(t, side, 0), post = new THREE.Mesh(boxGeo, freePostMat); post.scale.set(4, 22, 4); post.position.set(p.x, 11, p.z); freeGroup.add(post);
+    }
+  }
+  export function setIslandShapes(islands, bridges) {
+    freeIslands = islands;
+    freeGroup.clear();
+    groundMesh.visible = false; islandGroup.visible = false; decorGroup.visible = false;
+    ensureSea(); seaMesh.visible = true;
+    scene.background = new THREE.Color(0x86cdf2); scene.fog = new THREE.Fog(0x86cdf2, 1100, 3200);
+    for (const I of islands) buildFreeIsland(I);
+    for (const B of (bridges || [])) buildRopeBridge(B);
+  }
+
   function tileNoise(x, y) { return ((x * 1103515245 + y * 12345 + 97) >>> 0) % 1000 / 1000; }
 
   function drawGroundTexture() {
@@ -768,9 +829,7 @@ let ctx = screenCtx;
 
   export function render3D() {
     if (!gl3dOk) return;
-    drawGroundTexture();
-    syncWalls();
-    if (islandMode) syncIsland();
+    if (!freeIslands) { drawGroundTexture(); syncWalls(); if (islandMode) syncIsland(); }
     syncProps();
     // Camera target: an explicit game.camTarget (v2 follows one fighter) wins; else the player when
     // following; else the arena centre (fixed framing). camTarget overrides the sandbox follow toggle.

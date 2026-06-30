@@ -15,7 +15,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_VOID } from './con
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -55,6 +55,35 @@ function buildArena() {
   fillTiles(10, 12, 11, 13, TILE_FLOOR); // left ↔ centre
   fillTiles(18, 12, 19, 13, TILE_FLOOR); // centre ↔ right
   fillTiles(13, 6, 14, 8, TILE_FLOOR);   // centre ↔ far
+}
+
+// --- free-form round islands (EXPERIMENT, docs/v2-spec-D). Flip FREEFORM=false to revert to the grid
+// broken-isles above. Islands are discs in world px; collision/fall use disc + bridge-segment geometry. ---
+const FREEFORM = true;
+const ISLANDS = [
+  { x: 200, z: 460, r: 120 }, // near-left  (P1 spawn ≈ here)
+  { x: 760, z: 460, r: 120 }, // near-right (P2 spawn ≈ here)
+  { x: 480, z: 350, r: 110 }, // centre
+  { x: 480, z: 150, r: 130 }, // far (future trophy)
+];
+function rimBridge(a, b, w) { // a rope bridge spanning the gap between two islands' rims
+  const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz) || 1, ux = dx / d, uz = dz / d;
+  return { ax: a.x + ux * a.r * 0.9, az: a.z + uz * a.r * 0.9, bx: b.x - ux * b.r * 0.9, bz: b.z - uz * b.r * 0.9, w };
+}
+const BRIDGES = [ rimBridge(ISLANDS[0], ISLANDS[2], 30), rimBridge(ISLANDS[1], ISLANDS[2], 30), rimBridge(ISLANDS[2], ISLANDS[3], 30) ];
+function segDist(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+  let t = ((px - ax) * dx + (pz - az) * dz) / L2; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+function onSolid(x, y) {
+  for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r) return true;
+  for (const B of BRIDGES) if (segDist(x, y, B.ax, B.az, B.bx, B.bz) <= B.w * 0.5 + 2) return true;
+  return false;
+}
+function buildFlatMap() { // dummy all-floor grid so grid-reading helpers (circleHitsSolid) don't choke
+  game.map = [];
+  for (let y = 0; y < ROWS; y++) { const row = []; for (let x = 0; x < COLS; x++) row.push(TILE_FLOOR); game.map.push(row); }
 }
 
 // --- fighters ---
@@ -212,8 +241,14 @@ window.addEventListener('pointerdown', unlockAudio);
 game.state = 'v2';      // not 'playing' → render's capstone/HUD branches stay off
 game.player = null;     // camera centres on the arena, no player voxel
 game.stats = null;
-buildArena();
-setIslandMode(true); // float the arena above open air: VOID = transparent gap, edges = cliffs, fall = drop into sky/sea
+if (FREEFORM) {
+  buildFlatMap();                                   // no walls; falling is governed by onSolid below
+  setIslandShapes(ISLANDS, BRIDGES);                // organic round islands + rope bridges (mesh)
+  game.isVoidAt = (e) => !onSolid(e.x, e.y);        // off any island/bridge → fall
+} else {
+  buildArena();                                     // grid broken-isles
+  setIslandMode(true);                              // tile-slab floating island
+}
 game.camTarget = fighters[0]; // follow the (local) controlled player; the rival comes into view as it nears
 game.enemies = fighters.slice();
 // Front-on "diorama" framing (hero-brawler look): low rake + face-on so the arena's depth

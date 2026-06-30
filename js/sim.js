@@ -2918,7 +2918,9 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
   const VOID_FALL_TIME = 0.6;     // 墜落:縮小 + 旋轉 + 下沉
   const VOID_FALL_GRACE = 0.07;   // 懸空多久才確定墜落 (防邊緣抖動)
   const VOID_FACE_TIME = 0.35;    // 凸眼臉持續
-  export function overVoid(e) { return tileAtPixel(e.x, e.y) === TILE_VOID; }
+  // Over-the-abyss test. A client can plug in a custom shape test via game.isVoidAt (v2 free-form
+  // round islands use disc/bridge geometry); default falls back to the tile grid (single-player).
+  export function overVoid(e) { return game.isVoidAt ? game.isVoidAt(e) : (tileAtPixel(e.x, e.y) === TILE_VOID); }
   // 每幀對每個實體跑。回傳 true 表示在死亡劇場中(呼叫端跳過 AI)。
   export function updateDeathTheater(e, dt) {
     if (e.faceT > 0) e.faceT -= dt;

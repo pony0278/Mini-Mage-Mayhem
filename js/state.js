@@ -63,7 +63,9 @@ export const game = {
   noMonsters: false,
   // Optional explicit camera-follow target {x,y} (v2 follows one fighter). null → render falls back to
   // the player (when following) or the arena centre (fixed). Overrides the sandbox follow toggle.
-  camTarget: null
+  camTarget: null,
+  // Optional custom over-the-abyss test fn(e)->bool (v2 free-form islands). null → tile-grid default.
+  isVoidAt: null
 };
 
 // Shared input containers: DOM event handlers (input layer) write button/key
