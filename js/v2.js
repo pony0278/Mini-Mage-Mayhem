@@ -29,6 +29,9 @@ const SHOVE_CONE = 1.05;  // forward half-cone (rad) — you must roughly face t
 const SHOVE_CD = 0.55;    // gust cooldown
 const RESPAWN = 1.3;      // delay before a fallen fighter pops back in
 const FRICTION = 0.25;    // per-second velocity multiplier for the knockback slide
+const LOCAL = 0;          // the human-controlled fighter (camera follows it)
+let localFlash = 0;       // red screen pulse when YOU get knocked (so a hit is never invisible)
+let fallReason = '', fallReasonT = 0; // on-screen "why did I fall" readout (diagnostic + feedback)
 
 // --- arena: BROKEN ISLES — several grass-topped islands over open air, linked by narrow stone
 // bridges. The gaps between islands are the executioner: get knocked off an island/bridge → fall.
@@ -103,7 +106,7 @@ function resetFighter(f) {
   f.vx = 0; f.vy = 0;
   f.facing = f.pid === 0 ? 0 : Math.PI; // face toward the pit/centre
   f.faceT = 0; f.falling = false; f.fallT = 0; f.spin = 0; f.voidT = 0;
-  f.hurt = 0; f.slowTimer = 0; f.shoveCd = 0; f.lastHitBy = -1;
+  f.hurt = 0; f.slowTimer = 0; f.shoveCd = 0; f.lastHitBy = -1; f.lastHitT = -9; f.aiLastShove = -9;
   f.state = 'alive';
 }
 const fighters = [makeFighter(0), makeFighter(1)];
@@ -142,7 +145,7 @@ function bridgeAssist(f) {
     const cx = B.ax + dx * t, cy = B.az + dz * t, d = Math.hypot(f.x - cx, f.y - cy);
     if (d < bd) { bd = d; bcx = cx; bcy = cy; half = B.w * 0.5; }
   }
-  if (bd < half + 34) { f.x += (bcx - f.x) * 0.3; f.y += (bcy - f.y) * 0.3; } // capture & ease to centreline
+  if (bd < half + 34) { const ax = (bcx - f.x) * 0.3, ay = (bcy - f.y) * 0.3; f.x += ax; f.y += ay; f.assist = Math.hypot(ax, ay); } // capture & ease to centreline
 }
 function moveFighter(f, dt) {
   const m = f.ai ? aiMove(f) : readMove(f.pid);
@@ -171,9 +174,10 @@ function shove(f) {
     while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > SHOVE_CONE) continue;
     o.vx += Math.cos(a) * SHOVE_FORCE; o.vy += Math.sin(a) * SHOVE_FORCE;
-    o.faceT = 0.35; o.hurt = 0.12; o.lastHitBy = f.pid;
+    o.faceT = 0.35; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     hitSpark(o.x, o.y, '#dff3ff', 1.3);
     addText(o.x, o.y - 26, '推飛！', '#dff3ff'); addRing(o.x, o.y, 30, '#dff3ff', 0.3, 4); // clear "you got gusted" feedback
+    if (o.pid === LOCAL) localFlash = 0.28; // flash the screen when YOU are the one hit
   }
   addRing(f.x + Math.cos(a) * 26, f.y + Math.sin(a) * 26, 46, '#dff3ff', 0.22, 4);
   addShake(3);
@@ -240,13 +244,13 @@ function aiMove(f) {
   const dl = Math.hypot(dx, dy) || 1;
   const dir = aiSafeDir(f, dx / dl, dy / dl);
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
-  if (f.shoveCd <= 0) { // shove a rival if one is in reach + cone (aim the gust at them)
+  if (f.shoveCd <= 0 && game.time - (f.aiLastShove || -9) > 1.6) { // throttle bot shoves so testing isn't constant knock-offs
     for (const o of fighters) {
       if (o === f || o.state !== 'alive' || o.falling) continue;
       const ox = o.x - f.x, oy = o.y - f.y, od = Math.hypot(ox, oy);
       if (od > SHOVE_RANGE) continue;
       if (!wellOnIsland(o.x, o.y)) continue; // don't gust a rival who's still crossing/boarding (anti-cheese)
-      f.facing = Math.atan2(oy, ox); shove(f); break;
+      f.aiLastShove = game.time; f.facing = Math.atan2(oy, ox); shove(f); break;
     }
   }
   return dir;
@@ -299,7 +303,8 @@ function updateBoss(dt) {
   boss.x += (dx / d) * BOSS_SPEED * dt; boss.y += (dy / d) * BOSS_SPEED * dt;
   if (d <= BOSS_CONTACT + t.r) { // caught the holder → fling them off + drop the trophy
     t.vx += (dx / d) * BOSS_KNOCK; t.vy += (dy / d) * BOSS_KNOCK;
-    t.faceT = 0.4; t.hurt = 0.15; t.lastHitBy = -1; // boss kill ≠ rival point
+    t.faceT = 0.4; t.hurt = 0.15; t.lastHitBy = -2; t.lastHitT = game.time; // -2 = boss (≠ rival point)
+    if (t.pid === LOCAL) localFlash = 0.32;
     addShake(6); addHitstop(0.06); game.sfx.push('hit');
     addText(t.x, t.y - 30, 'Boss 命中！', '#ff7b72');
     dropTrophy(t.x, t.y);
@@ -311,6 +316,8 @@ function step(dt) {
   game.screenShake = Math.max(0, game.screenShake - dt * 28);
   if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt;
   if (winBannerT > 0) winBannerT -= dt;
+  if (localFlash > 0) localFlash -= dt;
+  if (fallReasonT > 0) fallReasonT -= dt;
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   if (game.hitstop > 0) { game.hitstop -= dt; }
   else {
@@ -321,6 +328,13 @@ function step(dt) {
       if (updateDeathTheater(f, dt)) {
         if (f.dead) {
           f.state = 'down'; f.respawn = RESPAWN; f.dead = false;
+          if (f.pid === LOCAL) { // diagnose & surface WHY you fell
+            const recent = game.time - (f.lastHitT || -9) < 2.0; // knockback can slide you off ~1-2s after the hit
+            fallReason = recent && f.lastHitBy === -2 ? 'Boss 撞落！'
+              : recent && f.lastHitBy >= 0 ? `被${NAMES[f.lastHitBy]}推落！`
+              : '走出邊緣墜落';
+            fallReasonT = 3;
+          }
           if (f.pid === holderPid) dropTrophy(f.x, f.y); // holder fell → trophy drops where they died
           if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) {
             fighters[f.lastHitBy].score++;
@@ -370,7 +384,15 @@ function drawTrophyMarker() {
 }
 function drawHud() {
   hctx.clearRect(0, 0, W, H);
+  // red edge pulse when YOU get knocked — so a hit is never invisible
+  if (localFlash > 0) {
+    const g = hctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75);
+    g.addColorStop(0, 'rgba(255,60,60,0)'); g.addColorStop(1, `rgba(255,40,40,${Math.min(0.5, localFlash * 1.6)})`);
+    hctx.fillStyle = g; hctx.fillRect(0, 0, W, H);
+  }
   hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
+  // why you fell (diagnostic + feedback)
+  if (fallReasonT > 0) { hctx.font = '900 30px system-ui, sans-serif'; hctx.fillStyle = '#ff9a9a'; hctx.fillText(fallReason, W / 2, H / 2 - 40); }
   // title
   hctx.font = '900 20px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
@@ -402,7 +424,7 @@ function drawHud() {
   hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: isles-rails-1', W - 10, H - 4);
+  hctx.fillText('build: isles-diag-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -419,7 +441,7 @@ function frame(now) {
 
 // --- boot ---
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
-  state: () => ({ holderPid, holdMeter: [holdMeter[0], holdMeter[1]], winnerPid, awake: boss.awake, scores: [fighters[0].score, fighters[1].score] }) };
+  state: () => ({ holderPid, holdMeter: [holdMeter[0], holdMeter[1]], winnerPid, awake: boss.awake, scores: [fighters[0].score, fighters[1].score], fallReason, fallReasonT: +fallReasonT.toFixed(2), localFlash: +localFlash.toFixed(2) }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   keys.add(e.key.toLowerCase());
