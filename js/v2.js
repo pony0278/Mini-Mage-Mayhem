@@ -253,6 +253,10 @@ function aiMove(f) {
       const ox = o.x - f.x, oy = o.y - f.y, od = Math.hypot(ox, oy);
       if (od > SHOVE_RANGE) continue;
       if (!wellOnIsland(o.x, o.y)) continue; // don't gust a rival who's still crossing/boarding (anti-cheese)
+      // only shove with PURPOSE: the rival holds the trophy (steal it), or you're both contesting a loose one.
+      // otherwise leave the player alone (so they can move/test without being griefed off islands).
+      const contesting = o.pid === holderPid || (holderPid < 0 && Math.hypot(o.x - trophy.x, o.y - trophy.y) < 140);
+      if (!contesting) continue;
       f.aiLastShove = game.time; f.facing = Math.atan2(oy, ox); shove(f); break;
     }
   }
@@ -436,7 +440,7 @@ function drawHud() {
   hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: isles-log-1', W - 10, H - 4);
+  hctx.fillText('build: isles-ai2', W - 10, H - 4);
 }
 
 function frame(now) {
