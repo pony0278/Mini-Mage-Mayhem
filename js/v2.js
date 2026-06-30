@@ -120,8 +120,17 @@ function resetFighter(f) {
   f.facing = f.pid === 0 ? 0 : Math.PI; // face toward the pit/centre
   f.faceT = 0; f.falling = false; f.fallT = 0; f.spin = 0; f.voidT = 0;
   f.hurt = 0; f.slowTimer = 0; f.shoveCd = 0; f.lastHitBy = -1; f.lastHitT = -9; f.aiLastShove = -9;
+  f.stability = STAB_MAX; f.staggered = false; f.stabCd = 0;
   f.state = 'alive';
 }
+// --- 收容測試 (spec E §4 / V0.9): 削弱穩定值 → 推失衡對手進實驗艙 → 3 秒關艙 → 收容/過載反轉 ---
+// (declared before fighters[] because resetFighter() reads STAB_MAX at construction time)
+const POD = { x: W / 2, y: H / 2, r: 46 };
+const STAB_MAX = 100, STAB_SHOVE = 45, STAB_REGEN = 28, STAG_ENTER = 25, STAG_EXIT = 45, STAG_SLOW = 0.6;
+const LOCK_T = 3.0, ESCAPE_NEED = 100, MASH_AI = 26, MASH_TAP = 16; // mash to escape: AI fills ~78% in 3s (contained); a frantic human can break out
+let lock = null; // { pid(被收容者), t(關艙倒數), escape(掙脫值), selfPod(自行入艙) }
+function inPod(f) { return Math.hypot(f.x - POD.x, f.y - POD.y) <= POD.r; }
+
 const fighters = [makeFighter(0), makeFighter(1)];
 fighters[1].ai = true; // solo testing: red is a bot (flip to false for hot-seat 2-player)
 
@@ -163,9 +172,10 @@ function bridgeAssist(f) {
 function moveFighter(f, dt) {
   const m = f.ai ? aiMove(f) : readMove(f.pid);
   if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);
+  const sp = SPEED * (f.staggered ? STAG_SLOW : 1); // 失衡時減速
   // walk intent + lingering knockback velocity, integrated with axis-separated wall collision
-  const stepX = (m.x * SPEED + f.vx) * dt;
-  const stepY = (m.y * SPEED + f.vy) * dt;
+  const stepX = (m.x * sp + f.vx) * dt;
+  const stepY = (m.y * sp + f.vy) * dt;
   if (!circleHitsSolid(f.x + stepX, f.y, f.r)) f.x += stepX; else f.vx = 0;
   if (!circleHitsSolid(f.x, f.y + stepY, f.r)) f.y += stepY; else f.vy = 0;
   f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
@@ -188,6 +198,7 @@ function shove(f) {
     if (Math.abs(da) > SHOVE_CONE) continue;
     o.vx += Math.cos(a) * SHOVE_FORCE; o.vy += Math.sin(a) * SHOVE_FORCE;
     o.faceT = 0.35; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    o.stability = Math.max(0, o.stability - STAB_SHOVE); o.stabCd = 0.8; // 削弱穩定值(被陣風命中)
     hitSpark(o.x, o.y, '#dff3ff', 1.3);
     addText(o.x, o.y - 26, '推飛！', '#dff3ff'); addRing(o.x, o.y, 30, '#dff3ff', 0.3, 4); // clear "you got gusted" feedback
     if (o.pid === LOCAL) { localFlash = 0.28; dlog('SHOVED by', NAMES[f.pid], 'at', Math.round(o.x) + ',' + Math.round(o.y), '→ v', Math.round(o.vx) + ',' + Math.round(o.vy)); } // flash the screen when YOU are the one hit
@@ -244,41 +255,28 @@ function islandFarthestFromBoss() {
   return best;
 }
 function aiMove(f) {
-  let gx, gy; const holding = holderPid === f.pid;
-  if (holding) { const I = islandFarthestFromBoss(); gx = I.x; gy = I.z; } // flee: run to the island away from boss
-  else if (holderPid >= 0) { gx = fighters[holderPid].x; gy = fighters[holderPid].y; } // human holds → chase to steal
-  else { gx = trophy.x; gy = trophy.y; }                                               // loose → go grab
-  // route across bridges toward the goal island (incl. the fleeing holder, so it actually crosses, not camps)
-  let tx = gx, ty = gy;
-  const fromI = FREEFORM ? islandIndexAt(f.x, f.y) : 0, toI = FREEFORM ? islandIndexAt(gx, gy) : 0;
-  if (FREEFORM && fromI < 0) {
-    // ON A BRIDGE → commit to walking straight to the exit island (the end nearer the goal); stops the
-    // "head to goal → veer off bridge → correct → repeat" jitter that made the bot vibrate mid-bridge.
-    let nb = null, nbd = Infinity;
-    for (const B of BRIDGES) { const d = segDist(f.x, f.y, B.ax, B.az, B.bx, B.bz); if (d < nbd) { nbd = d; nb = B; } }
-    if (nb) { const ci = ISLANDS[nb.i], cj = ISLANDS[nb.j];
-      const exit = Math.hypot(ci.x - gx, ci.z - gy) <= Math.hypot(cj.x - gx, cj.z - gy) ? ci : cj;
-      tx = exit.x; ty = exit.z; }
-  } else if (toI >= 0 && fromI !== toI) { const wp = nextWaypoint(fromI, toI); if (wp) { tx = wp.x; ty = wp.y; } }
-  let dx = tx - f.x, dy = ty - f.y;
-  // when carrying and the boss is closing in, add an away-from-boss nudge (don't fully override the route)
-  if (holding && boss.awake && Math.hypot(f.x - boss.x, f.y - boss.y) < 130) {
-    const bx = f.x - boss.x, by = f.y - boss.y, bl = Math.hypot(bx, by) || 1; dx += bx / bl * 130; dy += by / bl * 130;
-  }
-  const dl = Math.hypot(dx, dy) || 1;
+  const o = fighters[1 - f.pid]; // the rival (1v1)
+  const lockedSelf = lock && lock.pid === f.pid;
+  let gx, gy;
+  if (lockedSelf) { gx = f.x; gy = f.y; } // being contained → struggle handled elsewhere
+  else if (f.staggered) { // I'm weak → flee from rival AND the pod (don't get trapped)
+    const ax = f.x - o.x, ay = f.y - o.y, al = Math.hypot(ax, ay) || 1;
+    const bx = f.x - POD.x, by = f.y - POD.y, bl = Math.hypot(bx, by) || 1;
+    gx = f.x + ax / al * 200 + bx / bl * 130; gy = f.y + ay / al * 200 + by / bl * 130;
+  } else if (o.staggered && o.state === 'alive') { // rival weak → get on the far side of the pod to push them in
+    const ox = o.x - POD.x, oy = o.y - POD.y, ol = Math.hypot(ox, oy) || 1;
+    gx = o.x + ox / ol * 58; gy = o.y + oy / ol * 58;
+  } else { gx = o.x; gy = o.y; } // chase to weaken
+  const dx = gx - f.x, dy = gy - f.y, dl = Math.hypot(dx, dy) || 1;
   const dir = aiSafeDir(f, dx / dl, dy / dl);
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
-  if (f.shoveCd <= 0 && game.time - (f.aiLastShove || -9) > 1.6) { // throttle bot shoves so testing isn't constant knock-offs
-    for (const o of fighters) {
-      if (o === f || o.state !== 'alive' || o.falling) continue;
-      const ox = o.x - f.x, oy = o.y - f.y, od = Math.hypot(ox, oy);
-      if (od > SHOVE_RANGE) continue;
-      if (!wellOnIsland(o.x, o.y)) continue; // don't gust a rival who's still crossing/boarding (anti-cheese)
-      // only shove with PURPOSE: the rival holds the trophy (steal it), or you're both contesting a loose one.
-      // otherwise leave the player alone (so they can move/test without being griefed off islands).
-      const contesting = o.pid === holderPid || (holderPid < 0 && Math.hypot(o.x - trophy.x, o.y - trophy.y) < 140);
-      if (!contesting) continue;
-      f.aiLastShove = game.time; f.facing = Math.atan2(oy, ox); shove(f); break;
+  // shove: weaken the rival, or (if they're weak) gust them toward the pod
+  if (f.shoveCd <= 0 && game.time - (f.aiLastShove || -9) > 0.9 && o.state === 'alive' && !o.falling && !lockedSelf) {
+    const od = Math.hypot(o.x - f.x, o.y - f.y);
+    if (od <= SHOVE_RANGE) {
+      f.aiLastShove = game.time;
+      f.facing = o.staggered ? Math.atan2(POD.y - o.y, POD.x - o.x) : Math.atan2(o.y - f.y, o.x - f.x);
+      shove(f);
     }
   }
   return dir;
@@ -301,13 +299,15 @@ let winnerPid = -1, winBannerT = 0;
 const WIN_TARGET = 3;
 const roundWins = [0, 0];
 let matchOver = false, report = null;
-const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0 };
+const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0,
+  contains: [0, 0], overloads: 0, selfPods: 0 };
 const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
 
 function resetRound() {
   holderPid = -1; holdMeter[0] = 0; holdMeter[1] = 0;
   trophy.held = false; trophy.x = FAR.x; trophy.y = FAR.z;
   boss.awake = false; boss.wakeT = 0; boss.x = FAR.x; boss.y = FAR.z - 12;
+  lock = null;
   for (const f of fighters) resetFighter(f);
 }
 function dropTrophy(x, y) {
@@ -315,6 +315,22 @@ function dropTrophy(x, y) {
   trophy.x = clamp(x, 40, W - 40); trophy.y = clamp(y, 40, H - 40);
   if (overAir(trophy.x, trophy.y)) { trophy.x = FAR.x; trophy.y = FAR.z; } // don't lose it down the abyss
   addText(trophy.x, trophy.y - 30, '獎盃掉落！', '#ffd36d');
+}
+function containSuccess() {
+  const cap = lock.pid, w = 1 - cap;
+  inc.contains[w]++; inc.types.add('contain'); if (lock.selfPod) { inc.selfPods++; inc.types.add('selfpod'); }
+  addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(5); game.sfx.push('waveclear');
+  dlog('CONTAINED', NAMES[cap], '→', NAMES[w], 'wins round');
+  lock = null; winRound(w);
+}
+function podOverload(cap) {
+  inc.overloads++; inc.types.add('overload');
+  for (const f of fighters) { if (f.state !== 'alive') continue; const dx = f.x - POD.x, dy = f.y - POD.y, d = Math.hypot(dx, dy) || 1; f.vx += dx / d * 620; f.vy += dy / d * 620; f.faceT = 0.4; }
+  cap.stability = 55; cap.staggered = false; cap.stabCd = 1.0;
+  if (cap.pid === LOCAL) localFlash = 0.3;
+  addText(POD.x, POD.y - 40, '艙門過載！', '#ff7b72'); addRing(POD.x, POD.y, POD.r * 2.4, '#ffd36d', 0.45, 6); addShake(7); addHitstop(0.05); game.sfx.push('hit');
+  dlog('OVERLOAD: escaped', NAMES[cap.pid]);
+  lock = null;
 }
 function winRound(pid) {
   roundWins[pid]++; winnerPid = pid; winBannerT = 2.6;
@@ -325,32 +341,32 @@ function endMatch(pid) { matchOver = true; report = generateReport(pid); game.sf
 function restartMatch() {
   matchOver = false; report = null; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.types = new Set(); inc.matchT = 0; inc.maxHold = 0;
+  inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0;
   resetRound();
 }
 function pickComment(w) {
-  if (inc.bossCatches >= 2) return '技術上來說，有人被成功收容了。只是收錯人。';
-  if (inc.selfFalls[w] > 0) return NAMES[w] + '贏了，但中途自己走下島過。我們選擇不深究。';
-  if (Math.max(inc.knockoffs[0], inc.knockoffs[1]) >= 3) return '本局基地邊欄維修預算已超支。';
+  if (inc.contains[0] >= 1 && inc.contains[1] >= 1) return '技術上來說，有人被成功收容了。雙向地。';
+  if (inc.overloads >= 2) return '實驗艙不是這樣用的。但你們找到了新用法。';
+  if (inc.selfPods >= 1) return '受測體展現了高度的自我收容意識。';
   return '請勿在實驗艙附近施放火球。';
 }
 function generateReport(winner) {
-  const totalFalls = inc.falls[0] + inc.falls[1];
-  const selfT = inc.selfFalls[0] + inc.selfFalls[1];
-  const chaos = totalFalls + inc.bossCatches * 2 + selfT;
+  const totalContains = inc.contains[0] + inc.contains[1];
+  const chaos = totalContains + inc.overloads * 2 + inc.selfPods * 2;
   const level = chaos >= 12 ? 'S+' : chaos >= 9 ? 'S' : chaos >= 7 ? 'A' : chaos >= 5 ? 'B' : chaos >= 3 ? 'C' : 'D';
   let name, summary;
-  if (inc.bossCatches >= 2) { name = '收容核心暴走事件'; summary = `Boss 在收容過程失控 ${inc.bossCatches} 次，把受測體當逗貓棒甩。`; }
-  else if (selfT >= 3) { name = '自由落體研究事件'; summary = `現場 ${selfT} 次有人「自己」走下島，無需外力協助。`; }
-  else if (Math.max(inc.knockoffs[0], inc.knockoffs[1]) >= 3) { name = '連環陣風驅逐事件'; summary = `陣風把對手轟下島 ${Math.max(inc.knockoffs[0], inc.knockoffs[1])} 次，基地邊緣形同虛設。`; }
-  else { name = '例行收容測試'; summary = '一切大致按計畫進行……的意思是大致沒人按計畫。'; }
-  const title = inc.bossCatches >= 2 ? '逗貓棒大師'
-    : inc.selfFalls[winner] > 0 ? '自爆倖存者'
-    : inc.knockoffs[winner] >= 3 ? '風壓收容員' : '合格但不可取';
-  const damage = Math.min(99, chaos * 8);
+  if (inc.contains[0] >= 1 && inc.contains[1] >= 1) { name = '反向收容拉鋸事件'; summary = `雙方互相收容了對方共 ${totalContains} 次，沒人說得清誰才是收容員。`; }
+  else if (inc.overloads >= 2) { name = '艙門短路連發事件'; summary = `實驗艙過載 ${inc.overloads} 次，維修部門已遞辭呈。`; }
+  else if (inc.selfPods >= 1) { name = '自行入艙事件'; summary = `受測體 ${inc.selfPods} 次自己滑進收容艙，效率高得令人不安。`; }
+  else { name = '標準收容測試'; summary = '收容程序大致完成，僅輕微失控。'; }
+  const title = inc.overloads >= 2 ? '艙門短路專家'
+    : inc.selfPods >= 1 ? '自助收容受測體'
+    : inc.contains[winner] >= 2 ? '王牌收容員' : '合格但不可取';
+  const damage = Math.min(99, chaos * 9);
   const code = 'MIR-' + Math.floor(Math.random() * 0x10000).toString(16).toUpperCase().padStart(4, '0');
   const comment = pickComment(winner);
-  const num = 100 + ((chaos * 7 + inc.grabs[0] * 3 + inc.grabs[1] * 5) % 900);
-  const share = `我在《魔法事故報告》觸發了 ${level} 級事故：${name}。\n${NAMES[winner]} 收容成功，基地損害 ${damage}%。\n安全委員會：「${comment}」\n挑戰碼：${code}`;
+  const num = 100 + ((chaos * 7 + inc.contains[0] * 3 + inc.contains[1] * 5 + inc.overloads * 11) % 900);
+  const share = `我在《魔法事故報告》觸發了 ${level} 級事故：${name}。\n${NAMES[winner]} 完成收容，基地損害 ${damage}%。\n安全委員會：「${comment}」\n挑戰碼：${code}`;
   return { num, name, level, winner, summary, comment, title, code, damage, time: inc.matchT };
 }
 function updateBoss(dt) {
@@ -390,6 +406,10 @@ function step(dt) {
     pollShove();
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
+      // stability regen + 失衡 hysteresis (containment)
+      if (f.stabCd > 0) f.stabCd -= dt; else f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
+      if (!f.staggered && f.stability <= STAG_ENTER) f.staggered = true;
+      else if (f.staggered && f.stability >= STAG_EXIT) f.staggered = false;
       // death theatre first (handles 凸眼 + over-void fall); skip control while it owns the body
       if (updateDeathTheater(f, dt)) {
         if (f.dead) {
@@ -412,7 +432,7 @@ function step(dt) {
         continue;
       }
       const px0 = f.x, py0 = f.y;
-      moveFighter(f, dt);
+      if (!(lock && lock.pid === f.pid)) moveFighter(f, dt); // captured fighter is held in the pod (struggle handled below)
       if (f.ai) { // stuck/vibrating detector for the bot
         if (Math.hypot(f.x - px0, f.y - py0) < 0.5) f._stillT = (f._stillT || 0) + dt; else { f._stillT = 0; f._stuckLogged = false; }
         if (f._stillT > 0.7 && !f._stuckLogged) {
@@ -421,25 +441,29 @@ function step(dt) {
         }
       }
     }
-    // trophy: pick up when loose, ride + tick the hold meter when held
-    if (holderPid < 0) {
+    // 收容:失衡對手進艙 → 關艙倒數;掙脫→過載反轉,倒數完成→收容成功
+    if (lock) {
+      const cap = fighters[lock.pid];
+      if (cap.state !== 'alive') lock = null;
+      else {
+        cap.x += (POD.x - cap.x) * 0.35; cap.y += (POD.y - cap.y) * 0.35; cap.vx = 0; cap.vy = 0;
+        // 掙扎=連打(按鍵上緣),非按住:AI 以固定速率(填不滿)→可被收容;人類狂按可掙脫
+        if (cap.ai) lock.escape += MASH_AI * dt;
+        else { const moving = (Math.abs(readMove(cap.pid).x) + Math.abs(readMove(cap.pid).y)) > 0; if (moving && !cap._mashPrev) lock.escape += MASH_TAP; cap._mashPrev = moving; }
+        lock.t -= dt;
+        if (lock.escape >= ESCAPE_NEED) podOverload(cap);
+        else if (lock.t <= 0) containSuccess();
+      }
+    } else {
       for (const f of fighters) {
-        if (f.state !== 'alive' || f.falling) continue;
-        if (Math.hypot(f.x - trophy.x, f.y - trophy.y) <= TROPHY_R + f.r) {
-          holderPid = f.pid; trophy.held = true; boss.awake = true; boss.wakeT = BOSS_WAKE; boss.x = FAR.x; boss.y = FAR.z - 12;
-          inc.grabs[f.pid]++; inc.types.add('grab');
-          dlog(NAMES[f.pid], 'GRABBED trophy → Boss wakes');
-          addText(f.x, f.y - 30, NAMES[f.pid] + ' 搶到獎盃！', COLORS[f.pid]);
-          addText(boss.x, boss.y - 36, 'Boss 甦醒！', '#9affd0'); addRing(boss.x, boss.y, 60, '#9affd0', 0.4, 4);
-          game.sfx.push('upgrade'); addShake(4);
+        if (f.state === 'alive' && !f.falling && f.staggered && inPod(f)) {
+          lock = { pid: f.pid, t: LOCK_T, escape: 0, selfPod: game.time - (f.lastHitT || -9) > 1.2 };
+          addText(POD.x, POD.y - 46, '收容程序啟動！', '#9affd0'); addRing(POD.x, POD.y, POD.r * 1.5, '#9affd0', 0.45, 4); addShake(4); game.sfx.push('upgrade');
+          dlog('LOCK: captured', NAMES[f.pid], 'self?', lock.selfPod);
           break;
         }
       }
-    } else {
-      const h = fighters[holderPid];
-      if (h.state === 'alive') { trophy.x = h.x; trophy.y = h.y; holdMeter[holderPid] += dt; inc.maxHold = Math.max(inc.maxHold, holdMeter[holderPid]); if (holdMeter[holderPid] >= HOLD_WIN) winRound(holderPid); }
     }
-    updateBoss(dt);
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment)
   const lf = fighters[LOCAL];
@@ -448,24 +472,42 @@ function step(dt) {
     if (prevLocalSolid && !s) dlog('OFF-EDGE @', Math.round(lf.x) + ',' + Math.round(lf.y), 'v', Math.round(lf.vx) + ',' + Math.round(lf.vy), 'Δhit', (game.time - (lf.lastHitT || -9)).toFixed(2) + 's');
     prevLocalSolid = s;
   }
-  // present live fighters + the boss (when awake) for the renderer
+  // present live fighters for the renderer (no boss in the containment prototype)
   game.enemies = fighters.filter(f => f.state !== 'down');
-  if (boss.awake) game.enemies.push(boss);
 }
 
-function drawTrophyMarker() {
-  // billboard a gold trophy: above the holder's head when carried, else on the ground
-  const s = project(trophy.x, trophy.y, trophy.held ? 48 : 12);
-  if (s.behind) return;
-  const pulse = 0.7 + 0.3 * Math.sin(game.time * 6);
-  hctx.save();
-  hctx.translate(s.x, s.y);
-  hctx.shadowColor = 'rgba(255,211,109,.9)'; hctx.shadowBlur = 12 * pulse;
-  hctx.fillStyle = '#ffd36d';
-  hctx.beginPath(); hctx.moveTo(0, -11); hctx.lineTo(9, 0); hctx.lineTo(0, 11); hctx.lineTo(-9, 0); hctx.closePath(); hctx.fill();
-  hctx.shadowBlur = 0; hctx.fillStyle = '#fff6d8';
-  hctx.beginPath(); hctx.arc(0, 0, 3, 0, Math.PI * 2); hctx.fill();
-  hctx.restore();
+function drawContainHud() {
+  // 實驗艙:地面光環(關艙時轉紅 + 倒數);失衡冒星 + 穩定值小條
+  const ground = (wx, wy) => project(wx, wy, 2);
+  const pulse = 0.6 + 0.4 * Math.sin(game.time * 5);
+  const c = ground(POD.x, POD.y), edge = ground(POD.x + POD.r, POD.y);
+  if (!c.behind) {
+    const rad = Math.max(14, Math.abs(edge.x - c.x));
+    hctx.save();
+    hctx.strokeStyle = lock ? `rgba(255,123,114,${pulse})` : `rgba(154,255,208,${0.5 + pulse * 0.3})`;
+    hctx.lineWidth = 4; hctx.beginPath(); hctx.ellipse(c.x, c.y, rad, rad * 0.5, 0, 0, Math.PI * 2); hctx.stroke();
+    hctx.restore();
+    if (lock) { // 關艙倒數 + 掙脫進度
+      hctx.textAlign = 'center';
+      hctx.font = '900 40px system-ui, sans-serif'; hctx.fillStyle = '#ff7b72';
+      hctx.fillText(Math.ceil(lock.t) + '', c.x, c.y - 30);
+      const bw = 90, ex = c.x - bw / 2, ey = c.y - 18, p = clamp(lock.escape / ESCAPE_NEED, 0, 1);
+      hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(ex, ey, bw, 6);
+      hctx.fillStyle = '#9affd0'; hctx.fillRect(ex, ey, bw * p, 6);
+    }
+  }
+  for (const f of fighters) {
+    if (f.state !== 'alive') continue;
+    const s = project(f.x, f.y, (f.r || 14) * 2.2 + 16);
+    if (s.behind) continue;
+    const bw = 30, p = clamp(f.stability / STAB_MAX, 0, 1);
+    hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y, bw, 4);
+    hctx.fillStyle = f.staggered ? '#ff7b72' : COLORS[f.pid]; hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
+    if (f.staggered) { // 失衡冒星
+      hctx.fillStyle = '#ffd36d'; hctx.font = '900 14px system-ui, sans-serif'; hctx.textAlign = 'center';
+      hctx.fillText('★', s.x, s.y - 6);
+    }
+  }
 }
 const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
 function drawReport() {
@@ -487,7 +529,7 @@ function drawReport() {
   hctx.fillText(r.summary, cx, y); y += 34;
   // stats line
   hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
-  hctx.fillText(`勝者：${NAMES[r.winner]}　基地損害 ${r.damage}%　墜落 ${inc.falls[0] + inc.falls[1]} 次　自落 ${inc.selfFalls[0] + inc.selfFalls[1]}　Boss 命中 ${inc.bossCatches}　用時 ${r.time.toFixed(0)}s`, cx, y); y += 34;
+  hctx.fillText(`勝者：${NAMES[r.winner]}　基地損害 ${r.damage}%　收容 ${inc.contains[0] + inc.contains[1]} 次　艙門過載 ${inc.overloads}　自行入艙 ${inc.selfPods}　用時 ${r.time.toFixed(0)}s`, cx, y); y += 34;
   hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
   hctx.fillText('稱號：' + r.title, cx, y); y += 34;
   // committee comment (the share juice)
@@ -512,23 +554,14 @@ function drawHud() {
   // title
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 · 收容測試　搶獎盃→撐住→先贏 ' + WIN_TARGET + ' 回合', W / 2, 28);
+  hctx.fillText('魔法事故報告 · 收容測試　削弱→推進實驗艙→關艙 ' + LOCK_T + 's　先贏 ' + WIN_TARGET, W / 2, 28);
   // round-win score (best-of)
   hctx.font = '900 40px system-ui, sans-serif';
   hctx.textAlign = 'left'; hctx.fillStyle = COLORS[0];
   hctx.fillText(roundWins[0] + '/' + WIN_TARGET, 24, 50);
   hctx.textAlign = 'right'; hctx.fillStyle = COLORS[1];
   hctx.fillText(roundWins[1] + '/' + WIN_TARGET, W - 24, 50);
-  // hold progress bar (when someone holds the trophy)
-  if (holderPid >= 0) {
-    const pct = clamp(holdMeter[holderPid] / HOLD_WIN, 0, 1);
-    const bw = 260, bx = W / 2 - bw / 2, by = 48;
-    hctx.fillStyle = 'rgba(0,0,0,.45)'; hctx.fillRect(bx, by, bw, 12);
-    hctx.fillStyle = COLORS[holderPid]; hctx.fillRect(bx, by, bw * pct, 12);
-    hctx.textAlign = 'center'; hctx.font = '800 13px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
-    hctx.fillText(NAMES[holderPid] + ' 持有獎盃 ' + Math.ceil(HOLD_WIN - holdMeter[holderPid]) + 's', W / 2, by + 30);
-  }
-  drawTrophyMarker();
+  drawContainHud();
   // win banner
   if (winBannerT > 0) {
     hctx.textAlign = 'center'; hctx.font = '900 46px system-ui, sans-serif';
@@ -537,11 +570,11 @@ function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · F 陣風(削弱+推進艙)　　紅：AI 對手', W / 2, H - 18);
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: flat-1', W - 10, H - 4);
+  hctx.fillText('build: contain-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -559,7 +592,12 @@ function frame(now) {
 // --- boot ---
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   winRound, restartMatch,
-  state: () => ({ holderPid, winnerPid, awake: boss.awake, roundWins: [roundWins[0], roundWins[1]], matchOver, report, fallReason, fallReasonT: +fallReasonT.toFixed(2), localFlash: +localFlash.toFixed(2) }) };
+  POD,
+  state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report,
+    lock: lock ? { pid: lock.pid, t: +lock.t.toFixed(2), escape: +lock.escape.toFixed(0) } : null,
+    stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
+    staggered: [fighters[0].staggered, fighters[1].staggered],
+    contains: [inc.contains[0], inc.contains[1]], overloads: inc.overloads, selfPods: inc.selfPods }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
