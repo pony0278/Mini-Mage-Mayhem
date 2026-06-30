@@ -218,8 +218,9 @@ game.enemies = fighters.slice();
 // Front-on "diorama" framing (hero-brawler look): low rake + face-on so the arena's depth
 // recedes away from camera and the near edge reads as foreground (NOT a steep top-down).
 // v2-only — index.html keeps its follow-cam. The floating-island slab + sky/sea backdrop (setIslandMode)
-// fills what used to be the empty band above the far edge.
-CAM.fov = 22; CAM.angle = 21; CAM.dist = 950; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -100; CAM.lookY = 30;
+// fills what used to be the empty band above the far edge. dist/panZ are sized to FIT the whole broken-isles
+// footprint (incl. the near spawn islands) in this fixed framing — a tighter fov clips the near edge off-screen.
+CAM.fov = 26; CAM.angle = 24; CAM.dist = 1150; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -10; CAM.lookY = 20;
 
 let last = performance.now();
 requestAnimationFrame(frame);
