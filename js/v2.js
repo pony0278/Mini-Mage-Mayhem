@@ -202,19 +202,25 @@ function nextWaypoint(fromI, toI) { // bridge crossing toward the goal island (s
   if (viaHub) return bridgeFarEnd(viaHub, fromI);
   return null;
 }
+function islandFarthestFromBoss() {
+  let best = ISLANDS[0], bd = -1;
+  for (const I of ISLANDS) { const d = Math.hypot(I.x - boss.x, I.z - boss.y); if (d > bd) { bd = d; best = I; } }
+  return best;
+}
 function aiMove(f) {
-  let gx, gy, fleeBoss = false;
-  if (holderPid === f.pid) { const c = nearestIslandCenter(f.x, f.y); gx = c.x; gy = c.z; fleeBoss = boss.awake; }
+  let gx, gy; const holding = holderPid === f.pid;
+  if (holding) { const I = islandFarthestFromBoss(); gx = I.x; gy = I.z; } // flee: run to the island away from boss
   else if (holderPid >= 0) { gx = fighters[holderPid].x; gy = fighters[holderPid].y; } // human holds → chase to steal
   else { gx = trophy.x; gy = trophy.y; }                                               // loose → go grab
-  // route across bridges when the goal is on another island (not while fleeing — then just hug centre)
+  // route across bridges toward the goal island (incl. the fleeing holder, so it actually crosses, not camps)
   let tx = gx, ty = gy;
-  if (!fleeBoss) {
-    const fromI = islandIndexAt(f.x, f.y), toI = islandIndexAt(gx, gy);
-    if (fromI >= 0 && toI >= 0 && fromI !== toI) { const wp = nextWaypoint(fromI, toI); if (wp) { tx = wp.x; ty = wp.y; } }
-  }
+  const fromI = islandIndexAt(f.x, f.y), toI = islandIndexAt(gx, gy);
+  if (fromI >= 0 && toI >= 0 && fromI !== toI) { const wp = nextWaypoint(fromI, toI); if (wp) { tx = wp.x; ty = wp.y; } }
   let dx = tx - f.x, dy = ty - f.y;
-  if (fleeBoss) { const bx = f.x - boss.x, by = f.y - boss.y, bl = Math.hypot(bx, by) || 1; dx += bx / bl * 200; dy += by / bl * 200; }
+  // when carrying and the boss is closing in, add an away-from-boss nudge (don't fully override the route)
+  if (holding && boss.awake && Math.hypot(f.x - boss.x, f.y - boss.y) < 130) {
+    const bx = f.x - boss.x, by = f.y - boss.y, bl = Math.hypot(bx, by) || 1; dx += bx / bl * 130; dy += by / bl * 130;
+  }
   const dl = Math.hypot(dx, dy) || 1;
   const dir = aiSafeDir(f, dx / dl, dy / dl);
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
