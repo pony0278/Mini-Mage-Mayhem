@@ -131,6 +131,11 @@ const STAB_MAX = 100, STAB_SHOVE = 45, STAB_REGEN = 28, STAG_ENTER = 25, STAG_EX
 const LOCK_T = 3.0, ESCAPE_NEED = 100, MASH_AI = 26, MASH_TAP = 16; // mash to escape: AI fills ~78% in 3s (contained); a frantic human can break out
 let lock = null; // { pid(被收容者), t(關艙倒數), escape(掙脫值), selfPod(自行入艙) }
 function inPod(f) { return Math.hypot(f.x - POD.x, f.y - POD.y) <= POD.r; }
+// --- 危險 #1:爆桶(Phase 1)。靠近→點燃 0.5s→爆炸:炸飛+削弱穩定值;炸到艙門→短路過載 ---
+const BARREL_IGNITE = 28, BARREL_FUSE = 0.5, BARREL_BLAST = 95, BARREL_FORCE = 700, BARREL_STAB = 50, BARREL_RESPAWN = 6;
+const BARREL_SPOTS = [[300, 210], [660, 210], [300, 470], [660, 470]];
+const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0 }));
+function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; } }
 
 const fighters = [makeFighter(0), makeFighter(1)];
 fighters[1].ai = true; // solo testing: red is a bot (flip to false for hot-seat 2-player)
@@ -301,7 +306,7 @@ const WIN_TARGET = 3;
 const roundWins = [0, 0];
 let matchOver = false, report = null;
 const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0,
-  contains: [0, 0], overloads: 0, selfPods: 0 };
+  contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0 };
 const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
 
 function resetRound() {
@@ -309,6 +314,7 @@ function resetRound() {
   trophy.held = false; trophy.x = FAR.x; trophy.y = FAR.z;
   boss.awake = false; boss.wakeT = 0; boss.x = FAR.x; boss.y = FAR.z - 12;
   lock = null;
+  resetBarrels();
   for (const f of fighters) resetFighter(f);
 }
 function dropTrophy(x, y) {
@@ -333,6 +339,30 @@ function podOverload(cap) {
   dlog('OVERLOAD: escaped', NAMES[cap.pid]);
   lock = null;
 }
+function explodeBarrel(b) {
+  b.alive = false; b.respawn = BARREL_RESPAWN; inc.barrelBooms++; inc.types.add('barrel');
+  addRing(b.x, b.y, BARREL_BLAST, '#ff9a4a', 0.4, 6); addRing(b.x, b.y, BARREL_BLAST * 0.6, '#fff1bb', 0.3, 5);
+  hitSpark(b.x, b.y, '#ffd36d', 2); addShake(8); addHitstop(0.05); game.sfx.push('hit');
+  addText(b.x, b.y - 30, '爆！', '#ff7b72');
+  for (const f of fighters) {
+    if (f.state !== 'alive') continue;
+    const dx = f.x - b.x, dy = f.y - b.y, d = Math.hypot(dx, dy) || 1;
+    if (d > BARREL_BLAST + f.r) continue;
+    f.vx += dx / d * BARREL_FORCE; f.vy += dy / d * BARREL_FORCE;
+    f.stability = Math.max(0, f.stability - BARREL_STAB); f.stabCd = 0.8; f.faceT = 0.4; f.lastHitBy = -3; f.lastHitT = game.time; // -3 = 爆桶
+    if (f.pid === LOCAL) localFlash = 0.32;
+  }
+  if (lock && Math.hypot(b.x - POD.x, b.y - POD.y) < BARREL_BLAST) { const cap = fighters[lock.pid]; if (cap) podOverload(cap); } // 炸到艙門→短路
+  dlog('BARREL boom @', Math.round(b.x) + ',' + Math.round(b.y));
+}
+function updateBarrels(dt) {
+  for (const b of barrels) {
+    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; } continue; }
+    if (b.state === 'idle') {
+      for (const f of fighters) { if (f.state === 'alive' && Math.hypot(f.x - b.x, f.y - b.y) < BARREL_IGNITE + f.r) { b.state = 'fuse'; b.fuse = BARREL_FUSE; addText(b.x, b.y - 26, '!', '#ffd36d'); game.sfx.push('dash'); break; } }
+    } else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); }
+  }
+}
 function winRound(pid) {
   roundWins[pid]++; winnerPid = pid; winBannerT = 2.6;
   game.sfx.push('waveclear'); addShake(6);
@@ -342,25 +372,30 @@ function endMatch(pid) { matchOver = true; report = generateReport(pid); game.sf
 function restartMatch() {
   matchOver = false; report = null; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.types = new Set(); inc.matchT = 0; inc.maxHold = 0;
-  inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0;
+  inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0; inc.barrelBooms = 0;
   resetRound();
 }
 function pickComment(w) {
+  if (inc.barrelBooms >= 3) return '魔法倉庫的爆桶不是裝飾品。雖然你們把它當成了。';
   if (inc.contains[0] >= 1 && inc.contains[1] >= 1) return '技術上來說，有人被成功收容了。雙向地。';
   if (inc.overloads >= 2) return '實驗艙不是這樣用的。但你們找到了新用法。';
   if (inc.selfPods >= 1) return '受測體展現了高度的自我收容意識。';
+  if (inc.barrelBooms >= 1) return '請勿在實驗艙附近施放火球。也請勿靠近爆桶。';
   return '請勿在實驗艙附近施放火球。';
 }
 function generateReport(winner) {
   const totalContains = inc.contains[0] + inc.contains[1];
-  const chaos = totalContains + inc.overloads * 2 + inc.selfPods * 2;
+  const chaos = totalContains + inc.overloads * 2 + inc.selfPods * 2 + inc.barrelBooms;
   const level = chaos >= 12 ? 'S+' : chaos >= 9 ? 'S' : chaos >= 7 ? 'A' : chaos >= 5 ? 'B' : chaos >= 3 ? 'C' : 'D';
   let name, summary;
-  if (inc.contains[0] >= 1 && inc.contains[1] >= 1) { name = '反向收容拉鋸事件'; summary = `雙方互相收容了對方共 ${totalContains} 次，沒人說得清誰才是收容員。`; }
+  if (inc.barrelBooms >= 3) { name = '連環爆破事件'; summary = `魔法倉庫的爆桶連環引爆 ${inc.barrelBooms} 次，現場已無「桶」的概念。`; }
+  else if (inc.contains[0] >= 1 && inc.contains[1] >= 1) { name = '反向收容拉鋸事件'; summary = `雙方互相收容了對方共 ${totalContains} 次，沒人說得清誰才是收容員。`; }
   else if (inc.overloads >= 2) { name = '艙門短路連發事件'; summary = `實驗艙過載 ${inc.overloads} 次，維修部門已遞辭呈。`; }
   else if (inc.selfPods >= 1) { name = '自行入艙事件'; summary = `受測體 ${inc.selfPods} 次自己滑進收容艙，效率高得令人不安。`; }
+  else if (inc.barrelBooms >= 1) { name = '倉庫起火事件'; summary = `爆桶被引爆 ${inc.barrelBooms} 次，安全規範表示遺憾。`; }
   else { name = '標準收容測試'; summary = '收容程序大致完成，僅輕微失控。'; }
-  const title = inc.overloads >= 2 ? '艙門短路專家'
+  const title = inc.barrelBooms >= 3 ? '爆破藝術家'
+    : inc.overloads >= 2 ? '艙門短路專家'
     : inc.selfPods >= 1 ? '自助收容受測體'
     : inc.contains[winner] >= 2 ? '王牌收容員' : '合格但不可取';
   const damage = Math.min(99, chaos * 9);
@@ -465,6 +500,7 @@ function step(dt) {
         }
       }
     }
+    updateBarrels(dt); // 危險 #1:爆桶(靠近點燃→爆炸炸飛+削弱;炸到艙門→過載)
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment)
   const lf = fighters[LOCAL];
@@ -475,6 +511,8 @@ function step(dt) {
   }
   // present live fighters for the renderer (no boss in the containment prototype)
   game.enemies = fighters.filter(f => f.state !== 'down');
+  // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
+  game.props = barrels.filter(b => b.alive).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
 }
 
 function drawContainHud() {
@@ -530,7 +568,7 @@ function drawReport() {
   hctx.fillText(r.summary, cx, y); y += 34;
   // stats line
   hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
-  hctx.fillText(`勝者：${NAMES[r.winner]}　基地損害 ${r.damage}%　收容 ${inc.contains[0] + inc.contains[1]} 次　艙門過載 ${inc.overloads}　自行入艙 ${inc.selfPods}　用時 ${r.time.toFixed(0)}s`, cx, y); y += 34;
+  hctx.fillText(`勝者：${NAMES[r.winner]}　基地損害 ${r.damage}%　收容 ${inc.contains[0] + inc.contains[1]} 次　艙門過載 ${inc.overloads}　自行入艙 ${inc.selfPods}　爆桶 ${inc.barrelBooms}　用時 ${r.time.toFixed(0)}s`, cx, y); y += 34;
   hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
   hctx.fillText('稱號：' + r.title, cx, y); y += 34;
   // committee comment (the share juice)
@@ -575,7 +613,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: contain-3', W - 10, H - 4);
+  hctx.fillText('build: barrel-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -593,12 +631,12 @@ function frame(now) {
 // --- boot ---
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   winRound, restartMatch,
-  POD,
+  POD, barrels, explodeBarrel,
   state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report,
     lock: lock ? { pid: lock.pid, t: +lock.t.toFixed(2), escape: +lock.escape.toFixed(0) } : null,
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
     staggered: [fighters[0].staggered, fighters[1].staggered],
-    contains: [inc.contains[0], inc.contains[1]], overloads: inc.overloads, selfPods: inc.selfPods }) };
+    contains: [inc.contains[0], inc.contains[1]], overloads: inc.overloads, selfPods: inc.selfPods, barrelBooms: inc.barrelBooms }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
