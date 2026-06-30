@@ -14,8 +14,8 @@
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_VOID } from './constants.js';
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
-import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes } from './render.js';
+import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -169,10 +169,59 @@ function pollShove() {
   }
 }
 
+// ===== 玩法 loop:搶獎盃 → Boss 甦醒追持有者 → 撐滿持有時間者勝 (docs/v2-spec-D §2/§5) =====
+const TROPHY_R = 30;      // grab radius
+const HOLD_WIN = 12;      // cumulative seconds holding the trophy → win the round
+const BOSS_SPEED = 132;   // boss chase speed (px/s)
+const BOSS_CONTACT = 34;  // boss strike radius
+const BOSS_KNOCK = 640;   // boss contact knockback — can fling the holder clean off an island
+const FAR = ISLANDS ? ISLANDS[3] : { x: 480, z: 150 }; // trophy/boss island (free-form coords; ≈far grid island)
+const trophy = { x: FAR.x, y: FAR.z, held: false };
+const boss = { type: 'boss', x: FAR.x, y: FAR.z - 12, r: 22, color: '#66e0a6', awake: false, facing: 0, hurt: 0, slowTimer: 0 };
+let holderPid = -1;
+const holdMeter = [0, 0];
+let winnerPid = -1, winBannerT = 0;
+const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
+
+function resetRound() {
+  holderPid = -1; holdMeter[0] = 0; holdMeter[1] = 0;
+  trophy.held = false; trophy.x = FAR.x; trophy.y = FAR.z;
+  boss.awake = false; boss.x = FAR.x; boss.y = FAR.z - 12;
+  for (const f of fighters) resetFighter(f);
+}
+function dropTrophy(x, y) {
+  holderPid = -1; trophy.held = false; boss.awake = false; // boss sleeps until someone grabs again
+  trophy.x = clamp(x, 40, W - 40); trophy.y = clamp(y, 40, H - 40);
+  if (overAir(trophy.x, trophy.y)) { trophy.x = FAR.x; trophy.y = FAR.z; } // don't lose it down the abyss
+  addText(trophy.x, trophy.y - 30, '獎盃掉落！', '#ffd36d');
+}
+function winRound(pid) {
+  fighters[pid].score++; winnerPid = pid; winBannerT = 2.6;
+  game.sfx.push('waveclear'); addShake(6);
+  resetRound();
+}
+function updateBoss(dt) {
+  if (!boss.awake) return;
+  boss.hurt = Math.max(0, boss.hurt - dt);
+  const t = holderPid >= 0 ? fighters[holderPid] : null;
+  if (!t || t.state !== 'alive' || t.falling) return;
+  const dx = t.x - boss.x, dy = t.y - boss.y, d = Math.hypot(dx, dy) || 1;
+  boss.facing = Math.atan2(dy, dx);
+  boss.x += (dx / d) * BOSS_SPEED * dt; boss.y += (dy / d) * BOSS_SPEED * dt;
+  if (d <= BOSS_CONTACT + t.r) { // caught the holder → fling them off + drop the trophy
+    t.vx += (dx / d) * BOSS_KNOCK; t.vy += (dy / d) * BOSS_KNOCK;
+    t.faceT = 0.4; t.hurt = 0.15; t.lastHitBy = -1; // boss kill ≠ rival point
+    addShake(6); addHitstop(0.06); game.sfx.push('hit');
+    addText(t.x, t.y - 30, 'Boss 命中！', '#ff7b72');
+    dropTrophy(t.x, t.y);
+  }
+}
+
 function step(dt) {
   game.time += dt;
   game.screenShake = Math.max(0, game.screenShake - dt * 28);
   if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt;
+  if (winBannerT > 0) winBannerT -= dt;
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   if (game.hitstop > 0) { game.hitstop -= dt; }
   else {
@@ -183,6 +232,7 @@ function step(dt) {
       if (updateDeathTheater(f, dt)) {
         if (f.dead) {
           f.state = 'down'; f.respawn = RESPAWN; f.dead = false;
+          if (f.pid === holderPid) dropTrophy(f.x, f.y); // holder fell → trophy drops where they died
           if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) {
             fighters[f.lastHitBy].score++;
             addText(f.x, f.y - 30, NAMES[f.lastHitBy] + ' 得分!', COLORS[f.lastHitBy]);
@@ -192,28 +242,73 @@ function step(dt) {
       }
       moveFighter(f, dt);
     }
+    // trophy: pick up when loose, ride + tick the hold meter when held
+    if (holderPid < 0) {
+      for (const f of fighters) {
+        if (f.state !== 'alive' || f.falling) continue;
+        if (Math.hypot(f.x - trophy.x, f.y - trophy.y) <= TROPHY_R + f.r) {
+          holderPid = f.pid; trophy.held = true; boss.awake = true; boss.x = FAR.x; boss.y = FAR.z - 12;
+          addText(f.x, f.y - 30, NAMES[f.pid] + ' 搶到獎盃！', COLORS[f.pid]); game.sfx.push('upgrade'); addShake(4);
+          break;
+        }
+      }
+    } else {
+      const h = fighters[holderPid];
+      if (h.state === 'alive') { trophy.x = h.x; trophy.y = h.y; holdMeter[holderPid] += dt; if (holdMeter[holderPid] >= HOLD_WIN) winRound(holderPid); }
+    }
+    updateBoss(dt);
   }
-  // present only the fighters that aren't waiting to respawn
+  // present live fighters + the boss (when awake) for the renderer
   game.enemies = fighters.filter(f => f.state !== 'down');
+  if (boss.awake) game.enemies.push(boss);
 }
 
+function drawTrophyMarker() {
+  // billboard a gold trophy: above the holder's head when carried, else on the ground
+  const s = project(trophy.x, trophy.y, trophy.held ? 48 : 12);
+  if (s.behind) return;
+  const pulse = 0.7 + 0.3 * Math.sin(game.time * 6);
+  hctx.save();
+  hctx.translate(s.x, s.y);
+  hctx.shadowColor = 'rgba(255,211,109,.9)'; hctx.shadowBlur = 12 * pulse;
+  hctx.fillStyle = '#ffd36d';
+  hctx.beginPath(); hctx.moveTo(0, -11); hctx.lineTo(9, 0); hctx.lineTo(0, 11); hctx.lineTo(-9, 0); hctx.closePath(); hctx.fill();
+  hctx.shadowBlur = 0; hctx.fillStyle = '#fff6d8';
+  hctx.beginPath(); hctx.arc(0, 0, 3, 0, Math.PI * 2); hctx.fill();
+  hctx.restore();
+}
 function drawHud() {
   hctx.clearRect(0, 0, W, H);
   hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
   // title
-  hctx.font = '900 22px system-ui, sans-serif';
+  hctx.font = '900 20px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('把對手轟進洞！', W / 2, 34);
+  hctx.fillText('搶獎盃 → 撐住！別被 Boss 抓到', W / 2, 30);
   // scores
   hctx.font = '900 40px system-ui, sans-serif';
   hctx.textAlign = 'left'; hctx.fillStyle = COLORS[0];
   hctx.fillText(String(fighters[0].score), 24, 50);
   hctx.textAlign = 'right'; hctx.fillStyle = COLORS[1];
   hctx.fillText(String(fighters[1].score), W - 24, 50);
+  // hold progress bar (when someone holds the trophy)
+  if (holderPid >= 0) {
+    const pct = clamp(holdMeter[holderPid] / HOLD_WIN, 0, 1);
+    const bw = 260, bx = W / 2 - bw / 2, by = 48;
+    hctx.fillStyle = 'rgba(0,0,0,.45)'; hctx.fillRect(bx, by, bw, 12);
+    hctx.fillStyle = COLORS[holderPid]; hctx.fillRect(bx, by, bw * pct, 12);
+    hctx.textAlign = 'center'; hctx.font = '800 13px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
+    hctx.fillText(NAMES[holderPid] + ' 持有獎盃 ' + Math.ceil(HOLD_WIN - holdMeter[holderPid]) + 's', W / 2, by + 30);
+  }
+  drawTrophyMarker();
+  // win banner
+  if (winBannerT > 0) {
+    hctx.textAlign = 'center'; hctx.font = '900 46px system-ui, sans-serif';
+    hctx.fillStyle = COLORS[winnerPid]; hctx.fillText(NAMES[winnerPid] + ' 奪冠！', W / 2, H / 2);
+  }
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍：WASD 移動 · F 陣風  　　 紅：方向鍵移動 · / 陣風', W / 2, H - 18);
+  hctx.fillText('藍：WASD · F 陣風　　紅：方向鍵 · / 陣風', W / 2, H - 18);
 }
 
 function frame(now) {
@@ -229,7 +324,8 @@ function frame(now) {
 }
 
 // --- boot ---
-window.__v2 = { game, fighters, CAM }; // debug / headless-test hook (CAM for live camera tuning)
+window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, // debug / headless-test hook (CAM for live camera tuning)
+  state: () => ({ holderPid, holdMeter: [holdMeter[0], holdMeter[1]], winnerPid, awake: boss.awake, scores: [fighters[0].score, fighters[1].score] }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   keys.add(e.key.toLowerCase());
