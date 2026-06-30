@@ -157,6 +157,7 @@ function shove(f) {
     o.vx += Math.cos(a) * SHOVE_FORCE; o.vy += Math.sin(a) * SHOVE_FORCE;
     o.faceT = 0.35; o.hurt = 0.12; o.lastHitBy = f.pid;
     hitSpark(o.x, o.y, '#dff3ff', 1.3);
+    addText(o.x, o.y - 26, '推飛！', '#dff3ff'); addRing(o.x, o.y, 30, '#dff3ff', 0.3, 4); // clear "you got gusted" feedback
   }
   addRing(f.x + Math.cos(a) * 26, f.y + Math.sin(a) * 26, 46, '#dff3ff', 0.22, 4);
   addShake(3);
@@ -181,6 +182,7 @@ function nearestIslandCenter(x, y) {
   for (const I of ISLANDS) { const d = Math.hypot(x - I.x, y - I.z); if (d < bd) { bd = d; best = I; } }
   return best;
 }
+function wellOnIsland(x, y) { for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r - 26) return true; return false; }
 function aiSafeDir(f, dx, dy) { // pick a heading near (dx,dy) that won't step off the island
   const base = Math.atan2(dy, dx);
   for (const off of [0, 0.4, -0.4, 0.9, -0.9, 1.5, -1.5, 2.3, -2.3, Math.PI]) {
@@ -221,6 +223,7 @@ function aiMove(f) {
       if (o === f || o.state !== 'alive' || o.falling) continue;
       const ox = o.x - f.x, oy = o.y - f.y, od = Math.hypot(ox, oy);
       if (od > SHOVE_RANGE) continue;
+      if (!wellOnIsland(o.x, o.y)) continue; // don't gust a rival who's still crossing/boarding (anti-cheese)
       f.facing = Math.atan2(oy, ox); shove(f); break;
     }
   }
