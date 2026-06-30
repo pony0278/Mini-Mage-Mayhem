@@ -284,6 +284,11 @@ const boss = { type: 'boss', x: FAR.x, y: FAR.z - 12, r: 22, color: '#66e0a6', a
 let holderPid = -1;
 const holdMeter = [0, 0];
 let winnerPid = -1, winBannerT = 0;
+// --- 魔法事故報告 (spec E / V0.8): a match = first to WIN_TARGET round-wins → generate an incident report ---
+const WIN_TARGET = 3;
+const roundWins = [0, 0];
+let matchOver = false, report = null;
+const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0 };
 const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
 
 function resetRound() {
@@ -299,9 +304,41 @@ function dropTrophy(x, y) {
   addText(trophy.x, trophy.y - 30, '獎盃掉落！', '#ffd36d');
 }
 function winRound(pid) {
-  fighters[pid].score++; winnerPid = pid; winBannerT = 2.6;
+  roundWins[pid]++; winnerPid = pid; winBannerT = 2.6;
   game.sfx.push('waveclear'); addShake(6);
+  if (roundWins[pid] >= WIN_TARGET) endMatch(pid); else resetRound();
+}
+function endMatch(pid) { matchOver = true; report = generateReport(pid); game.sfx.push('upgrade'); dlog('MATCH OVER → report', report.level, report.name); }
+function restartMatch() {
+  matchOver = false; report = null; roundWins[0] = 0; roundWins[1] = 0;
+  inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.types = new Set(); inc.matchT = 0; inc.maxHold = 0;
   resetRound();
+}
+function pickComment(w) {
+  if (inc.bossCatches >= 2) return '技術上來說，有人被成功收容了。只是收錯人。';
+  if (inc.selfFalls[w] > 0) return NAMES[w] + '贏了，但中途自己走下島過。我們選擇不深究。';
+  if (Math.max(inc.knockoffs[0], inc.knockoffs[1]) >= 3) return '本局基地邊欄維修預算已超支。';
+  return '請勿在實驗艙附近施放火球。';
+}
+function generateReport(winner) {
+  const totalFalls = inc.falls[0] + inc.falls[1];
+  const selfT = inc.selfFalls[0] + inc.selfFalls[1];
+  const chaos = totalFalls + inc.bossCatches * 2 + selfT;
+  const level = chaos >= 12 ? 'S+' : chaos >= 9 ? 'S' : chaos >= 7 ? 'A' : chaos >= 5 ? 'B' : chaos >= 3 ? 'C' : 'D';
+  let name, summary;
+  if (inc.bossCatches >= 2) { name = '收容核心暴走事件'; summary = `Boss 在收容過程失控 ${inc.bossCatches} 次，把受測體當逗貓棒甩。`; }
+  else if (selfT >= 3) { name = '自由落體研究事件'; summary = `現場 ${selfT} 次有人「自己」走下島，無需外力協助。`; }
+  else if (Math.max(inc.knockoffs[0], inc.knockoffs[1]) >= 3) { name = '連環陣風驅逐事件'; summary = `陣風把對手轟下島 ${Math.max(inc.knockoffs[0], inc.knockoffs[1])} 次，基地邊緣形同虛設。`; }
+  else { name = '例行收容測試'; summary = '一切大致按計畫進行……的意思是大致沒人按計畫。'; }
+  const title = inc.bossCatches >= 2 ? '逗貓棒大師'
+    : inc.selfFalls[winner] > 0 ? '自爆倖存者'
+    : inc.knockoffs[winner] >= 3 ? '風壓收容員' : '合格但不可取';
+  const damage = Math.min(99, chaos * 8);
+  const code = 'MIR-' + Math.floor(Math.random() * 0x10000).toString(16).toUpperCase().padStart(4, '0');
+  const comment = pickComment(winner);
+  const num = 100 + ((chaos * 7 + inc.grabs[0] * 3 + inc.grabs[1] * 5) % 900);
+  const share = `我在《魔法事故報告》觸發了 ${level} 級事故：${name}。\n${NAMES[winner]} 收容成功，基地損害 ${damage}%。\n安全委員會：「${comment}」\n挑戰碼：${code}`;
+  return { num, name, level, winner, summary, comment, title, code, damage, time: inc.matchT };
 }
 function updateBoss(dt) {
   if (!boss.awake) return;
@@ -327,7 +364,8 @@ function updateBoss(dt) {
 }
 
 function step(dt) {
-  game.time += dt;
+  if (matchOver) return; // freeze gameplay while the incident report is up
+  game.time += dt; inc.matchT += dt;
   game.screenShake = Math.max(0, game.screenShake - dt * 28);
   if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt;
   if (winBannerT > 0) winBannerT -= dt;
@@ -352,10 +390,11 @@ function step(dt) {
             dlog('FELL:', fallReason, '@', Math.round(f.x) + ',' + Math.round(f.y), 'lastHitBy', f.lastHitBy, 'Δhit', (game.time - (f.lastHitT || -9)).toFixed(2) + 's');
           }
           if (f.pid === holderPid) dropTrophy(f.x, f.y); // holder fell → trophy drops where they died
-          if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) {
-            fighters[f.lastHitBy].score++;
-            addText(f.x, f.y - 30, NAMES[f.lastHitBy] + ' 得分!', COLORS[f.lastHitBy]);
-          }
+          // tally incidents for the end-of-match report
+          inc.falls[f.pid]++;
+          if (f.lastHitBy === -2) { inc.bossCatches++; inc.types.add('boss'); }
+          else if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) { inc.knockoffs[f.lastHitBy]++; inc.types.add('knockoff'); addText(f.x, f.y - 30, NAMES[f.lastHitBy] + ' 推落!', COLORS[f.lastHitBy]); }
+          else { inc.selfFalls[f.pid]++; inc.types.add('self'); }
         }
         continue;
       }
@@ -375,6 +414,7 @@ function step(dt) {
         if (f.state !== 'alive' || f.falling) continue;
         if (Math.hypot(f.x - trophy.x, f.y - trophy.y) <= TROPHY_R + f.r) {
           holderPid = f.pid; trophy.held = true; boss.awake = true; boss.wakeT = BOSS_WAKE; boss.x = FAR.x; boss.y = FAR.z - 12;
+          inc.grabs[f.pid]++; inc.types.add('grab');
           dlog(NAMES[f.pid], 'GRABBED trophy → Boss wakes');
           addText(f.x, f.y - 30, NAMES[f.pid] + ' 搶到獎盃！', COLORS[f.pid]);
           addText(boss.x, boss.y - 36, 'Boss 甦醒！', '#9affd0'); addRing(boss.x, boss.y, 60, '#9affd0', 0.4, 4);
@@ -384,7 +424,7 @@ function step(dt) {
       }
     } else {
       const h = fighters[holderPid];
-      if (h.state === 'alive') { trophy.x = h.x; trophy.y = h.y; holdMeter[holderPid] += dt; if (holdMeter[holderPid] >= HOLD_WIN) winRound(holderPid); }
+      if (h.state === 'alive') { trophy.x = h.x; trophy.y = h.y; holdMeter[holderPid] += dt; inc.maxHold = Math.max(inc.maxHold, holdMeter[holderPid]); if (holdMeter[holderPid] >= HOLD_WIN) winRound(holderPid); }
     }
     updateBoss(dt);
   }
@@ -414,6 +454,37 @@ function drawTrophyMarker() {
   hctx.beginPath(); hctx.arc(0, 0, 3, 0, Math.PI * 2); hctx.fill();
   hctx.restore();
 }
+const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
+function drawReport() {
+  const r = report;
+  hctx.fillStyle = 'rgba(8,10,16,.62)'; hctx.fillRect(0, 0, W, H); // dim the frozen world
+  const pw = 640, ph = 446, px = (W - pw) / 2, py = (H - ph) / 2;
+  hctx.fillStyle = 'rgba(20,24,34,.97)'; hctx.fillRect(px, py, pw, ph);
+  hctx.strokeStyle = 'rgba(255,211,109,.5)'; hctx.lineWidth = 2; hctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+  let y = py + 40; const cx = W / 2;
+  hctx.textAlign = 'center';
+  hctx.font = '900 24px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
+  hctx.fillText('魔法事故報告 #' + r.num, cx, y); y += 40;
+  // level badge
+  hctx.font = '900 52px system-ui, sans-serif'; hctx.fillStyle = LEVEL_COL[r.level] || '#fff';
+  hctx.fillText(r.level + ' 級', cx, y + 6); y += 50;
+  hctx.font = '800 22px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
+  hctx.fillText(r.name, cx, y); y += 36;
+  hctx.font = '600 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
+  hctx.fillText(r.summary, cx, y); y += 34;
+  // stats line
+  hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
+  hctx.fillText(`勝者：${NAMES[r.winner]}　基地損害 ${r.damage}%　墜落 ${inc.falls[0] + inc.falls[1]} 次　自落 ${inc.selfFalls[0] + inc.selfFalls[1]}　Boss 命中 ${inc.bossCatches}　用時 ${r.time.toFixed(0)}s`, cx, y); y += 34;
+  hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
+  hctx.fillText('稱號：' + r.title, cx, y); y += 34;
+  // committee comment (the share juice)
+  hctx.font = 'italic 700 17px system-ui, sans-serif'; hctx.fillStyle = '#9affd0';
+  hctx.fillText('「' + r.comment + '」', cx, y); y += 28;
+  hctx.font = '600 12px ui-monospace, monospace'; hctx.fillStyle = '#8a7d96';
+  hctx.fillText('挑戰碼 ' + r.code, cx, y); y += 30;
+  hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
+  hctx.fillText('按 R 再來一場　·　按 C 複製分享文字', cx, py + ph - 18);
+}
 function drawHud() {
   hctx.clearRect(0, 0, W, H);
   // red edge pulse when YOU get knocked — so a hit is never invisible
@@ -426,15 +497,15 @@ function drawHud() {
   // why you fell (diagnostic + feedback)
   if (fallReasonT > 0) { hctx.font = '900 30px system-ui, sans-serif'; hctx.fillStyle = '#ff9a9a'; hctx.fillText(fallReason, W / 2, H / 2 - 40); }
   // title
-  hctx.font = '900 20px system-ui, sans-serif';
+  hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('搶獎盃 → 撐住！別被 Boss 抓到', W / 2, 30);
-  // scores
+  hctx.fillText('魔法事故報告 · 收容測試　搶獎盃→撐住→先贏 ' + WIN_TARGET + ' 回合', W / 2, 28);
+  // round-win score (best-of)
   hctx.font = '900 40px system-ui, sans-serif';
   hctx.textAlign = 'left'; hctx.fillStyle = COLORS[0];
-  hctx.fillText(String(fighters[0].score), 24, 50);
+  hctx.fillText(roundWins[0] + '/' + WIN_TARGET, 24, 50);
   hctx.textAlign = 'right'; hctx.fillStyle = COLORS[1];
-  hctx.fillText(String(fighters[1].score), W - 24, 50);
+  hctx.fillText(roundWins[1] + '/' + WIN_TARGET, W - 24, 50);
   // hold progress bar (when someone holds the trophy)
   if (holderPid >= 0) {
     const pct = clamp(holdMeter[holderPid] / HOLD_WIN, 0, 1);
@@ -454,9 +525,10 @@ function drawHud() {
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
   hctx.fillText('藍（你）：WASD 移動 · F 陣風　　紅：AI 對手', W / 2, H - 18);
+  if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: isles-bridge3', W - 10, H - 4);
+  hctx.fillText('build: incident-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -473,11 +545,17 @@ function frame(now) {
 
 // --- boot ---
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
-  state: () => ({ holderPid, holdMeter: [holdMeter[0], holdMeter[1]], winnerPid, awake: boss.awake, scores: [fighters[0].score, fighters[1].score], fallReason, fallReasonT: +fallReasonT.toFixed(2), localFlash: +localFlash.toFixed(2) }) };
+  winRound, restartMatch,
+  state: () => ({ holderPid, winnerPid, awake: boss.awake, roundWins: [roundWins[0], roundWins[1]], matchOver, report, fallReason, fallReasonT: +fallReasonT.toFixed(2), localFlash: +localFlash.toFixed(2) }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
-  keys.add(e.key.toLowerCase());
-  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(e.key.toLowerCase())) e.preventDefault();
+  const k = e.key.toLowerCase();
+  keys.add(k);
+  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(k)) e.preventDefault();
+  if (matchOver) { // incident report screen: R = rematch, C = copy share text
+    if (k === 'r') restartMatch();
+    else if (k === 'c' && report && navigator.clipboard) { navigator.clipboard.writeText(report.share); dlog('copied share text'); }
+  }
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('pointerdown', unlockAudio);
