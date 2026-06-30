@@ -772,8 +772,11 @@ let ctx = screenCtx;
     syncWalls();
     if (islandMode) syncIsland();
     syncProps();
-    const px = (camFollow && game.player) ? game.player.x : W / 2;
-    const pz = (camFollow && game.player) ? game.player.y : H / 2;
+    // Camera target: an explicit game.camTarget (v2 follows one fighter) wins; else the player when
+    // following; else the arena centre (fixed framing). camTarget overrides the sandbox follow toggle.
+    const camObj = game.camTarget || (camFollow ? game.player : null);
+    const px = camObj ? camObj.x : W / 2;
+    const pz = camObj ? camObj.y : H / 2;
     let shx = 0, shz = 0;
     if (game.screenShake > 0) { shx = rnd(-game.screenShake, game.screenShake); shz = rnd(-game.screenShake, game.screenShake); }
     const _pit = CAM.angle * Math.PI / 180, _az = CAM.azimuth * Math.PI / 180;

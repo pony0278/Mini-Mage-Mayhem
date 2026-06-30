@@ -60,7 +60,10 @@ export const game = {
   shakeSmallCd: 0,
   // camera-sandbox only: when true, spawnWave is a no-op and the wave-clear progression is skipped,
   // so the arena stays empty for camera tuning. Never set in the shipped game.
-  noMonsters: false
+  noMonsters: false,
+  // Optional explicit camera-follow target {x,y} (v2 follows one fighter). null → render falls back to
+  // the player (when following) or the arena centre (fixed). Overrides the sandbox follow toggle.
+  camTarget: null
 };
 
 // Shared input containers: DOM event handlers (input layer) write button/key

@@ -214,13 +214,13 @@ game.player = null;     // camera centres on the arena, no player voxel
 game.stats = null;
 buildArena();
 setIslandMode(true); // float the arena above open air: VOID = transparent gap, edges = cliffs, fall = drop into sky/sea
+game.camTarget = fighters[0]; // follow the (local) controlled player; the rival comes into view as it nears
 game.enemies = fighters.slice();
 // Front-on "diorama" framing (hero-brawler look): low rake + face-on so the arena's depth
 // recedes away from camera and the near edge reads as foreground (NOT a steep top-down).
-// v2-only — index.html keeps its follow-cam. The floating-island slab + sky/sea backdrop (setIslandMode)
-// fills what used to be the empty band above the far edge. dist/panZ are sized to FIT the whole broken-isles
-// footprint (incl. the near spawn islands) in this fixed framing — a tighter fov clips the near edge off-screen.
-CAM.fov = 26; CAM.angle = 24; CAM.dist = 1150; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -10; CAM.lookY = 20;
+// v2-only — index.html keeps its own follow-cam. Telephoto follow on one fighter (game.camTarget):
+// keeps the tight diorama look while always framing the controlled player; the rival enters view as it nears.
+CAM.fov = 22; CAM.angle = 22; CAM.dist = 860; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -60; CAM.lookY = 10;
 
 let last = performance.now();
 requestAnimationFrame(frame);
