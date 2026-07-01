@@ -55,9 +55,12 @@ header('對局');
 const setAI = (on) => fighters.forEach((f, i) => { if (i !== 0) f.ai = on; });
 toggleRow('AI 對手', false, setAI);
 setAI(false); // apply the default immediately (peaceful tuning)
-// park both fighters in clear view (spawn is a corner that's easy to miss, and the panel covers the right side)
-if (fighters[0]) { fighters[0].x = 400; fighters[0].y = 360; fighters[0].vx = 0; fighters[0].vy = 0; }
-if (fighters[1]) { fighters[1].x = 545; fighters[1].y = 360; fighters[1].vx = 0; fighters[1].vy = 0; }
+// focus the camera on YOUR fighter on load. The camera pins X to arena centre (960/2=480), so putting the
+// local player at x=480 makes it sit dead-centre; the opponent is parked off to the left for comparison.
+// Snap the camera rig straight to the target too, so there's no pan-in from the spawn corner.
+if (fighters[0]) { fighters[0].x = 480; fighters[0].y = 400; fighters[0].vx = 0; fighters[0].vy = 0; }
+if (fighters[1]) { fighters[1].x = 330; fighters[1].y = 380; fighters[1].vx = 0; fighters[1].vy = 0; }
+if (v2.camRig) { v2.camRig.x = 480; v2.camRig.y = 400; }
 
 header('角色');
 slider('大小 (r)', 12, 30, 1, fighters[0].r, (v) => { for (const f of fighters) f.r = v; refreshActors(); });
