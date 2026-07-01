@@ -748,9 +748,16 @@ function drawContainHud() {
       hctx.save();
       hctx.strokeStyle = COLORS[f.pid]; hctx.globalAlpha = isMe ? 0.95 : 0.5; hctx.lineWidth = isMe ? 3 : 2;
       hctx.beginPath(); hctx.ellipse(gc.x, gc.y, gr, gr * 0.5, 0, 0, Math.PI * 2); hctx.stroke();
-      if (isMe) { // 朝向指針(配合滑鼠瞄準)＋「你」標
-        hctx.beginPath(); hctx.moveTo(gc.x, gc.y); hctx.lineTo(gc.x + Math.cos(f.facing) * gr, gc.y + Math.sin(f.facing) * gr * 0.5); hctx.stroke();
-        hctx.globalAlpha = 1; hctx.fillStyle = COLORS[f.pid]; hctx.font = '900 12px system-ui, sans-serif'; hctx.textAlign = 'center';
+      if (isMe) { // 朝向箭頭(配合滑鼠瞄準,畫在地面橢圓上)＋「你」標
+        hctx.globalAlpha = 1;
+        const ax = Math.cos(f.facing), ay = Math.sin(f.facing) * 0.5;         // y 壓扁對齊橢圓地面
+        const al = Math.hypot(ax, ay) || 1, nx = ax / al, ny = ay / al;        // 單位方向
+        const tipX = gc.x + ax * (gr + 15), tipY = gc.y + ay * (gr + 15);      // 箭尖伸出環外
+        hctx.beginPath(); hctx.moveTo(gc.x + ax * gr * 0.5, gc.y + ay * gr * 0.5); hctx.lineTo(tipX - nx * 9, tipY - ny * 9); hctx.lineWidth = 4; hctx.stroke(); // 箭桿
+        const hw = 8, bx = tipX - nx * 13, by = tipY - ny * 13, px = -ny, py = nx; // 箭頭三角
+        hctx.beginPath(); hctx.moveTo(tipX, tipY); hctx.lineTo(bx + px * hw, by + py * hw); hctx.lineTo(bx - px * hw, by - py * hw); hctx.closePath();
+        hctx.fillStyle = COLORS[f.pid]; hctx.fill();
+        hctx.font = '900 12px system-ui, sans-serif'; hctx.textAlign = 'center';
         hctx.fillText('你', gc.x, gc.y + gr * 0.5 + 13);
       }
       hctx.restore();
@@ -855,6 +862,11 @@ function drawHud() {
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
   hctx.fillText('魔法事故報告 · 收容測試　階段 ' + stage + '：' + STAGE_NAME[stage - 1] + '　封存 ' + WIN_TARGET + ' 次獲勝', W / 2, 28);
+  // AI 狀態(練習模式)— 永遠可見,B 切換
+  const aiOn = fighters[1 - LOCAL].ai;
+  hctx.font = '800 13px system-ui, sans-serif';
+  hctx.fillStyle = aiOn ? 'rgba(255,140,140,.92)' : 'rgba(154,255,208,.96)';
+  hctx.fillText(aiOn ? '紅方：AI 對手　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', W / 2, 48);
   // 三格收容進度 (每格標收容方式)
   drawPips(0, 24, 1); drawPips(1, W - 24, -1);
   drawContainHud();
@@ -867,11 +879,11 @@ function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵揮拳 · 右鍵抓／放技能（補給座撿：風/傳送/冰）　紅：AI', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵揮拳 · 右鍵抓／放技能（補給座撿：風/傳送/冰）　B：開關 AI', W / 2, H - 18);
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: id-1', W - 10, H - 4);
+  hctx.fillText('build: prac-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -903,11 +915,22 @@ window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, 
     contains: [inc.contains[0], inc.contains[1]], carries: inc.carries, accidentContains: inc.accidentContains,
     reverseContains: inc.reverseContains, teleportEscapes: inc.teleportEscapes, struggleEscapes: inc.struggleEscapes,
     itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses }) };
+// 練習模式:B 鍵切換 AI 開關。關掉後紅方不動(不追、不打),當成手感練習的假人。
+// 讀 fighters[1].ai 為唯一真相(tune 面板的勾選也吃這條),HUD 據此顯示狀態。
+function toggleAI() {
+  const on = !fighters[1 - LOCAL].ai;
+  for (let i = 0; i < fighters.length; i++) if (i !== LOCAL) fighters[i].ai = on;
+  const o = fighters[1 - LOCAL];
+  if (!on) { o.vx = 0; o.vy = 0; } // 停下當假人
+  addText(o.x, o.y - 42, on ? 'AI 開啟' : 'AI 關閉 · 練習模式', on ? '#ff6b6b' : '#9affd0');
+  game.sfx.push('upgrade');
+}
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
   keys.add(k);
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(k)) e.preventDefault();
+  if (k === 'b') toggleAI(); // 切換 AI / 練習模式
   if (matchOver) { // incident report screen: R = rematch, C = copy share text
     if (k === 'r') restartMatch();
     else if (k === 'c' && report && navigator.clipboard) { navigator.clipboard.writeText(report.share); dlog('copied share text'); }
