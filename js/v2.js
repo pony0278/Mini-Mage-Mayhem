@@ -132,7 +132,7 @@ function resetFighter(f) {
   f.stability = STAB_MAX; f.stabCd = 0;
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
-  f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0;
+  f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0; f.wasCarryingT = -9;
   f.item = null;
   f.state = 'alive';
 }
@@ -272,13 +272,15 @@ function startCarry(f, o) {
 }
 function dropCarry(f) { const o = f.carrying; if (o) { o.carriedBy = null; o.stability = Math.max(o.stability, 30); } f.carrying = null; f.regrabCd = REGRAB_CD; }
 function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
-  const f = o.carriedBy; o.carriedBy = null; o.escape = 0; o.stability = ESCAPE_STAB;
-  if (f) { f.carrying = null; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; if (f.pid === LOCAL) localFlash = 0.28; }
+  const f = o.carriedBy; o.carriedBy = null; o.escape = 0; o.stability = ESCAPE_STAB; inc.struggleEscapes++;
+  if (f) { f.carrying = null; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; f.wasCarryingT = game.time; if (f.pid === LOCAL) localFlash = 0.28; }
   addText(o.x, o.y - 30, '掙脫！', COLORS[o.pid]); addRing(o.x, o.y, 32, COLORS[o.pid], 0.35, 4); addShake(5); game.sfx.push('dash');
   dlog('ESCAPE', NAMES[o.pid], 'from', f ? NAMES[f.pid] : '?');
 }
+function isReversal(v) { return game.time - (v.wasCarryingT || -9) < 2.5; } // 被關者剛剛還在搬人 → 反向收容
 function containByCarry(f, o) { // 拖進艙 = 收容成功 (spec F §2.2 失控入艙)
-  const w = f.pid; inc.contains[w]++; inc.types.add('contain');
+  const w = f.pid; inc.contains[w]++; inc.carries[w]++; inc.types.add('contain');
+  if (isReversal(o)) { inc.reverseContains++; inc.types.add('reverse'); }
   f.carrying = null; o.carriedBy = null;
   addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6); game.sfx.push('waveclear');
   dlog('CONTAINED', NAMES[o.pid], '→', NAMES[w], 'wins round');
@@ -337,7 +339,7 @@ function castWind(f) { // 前方風錐強擊退; 貼臉發射自身反彈(過載
     if (o.carrying) dropCarry(o);                                            // 吹中搬運者 → 鬆手
     hitSpark(o.x, o.y, '#dff3ff', 1.3); addRing(o.x, o.y, 32, '#dff3ff', 0.3, 4); addText(o.x, o.y - 26, '吹飛！', '#dff3ff');
     if (o.pid === LOCAL) localFlash = 0.25;
-    if (d < 50) { f.vx -= Math.cos(a) * WIND_SELF; f.vy -= Math.sin(a) * WIND_SELF; addText(f.x, f.y - 32, '過載反彈！', '#ff9a9a'); } // 風壓過載自反噬
+    if (d < 50) { f.vx -= Math.cos(a) * WIND_SELF; f.vy -= Math.sin(a) * WIND_SELF; inc.itemBackfires++; addText(f.x, f.y - 32, '過載反彈！', '#ff9a9a'); } // 風壓過載自反噬
   }
   addRing(f.x + Math.cos(a) * 30, f.y + Math.sin(a) * 30, 62, '#dff3ff', 0.25, 5); addShake(hit ? 5 : 3); game.sfx.push('dash');
   dlog('WIND', NAMES[f.pid], hit ? 'hit' : 'miss');
@@ -354,7 +356,7 @@ function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困+搬運
     f.x = clamp(f.x + Math.cos(f.facing) * TP_BLINK, f.r, W - f.r); f.y = clamp(f.y + Math.sin(f.facing) * TP_BLINK, f.r, H - f.r);
     addText(f.x, f.y - 30, '瞬移！', '#c98cff');
   }
-  if (grabbed) { const cap = f.carriedBy; f.carriedBy = null; f.escape = 0; if (cap) { cap.carrying = null; cap.fumbleT = FUMBLE_T; cap.regrabCd = REGRAB_CD; } } // 逃脫+反轉
+  if (grabbed) { const cap = f.carriedBy; f.carriedBy = null; f.escape = 0; inc.teleportEscapes++; if (cap) { cap.carrying = null; cap.fumbleT = FUMBLE_T; cap.regrabCd = REGRAB_CD; cap.wasCarryingT = game.time; } } // 逃脫+反轉
   f.vx = 0; f.vy = 0; game.sfx.push('upgrade');
   dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
 }
@@ -364,8 +366,11 @@ function castIce(f) { // 前方丟出 → 冰面
   addRing(lx, ly, ICE_R, ITEM_INFO.ice.color, 0.4, 5); addText(lx, ly - 20, '冰面！', ITEM_INFO.ice.color); game.sfx.push('dash');
   dlog('ICE @', Math.round(lx) + ',' + Math.round(ly));
 }
-function containByEnviron(v) { // 被擊退/打滑失控進艙 → v 被收容, 對手勝(spec F §2.2)
+function containByEnviron(v, cause) { // 被擊退/打滑失控進艙 → v 被收容, 對手勝(spec F §2.2)
   const w = 1 - v.pid; inc.contains[w]++; inc.types.add('contain');
+  inc.accidentContains[cause] = (inc.accidentContains[cause] || 0) + 1; inc.types.add(cause);
+  if (cause === 'ice') inc.itemBackfires++;                 // 踩(自己的)冰面滑進艙 = 自作自受
+  if (isReversal(v)) { inc.reverseContains++; inc.types.add('reverse'); }
   if (v.carriedBy) { v.carriedBy.carrying = null; v.carriedBy = null; }
   addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6); game.sfx.push('waveclear');
   dlog('ENVIRON-CONTAIN', NAMES[v.pid], '→', NAMES[w], 'wins round');
@@ -463,7 +468,13 @@ const WIN_TARGET = 3;
 const roundWins = [0, 0];
 let matchOver = false, report = null;
 const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0,
-  contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0, itemUses: { wind: 0, teleport: 0, ice: 0 } };
+  contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0, itemUses: { wind: 0, teleport: 0, ice: 0 },
+  carries: [0, 0], accidentContains: { wind: 0, ice: 0, barrel: 0 }, reverseContains: 0, teleportEscapes: 0, struggleEscapes: 0, itemBackfires: 0 };
+function resetInc() {
+  inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0; inc.barrelBooms = 0; inc.itemUses = { wind: 0, teleport: 0, ice: 0 };
+  inc.carries = [0, 0]; inc.accidentContains = { wind: 0, ice: 0, barrel: 0 }; inc.reverseContains = 0; inc.teleportEscapes = 0; inc.struggleEscapes = 0; inc.itemBackfires = 0;
+  inc.types = new Set(); inc.matchT = 0;
+}
 const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
 
 function resetRound() {
@@ -512,39 +523,52 @@ function winRound(pid) {
 function endMatch(pid) { matchOver = true; report = generateReport(pid); game.sfx.push('upgrade'); dlog('MATCH OVER → report', report.level, report.name); }
 function restartMatch() {
   matchOver = false; report = null; roundWins[0] = 0; roundWins[1] = 0;
-  inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.types = new Set(); inc.matchT = 0; inc.maxHold = 0;
-  inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0; inc.barrelBooms = 0; inc.itemUses = { wind: 0, teleport: 0, ice: 0 };
+  inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.maxHold = 0;
+  resetInc();
   resetRound();
 }
-function pickComment(w) {
+function mostUsedItem() {
+  const u = inc.itemUses, max = Math.max(u.wind, u.teleport, u.ice);
+  if (max === 0) return inc.barrelBooms > 0 ? '爆桶' : '（徒手)';
+  return u.teleport === max ? '傳送符' : u.ice === max ? '冰霜瓶' : '風壓手套';
+}
+function pickComment() {
+  if (inc.reverseContains >= 1) return '技術上來說，有人被成功收容了。只是收錯人。';
+  if (inc.itemBackfires >= 2) return '受測體最大的敵人，始終是自己手上的道具。';
+  if (inc.accidentContains.ice >= 1) return '冰面很滑，收容艙很近。剩下的是物理問題。';
+  if (inc.accidentContains.wind >= 1) return '風的方向，有時比法術更難預測。';
   if (inc.barrelBooms >= 3) return '魔法倉庫的爆桶不是裝飾品。雖然你們把它當成了。';
-  if (inc.contains[0] >= 1 && inc.contains[1] >= 1) return '技術上來說，有人被成功收容了。雙向地。';
-  if (inc.overloads >= 2) return '實驗艙不是這樣用的。但你們找到了新用法。';
-  if (inc.selfPods >= 1) return '受測體展現了高度的自我收容意識。';
-  if (inc.barrelBooms >= 1) return '請勿在實驗艙附近施放火球。也請勿靠近爆桶。';
-  return '請勿在實驗艙附近施放火球。';
+  if (inc.itemUses.teleport >= 3) return '請停止濫用傳送符。空間結構有它的極限。';
+  return '收容程序完成。過程恕不予置評。';
 }
 function generateReport(winner) {
-  const totalContains = inc.contains[0] + inc.contains[1];
-  const chaos = totalContains + inc.overloads * 2 + inc.selfPods * 2 + inc.barrelBooms;
-  const level = chaos >= 12 ? 'S+' : chaos >= 9 ? 'S' : chaos >= 7 ? 'A' : chaos >= 5 ? 'B' : chaos >= 3 ? 'C' : 'D';
+  const ac = inc.accidentContains, accTotal = ac.wind + ac.ice + ac.barrel;
+  const dangerKinds = (inc.itemUses.teleport > 0 ? 1 : 0) + (inc.barrelBooms > 0 ? 1 : 0); // 涉案危險級道具種類(概念§8)
+  const chaos = inc.carries[0] + inc.carries[1] + accTotal * 2 + inc.reverseContains * 3
+    + inc.itemBackfires + inc.barrelBooms + dangerKinds;
+  const level = chaos >= 14 ? 'S+' : chaos >= 10 ? 'S' : chaos >= 7 ? 'A' : chaos >= 5 ? 'B' : chaos >= 3 ? 'C' : 'D';
   let name, summary;
-  if (inc.barrelBooms >= 3) { name = '連環爆破事件'; summary = `魔法倉庫的爆桶連環引爆 ${inc.barrelBooms} 次，現場已無「桶」的概念。`; }
-  else if (inc.contains[0] >= 1 && inc.contains[1] >= 1) { name = '反向收容拉鋸事件'; summary = `雙方互相收容了對方共 ${totalContains} 次，沒人說得清誰才是收容員。`; }
-  else if (inc.overloads >= 2) { name = '艙門短路連發事件'; summary = `實驗艙過載 ${inc.overloads} 次，維修部門已遞辭呈。`; }
-  else if (inc.selfPods >= 1) { name = '自行入艙事件'; summary = `受測體 ${inc.selfPods} 次自己滑進收容艙，效率高得令人不安。`; }
+  if (inc.reverseContains >= 2) { name = '反向收容拉鋸事件'; summary = `收容員與受測體多次互換身分，反向收容共 ${inc.reverseContains} 次。`; }
+  else if (inc.reverseContains >= 1) { name = '反向收容事件'; summary = `有人剛要完成收容，轉眼自己被關了進去。`; }
+  else if (inc.barrelBooms >= 3) { name = '連環爆破事件'; summary = `爆桶連環引爆 ${inc.barrelBooms} 次，現場已無「桶」的概念。`; }
+  else if (inc.itemBackfires >= 2) { name = '自體事故頻發事件'; summary = `受測體被自己的道具害到 ${inc.itemBackfires} 次，展現高度自我毀滅天賦。`; }
+  else if (ac.ice >= 1) { name = '自投羅網事件'; summary = `${ac.ice} 次有人在冰面上一路滑進了收容艙。`; }
+  else if (ac.wind >= 1) { name = '強風收容事件'; summary = `${ac.wind} 次有人被一陣風直接吹進收容艙。`; }
+  else if (inc.itemUses.teleport >= 3) { name = '空間錯亂事件'; summary = `傳送符被使用 ${inc.itemUses.teleport} 次，沒人確定自己現在站在哪。`; }
   else if (inc.barrelBooms >= 1) { name = '倉庫起火事件'; summary = `爆桶被引爆 ${inc.barrelBooms} 次，安全規範表示遺憾。`; }
   else { name = '標準收容測試'; summary = '收容程序大致完成，僅輕微失控。'; }
-  const title = inc.barrelBooms >= 3 ? '爆破藝術家'
-    : inc.overloads >= 2 ? '艙門短路專家'
-    : inc.selfPods >= 1 ? '自助收容受測體'
-    : inc.contains[winner] >= 2 ? '王牌收容員' : '合格但不可取';
-  const damage = Math.min(99, chaos * 9);
+  const title = inc.reverseContains >= 1 ? '換位藝術家'
+    : inc.itemBackfires >= 2 ? '自助受測體'
+    : inc.barrelBooms >= 3 ? '爆破藝術家'
+    : ac.ice >= 1 ? '滑冰收容大師'
+    : inc.carries[winner] >= 2 ? '王牌收容員' : '合格但不可取';
+  const damage = Math.min(99, chaos * 8);
   const code = 'MIR-' + Math.floor(Math.random() * 0x10000).toString(16).toUpperCase().padStart(4, '0');
-  const comment = pickComment(winner);
-  const num = 100 + ((chaos * 7 + inc.contains[0] * 3 + inc.contains[1] * 5 + inc.overloads * 11) % 900);
-  const share = `我在《魔法事故報告》觸發了 ${level} 級事故：${name}。\n${NAMES[winner]} 完成收容，基地損害 ${damage}%。\n安全委員會：「${comment}」\n挑戰碼：${code}`;
-  return { num, name, level, winner, summary, comment, title, code, damage, time: inc.matchT };
+  const comment = pickComment();
+  const mostUsed = mostUsedItem();
+  const num = 100 + ((chaos * 7 + inc.contains[0] * 3 + inc.contains[1] * 5 + inc.reverseContains * 11) % 900);
+  const share = `我在《魔法事故報告》觸發了 ${level} 級事故：${name}。\n${NAMES[winner]} 完成收容，基地損害 ${damage}%，主要涉案道具「${mostUsed}」。\n安全委員會：「${comment}」\n挑戰碼：${code}`;
+  return { num, name, level, winner, summary, comment, title, code, damage, mostUsed, share, time: inc.matchT };
 }
 function updateBoss(dt) {
   if (!boss.awake) return;
@@ -625,7 +649,10 @@ function step(dt) {
     // 失控入艙: 被擊退/打滑(速度夠快)或暈眩者進到艙半徑 → 收容(對手勝)
     for (const f of fighters) {
       if (f.state !== 'alive' || f.carriedBy || f.carrying) continue;
-      if ((f.stunned || Math.hypot(f.vx, f.vy) > SLIDE_CONTAIN_V) && inPod(f.x, f.y)) { containByEnviron(f); break; }
+      if ((f.stunned || Math.hypot(f.vx, f.vy) > SLIDE_CONTAIN_V) && inPod(f.x, f.y)) {
+        const cause = iceAt(f.x, f.y) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind');
+        containByEnviron(f, cause); break;
+      }
     }
     updateBarrels(dt); updatePads(dt); updateIce(dt); // 爆桶 / 補給座重刷 / 冰面消退
   }
@@ -719,7 +746,7 @@ function drawReport() {
   hctx.fillText(r.summary, cx, y); y += 34;
   // stats line
   hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
-  hctx.fillText(`勝者：${NAMES[r.winner]}　基地損害 ${r.damage}%　收容 ${inc.contains[0] + inc.contains[1]} 次　艙門過載 ${inc.overloads}　自行入艙 ${inc.selfPods}　爆桶 ${inc.barrelBooms}　用時 ${r.time.toFixed(0)}s`, cx, y); y += 34;
+  hctx.fillText(`勝者：${NAMES[r.winner]}　損害 ${r.damage}%　搬 ${inc.carries[0] + inc.carries[1]}·吹 ${inc.accidentContains.wind}·滑 ${inc.accidentContains.ice}·爆 ${inc.accidentContains.barrel}　反向 ${inc.reverseContains}　自傷 ${inc.itemBackfires}　主要道具 ${r.mostUsed}　${r.time.toFixed(0)}s`, cx, y); y += 34;
   hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
   hctx.fillText('稱號：' + r.title, cx, y); y += 34;
   // committee comment (the share juice)
@@ -765,7 +792,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: items-1', W - 10, H - 4);
+  hctx.fillText('build: report-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -784,14 +811,16 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   winRound, restartMatch,
   POD, barrels, explodeBarrel, CAMB, camRig,
-  punch, startCarry, stunFighter, pads, iceZones, useItem, castWind, castTeleport, castIce,
+  punch, startCarry, stunFighter, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport,
   state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report,
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
     stunned: [fighters[0].stunned, fighters[1].stunned],
     carrying: [fighters[0].carrying ? fighters[0].carrying.pid : -1, fighters[1].carrying ? fighters[1].carrying.pid : -1],
     escape: [Math.round(fighters[0].escape || 0), Math.round(fighters[1].escape || 0)],
     items: [fighters[0].item, fighters[1].item], pads: pads.map(p => p.item), iceZones: iceZones.length,
-    contains: [inc.contains[0], inc.contains[1]], barrelBooms: inc.barrelBooms, itemUses: inc.itemUses }) };
+    contains: [inc.contains[0], inc.contains[1]], carries: inc.carries, accidentContains: inc.accidentContains,
+    reverseContains: inc.reverseContains, teleportEscapes: inc.teleportEscapes, struggleEscapes: inc.struggleEscapes,
+    itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
