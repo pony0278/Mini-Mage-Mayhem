@@ -15,7 +15,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } 
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -103,13 +103,13 @@ function buildFlatMap() { // dummy all-floor grid so grid-reading helpers (circl
   game.map = [];
   for (let y = 0; y < ROWS; y++) { const row = []; for (let x = 0; x < COLS; x++) row.push(TILE_FLOOR); game.map.push(row); }
 }
-function buildFlatArena() { // walled platform, but the CAMERA-SIDE (south / bottom) edge is left wall-less: that
-  // wall would otherwise sit in the foreground between camera and player, occluding + clutter. Collision there
-  // is still enforced by the clamp in moveFighter, so players can't leave. North/left/right walls stay as backdrop.
+function buildFlatArena() { // fully walled platform (4 sides). The camera-side (south) wall no longer needs removing:
+  // setWallFade(true) makes any wall between camera and the player turn see-through (GetAmped-style), so the south
+  // wall gives full enclosure yet never hides you. Collision unaffected (walls are solid + clamp as backstop).
   game.map = [];
   for (let y = 0; y < ROWS; y++) {
     const row = [];
-    for (let x = 0; x < COLS; x++) row.push(x === 0 || y === 0 || x === COLS - 1 ? TILE_WALL : TILE_FLOOR);
+    for (let x = 0; x < COLS; x++) row.push(x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1 ? TILE_WALL : TILE_FLOOR);
     game.map.push(row);
   }
 }
@@ -641,7 +641,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: feel-1', W - 10, H - 4);
+  hctx.fillText('build: occlude-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -692,12 +692,14 @@ if (TERRAIN === 'isles') {
   CAM.fov = 26; CAM.angle = 24; CAM.dist = 1150; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -10; CAM.lookY = 20;
 } else {                                            // 'flat' — plain walled platform, no falling (best for testing)
   buildFlatArena();
+  setWallFade(true);                                // see-through walls: occluding walls (esp. the south one) fade
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target
   // north, so the player (south of it) rides low in frame → less black void below, more arena ahead. (Live-tune via __v2.CAM.)
   CAM.fov = 38; CAM.angle = 34; CAM.dist = 540; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -40; CAM.lookY = 14;
 }
 // flat mode uses the smoothed/bounded camRig; isles/grid follow the fighter directly (their framing differs)
 game.camTarget = TERRAIN === 'flat' ? camRig : fighters[0];
+game.occludeTarget = fighters[LOCAL]; // see-through walls aim at the REAL player, not the (clamped) camera rig
 game.enemies = fighters.slice();
 
 let last = performance.now();

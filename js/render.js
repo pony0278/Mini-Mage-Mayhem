@@ -362,6 +362,17 @@ let ctx = screenCtx;
   const iceWallTopMat = new THREE.MeshLambertMaterial({ color: 0xe8fbff, transparent: true, opacity: 0.88 });
   const wallBodyMat = (t) => t === TILE_WALL ? wallMat : (t === TILE_ICEWALL ? iceWallMat : thinMat);
   const wallCapMat = (t) => t === TILE_WALL ? wallTopMat : (t === TILE_ICEWALL ? iceWallTopMat : thinTopMat);
+  // --- camera occlusion fade (see-through walls) : any wall between the camera and the followed character
+  // turns translucent so it never hides them. Collision is untouched — this is render-only (the wall is still
+  // physically there). Standard trick for 3/4 cameras (GetAmped-style). Enable via setWallFade(true).
+  // Each wall tile is registered as a "fade unit" (its body+cap+rune materials, cloned so they fade independently).
+  let wallFade = false, wallDirty = false;
+  export function setWallFade(on) { if (on !== wallFade) { wallFade = on; wallDirty = true; } } // rebuild walls on toggle
+  const _wallUnits = [];        // { mats:[…], op, target } — only populated when wallFade is on
+  const _wallObjs = [];         // flat list of meshes to raycast (each carries userData.unit)
+  const _ray = new THREE.Raycaster();
+  const _rayDir = new THREE.Vector3();
+  const WALL_FADE_OP = 0.16;    // how see-through an occluding wall gets
   let wallSig = '';
   function syncWalls() {
     let sig = '';
@@ -369,27 +380,62 @@ let ctx = screenCtx;
       const t = game.map[y][x];
       if (t === TILE_WALL || t === TILE_THIN || t === TILE_ICEWALL) sig += x + '.' + y + '.' + t + ';';
     }
-    if (sig === wallSig) return;
-    wallSig = sig;
-    wallGroup.clear();
+    if (sig === wallSig && !wallDirty) return;
+    wallSig = sig; wallDirty = false;
+    wallGroup.clear(); _wallUnits.length = 0; _wallObjs.length = 0;
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const t = game.map[y][x];
       if (t !== TILE_WALL && t !== TILE_THIN && t !== TILE_ICEWALL) continue;
       const h = t === TILE_WALL ? 48 : (t === TILE_ICEWALL ? 34 : 30);
-      const body = new THREE.Mesh(boxGeo, wallBodyMat(t));
+      // wallFade on → per-tile cloned transparent materials + a fade unit; off → original shared opaque materials
+      // (keeps single-player / isles walls untouched: no transparent pass, no extra draw calls).
+      const unit = wallFade ? { mats: [], op: 1, target: 1 } : null;
+      const bodyMat = wallFade ? (() => { const m = wallBodyMat(t).clone(); m.transparent = true; unit.mats.push(m); return m; })() : wallBodyMat(t);
+      const capMat = wallFade ? (() => { const m = wallCapMat(t).clone(); m.transparent = true; unit.mats.push(m); return m; })() : wallCapMat(t);
+      const body = new THREE.Mesh(boxGeo, bodyMat);
       body.scale.set(TILE, h, TILE);
       body.position.set(x * TILE + TILE / 2, h / 2, y * TILE + TILE / 2);
       wallGroup.add(body);
-      const cap = new THREE.Mesh(boxGeo, wallCapMat(t));
+      const cap = new THREE.Mesh(boxGeo, capMat);
       cap.scale.set(TILE * 0.94, 4, TILE * 0.94);
       cap.position.set(x * TILE + TILE / 2, h + 2, y * TILE + TILE / 2);
       wallGroup.add(cap);
+      if (unit) { body.userData.unit = unit; cap.userData.unit = unit; _wallObjs.push(body, cap); }
       if ((x + y) % 5 === 0) {
-        const rune = new THREE.Mesh(boxGeo, matLambert(0x9b6cff, 0x9b6cff, 0.7));
+        const runeMat = matLambert(0x9b6cff, 0x9b6cff, 0.7);
+        if (unit) { runeMat.transparent = true; unit.mats.push(runeMat); }
+        const rune = new THREE.Mesh(boxGeo, runeMat);
         rune.scale.set(5, 1.2, 5);
         rune.position.set(x * TILE + TILE / 2, h + 4.5, y * TILE + TILE / 2);
         wallGroup.add(rune);
+        if (unit) { rune.userData.unit = unit; _wallObjs.push(rune); }
       }
+      if (unit) _wallUnits.push(unit);
+    }
+  }
+  // cast a few rays from the camera to points across the character silhouette; fade every wall unit any ray passes
+  // through (so a wall grazing the character's edge still clears), then ease each unit's opacity toward its target.
+  // [xOffset, height] samples across the character silhouette — a wide-enough fan that the faded window
+  // comfortably clears the body (a 1-tile-wide window would only reveal a sliver of it).
+  const _fadeSamples = [[0, 12], [0, 30], [0, 46], [-22, 22], [22, 22], [-40, 20], [40, 20]];
+  function updateWallFade() {
+    for (const u of _wallUnits) u.target = 1;
+    // aim at the ACTUAL character (game.occludeTarget), not game.camTarget — the latter may be a smoothed/
+    // clamped camera rig whose position sits short of the player, so rays to it fly over low walls.
+    const tgt = game.occludeTarget || game.camTarget;
+    if (wallFade && tgt && _wallObjs.length) {
+      wallGroup.updateMatrixWorld(true); // ensure wall world matrices are current for raycasting
+      for (const [ox, hy] of _fadeSamples) {
+        _rayDir.set(tgt.x + ox - camera.position.x, hy - camera.position.y, tgt.y - camera.position.z);
+        const len = _rayDir.length() || 1; _rayDir.multiplyScalar(1 / len);
+        _ray.set(camera.position, _rayDir); _ray.far = len - 8; // stop just short of the character
+        const hits = _ray.intersectObjects(_wallObjs, false);
+        for (const hh of hits) { const u = hh.object.userData.unit; if (u) u.target = WALL_FADE_OP; }
+      }
+    }
+    for (const u of _wallUnits) {
+      if (Math.abs(u.op - u.target) < 0.012) u.op = u.target; else u.op += (u.target - u.op) * 0.22;
+      for (const m of u.mats) m.opacity = u.op;
     }
   }
 
@@ -855,6 +901,7 @@ let ctx = screenCtx;
     syncActors();
     syncProjectiles();
     syncZones();
+    updateWallFade(); // see-through walls: fade any wall between camera and the followed character
     renderer.render(scene, camera);
   }
 
