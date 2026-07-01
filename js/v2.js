@@ -128,17 +128,24 @@ function resetFighter(f) {
   f.vx = 0; f.vy = 0;
   f.facing = f.pid === 0 ? 0 : Math.PI; // face toward the pit/centre
   f.faceT = 0; f.falling = false; f.fallT = 0; f.spin = 0; f.voidT = 0;
-  f.hurt = 0; f.slowTimer = 0; f.shoveCd = 0; f.lastHitBy = -1; f.lastHitT = -9; f.aiLastShove = -9;
-  f.stability = STAB_MAX; f.staggered = false; f.stabCd = 0;
+  f.hurt = 0; f.lastHitBy = -1; f.lastHitT = -9;
+  f.stability = STAB_MAX; f.stabCd = 0;
+  f.stunned = false; f.stunT = 0; f.restunT = 0;
+  f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
+  f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0;
   f.state = 'alive';
 }
-// --- 收容測試 (spec E §4 / V0.9): 削弱穩定值 → 推失衡對手進實驗艙 → 3 秒關艙 → 收容/過載反轉 ---
+// --- 收容測試 (spec F §2): 揮拳削穩定值 → 擊暈 → 抓 → 拖進實驗艙 = 收容 ---
 // (declared before fighters[] because resetFighter() reads STAB_MAX at construction time)
 const POD = { x: W / 2, y: H / 2, r: 46 };
-const STAB_MAX = 100, STAB_SHOVE = 45, STAB_REGEN = 28, STAG_ENTER = 25, STAG_EXIT = 45, STAG_SLOW = 0.6;
-const LOCK_T = 3.0, ESCAPE_NEED = 100, MASH_AI = 26, MASH_TAP = 16; // mash to escape: AI fills ~78% in 3s (contained); a frantic human can break out
-let lock = null; // { pid(被收容者), t(關艙倒數), escape(掙脫值), selfPod(自行入艙) }
-function inPod(f) { return Math.hypot(f.x - POD.x, f.y - POD.y) <= POD.r; }
+const STAB_MAX = 100, STAB_REGEN = 28;
+// 基礎抓捕數值 (spec F §2.3 起始值,實測後調)
+const PUNCH_RANGE = 46, PUNCH_CONE = 0.9, PUNCH_CD = 0.35, PUNCH_STAB = 25, PUNCH_KNOCK = 130;
+const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
+const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
+const CARRY_ESCAPE_NEED = 100, CARRY_MASH_AI = 45, CARRY_MASH_TAP = 8; // AI 固定填速≈2.2s;人類左右交替每下+8
+const FUMBLE_T = 0.5, ESCAPE_STAB = 50;
+function inPod(x, y) { return Math.hypot(x - POD.x, y - POD.y) <= POD.r; }
 // --- 危險 #1:爆桶(Phase 1)。靠近→點燃 0.5s→爆炸:炸飛+削弱穩定值;炸到艙門→短路過載 ---
 const BARREL_IGNITE = 28, BARREL_FUSE = 0.5, BARREL_BLAST = 95, BARREL_FORCE = 700, BARREL_STAB = 50, BARREL_RESPAWN = 6;
 const BARREL_SPOTS = [[300, 210], [660, 210], [300, 470], [660, 470]];
@@ -183,11 +190,19 @@ function bridgeAssist(f) {
   }
   if (bd < half + 34) { const ax = (bcx - f.x) * 0.3, ay = (bcy - f.y) * 0.3; f.x += ax; f.y += ay; f.assist = Math.hypot(ax, ay); } // capture & ease to centreline
 }
+function slideKnock(f, dt) { // apply lingering knockback velocity only (no self-control)
+  const sx = f.vx * dt, sy = f.vy * dt;
+  if (!circleHitsSolid(f.x + sx, f.y, f.r)) f.x += sx; else f.vx = 0;
+  if (!circleHitsSolid(f.x, f.y + sy, f.r)) f.y += sy; else f.vy = 0;
+  f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
+  const k = Math.pow(KNOCK_FRICTION, dt); f.vx *= k; f.vy *= k;
+  if (KNOCK_CUTOFF && f.vx * f.vx + f.vy * f.vy < KNOCK_CUTOFF * KNOCK_CUTOFF) { f.vx = 0; f.vy = 0; }
+}
 function moveFighter(f, dt) {
+  if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
   const m = f.ai ? aiMove(f) : readMove(f.pid);
   if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);
-  const sp = SPEED * (f.staggered ? STAG_SLOW : 1); // 失衡時減速
-  // walk intent + lingering knockback velocity, integrated with axis-separated wall collision
+  const sp = SPEED * (f.carrying ? CARRY_SLOW : 1); // 搬運時變慢
   const stepX = (m.x * sp + f.vx) * dt;
   const stepY = (m.y * sp + f.vy) * dt;
   if (!circleHitsSolid(f.x + stepX, f.y, f.r)) f.x += stepX; else f.vx = 0;
@@ -196,45 +211,66 @@ function moveFighter(f, dt) {
   if (FREEFORM) bridgeAssist(f);
   const k = Math.pow(KNOCK_FRICTION, dt); f.vx *= k; f.vy *= k;
   if (KNOCK_CUTOFF && f.vx * f.vx + f.vy * f.vy < KNOCK_CUTOFF * KNOCK_CUTOFF) { f.vx = 0; f.vy = 0; } // snap out the ice-slide tail
-  if (f.shoveCd > 0) f.shoveCd -= dt;
 }
 
-// the one verb: a forward gust that flings any rival caught in the cone
-function shove(f) {
-  if (f.shoveCd > 0 || f.falling || f.state !== 'alive') return;
-  f.shoveCd = SHOVE_CD;
-  const a = f.facing;
-  let hit = false;
+// --- 基礎動詞 (spec F §2): 揮拳(削穩定值→擊暈) + 情境動作鍵(暈眩對手在近處→抓; 搬運中→放下; 否則→揮拳) ---
+function stunFighter(o) {
+  o.stunned = true; o.stunT = STUN_T; o.vx *= 0.4; o.vy *= 0.4;
+  addText(o.x, o.y - 30, '暈！', '#ffd36d'); addRing(o.x, o.y, 30, '#ffd36d', 0.3, 4);
+  if (o.pid === LOCAL) localFlash = 0.3;
+}
+function punch(f) {
+  if (f.punchCd > 0 || f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return;
+  f.punchCd = PUNCH_CD;
+  const a = f.facing; let hit = false;
   for (const o of fighters) {
-    if (o === f || o.state !== 'alive' || o.falling) continue;
+    if (o === f || o.state !== 'alive' || o.carriedBy) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
-    if (d > SHOVE_RANGE) continue;
-    let da = Math.atan2(dy, dx) - a;
-    while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
-    if (Math.abs(da) > SHOVE_CONE) continue;
+    if (d > PUNCH_RANGE + o.r) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) > PUNCH_CONE) continue;
     hit = true;
-    o.vx += Math.cos(a) * SHOVE_FORCE * SHOVE_MUL; o.vy += Math.sin(a) * SHOVE_FORCE * SHOVE_MUL;
-    o.faceT = 0.35; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
-    o.stability = Math.max(0, o.stability - STAB_SHOVE); o.stabCd = 0.8; // 削弱穩定值(被陣風命中)
-    hitSpark(o.x, o.y, '#dff3ff', 1.3);
-    addText(o.x, o.y - 26, '推飛！', '#dff3ff'); addRing(o.x, o.y, 30, '#dff3ff', 0.3, 4); // clear "you got gusted" feedback
-    if (o.pid === LOCAL) { localFlash = 0.28; dlog('SHOVED by', NAMES[f.pid], 'at', Math.round(o.x) + ',' + Math.round(o.y), '→ v', Math.round(o.vx) + ',' + Math.round(o.vy)); } // flash the screen when YOU are the one hit
+    o.vx += Math.cos(a) * PUNCH_KNOCK; o.vy += Math.sin(a) * PUNCH_KNOCK;
+    o.faceT = 0.2; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    o.stability = Math.max(0, o.stability - PUNCH_STAB); o.stabCd = 0.8; // 削穩定值(命中暫停回穩)
+    hitSpark(o.x, o.y, '#ffe0a3', 1.2); addRing(o.x, o.y, 22, '#ffd36d', 0.25, 3);
+    if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
+    if (o.pid === LOCAL) localFlash = 0.2;
   }
-  addRing(f.x + Math.cos(a) * 26, f.y + Math.sin(a) * 26, 46, '#dff3ff', 0.22, 4);
-  addShake(hit ? 5 : 3);
-  if (hit && WEIGHTY) addHitstop(0.05); // 命中頓一下 → 賣出「撞到」的衝擊/重量感
-  game.sfx.push('dash');
+  addRing(f.x + Math.cos(a) * 22, f.y + Math.sin(a) * 22, 30, '#ffd36d', 0.2, 3);
+  addShake(hit ? 4 : 2); if (hit) addHitstop(0.05); game.sfx.push('hit');
 }
-
-// edge-triggered shove (so a held key doesn't auto-fire every frame); AI fighters shove via aiMove, not keys
-const shovePrev = [false, false];
-function pollShove() {
-  const pressed = [keys.has('f'), keys.has('/')];
-  for (let i = 0; i < 2; i++) {
-    if (fighters[i].ai) continue;
-    if (pressed[i] && !shovePrev[i]) shove(fighters[i]);
-    shovePrev[i] = pressed[i];
-  }
+function startCarry(f, o) {
+  f.carrying = o; o.carriedBy = f; o.escape = 0; o.stunned = false; o.stunT = 0; o.mashSide = 0; o._aPrev = false; o._dPrev = false;
+  addText(o.x, o.y - 30, '抓住！', COLORS[f.pid]); addRing(o.x, o.y, 34, COLORS[f.pid], 0.35, 4); addShake(4); game.sfx.push('upgrade');
+  dlog('GRAB', NAMES[f.pid], '→', NAMES[o.pid]);
+}
+function dropCarry(f) { const o = f.carrying; if (o) { o.carriedBy = null; o.stability = Math.max(o.stability, 30); } f.carrying = null; f.regrabCd = REGRAB_CD; }
+function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
+  const f = o.carriedBy; o.carriedBy = null; o.escape = 0; o.stability = ESCAPE_STAB;
+  if (f) { f.carrying = null; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; if (f.pid === LOCAL) localFlash = 0.28; }
+  addText(o.x, o.y - 30, '掙脫！', COLORS[o.pid]); addRing(o.x, o.y, 32, COLORS[o.pid], 0.35, 4); addShake(5); game.sfx.push('dash');
+  dlog('ESCAPE', NAMES[o.pid], 'from', f ? NAMES[f.pid] : '?');
+}
+function containByCarry(f, o) { // 拖進艙 = 收容成功 (spec F §2.2 失控入艙)
+  const w = f.pid; inc.contains[w]++; inc.types.add('contain');
+  f.carrying = null; o.carriedBy = null;
+  addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6); game.sfx.push('waveclear');
+  dlog('CONTAINED', NAMES[o.pid], '→', NAMES[w], 'wins round');
+  winRound(w);
+}
+function doAction(f) { // 情境動作鍵
+  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0) return;
+  if (f.carrying) { dropCarry(f); return; }
+  const o = fighters[1 - f.pid];
+  if (f.regrabCd <= 0 && o.state === 'alive' && o.stunned && !o.carriedBy && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
+  punch(f);
+}
+// edge-triggered action key (human only); AI 透過 aiMove 直接呼叫 punch/startCarry
+const actionPrev = [false, false];
+function pollAction() {
+  const pressed = [keys.has('j'), keys.has('/')];
+  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !actionPrev[i]) doAction(fighters[i]); actionPrev[i] = pressed[i]; }
 }
 
 // --- simple test AI (so you can play solo): seek the trophy / chase the holder / flee the boss when
@@ -274,28 +310,17 @@ function islandFarthestFromBoss() {
 }
 function aiMove(f) {
   const o = fighters[1 - f.pid]; // the rival (1v1)
-  const lockedSelf = lock && lock.pid === f.pid;
   let gx, gy;
-  if (lockedSelf) { gx = f.x; gy = f.y; } // being contained → struggle handled elsewhere
-  else if (f.staggered) { // I'm weak → flee from rival AND the pod (don't get trapped)
-    const ax = f.x - o.x, ay = f.y - o.y, al = Math.hypot(ax, ay) || 1;
-    const bx = f.x - POD.x, by = f.y - POD.y, bl = Math.hypot(bx, by) || 1;
-    gx = f.x + ax / al * 200 + bx / bl * 130; gy = f.y + ay / al * 200 + by / bl * 130;
-  } else if (o.staggered && o.state === 'alive') { // rival weak → get on the far side of the pod to push them in
-    const ox = o.x - POD.x, oy = o.y - POD.y, ol = Math.hypot(ox, oy) || 1;
-    gx = o.x + ox / ol * 58; gy = o.y + oy / ol * 58;
-  } else { gx = o.x; gy = o.y; } // chase to weaken
+  if (f.carrying) { gx = POD.x; gy = POD.y; }             // 扛著人 → 拖去實驗艙
+  else { gx = o.x; gy = o.y; }                            // 追對手(打暈/抓)
   const dx = gx - f.x, dy = gy - f.y, dl = Math.hypot(dx, dy) || 1;
-  const dir = aiSafeDir(f, dx / dl, dy / dl);
+  const dir = FREEFORM ? aiSafeDir(f, dx / dl, dy / dl) : { x: dx / dl, y: dy / dl };
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
-  // shove: weaken the rival, or (if they're weak) gust them toward the pod
-  if (f.shoveCd <= 0 && game.time - (f.aiLastShove || -9) > AI_SHOVE_CD && o.state === 'alive' && !o.falling && !lockedSelf) {
+  // actions: grab a stunned rival, else punch when in range
+  if (!f.carrying && f.fumbleT <= 0 && o.state === 'alive' && !o.carriedBy) {
     const od = Math.hypot(o.x - f.x, o.y - f.y);
-    if (od <= SHOVE_RANGE) {
-      f.aiLastShove = game.time;
-      f.facing = o.staggered ? Math.atan2(POD.y - o.y, POD.x - o.x) : Math.atan2(o.y - f.y, o.x - f.x);
-      shove(f);
-    }
+    if (o.stunned && f.regrabCd <= 0 && od <= GRAB_RANGE + o.r) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); startCarry(f, o); }
+    else if (!o.stunned && f.punchCd <= 0 && od <= PUNCH_RANGE + o.r) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); punch(f); }
   }
   return dir;
 }
@@ -340,7 +365,6 @@ function resetRound() {
   holderPid = -1; holdMeter[0] = 0; holdMeter[1] = 0;
   trophy.held = false; trophy.x = FAR.x; trophy.y = FAR.z;
   boss.awake = false; boss.wakeT = 0; boss.x = FAR.x; boss.y = FAR.z - 12;
-  lock = null;
   resetBarrels();
   for (const f of fighters) resetFighter(f);
 }
@@ -349,22 +373,6 @@ function dropTrophy(x, y) {
   trophy.x = clamp(x, 40, W - 40); trophy.y = clamp(y, 40, H - 40);
   if (overAir(trophy.x, trophy.y)) { trophy.x = FAR.x; trophy.y = FAR.z; } // don't lose it down the abyss
   addText(trophy.x, trophy.y - 30, '獎盃掉落！', '#ffd36d');
-}
-function containSuccess() {
-  const cap = lock.pid, w = 1 - cap;
-  inc.contains[w]++; inc.types.add('contain'); if (lock.selfPod) { inc.selfPods++; inc.types.add('selfpod'); }
-  addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(5); game.sfx.push('waveclear');
-  dlog('CONTAINED', NAMES[cap], '→', NAMES[w], 'wins round');
-  lock = null; winRound(w);
-}
-function podOverload(cap) {
-  inc.overloads++; inc.types.add('overload');
-  for (const f of fighters) { if (f.state !== 'alive') continue; const dx = f.x - POD.x, dy = f.y - POD.y, d = Math.hypot(dx, dy) || 1; f.vx += dx / d * 620; f.vy += dy / d * 620; f.faceT = 0.4; }
-  cap.stability = 55; cap.staggered = false; cap.stabCd = 1.0;
-  if (cap.pid === LOCAL) localFlash = 0.3;
-  addText(POD.x, POD.y - 40, '艙門過載！', '#ff7b72'); addRing(POD.x, POD.y, POD.r * 2.4, '#ffd36d', 0.45, 6); addShake(7); addHitstop(0.05); game.sfx.push('hit');
-  dlog('OVERLOAD: escaped', NAMES[cap.pid]);
-  lock = null;
 }
 function explodeBarrel(b) {
   b.alive = false; b.respawn = BARREL_RESPAWN; inc.barrelBooms++; inc.types.add('barrel');
@@ -377,9 +385,10 @@ function explodeBarrel(b) {
     if (d > BARREL_BLAST + f.r) continue;
     f.vx += dx / d * BARREL_FORCE; f.vy += dy / d * BARREL_FORCE;
     f.stability = Math.max(0, f.stability - BARREL_STAB); f.stabCd = 0.8; f.faceT = 0.4; f.lastHitBy = -3; f.lastHitT = game.time; // -3 = 爆桶
+    if (f.carrying) dropCarry(f);                                        // 炸到搬運者 → 鬆手
+    if (f.stability <= 0 && !f.stunned && f.restunT <= 0) stunFighter(f); // 炸崩 → 可能擊暈
     if (f.pid === LOCAL) localFlash = 0.32;
   }
-  if (lock && Math.hypot(b.x - POD.x, b.y - POD.y) < BARREL_BLAST) { const cap = fighters[lock.pid]; if (cap) podOverload(cap); } // 炸到艙門→短路
   dlog('BARREL boom @', Math.round(b.x) + ',' + Math.round(b.y));
 }
 function updateBarrels(dt) {
@@ -466,68 +475,49 @@ function step(dt) {
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   if (game.hitstop > 0) { game.hitstop -= dt; }
   else {
-    pollShove();
+    pollAction();
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
-      // stability regen + 失衡 hysteresis (containment)
-      if (f.stabCd > 0) f.stabCd -= dt; else f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
-      if (!f.staggered && f.stability <= STAG_ENTER) f.staggered = true;
-      else if (f.staggered && f.stability >= STAG_EXIT) f.staggered = false;
-      // death theatre first (handles 凸眼 + over-void fall); skip control while it owns the body
+      // cooldown timers
+      if (f.punchCd > 0) f.punchCd -= dt;
+      if (f.regrabCd > 0) f.regrabCd -= dt;
+      if (f.fumbleT > 0) f.fumbleT -= dt;
+      if (f.restunT > 0) f.restunT -= dt;
+      // stability regen (paused right after a hit; frozen while stunned/carried)
+      if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
+      // stun countdown → recover (ungrabbed)
+      if (f.stunned) { f.stunT -= dt; if (f.stunT <= 0) { f.stunned = false; f.stability = STUN_RECOVER; f.restunT = RESTUN_IMMUNE; } }
+      // death theatre (isles over-void fall; no-op on the flat arena)
       if (updateDeathTheater(f, dt)) {
         if (f.dead) {
           f.state = 'down'; f.respawn = RESPAWN; f.dead = false;
-          if (f.pid === LOCAL) { // diagnose & surface WHY you fell
-            const recent = game.time - (f.lastHitT || -9) < 2.0; // knockback can slide you off ~1-2s after the hit
-            fallReason = recent && f.lastHitBy === -2 ? 'Boss 撞落！'
-              : recent && f.lastHitBy >= 0 ? `被${NAMES[f.lastHitBy]}推落！`
-              : '走出邊緣墜落';
-            fallReasonT = 3;
-            dlog('FELL:', fallReason, '@', Math.round(f.x) + ',' + Math.round(f.y), 'lastHitBy', f.lastHitBy, 'Δhit', (game.time - (f.lastHitT || -9)).toFixed(2) + 's');
-          }
-          if (f.pid === holderPid) dropTrophy(f.x, f.y); // holder fell → trophy drops where they died
-          // tally incidents for the end-of-match report
+          if (f.carrying) dropCarry(f); if (f.carriedBy) breakFree(f);
           inc.falls[f.pid]++;
-          if (f.lastHitBy === -2) { inc.bossCatches++; inc.types.add('boss'); }
-          else if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) { inc.knockoffs[f.lastHitBy]++; inc.types.add('knockoff'); addText(f.x, f.y - 30, NAMES[f.lastHitBy] + ' 推落!', COLORS[f.lastHitBy]); }
+          if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) { inc.knockoffs[f.lastHitBy]++; inc.types.add('knockoff'); }
           else { inc.selfFalls[f.pid]++; inc.types.add('self'); }
         }
         continue;
       }
-      const px0 = f.x, py0 = f.y;
-      if (!(lock && lock.pid === f.pid)) moveFighter(f, dt); // captured fighter is held in the pod (struggle handled below)
-      if (f.ai) { // stuck/vibrating detector for the bot
-        if (Math.hypot(f.x - px0, f.y - py0) < 0.5) f._stillT = (f._stillT || 0) + dt; else { f._stillT = 0; f._stuckLogged = false; }
-        if (f._stillT > 0.7 && !f._stuckLogged) {
-          f._stuckLogged = true;
-          dlog('AI STUCK @', Math.round(f.x) + ',' + Math.round(f.y), 'onBridge', islandIndexAt(f.x, f.y) < 0, 'facing', Math.round(f.facing * 57) + '°', 'holder', holderPid, 'goalIsHolder', holderPid >= 0);
-        }
-      }
+      if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
     }
-    // 收容:失衡對手進艙 → 關艙倒數;掙脫→過載反轉,倒數完成→收容成功
-    if (lock) {
-      const cap = fighters[lock.pid];
-      if (cap.state !== 'alive') lock = null;
-      else {
-        cap.x += (POD.x - cap.x) * 0.35; cap.y += (POD.y - cap.y) * 0.35; cap.vx = 0; cap.vy = 0;
-        // 掙扎=連打(按鍵上緣),非按住:AI 以固定速率(填不滿)→可被收容;人類狂按可掙脫
-        if (cap.ai) lock.escape += MASH_AI * dt;
-        else { const moving = (Math.abs(readMove(cap.pid).x) + Math.abs(readMove(cap.pid).y)) > 0; if (moving && !cap._mashPrev) lock.escape += MASH_TAP; cap._mashPrev = moving; }
-        lock.t -= dt;
-        if (lock.escape >= ESCAPE_NEED) podOverload(cap);
-        else if (lock.t <= 0) containSuccess();
+    // 搬運: 被搬者跟隨在搬運者身前 + 全程掙脫 + 拖進艙 = 收容
+    for (const f of fighters) {
+      if (!f.carrying) continue;
+      const o = f.carrying;
+      if (o.state !== 'alive' || f.state !== 'alive' || f.stunned) { dropCarry(f); continue; }
+      o.x = f.x + Math.cos(f.facing) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(f.facing) * (f.r + o.r * 0.7); o.vx = 0; o.vy = 0;
+      if (inPod(o.x, o.y)) { containByCarry(f, o); continue; }                 // 失控入艙 → 收容
+      if (o.ai) o.escape += CARRY_MASH_AI * dt;                                // AI 固定填速
+      else {                                                                    // 人類: 左右交替點按(按指示)
+        const aDown = keys.has('a'), dDown = keys.has('d');
+        const aEdge = aDown && !o._aPrev, dEdge = dDown && !o._dPrev;
+        if (o.mashSide === 0 && aEdge) { o.escape += CARRY_MASH_TAP; o.mashSide = 1; }
+        else if (o.mashSide === 1 && dEdge) { o.escape += CARRY_MASH_TAP; o.mashSide = 0; }
+        o._aPrev = aDown; o._dPrev = dDown;
       }
-    } else {
-      for (const f of fighters) {
-        if (f.state === 'alive' && !f.falling && f.staggered && inPod(f)) {
-          lock = { pid: f.pid, t: LOCK_T, escape: 0, selfPod: game.time - (f.lastHitT || -9) > 1.2 };
-          addText(POD.x, POD.y - 46, '收容程序啟動！', '#9affd0'); addRing(POD.x, POD.y, POD.r * 1.5, '#9affd0', 0.45, 4); addShake(4); game.sfx.push('upgrade');
-          dlog('LOCK: captured', NAMES[f.pid], 'self?', lock.selfPod);
-          break;
-        }
-      }
+      if (o.escape >= CARRY_ESCAPE_NEED) breakFree(o);
     }
-    updateBarrels(dt); // 危險 #1:爆桶(靠近點燃→爆炸炸飛+削弱;炸到艙門→過載)
+    updateBarrels(dt); // 危險 #1:爆桶(靠近點燃→爆炸炸飛+削弱;炸到搬運者→鬆手)
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment)
   const lf = fighters[LOCAL];
@@ -540,8 +530,9 @@ function step(dt) {
   game.enemies = fighters.filter(f => f.state !== 'down');
   // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
   game.props = barrels.filter(b => b.alive).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
-  // ground markers: 青綠實驗艙光(關艙倒數中轉紫=過載危險) + 橘色爆桶危險區(引信中更亮更快閃)
-  const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: lock ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: lock ? 9 : 3 }];
+  // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
+  const carrying = fighters.some(f => f.carrying);
+  const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];
   for (const b of barrels) if (b.alive && b.state === 'fuse') // 平時不畫;只有引信中(快爆)才亮出完整爆炸範圍危險環
     marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: '#ff7a3a', pulse: true, op: 0.92, fill: 0.24, speed: 18 });
   setGroundMarkers(marks);
@@ -549,35 +540,30 @@ function step(dt) {
 }
 
 function drawContainHud() {
-  // 實驗艙:地面光環(關艙時轉紅 + 倒數);失衡冒星 + 穩定值小條
-  const ground = (wx, wy) => project(wx, wy, 2);
+  // 實驗艙地面光環 + 穩定值小條 + 暈眩冒星 + 搬運掙脫條/交替指示
   const pulse = 0.6 + 0.4 * Math.sin(game.time * 5);
-  const c = ground(POD.x, POD.y), edge = ground(POD.x + POD.r, POD.y);
+  const c = project(POD.x, POD.y, 2), edge = project(POD.x + POD.r, POD.y, 2);
   if (!c.behind) {
     const rad = Math.max(14, Math.abs(edge.x - c.x));
     hctx.save();
-    hctx.strokeStyle = lock ? `rgba(255,123,114,${pulse})` : `rgba(154,255,208,${0.5 + pulse * 0.3})`;
+    hctx.strokeStyle = `rgba(154,255,208,${0.5 + pulse * 0.3})`;
     hctx.lineWidth = 4; hctx.beginPath(); hctx.ellipse(c.x, c.y, rad, rad * 0.5, 0, 0, Math.PI * 2); hctx.stroke();
     hctx.restore();
-    if (lock) { // 關艙倒數 + 掙脫進度
-      hctx.textAlign = 'center';
-      hctx.font = '900 40px system-ui, sans-serif'; hctx.fillStyle = '#ff7b72';
-      hctx.fillText(Math.ceil(lock.t) + '', c.x, c.y - 30);
-      const bw = 90, ex = c.x - bw / 2, ey = c.y - 18, p = clamp(lock.escape / ESCAPE_NEED, 0, 1);
-      hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(ex, ey, bw, 6);
-      hctx.fillStyle = '#9affd0'; hctx.fillRect(ex, ey, bw * p, 6);
-    }
   }
   for (const f of fighters) {
     if (f.state !== 'alive') continue;
     const s = project(f.x, f.y, (f.r || 14) * 2.2 + 16);
     if (s.behind) continue;
     const bw = 30, p = clamp(f.stability / STAB_MAX, 0, 1);
+    hctx.textAlign = 'center';
     hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y, bw, 4);
-    hctx.fillStyle = f.staggered ? '#ff7b72' : COLORS[f.pid]; hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
-    if (f.staggered) { // 失衡冒星
-      hctx.fillStyle = '#ffd36d'; hctx.font = '900 14px system-ui, sans-serif'; hctx.textAlign = 'center';
-      hctx.fillText('★', s.x, s.y - 6);
+    hctx.fillStyle = f.stunned ? '#ffd36d' : (f.stability < 30 ? '#ff7b72' : COLORS[f.pid]); hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
+    if (f.stunned) { hctx.fillStyle = '#ffd36d'; hctx.font = '900 16px system-ui, sans-serif'; hctx.fillText('★', s.x, s.y - 6); }
+    if (f.carriedBy) { // 掙脫條 + 左右交替指示
+      const ep = clamp(f.escape / CARRY_ESCAPE_NEED, 0, 1);
+      hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw, 5);
+      hctx.fillStyle = '#9affd0'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw * ep, 5);
+      if (!f.ai) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
     }
   }
 }
@@ -626,7 +612,7 @@ function drawHud() {
   // title
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 · 收容測試　削弱→推進實驗艙→關艙 ' + LOCK_T + 's　先贏 ' + WIN_TARGET, W / 2, 28);
+  hctx.fillText('魔法事故報告 · 收容測試　揮拳擊暈 → 抓 → 拖進實驗艙　先贏 ' + WIN_TARGET, W / 2, 28);
   // round-win score (best-of)
   hctx.font = '900 40px system-ui, sans-serif';
   hctx.textAlign = 'left'; hctx.fillStyle = COLORS[0];
@@ -642,11 +628,11 @@ function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · F 陣風(削弱+推進艙)　　紅：AI 對手', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · J 揮拳／抓（打暈→靠近抓→拖進中央實驗艙；被抓時左右交替掙脫）　紅：AI', W / 2, H - 18);
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: floor-1', W - 10, H - 4);
+  hctx.fillText('build: grab-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -665,11 +651,13 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   winRound, restartMatch,
   POD, barrels, explodeBarrel, CAMB, camRig,
+  punch, startCarry, stunFighter,
   state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report,
-    lock: lock ? { pid: lock.pid, t: +lock.t.toFixed(2), escape: +lock.escape.toFixed(0) } : null,
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
-    staggered: [fighters[0].staggered, fighters[1].staggered],
-    contains: [inc.contains[0], inc.contains[1]], overloads: inc.overloads, selfPods: inc.selfPods, barrelBooms: inc.barrelBooms }) };
+    stunned: [fighters[0].stunned, fighters[1].stunned],
+    carrying: [fighters[0].carrying ? fighters[0].carrying.pid : -1, fighters[1].carrying ? fighters[1].carrying.pid : -1],
+    escape: [Math.round(fighters[0].escape || 0), Math.round(fighters[1].escape || 0)],
+    contains: [inc.contains[0], inc.contains[1]], barrelBooms: inc.barrelBooms }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
