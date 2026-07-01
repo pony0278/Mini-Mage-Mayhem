@@ -740,12 +740,28 @@ function drawContainHud() {
   }
   for (const f of fighters) {
     if (f.state !== 'alive') continue;
+    // 身分光環:每個角色腳下永遠畫「自身顏色」的環(本機更亮更粗＋朝向指針＋「你」),
+    // 這樣就算暈眩(黃)/低穩定(橘)把血條變色,誰是你也永遠一眼可辨(修正「顏色跟對方同步、認不出自己」)。
+    const gc = project(f.x, f.y, 2), ge = project(f.x + (f.r || 14), f.y, 2);
+    if (!gc.behind) {
+      const gr = Math.max(10, Math.abs(ge.x - gc.x)), isMe = f.pid === LOCAL;
+      hctx.save();
+      hctx.strokeStyle = COLORS[f.pid]; hctx.globalAlpha = isMe ? 0.95 : 0.5; hctx.lineWidth = isMe ? 3 : 2;
+      hctx.beginPath(); hctx.ellipse(gc.x, gc.y, gr, gr * 0.5, 0, 0, Math.PI * 2); hctx.stroke();
+      if (isMe) { // 朝向指針(配合滑鼠瞄準)＋「你」標
+        hctx.beginPath(); hctx.moveTo(gc.x, gc.y); hctx.lineTo(gc.x + Math.cos(f.facing) * gr, gc.y + Math.sin(f.facing) * gr * 0.5); hctx.stroke();
+        hctx.globalAlpha = 1; hctx.fillStyle = COLORS[f.pid]; hctx.font = '900 12px system-ui, sans-serif'; hctx.textAlign = 'center';
+        hctx.fillText('你', gc.x, gc.y + gr * 0.5 + 13);
+      }
+      hctx.restore();
+    }
     const s = project(f.x, f.y, (f.r || 14) * 2.2 + 16);
     if (s.behind) continue;
     const bw = 30, p = clamp(f.stability / STAB_MAX, 0, 1);
     hctx.textAlign = 'center';
     hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y, bw, 4);
-    hctx.fillStyle = f.stunned ? '#ffd36d' : (f.stability < 30 ? '#ff7b72' : COLORS[f.pid]); hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
+    // 血條:暈眩=黃、低穩定=橘(危險色,刻意不用紅色以免撞到紅方身分色)、其餘=自身身分色
+    hctx.fillStyle = f.stunned ? '#ffd36d' : (f.stability < 30 ? '#ff9a4a' : COLORS[f.pid]); hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
     if (f.stunned) { hctx.fillStyle = '#ffd36d'; hctx.font = '900 16px system-ui, sans-serif'; hctx.fillText('★', s.x, s.y - 6); }
     if (f.invuln > 0 && Math.floor(game.time * 12) % 2 === 0) { // 出艙無敵:閃爍護盾環
       const g = project(f.x, f.y, 10);
@@ -786,7 +802,7 @@ function drawItems() {
   }
   const me = fighters[LOCAL]; // 本機持有 HUD
   hctx.textAlign = 'left'; hctx.font = '800 14px system-ui, sans-serif';
-  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（K 使用）', 24, H - 40); }
+  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（右鍵使用）', 24, H - 40); }
   else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, H - 40); }
 }
 const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
@@ -855,7 +871,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: mouse-1', W - 10, H - 4);
+  hctx.fillText('build: id-1', W - 10, H - 4);
 }
 
 function frame(now) {
