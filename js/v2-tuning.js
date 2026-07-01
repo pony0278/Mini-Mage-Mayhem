@@ -45,6 +45,18 @@ function toggleRow(label, val, on) {
   const c = document.createElement('input'); c.type = 'checkbox'; c.checked = val; c.onchange = () => on(c.checked);
   row.append(nm, c); panel.appendChild(row);
 }
+// a copy button + its own read-only output box, scoped to one section (so e.g. the camera line copies alone)
+function copyButton(label, textFn) {
+  const btn = document.createElement('button'); btn.textContent = '📋 ' + label;
+  btn.style.cssText = 'width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #6a4a77;background:#2a2036;color:#ffd36d;font-weight:700;cursor:pointer;';
+  const out = document.createElement('textarea'); out.readOnly = true;
+  out.style.cssText = 'width:100%;height:52px;margin-top:6px;box-sizing:border-box;font:11px ui-monospace,monospace;background:#0d0b12;color:#9fe7ff;border:1px solid #333;border-radius:6px;display:none;';
+  btn.onclick = () => {
+    const txt = textFn(); out.value = txt; out.style.display = 'block'; out.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => { btn.textContent = '✓ 已複製'; setTimeout(() => btn.textContent = '📋 ' + label, 1200); });
+  };
+  panel.append(btn, out);
+}
 
 header('v2 調整台', true);
 const hint = document.createElement('div'); hint.textContent = '?tune=1 · 即時套用';
@@ -71,6 +83,12 @@ toggleRow('花紋雜點', fp0.motes, (v) => setFloorParams({ motes: v }));
 colorRow('地板色 A', fp0.floorA, (v) => setFloorParams({ floorA: v }));
 colorRow('地板色 B', fp0.floorB, (v) => setFloorParams({ floorB: v }));
 colorRow('格線色', fp0.floorEdge, (v) => setFloorParams({ floorEdge: v }));
+// copy for the look settings (角色 + 地板) — kept separate from the camera line
+copyButton('複製 角色+地板', () => {
+  const f = getFloorParams();
+  return `fighter r = ${fighters[0].r}\n`
+    + `floor = { gridAlpha:${(+f.gridAlpha).toFixed(2)}, motes:${f.motes}, floorA:'${f.floorA}', floorB:'${f.floorB}', floorEdge:'${f.floorEdge}' }`;
+});
 
 header('攝影機');
 slider('fov', 20, 60, 1, CAM.fov, (v) => CAM.fov = v);
@@ -78,18 +96,8 @@ slider('angle', 10, 70, 1, CAM.angle, (v) => CAM.angle = v);
 slider('dist', 300, 1200, 10, CAM.dist, (v) => CAM.dist = v);
 slider('panZ', -200, 100, 5, CAM.panZ, (v) => CAM.panZ = v);
 slider('lookY', -40, 60, 2, CAM.lookY, (v) => CAM.lookY = v);
+// camera copy — its OWN block, just the CAM line (matches the camera-sandbox paste format)
+copyButton('複製 攝影機', () =>
+  `CAM = { fov:${CAM.fov}, angle:${CAM.angle}, dist:${CAM.dist}, azimuth:${CAM.azimuth}, panX:${CAM.panX}, panZ:${CAM.panZ}, lookY:${CAM.lookY} }`);
 
-const btn = document.createElement('button'); btn.textContent = '📋 複製設定';
-btn.style.cssText = 'width:100%;margin-top:10px;padding:6px;border-radius:6px;border:1px solid #6a4a77;background:#2a2036;color:#ffd36d;font-weight:700;cursor:pointer;';
-const out = document.createElement('textarea'); out.readOnly = true;
-out.style.cssText = 'width:100%;height:88px;margin-top:6px;box-sizing:border-box;font:11px ui-monospace,monospace;background:#0d0b12;color:#9fe7ff;border:1px solid #333;border-radius:6px;display:none;';
-btn.onclick = () => {
-  const f = getFloorParams();
-  const txt = `fighter r = ${fighters[0].r}\n`
-    + `CAM = { fov:${CAM.fov}, angle:${CAM.angle}, dist:${CAM.dist}, azimuth:${CAM.azimuth}, panX:${CAM.panX}, panZ:${CAM.panZ}, lookY:${CAM.lookY} }\n`
-    + `floor = { gridAlpha:${(+f.gridAlpha).toFixed(2)}, motes:${f.motes}, floorA:'${f.floorA}', floorB:'${f.floorB}', floorEdge:'${f.floorEdge}' }`;
-  out.value = txt; out.style.display = 'block'; out.select();
-  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => { btn.textContent = '✓ 已複製'; setTimeout(() => btn.textContent = '📋 複製設定', 1200); });
-};
-panel.append(btn, out);
-console.log('[v2-tuning] panel ready — drag sliders, then 複製設定 to paste back');
+console.log('[v2-tuning] panel ready — 攝影機 copies alone; 角色+地板 copies together');
