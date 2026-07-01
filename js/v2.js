@@ -13,9 +13,9 @@
 // so render3D centres the camera on the arena.
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } from './constants.js';
 import { clamp, norm } from './utils.js';
-import { game, keys, CAM } from './state.js';
+import { game, keys, mouse, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -229,7 +229,8 @@ function slideKnock(f, dt) { // apply lingering knockback velocity only (no self
 function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
   const m = f.ai ? aiMove(f) : readMove(f.pid);
-  if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);
+  if (f.pid === LOCAL && !f.ai) f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x); // 本地玩家:面向滑鼠(移動與瞄準解耦)
+  else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                              // AI／熱座紅方:面向移動方向
   const sp = SPEED * (f.carrying ? CARRY_SLOW : 1); // 搬運時變慢
   if (iceAt(f.x, f.y)) { // 冰面:打滑(走路變成加速度,低摩擦保留動量 → 滑行,可滑進艙)
     f.vx += m.x * sp * ICE_ACCEL * dt; f.vy += m.y * sp * ICE_ACCEL * dt;
@@ -327,6 +328,17 @@ function doAction(f) { // 情境動作鍵
   const o = fighters[1 - f.pid];
   if (f.regrabCd <= 0 && o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
   punch(f);
+}
+// --- 滑鼠操作(本地玩家):滑鼠瞄準 + 左鍵揮拳 + 右鍵情境(搬運中放下 → 暈眩對手在近處抓 → 否則用道具) ---
+function mouseLeft(f) { if (f.state === 'alive') punch(f); }                   // 左鍵=揮拳(punch 自帶狀態守衛)
+function mouseRight(f) {                                                        // 右鍵=拖被擊暈的人 / 放技能(道具)
+  if (f.state !== 'alive') return;
+  if (f.carrying) { dropCarry(f); return; }                                    // 搬運中 → 放下
+  if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {        // 空手且可動作 → 優先抓近處被擊暈的對手
+    const o = fighters[1 - f.pid];
+    if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
+  }
+  useItem(f); // 否則放技能(useItem 自帶守衛:無道具直接略過;被抓/暈時只有傳送可用)
 }
 // edge-triggered action key (human only); AI 透過 aiMove 直接呼叫 punch/startCarry
 const actionPrev = [false, false];
@@ -839,16 +851,17 @@ function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · J 揮拳／抓 · K 用道具（補給座撿：風/傳送/冰）　紅：AI', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵揮拳 · 右鍵抓／放技能（補給座撿：風/傳送/冰）　紅：AI', W / 2, H - 18);
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: cam-3', W - 10, H - 4);
+  hctx.fillText('build: mouse-1', W - 10, H - 4);
 }
 
 function frame(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
+  updateMouseWorld(); // 滑鼠螢幕座標 → 地面世界座標(供本地玩家瞄準)
   step(dt);
   render3D();
   // drain sfx (whoosh on shove / fall)
@@ -886,6 +899,22 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('pointerdown', unlockAudio);
+
+// --- 滑鼠:游標→瞄準(存螢幕像素,每幀 raycast 成地面世界座標),左鍵揮拳,右鍵情境(抓/道具) ---
+const gameCanvas = document.getElementById('game');
+gameCanvas.addEventListener('mousemove', (e) => {
+  const rect = gameCanvas.getBoundingClientRect();
+  mouseScreen.x = (e.clientX - rect.left) / rect.width * W;
+  mouseScreen.y = (e.clientY - rect.top) / rect.height * H;
+});
+gameCanvas.addEventListener('mousedown', (e) => {
+  unlockAudio();
+  if (matchOver) return;                        // 報告畫面:用鍵盤 R 再戰 / C 複製
+  const f = fighters[LOCAL]; if (!f || f.ai) return;
+  if (e.button === 2) mouseRight(f);            // 右鍵
+  else if (e.button === 0) mouseLeft(f);        // 左鍵
+});
+gameCanvas.addEventListener('contextmenu', (e) => e.preventDefault()); // 右鍵不彈出選單
 
 game.state = 'v2';      // not 'playing' → render's capstone/HUD branches stay off
 game.player = null;     // camera centres on the arena, no player voxel
