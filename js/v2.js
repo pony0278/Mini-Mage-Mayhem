@@ -15,7 +15,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } 
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -646,7 +646,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: art-2', W - 10, H - 4);
+  hctx.fillText('build: floor-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -700,6 +700,7 @@ if (TERRAIN === 'isles') {
   setWallFade(true);                                // see-through walls: occluding walls (esp. the south one) fade
   // 視覺:暗藍紫地板 + 低亮度紫格線 + 牆底暗角;角色/箱子腳下陰影;魔法特效高亮
   setFloorParams({ floorA: '#2a2c4e', floorB: '#22243f', floorEdge: '#6a5bb0', gridAlpha: 0.16, motes: false, ao: true });
+  setRichFloor(true);   // detailed stone/metal slab material (noise/scratches/grout bevel/edge lip, baked once)
   setActorShadow(true);
   setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target

@@ -127,6 +127,16 @@ let ctx = screenCtx;
   // Floor prominence (live-tunable): grid-line alpha, decorative motes on/off, and the tile colours. Dialing
   // these down keeps the eye on actors/hazards instead of the tiling. v2-only; single-player floor unchanged.
   let floorGridAlpha = 0.36, floorMotes = true, floorAO = false;
+  // Rich floor: detailed stone/metal slab material (per-tile brightness variation, noise, scratches, recessed
+  // grout bevel, cool edge highlights). The v2 floor is static, so it's BAKED ONCE (floorBaked) at higher
+  // resolution instead of redrawn per frame. v2-only; single-player keeps the animated 16px checkerboard.
+  let richFloor = false, floorBaked = false, floorPx = 16;
+  export function setRichFloor(on) {
+    richFloor = on; floorBaked = false; floorPx = on ? 32 : 16;
+    groundCanvas.width = COLS * floorPx; groundCanvas.height = ROWS * floorPx;
+    groundTex.magFilter = groundTex.minFilter = on ? THREE.LinearFilter : THREE.NearestFilter;
+    groundTex.needsUpdate = true;
+  }
   export function setFloorParams(o = {}) {
     if (o.gridAlpha !== undefined) floorGridAlpha = o.gridAlpha;
     if (o.motes !== undefined) floorMotes = o.motes;
@@ -134,6 +144,7 @@ let ctx = screenCtx;
     if (o.floorA) ART.floorA = o.floorA;
     if (o.floorB) ART.floorB = o.floorB;
     if (o.floorEdge) ART.floorEdge = o.floorEdge;
+    floorBaked = false;                             // re-bake the rich floor on any colour/param change
   }
   export function getFloorParams() { return { gridAlpha: floorGridAlpha, motes: floorMotes, floorA: ART.floorA, floorB: ART.floorB, floorEdge: ART.floorEdge }; }
   export function setFloorSubtle(on) { setFloorParams({ gridAlpha: on ? 0.1 : 0.36, motes: !on }); } // preset used at v2 boot
@@ -302,8 +313,36 @@ let ctx = screenCtx;
 
   function tileNoise(x, y) { return ((x * 1103515245 + y * 12345 + 97) >>> 0) % 1000 / 1000; }
 
+  // deterministic per-tile hash (stable → the baked floor doesn't shimmer)
+  const h2 = (x, y, k) => { const n = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453; return n - Math.floor(n); };
+  // one rich floor slab: brightness variation + matte noise + soft scratches + recessed grout bevel + cool edge lip
+  function drawRichFloorTile(px, py, s, x, y) {
+    const b = h2(x, y, 1); // per-tile brightness variation
+    gtx.fillStyle = b > 0.5 ? `rgba(210,220,255,${((b - 0.5) * 0.12).toFixed(3)})` : `rgba(0,0,0,${((0.5 - b) * 0.20).toFixed(3)})`;
+    gtx.fillRect(px, py, s, s);
+    const specks = Math.round(s * 0.5); // fine matte noise
+    for (let i = 0; i < specks; i++) {
+      const nx = px + (h2(x * 3.1 + i, y * 1.7, 2) * s | 0), ny = py + (h2(x * 1.3, y * 2.9 + i, 3) * s | 0);
+      gtx.fillStyle = h2(i + x, y - i, 4) > 0.6 ? 'rgba(190,200,235,0.06)' : 'rgba(0,0,0,0.10)';
+      gtx.fillRect(nx, ny, 1, 1);
+    }
+    if (h2(x, y, 5) > 0.68) { // soft scratch on ~30% of tiles
+      gtx.strokeStyle = 'rgba(200,210,245,0.08)'; gtx.lineWidth = 1;
+      const sx = px + h2(x, y, 6) * s * 0.7 + s * 0.15, sy = py + h2(x, y, 7) * s * 0.7 + s * 0.15;
+      const ang = h2(x, y, 8) * Math.PI, len = s * (0.25 + h2(x, y, 9) * 0.4);
+      gtx.beginPath(); gtx.moveTo(sx, sy); gtx.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len); gtx.stroke();
+    }
+    // recessed grout: dark inner groove + low-brightness purple grout line on the boundary
+    gtx.strokeStyle = 'rgba(20,16,34,0.55)'; gtx.lineWidth = 1; gtx.strokeRect(px + 2.5, py + 2.5, s - 5, s - 5);
+    gtx.strokeStyle = ART.floorEdge; gtx.globalAlpha = Math.min(1, floorGridAlpha + 0.06);
+    gtx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1); gtx.globalAlpha = 1;
+    // faint cool highlight on the top+left lip (light catching the raised slab)
+    gtx.strokeStyle = 'rgba(150,180,235,0.12)'; gtx.lineWidth = 1;
+    gtx.beginPath(); gtx.moveTo(px + 2.5, py + s - 3.5); gtx.lineTo(px + 2.5, py + 2.5); gtx.lineTo(px + s - 3.5, py + 2.5); gtx.stroke();
+  }
   function drawGroundTexture() {
-    const s = 16;
+    if (richFloor && floorBaked) return; // static rich floor: bake once, then skip the per-frame redraw
+    const s = floorPx;
     gtx.clearRect(0, 0, groundCanvas.width, groundCanvas.height);
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const t = game.map[y][x];
@@ -323,7 +362,9 @@ let ctx = screenCtx;
       gtx.fillStyle = c;
       gtx.fillRect(px, py, s, s);
       if (t === TILE_VOID) { gtx.fillStyle = '#000'; gtx.fillRect(px + 1, py + 1, s - 2, s - 2); } // 空洞:暗坑
-      if (t === TILE_FLOOR) {
+      if (t === TILE_FLOOR && richFloor) {
+        drawRichFloorTile(px, py, s, x, y);
+      } else if (t === TILE_FLOOR) {
         gtx.strokeStyle = ART.floorEdge;
         gtx.globalAlpha = floorGridAlpha; // live-tunable grid prominence
         gtx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
@@ -376,6 +417,7 @@ let ctx = screenCtx;
       }
     }
     groundTex.needsUpdate = true;
+    if (richFloor) floorBaked = true; // baked; drawGroundTexture will early-return until a param/map change
   }
 
   // --- raised walls (rebuilt only when the tile map changes) ---
