@@ -126,16 +126,21 @@ let ctx = screenCtx;
   let islandMode = false;
   // Floor prominence (live-tunable): grid-line alpha, decorative motes on/off, and the tile colours. Dialing
   // these down keeps the eye on actors/hazards instead of the tiling. v2-only; single-player floor unchanged.
-  let floorGridAlpha = 0.36, floorMotes = true;
+  let floorGridAlpha = 0.36, floorMotes = true, floorAO = false;
   export function setFloorParams(o = {}) {
     if (o.gridAlpha !== undefined) floorGridAlpha = o.gridAlpha;
     if (o.motes !== undefined) floorMotes = o.motes;
+    if (o.ao !== undefined) floorAO = o.ao;         // 牆底暗角(floor darkens where it meets a wall)
     if (o.floorA) ART.floorA = o.floorA;
     if (o.floorB) ART.floorB = o.floorB;
     if (o.floorEdge) ART.floorEdge = o.floorEdge;
   }
   export function getFloorParams() { return { gridAlpha: floorGridAlpha, motes: floorMotes, floorA: ART.floorA, floorB: ART.floorB, floorEdge: ART.floorEdge }; }
   export function setFloorSubtle(on) { setFloorParams({ gridAlpha: on ? 0.1 : 0.36, motes: !on }); } // preset used at v2 boot
+  // v2 art-pass toggles (render-only; single-player unaffected because these default off / lists stay empty)
+  let actorShadow = false; export function setActorShadow(on) { actorShadow = on; }   // 角色/箱子 腳下橢圓陰影
+  let vividFx = false; export function setVividFx(on) { vividFx = on; }                // 魔法特效高亮(環外框)
+  let groundMarkers = []; export function setGroundMarkers(list) { groundMarkers = list || []; } // 青綠實驗艙光 / 橘紫危險區
   // Camera follow vs fixed framing. Default true = follow the controlled player (single-player behaviour).
   // false = lock onto the arena centre (the v2 fixed-diorama framing). Toggled from the camera sandbox.
   let camFollow = true;
@@ -359,6 +364,15 @@ let ctx = screenCtx;
       } else if (t === TILE_WALL || t === TILE_THIN) {
         gtx.strokeStyle = 'rgba(255,211,109,.18)';
         gtx.strokeRect(px + 2, py + 2, s - 4, s - 4);
+      }
+      // 牆底暗角:darken the floor where it meets a wall, for grounded depth (a cheap ambient-occlusion lip)
+      if (floorAO && t !== TILE_WALL && t !== TILE_THIN && t !== TILE_ICEWALL && t !== TILE_VOID) {
+        const isWall = (xx, yy) => { const r = game.map[yy]; const tt = r && r[xx]; return tt === TILE_WALL || tt === TILE_THIN || tt === TILE_ICEWALL; };
+        const w = 6; gtx.fillStyle = 'rgba(0,0,0,.42)';
+        if (isWall(x, y - 1)) gtx.fillRect(px, py, s, w);
+        if (isWall(x, y + 1)) gtx.fillRect(px, py + s - w, s, w);
+        if (isWall(x - 1, y)) gtx.fillRect(px, py, w, s);
+        if (isWall(x + 1, y)) gtx.fillRect(px + s - w, py, w, s);
       }
     }
     groundTex.needsUpdate = true;
@@ -598,11 +612,11 @@ let ctx = screenCtx;
       g.userData.orbs = orbs;
     }
     g.userData.tints = tints;
-    // free-form islands: a soft contact shadow grounds the fighter so it pops off the bright grass
-    // (the voxels otherwise read as "sunk into" the terrain). v2-only; single-player enemies unchanged.
-    if (freeIslands) {
-      const sh = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }));
-      sh.rotation.x = -Math.PI / 2; sh.position.y = 1.6; sh.scale.set(r * 1.15, r * 0.82, 1); g.add(sh);
+    // soft elliptical contact shadow grounds the fighter (角色腳下橢圓陰影) so it pops off the floor.
+    // v2-only (freeIslands or setActorShadow); single-player enemies unchanged.
+    if (freeIslands || actorShadow) {
+      const sh = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
+      sh.rotation.x = -Math.PI / 2; sh.position.y = 1.6; sh.scale.set(r * 1.2, r * 0.82, 1); g.add(sh);
     }
     return g;
   }
@@ -652,6 +666,10 @@ let ctx = screenCtx;
   function syncProps() {
     propGroup.clear();
     for (const pr of game.props) {
+      if (actorShadow && !pr.held) { // 箱子底部陰影
+        const sh = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false }));
+        sh.rotation.x = -Math.PI / 2; sh.position.set(pr.x, 1.5, pr.y); sh.scale.set(pr.r * 1.6, pr.r * 1.15, 1); propGroup.add(sh);
+      }
       const charged = pr.charge === 'lightning', burning = pr.charge === 'fire';
       const cracked = pr.hp < pr.maxHp;
       const ice = pr.wall === 'ice', earth = pr.wall === 'earth'; // ★3 風掌牆碎塊（冰=藍/土=石灰）
@@ -761,6 +779,15 @@ let ctx = screenCtx;
   }
   function syncZones() {
     clearDynamic(zoneGroup);
+    // ground markers: glowing ground rings — 青綠實驗艙光 / 橘·紫危險區提示 (v2 sets these each frame)
+    for (const mk of groundMarkers) {
+      const hex = colorHex(mk.color);
+      const pulse = mk.pulse ? 0.55 + 0.45 * Math.sin(game.time * (mk.speed || 4)) : 1;
+      disc(mk.x, mk.y, mk.r, hex, (mk.fill != null ? mk.fill : 0.12) * (0.6 + 0.4 * pulse));
+      const ring = new THREE.Mesh(torusGeo, tmpMat(hex, (mk.op != null ? mk.op : 0.6) * (0.55 + 0.45 * pulse), true));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(mk.x, 3, mk.y); ring.scale.set(mk.r, mk.r, mk.r);
+      zoneGroup.add(ring);
+    }
     // capstone 凍毒領域: a frost-venom field that follows the player (radius kept in sync by sim)
     if (game.state === 'playing' && game.stats.capstone === 'frostpoison') {
       const p = game.player, r = game.frostAuraR || 116;
@@ -824,7 +851,11 @@ let ctx = screenCtx;
       disc(ex.x, ex.y, ex.r * (0.45 + t * 0.75), 0xffd36d, 0.28 * (ex.life / ex.maxLife));
       puff(ex.x, ex.y, ex.r, 0xff7640, 0.22 * (ex.life / ex.maxLife), 6, 30);
     }
-    for (const rg of game.rings) disc(rg.x, rg.y, rg.r * (0.5 + (1 - rg.life / rg.maxLife) * 0.7), colorHex(rg.color), 0.16 * clamp(rg.life / rg.maxLife, 0, 1)); // was hardcoded white → every ring read as a white circle
+    for (const rg of game.rings) { // expanding shockwave rings (shove/contain/boom). vivid adds a bright torus outline.
+      const life = clamp(rg.life / rg.maxLife, 0, 1), rr = rg.r * (0.5 + (1 - life) * 0.7), hex = colorHex(rg.color);
+      disc(rg.x, rg.y, rr, hex, (vividFx ? 0.24 : 0.16) * life);
+      if (vividFx) { const ring = new THREE.Mesh(torusGeo, tmpMat(hex, 0.55 * life, true)); ring.rotation.x = -Math.PI / 2; ring.position.set(rg.x, 4, rg.y); ring.scale.set(rr, rr, rr); zoneGroup.add(ring); }
+    }
     for (const s of game.slams) {
       const k = clamp(s.life / s.maxLife, 0, 1);   // 1→0 (fade)
       const t = 1 - k;                              // 0→1 (expand)

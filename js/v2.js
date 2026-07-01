@@ -15,7 +15,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } 
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorSubtle } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -540,6 +540,13 @@ function step(dt) {
   game.enemies = fighters.filter(f => f.state !== 'down');
   // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
   game.props = barrels.filter(b => b.alive).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
+  // ground markers: 青綠實驗艙光(關艙倒數中轉紫=過載危險) + 橘色爆桶危險區(引信中更亮更快閃)
+  const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: lock ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: lock ? 9 : 3 }];
+  for (const b of barrels) if (b.alive) { // idle = small "hazard here" hint; fusing = full blast-radius telegraph, bright & fast
+    const fusing = b.state === 'fuse';
+    marks.push({ x: b.x, y: b.y, r: fusing ? BARREL_BLAST * 0.85 : b.r * 2.6, color: '#ff7a3a', pulse: fusing, op: fusing ? 0.92 : 0.5, fill: fusing ? 0.24 : 0.12, speed: 18 });
+  }
+  setGroundMarkers(marks);
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
 }
 
@@ -641,7 +648,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: tune-5', W - 10, H - 4);
+  hctx.fillText('build: art-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -693,7 +700,10 @@ if (TERRAIN === 'isles') {
 } else {                                            // 'flat' — plain walled platform, no falling (best for testing)
   buildFlatArena();
   setWallFade(true);                                // see-through walls: occluding walls (esp. the south one) fade
-  setFloorSubtle(true);                             // calm floor: faint grid, no pink motes → eye goes to actors/hazards
+  // 視覺:暗藍紫地板 + 低亮度紫格線 + 牆底暗角;角色/箱子腳下陰影;魔法特效高亮
+  setFloorParams({ floorA: '#2a2c4e', floorB: '#22243f', floorEdge: '#6a5bb0', gridAlpha: 0.16, motes: false, ao: true });
+  setActorShadow(true);
+  setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target
   // north, so the player (south of it) rides low in frame → less black void below, more arena ahead. (Live-tune via __v2.CAM.)
   CAM.fov = 38; CAM.angle = 34; CAM.dist = 540; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -40; CAM.lookY = 14;
