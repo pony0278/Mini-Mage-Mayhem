@@ -542,10 +542,8 @@ function step(dt) {
   game.props = barrels.filter(b => b.alive).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
   // ground markers: 青綠實驗艙光(關艙倒數中轉紫=過載危險) + 橘色爆桶危險區(引信中更亮更快閃)
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: lock ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: lock ? 9 : 3 }];
-  for (const b of barrels) if (b.alive) { // idle = small "hazard here" hint; fusing = full blast-radius telegraph, bright & fast
-    const fusing = b.state === 'fuse';
-    marks.push({ x: b.x, y: b.y, r: fusing ? BARREL_BLAST * 0.85 : b.r * 2.6, color: '#ff7a3a', pulse: fusing, op: fusing ? 0.92 : 0.5, fill: fusing ? 0.24 : 0.12, speed: 18 });
-  }
+  for (const b of barrels) if (b.alive && b.state === 'fuse') // 平時不畫;只有引信中(快爆)才亮出完整爆炸範圍危險環
+    marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: '#ff7a3a', pulse: true, op: 0.92, fill: 0.24, speed: 18 });
   setGroundMarkers(marks);
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
 }
@@ -648,7 +646,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: art-1', W - 10, H - 4);
+  hctx.fillText('build: art-2', W - 10, H - 4);
 }
 
 function frame(now) {
