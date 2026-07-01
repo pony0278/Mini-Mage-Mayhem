@@ -133,6 +133,7 @@ function resetFighter(f) {
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
   f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0;
+  f.item = null;
   f.state = 'alive';
 }
 // --- 收容測試 (spec F §2): 揮拳削穩定值 → 擊暈 → 抓 → 拖進實驗艙 = 收容 ---
@@ -151,6 +152,20 @@ const BARREL_IGNITE = 28, BARREL_FUSE = 0.5, BARREL_BLAST = 95, BARREL_FORCE = 7
 const BARREL_SPOTS = [[300, 210], [660, 210], [300, 470], [660, 470]];
 const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0 }));
 function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; } }
+// --- 道具系統 (spec F §3/§4): 補給座撿即用, 只拿 1, 用完即空; 風壓手套 / 傳送符 / 冰霜瓶 ---
+const ITEM_TYPES = ['wind', 'teleport', 'ice'];
+const ITEM_INFO = { wind: { name: '風壓手套', color: '#bfeaff' }, teleport: { name: '傳送符', color: '#c98cff' }, ice: { name: '冰霜瓶', color: '#9fd8ff' } };
+const PAD_SPOTS = [[480, 140], [480, 500]]; // 補給座:上下中線(避開角落爆桶與中央實驗艙)
+const PAD_RESPAWN = 5, PICKUP_R = 26;
+const WIND_RANGE = 150, WIND_CONE = 1.0, WIND_FORCE = 620, WIND_SELF = 180; // 貼臉(<50)發射自身反彈=風壓過載
+const TP_BLINK = 150, TP_JITTER = 20;
+const ICE_R = 60, ICE_DUR = 5, ICE_THROW = 120, ICE_ACCEL = 7, ICE_FRICTION = 0.6;
+const SLIDE_CONTAIN_V = 200; // 失控入艙:被擊退/打滑速度 > 此值且進艙半徑 = 收容(spec F §2.2)
+function randItem() { return ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)]; }
+const pads = PAD_SPOTS.map(([x, y]) => ({ x, y, r: 14, item: randItem(), respawn: 0 }));
+function resetPads() { for (const p of pads) { p.item = randItem(); p.respawn = 0; } }
+const iceZones = []; // { x, y, r, life }
+function iceAt(x, y) { for (const z of iceZones) if (Math.hypot(x - z.x, y - z.y) <= z.r) return true; return false; }
 
 const fighters = [makeFighter(0), makeFighter(1)];
 fighters[1].ai = true; // solo testing: red is a bot (flip to false for hot-seat 2-player)
@@ -203,6 +218,16 @@ function moveFighter(f, dt) {
   const m = f.ai ? aiMove(f) : readMove(f.pid);
   if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);
   const sp = SPEED * (f.carrying ? CARRY_SLOW : 1); // 搬運時變慢
+  if (iceAt(f.x, f.y)) { // 冰面:打滑(走路變成加速度,低摩擦保留動量 → 滑行,可滑進艙)
+    f.vx += m.x * sp * ICE_ACCEL * dt; f.vy += m.y * sp * ICE_ACCEL * dt;
+    const vv = Math.hypot(f.vx, f.vy), vmax = sp * 1.4; if (vv > vmax) { f.vx *= vmax / vv; f.vy *= vmax / vv; }
+    const isx = f.vx * dt, isy = f.vy * dt;
+    if (!circleHitsSolid(f.x + isx, f.y, f.r)) f.x += isx; else f.vx = 0;
+    if (!circleHitsSolid(f.x, f.y + isy, f.r)) f.y += isy; else f.vy = 0;
+    f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
+    const ik = Math.pow(ICE_FRICTION, dt); f.vx *= ik; f.vy *= ik;
+    return;
+  }
   const stepX = (m.x * sp + f.vx) * dt;
   const stepY = (m.y * sp + f.vy) * dt;
   if (!circleHitsSolid(f.x + stepX, f.y, f.r)) f.x += stepX; else f.vx = 0;
@@ -271,6 +296,86 @@ const actionPrev = [false, false];
 function pollAction() {
   const pressed = [keys.has('j'), keys.has('/')];
   for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !actionPrev[i]) doAction(fighters[i]); actionPrev[i] = pressed[i]; }
+}
+
+// --- 道具:撿取 / 使用 (spec F §4). 補給座重刷隨機道具; 只拿1; 用完即空; 傳送符是被抓時唯一可用 ---
+function updatePads(dt) {
+  for (const p of pads) {
+    if (!p.item) { p.respawn -= dt; if (p.respawn <= 0) p.item = randItem(); continue; }
+    for (const f of fighters) {
+      if (f.ai || f.state !== 'alive' || f.item || f.carriedBy || f.carrying || f.stunned) continue; // AI 這步不撿道具
+      if (Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r) {
+        f.item = p.item; p.item = null; p.respawn = PAD_RESPAWN;
+        addText(f.x, f.y - 32, ITEM_INFO[f.item].name + '！', ITEM_INFO[f.item].color); addRing(f.x, f.y, 28, ITEM_INFO[f.item].color, 0.3, 4); game.sfx.push('upgrade');
+        dlog('PICKUP', NAMES[f.pid], f.item); break;
+      }
+    }
+  }
+}
+function updateIce(dt) { for (let i = iceZones.length - 1; i >= 0; i--) { iceZones[i].life -= dt; if (iceZones[i].life <= 0) iceZones.splice(i, 1); } }
+function useItem(f) {
+  if (!f.item || f.state !== 'alive' || f.carrying) return;                 // 搬運中兩手全滿,不能用道具
+  const grabbed = !!f.carriedBy;
+  if ((grabbed || f.stunned || f.fumbleT > 0) && f.item !== 'teleport') return; // 被抓/暈/踉蹌:只有傳送能用
+  const type = f.item; f.item = null;                                        // 用完即空
+  inc.itemUses[type]++;
+  if (type === 'wind') castWind(f);
+  else if (type === 'teleport') castTeleport(f);
+  else if (type === 'ice') castIce(f);
+}
+function castWind(f) { // 前方風錐強擊退; 貼臉發射自身反彈(過載)
+  const a = f.facing; let hit = false;
+  for (const o of fighters) {
+    if (o === f || o.state !== 'alive' || o.carriedBy) continue;
+    const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
+    if (d > WIND_RANGE) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) > WIND_CONE) continue;
+    hit = true;
+    o.vx += Math.cos(a) * WIND_FORCE; o.vy += Math.sin(a) * WIND_FORCE;
+    o.faceT = 0.3; o.hurt = 0.1; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    if (o.carrying) dropCarry(o);                                            // 吹中搬運者 → 鬆手
+    hitSpark(o.x, o.y, '#dff3ff', 1.3); addRing(o.x, o.y, 32, '#dff3ff', 0.3, 4); addText(o.x, o.y - 26, '吹飛！', '#dff3ff');
+    if (o.pid === LOCAL) localFlash = 0.25;
+    if (d < 50) { f.vx -= Math.cos(a) * WIND_SELF; f.vy -= Math.sin(a) * WIND_SELF; addText(f.x, f.y - 32, '過載反彈！', '#ff9a9a'); } // 風壓過載自反噬
+  }
+  addRing(f.x + Math.cos(a) * 30, f.y + Math.sin(a) * 30, 62, '#dff3ff', 0.25, 5); addShake(hit ? 5 : 3); game.sfx.push('dash');
+  dlog('WIND', NAMES[f.pid], hit ? 'hit' : 'miss');
+}
+function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困+搬運者踉蹌
+  const grabbed = !!f.carriedBy, o = fighters[1 - f.pid], jit = () => (Math.random() * 2 - 1) * TP_JITTER;
+  if (o.state === 'alive') {
+    const fx = f.x, fy = f.y;
+    f.x = clamp(o.x + jit(), f.r, W - f.r); f.y = clamp(o.y + jit(), f.r, H - f.r);
+    o.x = clamp(fx + jit(), o.r, W - o.r); o.y = clamp(fy + jit(), o.r, H - o.r);
+    o.vx = 0; o.vy = 0;
+    addRing(f.x, f.y, 40, '#c98cff', 0.4, 5); addRing(o.x, o.y, 40, '#c98cff', 0.4, 5); addText(f.x, f.y - 30, '換位！', '#c98cff'); addShake(4);
+  } else {
+    f.x = clamp(f.x + Math.cos(f.facing) * TP_BLINK, f.r, W - f.r); f.y = clamp(f.y + Math.sin(f.facing) * TP_BLINK, f.r, H - f.r);
+    addText(f.x, f.y - 30, '瞬移！', '#c98cff');
+  }
+  if (grabbed) { const cap = f.carriedBy; f.carriedBy = null; f.escape = 0; if (cap) { cap.carrying = null; cap.fumbleT = FUMBLE_T; cap.regrabCd = REGRAB_CD; } } // 逃脫+反轉
+  f.vx = 0; f.vy = 0; game.sfx.push('upgrade');
+  dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
+}
+function castIce(f) { // 前方丟出 → 冰面
+  const lx = clamp(f.x + Math.cos(f.facing) * ICE_THROW, 24, W - 24), ly = clamp(f.y + Math.sin(f.facing) * ICE_THROW, 24, H - 24);
+  iceZones.push({ x: lx, y: ly, r: ICE_R, life: ICE_DUR });
+  addRing(lx, ly, ICE_R, ITEM_INFO.ice.color, 0.4, 5); addText(lx, ly - 20, '冰面！', ITEM_INFO.ice.color); game.sfx.push('dash');
+  dlog('ICE @', Math.round(lx) + ',' + Math.round(ly));
+}
+function containByEnviron(v) { // 被擊退/打滑失控進艙 → v 被收容, 對手勝(spec F §2.2)
+  const w = 1 - v.pid; inc.contains[w]++; inc.types.add('contain');
+  if (v.carriedBy) { v.carriedBy.carrying = null; v.carriedBy = null; }
+  addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6); game.sfx.push('waveclear');
+  dlog('ENVIRON-CONTAIN', NAMES[v.pid], '→', NAMES[w], 'wins round');
+  winRound(w);
+}
+// edge-triggered item key (human only; K / '.')
+const itemPrev = [false, false];
+function pollItem() {
+  const pressed = [keys.has('k'), keys.has('.')];
+  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
 }
 
 // --- simple test AI (so you can play solo): seek the trophy / chase the holder / flee the boss when
@@ -358,14 +463,14 @@ const WIN_TARGET = 3;
 const roundWins = [0, 0];
 let matchOver = false, report = null;
 const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0,
-  contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0 };
+  contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0, itemUses: { wind: 0, teleport: 0, ice: 0 } };
 const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
 
 function resetRound() {
   holderPid = -1; holdMeter[0] = 0; holdMeter[1] = 0;
   trophy.held = false; trophy.x = FAR.x; trophy.y = FAR.z;
   boss.awake = false; boss.wakeT = 0; boss.x = FAR.x; boss.y = FAR.z - 12;
-  resetBarrels();
+  resetBarrels(); resetPads(); iceZones.length = 0;
   for (const f of fighters) resetFighter(f);
 }
 function dropTrophy(x, y) {
@@ -408,7 +513,7 @@ function endMatch(pid) { matchOver = true; report = generateReport(pid); game.sf
 function restartMatch() {
   matchOver = false; report = null; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.types = new Set(); inc.matchT = 0; inc.maxHold = 0;
-  inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0; inc.barrelBooms = 0;
+  inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0; inc.barrelBooms = 0; inc.itemUses = { wind: 0, teleport: 0, ice: 0 };
   resetRound();
 }
 function pickComment(w) {
@@ -475,7 +580,7 @@ function step(dt) {
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   if (game.hitstop > 0) { game.hitstop -= dt; }
   else {
-    pollAction();
+    pollAction(); pollItem();
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
       // cooldown timers
@@ -517,7 +622,12 @@ function step(dt) {
       }
       if (o.escape >= CARRY_ESCAPE_NEED) breakFree(o);
     }
-    updateBarrels(dt); // 危險 #1:爆桶(靠近點燃→爆炸炸飛+削弱;炸到搬運者→鬆手)
+    // 失控入艙: 被擊退/打滑(速度夠快)或暈眩者進到艙半徑 → 收容(對手勝)
+    for (const f of fighters) {
+      if (f.state !== 'alive' || f.carriedBy || f.carrying) continue;
+      if ((f.stunned || Math.hypot(f.vx, f.vy) > SLIDE_CONTAIN_V) && inPod(f.x, f.y)) { containByEnviron(f); break; }
+    }
+    updateBarrels(dt); updatePads(dt); updateIce(dt); // 爆桶 / 補給座重刷 / 冰面消退
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment)
   const lf = fighters[LOCAL];
@@ -535,6 +645,8 @@ function step(dt) {
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];
   for (const b of barrels) if (b.alive && b.state === 'fuse') // 平時不畫;只有引信中(快爆)才亮出完整爆炸範圍危險環
     marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: '#ff7a3a', pulse: true, op: 0.92, fill: 0.24, speed: 18 });
+  for (const z of iceZones) marks.push({ x: z.x, y: z.y, r: z.r, color: '#bfe9ff', pulse: false, op: 0.4, fill: 0.28 }); // 冰面
+  for (const p of pads) if (p.item) marks.push({ x: p.x, y: p.y, r: 24, color: ITEM_INFO[p.item].color, pulse: true, op: 0.5, fill: 0.12, speed: 4 }); // 補給座光圈
   setGroundMarkers(marks);
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
 }
@@ -566,6 +678,26 @@ function drawContainHud() {
       if (!f.ai) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
     }
   }
+}
+function drawItems() {
+  hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
+  for (const p of pads) { // 補給座上的道具球 + 名稱
+    if (!p.item) continue;
+    const s = project(p.x, p.y, 20 + Math.sin(game.time * 3) * 3); if (s.behind) continue;
+    hctx.fillStyle = ITEM_INFO[p.item].color; hctx.beginPath(); hctx.arc(s.x, s.y, 9, 0, Math.PI * 2); hctx.fill();
+    hctx.strokeStyle = 'rgba(255,255,255,.8)'; hctx.lineWidth = 2; hctx.stroke();
+    hctx.fillStyle = '#eafaff'; hctx.font = '700 10px system-ui, sans-serif'; hctx.fillText(ITEM_INFO[p.item].name, s.x, s.y - 14);
+  }
+  for (const f of fighters) { // 持有道具:頭頂小球
+    if (!f.item || f.state !== 'alive') continue;
+    const s = project(f.x, f.y, (f.r || 14) * 2.2 + 34); if (s.behind) continue;
+    hctx.fillStyle = ITEM_INFO[f.item].color; hctx.beginPath(); hctx.arc(s.x, s.y, 7, 0, Math.PI * 2); hctx.fill();
+    hctx.strokeStyle = 'rgba(255,255,255,.8)'; hctx.lineWidth = 1.5; hctx.stroke();
+  }
+  const me = fighters[LOCAL]; // 本機持有 HUD
+  hctx.textAlign = 'left'; hctx.font = '800 14px system-ui, sans-serif';
+  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（K 使用）', 24, H - 40); }
+  else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, H - 40); }
 }
 const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
 function drawReport() {
@@ -620,6 +752,7 @@ function drawHud() {
   hctx.textAlign = 'right'; hctx.fillStyle = COLORS[1];
   hctx.fillText(roundWins[1] + '/' + WIN_TARGET, W - 24, 50);
   drawContainHud();
+  drawItems();
   // win banner
   if (winBannerT > 0) {
     hctx.textAlign = 'center'; hctx.font = '900 46px system-ui, sans-serif';
@@ -628,11 +761,11 @@ function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · J 揮拳／抓（打暈→靠近抓→拖進中央實驗艙；被抓時左右交替掙脫）　紅：AI', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · J 揮拳／抓 · K 用道具（補給座撿：風/傳送/冰）　紅：AI', W / 2, H - 18);
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: grab-1', W - 10, H - 4);
+  hctx.fillText('build: items-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -651,13 +784,14 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   winRound, restartMatch,
   POD, barrels, explodeBarrel, CAMB, camRig,
-  punch, startCarry, stunFighter,
+  punch, startCarry, stunFighter, pads, iceZones, useItem, castWind, castTeleport, castIce,
   state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report,
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
     stunned: [fighters[0].stunned, fighters[1].stunned],
     carrying: [fighters[0].carrying ? fighters[0].carrying.pid : -1, fighters[1].carrying ? fighters[1].carrying.pid : -1],
     escape: [Math.round(fighters[0].escape || 0), Math.round(fighters[1].escape || 0)],
-    contains: [inc.contains[0], inc.contains[1]], barrelBooms: inc.barrelBooms }) };
+    items: [fighters[0].item, fighters[1].item], pads: pads.map(p => p.item), iceZones: iceZones.length,
+    contains: [inc.contains[0], inc.contains[1]], barrelBooms: inc.barrelBooms, itemUses: inc.itemUses }) };
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
