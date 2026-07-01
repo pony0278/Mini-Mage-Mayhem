@@ -124,10 +124,18 @@ let ctx = screenCtx;
   // being knocked off an edge reads as falling into the abyss. Scoped behind a flag — single-player
   // (index.html) keeps the full opaque ground plane + dark void pits. Toggled via setIslandMode().
   let islandMode = false;
-  // Subtle floor: dial the grid lines / decorative motes right down so the eye isn't pulled to the tiling —
-  // only interactive highlights (pod, barrels, danger zones) should pop. v2-only; single-player floor unchanged.
-  let subtleFloor = false;
-  export function setFloorSubtle(on) { subtleFloor = on; }
+  // Floor prominence (live-tunable): grid-line alpha, decorative motes on/off, and the tile colours. Dialing
+  // these down keeps the eye on actors/hazards instead of the tiling. v2-only; single-player floor unchanged.
+  let floorGridAlpha = 0.36, floorMotes = true;
+  export function setFloorParams(o = {}) {
+    if (o.gridAlpha !== undefined) floorGridAlpha = o.gridAlpha;
+    if (o.motes !== undefined) floorMotes = o.motes;
+    if (o.floorA) ART.floorA = o.floorA;
+    if (o.floorB) ART.floorB = o.floorB;
+    if (o.floorEdge) ART.floorEdge = o.floorEdge;
+  }
+  export function getFloorParams() { return { gridAlpha: floorGridAlpha, motes: floorMotes, floorA: ART.floorA, floorB: ART.floorB, floorEdge: ART.floorEdge }; }
+  export function setFloorSubtle(on) { setFloorParams({ gridAlpha: on ? 0.1 : 0.36, motes: !on }); } // preset used at v2 boot
   // Camera follow vs fixed framing. Default true = follow the controlled player (single-player behaviour).
   // false = lock onto the arena centre (the v2 fixed-diorama framing). Toggled from the camera sandbox.
   let camFollow = true;
@@ -312,10 +320,10 @@ let ctx = screenCtx;
       if (t === TILE_VOID) { gtx.fillStyle = '#000'; gtx.fillRect(px + 1, py + 1, s - 2, s - 2); } // 空洞:暗坑
       if (t === TILE_FLOOR) {
         gtx.strokeStyle = ART.floorEdge;
-        gtx.globalAlpha = subtleFloor ? 0.1 : 0.36; // subtle: barely-there grid so it doesn't pull the eye
+        gtx.globalAlpha = floorGridAlpha; // live-tunable grid prominence
         gtx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
         gtx.globalAlpha = 1;
-        if (!subtleFloor && (x * 7 + y * 11) % 23 === 0) { // subtle mode drops the pink floor motes entirely
+        if (floorMotes && (x * 7 + y * 11) % 23 === 0) { // decorative pink floor motes (off in subtle mode)
           gtx.strokeStyle = 'rgba(174,116,255,.42)';
           gtx.lineWidth = 1;
           gtx.beginPath();
@@ -465,6 +473,8 @@ let ctx = screenCtx;
   // --- actor (player + enemy) voxel meshes ---
   const actorMeshes = new Map();
   let playerMesh = null;
+  // drop cached voxel meshes so syncActors rebuilds them from the entity's current r (e.g. after resizing fighters)
+  export function refreshActors() { for (const g of actorMeshes.values()) scene.remove(g); actorMeshes.clear(); }
 
   function tintable(group, list, m) { group.add(m); list.push({ mesh: m, base: m.material.color.getHex() }); return m; }
 

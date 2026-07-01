@@ -641,7 +641,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: readable-1', W - 10, H - 4);
+  hctx.fillText('build: tune-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -705,3 +705,6 @@ game.enemies = fighters.slice();
 
 let last = performance.now();
 requestAnimationFrame(frame);
+
+// opt-in live tuning panel (角色大小 / 格線 / 地板顏色·搶眼度 / 攝影機): open v2.html?tune=1
+if (new URLSearchParams(location.search).has('tune')) import('./v2-tuning.js').catch(e => console.warn('[v2] tuning panel failed', e));
