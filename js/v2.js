@@ -68,6 +68,12 @@ function buildArena() {
 // broken-isles above. Islands are discs in world px; collision/fall use disc + bridge-segment geometry. ---
 const TERRAIN = 'flat';                  // 'flat'(平台,好測收容) | 'isles'(浮島) | 'grid'(格子斷橋)
 const FREEFORM = TERRAIN === 'isles';    // island routing / bridge-rails / fall only apply in isles mode
+// 擊退手感:平台/收容場要「有重量」——大阻力 + 低速截斷砍掉溜冰尾巴 + 命中頓一下;
+// 浮島保留原本的長滑行(把人滑進虛空/海裡正是那張圖的機制)。
+const WEIGHTY = TERRAIN !== 'isles';
+const KNOCK_FRICTION = WEIGHTY ? 0.05 : FRICTION; // ↓ = 更大阻力,擊退衰減更快
+const KNOCK_CUTOFF = WEIGHTY ? 42 : 0;            // 速度 < 此值直接歸零,砍掉指數衰減的長尾巴(溜冰感的來源)
+const SHOVE_MUL = WEIGHTY ? 0.9 : 1;              // 平台場略降力道,配合乾脆的停止
 const ISLANDS = [
   { x: 200, z: 460, r: 120 }, // near-left  (P1 spawn ≈ here)
   { x: 760, z: 460, r: 120 }, // near-right (P2 spawn ≈ here)
@@ -97,11 +103,13 @@ function buildFlatMap() { // dummy all-floor grid so grid-reading helpers (circl
   game.map = [];
   for (let y = 0; y < ROWS; y++) { const row = []; for (let x = 0; x < COLS; x++) row.push(TILE_FLOOR); game.map.push(row); }
 }
-function buildFlatArena() { // plain walled platform — no void/falling; easiest for testing the containment loop
+function buildFlatArena() { // walled platform, but the CAMERA-SIDE (south / bottom) edge is left wall-less: that
+  // wall would otherwise sit in the foreground between camera and player, occluding + clutter. Collision there
+  // is still enforced by the clamp in moveFighter, so players can't leave. North/left/right walls stay as backdrop.
   game.map = [];
   for (let y = 0; y < ROWS; y++) {
     const row = [];
-    for (let x = 0; x < COLS; x++) row.push(x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1 ? TILE_WALL : TILE_FLOOR);
+    for (let x = 0; x < COLS; x++) row.push(x === 0 || y === 0 || x === COLS - 1 ? TILE_WALL : TILE_FLOOR);
     game.map.push(row);
   }
 }
@@ -186,7 +194,8 @@ function moveFighter(f, dt) {
   if (!circleHitsSolid(f.x, f.y + stepY, f.r)) f.y += stepY; else f.vy = 0;
   f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
   if (FREEFORM) bridgeAssist(f);
-  const k = Math.pow(FRICTION, dt); f.vx *= k; f.vy *= k;
+  const k = Math.pow(KNOCK_FRICTION, dt); f.vx *= k; f.vy *= k;
+  if (KNOCK_CUTOFF && f.vx * f.vx + f.vy * f.vy < KNOCK_CUTOFF * KNOCK_CUTOFF) { f.vx = 0; f.vy = 0; } // snap out the ice-slide tail
   if (f.shoveCd > 0) f.shoveCd -= dt;
 }
 
@@ -195,6 +204,7 @@ function shove(f) {
   if (f.shoveCd > 0 || f.falling || f.state !== 'alive') return;
   f.shoveCd = SHOVE_CD;
   const a = f.facing;
+  let hit = false;
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.falling) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
@@ -202,7 +212,8 @@ function shove(f) {
     let da = Math.atan2(dy, dx) - a;
     while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > SHOVE_CONE) continue;
-    o.vx += Math.cos(a) * SHOVE_FORCE; o.vy += Math.sin(a) * SHOVE_FORCE;
+    hit = true;
+    o.vx += Math.cos(a) * SHOVE_FORCE * SHOVE_MUL; o.vy += Math.sin(a) * SHOVE_FORCE * SHOVE_MUL;
     o.faceT = 0.35; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     o.stability = Math.max(0, o.stability - STAB_SHOVE); o.stabCd = 0.8; // 削弱穩定值(被陣風命中)
     hitSpark(o.x, o.y, '#dff3ff', 1.3);
@@ -210,7 +221,8 @@ function shove(f) {
     if (o.pid === LOCAL) { localFlash = 0.28; dlog('SHOVED by', NAMES[f.pid], 'at', Math.round(o.x) + ',' + Math.round(o.y), '→ v', Math.round(o.vx) + ',' + Math.round(o.vy)); } // flash the screen when YOU are the one hit
   }
   addRing(f.x + Math.cos(a) * 26, f.y + Math.sin(a) * 26, 46, '#dff3ff', 0.22, 4);
-  addShake(3);
+  addShake(hit ? 5 : 3);
+  if (hit && WEIGHTY) addHitstop(0.05); // 命中頓一下 → 賣出「撞到」的衝擊/重量感
   game.sfx.push('dash');
 }
 
@@ -286,6 +298,21 @@ function aiMove(f) {
     }
   }
   return dir;
+}
+
+// --- 有界跟隨(bounded follow):鏡頭跟一個「平滑 + 夾在內縮框裡」的代理點,而不是直接黏在角色上。
+// 角色走到場邊時鏡頭停住不再跟過去 → 永遠不把場外黑色露進畫面(消滅留白);順帶消除跟隨抖動。
+// 只用在平台場;浮島/格子場仍直接跟角色。數值可用 __v2.CAMB 即時微調。
+const camRig = { x: SPAWN[0].x, y: SPAWN[0].y };
+// ix=480(=W/2) → X 固定置中:相機視錐約等於場地寬度,只要水平偏離中心就會越過側牆露出黑邊;
+// 這張圖幾乎就一個螢幕寬,水平跟隨沒有意義,固定置中 = 整場寬度永遠都在畫面內、側邊永不留白。
+// 垂直仍用有界跟隨(ny/sy)給一點跟隨感又不露上下黑邊。
+const CAMB = { ix: 480, ny: 210, sy: 500, ease: 8 }; // ix=左右夾界(=W/2 即固定置中), ny/sy=北/南夾界, ease=平滑
+function updateCamRig(dt) {
+  const lf = fighters[LOCAL];
+  const tx = clamp(lf.x, CAMB.ix, W - CAMB.ix), ty = clamp(lf.y, CAMB.ny, CAMB.sy);
+  const e = Math.min(1, dt * CAMB.ease);
+  camRig.x += (tx - camRig.x) * e; camRig.y += (ty - camRig.y) * e;
 }
 
 // ===== 玩法 loop:搶獎盃 → Boss 甦醒追持有者 → 撐滿持有時間者勝 (docs/v2-spec-D §2/§5) =====
@@ -513,6 +540,7 @@ function step(dt) {
   game.enemies = fighters.filter(f => f.state !== 'down');
   // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
   game.props = barrels.filter(b => b.alive).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
+  if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
 }
 
 function drawContainHud() {
@@ -613,7 +641,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: barrel-1', W - 10, H - 4);
+  hctx.fillText('build: feel-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -631,7 +659,7 @@ function frame(now) {
 // --- boot ---
 window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   winRound, restartMatch,
-  POD, barrels, explodeBarrel,
+  POD, barrels, explodeBarrel, CAMB, camRig,
   state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report,
     lock: lock ? { pid: lock.pid, t: +lock.t.toFixed(2), escape: +lock.escape.toFixed(0) } : null,
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
@@ -664,9 +692,12 @@ if (TERRAIN === 'isles') {
   CAM.fov = 26; CAM.angle = 24; CAM.dist = 1150; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -10; CAM.lookY = 20;
 } else {                                            // 'flat' — plain walled platform, no falling (best for testing)
   buildFlatArena();
-  CAM.fov = 36; CAM.angle = 32; CAM.dist = 620; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = 0; CAM.lookY = 20;
+  // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target
+  // north, so the player (south of it) rides low in frame → less black void below, more arena ahead. (Live-tune via __v2.CAM.)
+  CAM.fov = 38; CAM.angle = 34; CAM.dist = 540; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -40; CAM.lookY = 14;
 }
-game.camTarget = fighters[0]; // follow the (local) controlled player; the rival comes into view as it nears
+// flat mode uses the smoothed/bounded camRig; isles/grid follow the fighter directly (their framing differs)
+game.camTarget = TERRAIN === 'flat' ? camRig : fighters[0];
 game.enemies = fighters.slice();
 
 let last = performance.now();
