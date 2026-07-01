@@ -473,10 +473,11 @@ function aiMove(f) {
 // 角色走到場邊時鏡頭停住不再跟過去 → 永遠不把場外黑色露進畫面(消滅留白);順帶消除跟隨抖動。
 // 只用在平台場;浮島/格子場仍直接跟角色。數值可用 __v2.CAMB 即時微調。
 const camRig = { x: SPAWN[0].x, y: SPAWN[0].y };
-// ix=480(=W/2) → X 固定置中:相機視錐約等於場地寬度,只要水平偏離中心就會越過側牆露出黑邊;
-// 這張圖幾乎就一個螢幕寬,水平跟隨沒有意義,固定置中 = 整場寬度永遠都在畫面內、側邊永不留白。
-// 垂直仍用有界跟隨(ny/sy)給一點跟隨感又不露上下黑邊。
-const CAMB = { ix: 480, ny: 210, sy: 500, ease: 8 }; // ix=左右夾界(=W/2 即固定置中), ny/sy=北/南夾界, ease=平滑
+// cam-2(fov32/angle44/dist650)的視錐比場地窄 → 水平「有界跟隨」才對:X 夾在 [ix, W-ix]，
+// ix 是兩側留邊,讓玩家貼牆時仍在畫面內、又不會越過側牆露出黑邊(ix=250 實測兩牆都不露黑)。
+// 舊的 ix=480 固定置中是為了更寬的視錐,換成 cam-2 後角落出生的玩家會整個掉出左邊 → 這裡改成跟隨。
+// 垂直同樣用有界跟隨(ny/sy)給跟隨感又不露上下黑邊。
+const CAMB = { ix: 250, ny: 210, sy: 500, ease: 8 }; // ix=左右夾界(跟隨玩家 X，兩側牆內留邊), ny/sy=北/南夾界, ease=平滑
 function updateCamRig(dt) {
   const lf = fighters[LOCAL];
   const tx = clamp(lf.x, CAMB.ix, W - CAMB.ix), ty = clamp(lf.y, CAMB.ny, CAMB.sy);
@@ -842,7 +843,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: cam-2', W - 10, H - 4);
+  hctx.fillText('build: cam-3', W - 10, H - 4);
 }
 
 function frame(now) {
