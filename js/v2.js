@@ -132,7 +132,7 @@ function resetFighter(f) {
   f.stability = STAB_MAX; f.stabCd = 0;
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
-  f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0; f.wasCarryingT = -9;
+  f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0; f.wasCarryingT = -9; f.invuln = 0;
   f.item = null;
   f.state = 'alive';
 }
@@ -166,6 +166,19 @@ const pads = PAD_SPOTS.map(([x, y]) => ({ x, y, r: 14, item: randItem(), respawn
 function resetPads() { for (const p of pads) { p.item = randItem(); p.respawn = 0; } }
 const iceZones = []; // { x, y, r, life }
 function iceAt(x, y) { for (const z of iceZones) if (Math.hypot(x - z.x, y - z.y) <= z.r) return true; return false; }
+// --- 三階段收容升級 (spec F §2.5): 每次收容 = 同一場事故的下一階段, 場地不重置, 危險升級 ---
+let stage = 1;
+let barrelRespawnCur = BARREL_RESPAWN, barrelFuseCur = BARREL_FUSE, padRespawnCur = PAD_RESPAWN, slideContainCur = SLIDE_CONTAIN_V;
+const STAGE_NAME = ['普通', '黃色警戒', '全面失控'];
+const STAGE_BANNER = ['臨時收容成功！樣本逃逸', '高危險樣本再收容！基地警戒升級'];
+const METHOD_COL = { carry: '#8fb6ff', wind: '#bfeaff', ice: '#9fd8ff', barrel: '#ff9a4a', reverse: '#c98cff' };
+const METHOD_ZH = { carry: '搬', wind: '吹', ice: '滑', barrel: '爆', reverse: '反向' };
+function resetStage() { stage = 1; barrelRespawnCur = BARREL_RESPAWN; barrelFuseCur = BARREL_FUSE; padRespawnCur = PAD_RESPAWN; slideContainCur = SLIDE_CONTAIN_V; }
+function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門檻)
+  stage = s;
+  if (s >= 2) { barrelRespawnCur = 4; barrelFuseCur = 0.4; padRespawnCur = 4; }
+  if (s >= 3) { barrelRespawnCur = 3; slideContainCur = 150; } // 艙吸力變強
+}
 
 const fighters = [makeFighter(0), makeFighter(1)];
 fighters[1].ai = true; // solo testing: red is a bot (flip to false for hot-seat 2-player)
@@ -249,7 +262,7 @@ function punch(f) {
   f.punchCd = PUNCH_CD;
   const a = f.facing; let hit = false;
   for (const o of fighters) {
-    if (o === f || o.state !== 'alive' || o.carriedBy) continue;
+    if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
     if (d > PUNCH_RANGE + o.r) continue;
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
@@ -279,18 +292,40 @@ function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
 }
 function isReversal(v) { return game.time - (v.wasCarryingT || -9) < 2.5; } // 被關者剛剛還在搬人 → 反向收容
 function containByCarry(f, o) { // 拖進艙 = 收容成功 (spec F §2.2 失控入艙)
-  const w = f.pid; inc.contains[w]++; inc.carries[w]++; inc.types.add('contain');
-  if (isReversal(o)) { inc.reverseContains++; inc.types.add('reverse'); }
+  const w = f.pid, rev = isReversal(o);
+  inc.contains[w]++; inc.carries[w]++; inc.types.add('contain');
+  if (rev) { inc.reverseContains++; inc.types.add('reverse'); }
   f.carrying = null; o.carriedBy = null;
-  addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6); game.sfx.push('waveclear');
-  dlog('CONTAINED', NAMES[o.pid], '→', NAMES[w], 'wins round');
-  winRound(w);
+  resolveContain(w, o, rev ? 'reverse' : 'carry');
+}
+// --- 三階段收容 (spec F §2.5): 每次收容 → 記 log + 計分; 前兩次軟重整升級, 第三次最終封存 ---
+function resolveContain(w, loser, method) {
+  roundWins[w]++; winnerPid = w;
+  containLog.push({ winner: w, method, stage });
+  addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6);
+  dlog('CONTAIN', NAMES[loser.pid], '→', NAMES[w], method, 'score', roundWins[0] + '-' + roundWins[1]);
+  if (roundWins[w] >= WIN_TARGET) finalSeal(w);
+  else softReintegrate(loser, roundWins[0] + roundWins[1]);
+}
+function finalSeal(w) { // 第三次 = 最終封存儀式 → 事故報告
+  bannerText = NAMES[w] + ' 最終封存完成！'; winBannerT = 3.0;
+  addText(POD.x, POD.y - 48, '最終封存完成', COLORS[w]);
+  addRing(POD.x, POD.y, POD.r * 3.2, COLORS[w], 0.7, 9); addRing(POD.x, POD.y, POD.r * 2.1, '#ffffff', 0.5, 6);
+  addShake(12); addHitstop(0.4); game.sfx.push('waveclear'); game.sfx.push('upgrade');
+  endMatch(w);
+}
+function softReintegrate(loser, total) { // 非第三次:被收容者出生點彈出+無敵, 場地不重置, 警戒升級
+  const next = Math.min(3, total + 1); applyStage(next);
+  bannerText = STAGE_BANNER[Math.min(total - 1, STAGE_BANNER.length - 1)]; winBannerT = 1.6;
+  addText(POD.x, POD.y - 48, NAMES[1 - loser.pid] + ' 收容成功　→ ' + STAGE_NAME[next - 1], COLORS[1 - loser.pid]);
+  addHitstop(0.35); game.sfx.push('upgrade');
+  resetFighter(loser); loser.invuln = 1.8; // 彈回出生點 + 無敵(不能被抓/打)
 }
 function doAction(f) { // 情境動作鍵
   if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0) return;
   if (f.carrying) { dropCarry(f); return; }
   const o = fighters[1 - f.pid];
-  if (f.regrabCd <= 0 && o.state === 'alive' && o.stunned && !o.carriedBy && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
+  if (f.regrabCd <= 0 && o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
   punch(f);
 }
 // edge-triggered action key (human only); AI 透過 aiMove 直接呼叫 punch/startCarry
@@ -307,7 +342,7 @@ function updatePads(dt) {
     for (const f of fighters) {
       if (f.ai || f.state !== 'alive' || f.item || f.carriedBy || f.carrying || f.stunned) continue; // AI 這步不撿道具
       if (Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r) {
-        f.item = p.item; p.item = null; p.respawn = PAD_RESPAWN;
+        f.item = p.item; p.item = null; p.respawn = padRespawnCur;
         addText(f.x, f.y - 32, ITEM_INFO[f.item].name + '！', ITEM_INFO[f.item].color); addRing(f.x, f.y, 28, ITEM_INFO[f.item].color, 0.3, 4); game.sfx.push('upgrade');
         dlog('PICKUP', NAMES[f.pid], f.item); break;
       }
@@ -328,7 +363,7 @@ function useItem(f) {
 function castWind(f) { // 前方風錐強擊退; 貼臉發射自身反彈(過載)
   const a = f.facing; let hit = false;
   for (const o of fighters) {
-    if (o === f || o.state !== 'alive' || o.carriedBy) continue;
+    if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
     if (d > WIND_RANGE) continue;
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
@@ -367,14 +402,13 @@ function castIce(f) { // 前方丟出 → 冰面
   dlog('ICE @', Math.round(lx) + ',' + Math.round(ly));
 }
 function containByEnviron(v, cause) { // 被擊退/打滑失控進艙 → v 被收容, 對手勝(spec F §2.2)
-  const w = 1 - v.pid; inc.contains[w]++; inc.types.add('contain');
+  const w = 1 - v.pid, rev = isReversal(v);
+  inc.contains[w]++; inc.types.add('contain');
   inc.accidentContains[cause] = (inc.accidentContains[cause] || 0) + 1; inc.types.add(cause);
   if (cause === 'ice') inc.itemBackfires++;                 // 踩(自己的)冰面滑進艙 = 自作自受
-  if (isReversal(v)) { inc.reverseContains++; inc.types.add('reverse'); }
+  if (rev) { inc.reverseContains++; inc.types.add('reverse'); }
   if (v.carriedBy) { v.carriedBy.carrying = null; v.carriedBy = null; }
-  addText(POD.x, POD.y - 40, NAMES[w] + ' 收容成功！', COLORS[w]); addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6); game.sfx.push('waveclear');
-  dlog('ENVIRON-CONTAIN', NAMES[v.pid], '→', NAMES[w], 'wins round');
-  winRound(w);
+  resolveContain(w, v, rev ? 'reverse' : cause);
 }
 // edge-triggered item key (human only; K / '.')
 const itemPrev = [false, false];
@@ -427,7 +461,7 @@ function aiMove(f) {
   const dir = FREEFORM ? aiSafeDir(f, dx / dl, dy / dl) : { x: dx / dl, y: dy / dl };
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
   // actions: grab a stunned rival, else punch when in range
-  if (!f.carrying && f.fumbleT <= 0 && o.state === 'alive' && !o.carriedBy) {
+  if (!f.carrying && f.fumbleT <= 0 && o.state === 'alive' && !o.carriedBy && o.invuln <= 0) {
     const od = Math.hypot(o.x - f.x, o.y - f.y);
     if (o.stunned && f.regrabCd <= 0 && od <= GRAB_RANGE + o.r) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); startCarry(f, o); }
     else if (!o.stunned && f.punchCd <= 0 && od <= PUNCH_RANGE + o.r) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); punch(f); }
@@ -462,10 +496,11 @@ const trophy = { x: FAR.x, y: FAR.z, held: false };
 const boss = { type: 'boss', x: FAR.x, y: FAR.z - 12, r: 22, color: '#66e0a6', awake: false, wakeT: 0, facing: 0, hurt: 0, slowTimer: 0 };
 let holderPid = -1;
 const holdMeter = [0, 0];
-let winnerPid = -1, winBannerT = 0;
-// --- 魔法事故報告 (spec E / V0.8): a match = first to WIN_TARGET round-wins → generate an incident report ---
+let winnerPid = -1, winBannerT = 0, bannerText = '';
+// --- 魔法事故報告 (spec E / V0.8): a match = first to WIN_TARGET containments → generate an incident report ---
 const WIN_TARGET = 3;
 const roundWins = [0, 0];
+const containLog = []; // { winner, method, stage } per containment → 三格 UI + 報告三幕
 let matchOver = false, report = null;
 const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0,
   contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0, itemUses: { wind: 0, teleport: 0, ice: 0 },
@@ -491,12 +526,12 @@ function dropTrophy(x, y) {
   addText(trophy.x, trophy.y - 30, '獎盃掉落！', '#ffd36d');
 }
 function explodeBarrel(b) {
-  b.alive = false; b.respawn = BARREL_RESPAWN; inc.barrelBooms++; inc.types.add('barrel');
+  b.alive = false; b.respawn = barrelRespawnCur; inc.barrelBooms++; inc.types.add('barrel');
   addRing(b.x, b.y, BARREL_BLAST, '#ff9a4a', 0.4, 6); addRing(b.x, b.y, BARREL_BLAST * 0.6, '#fff1bb', 0.3, 5);
   hitSpark(b.x, b.y, '#ffd36d', 2); addShake(8); addHitstop(0.05); game.sfx.push('hit');
   addText(b.x, b.y - 30, '爆！', '#ff7b72');
   for (const f of fighters) {
-    if (f.state !== 'alive') continue;
+    if (f.state !== 'alive' || f.invuln > 0) continue;
     const dx = f.x - b.x, dy = f.y - b.y, d = Math.hypot(dx, dy) || 1;
     if (d > BARREL_BLAST + f.r) continue;
     f.vx += dx / d * BARREL_FORCE; f.vy += dy / d * BARREL_FORCE;
@@ -511,7 +546,7 @@ function updateBarrels(dt) {
   for (const b of barrels) {
     if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; } continue; }
     if (b.state === 'idle') {
-      for (const f of fighters) { if (f.state === 'alive' && Math.hypot(f.x - b.x, f.y - b.y) < BARREL_IGNITE + f.r) { b.state = 'fuse'; b.fuse = BARREL_FUSE; addText(b.x, b.y - 26, '!', '#ffd36d'); game.sfx.push('dash'); break; } }
+      for (const f of fighters) { if (f.state === 'alive' && Math.hypot(f.x - b.x, f.y - b.y) < BARREL_IGNITE + f.r) { b.state = 'fuse'; b.fuse = barrelFuseCur; addText(b.x, b.y - 26, '!', '#ffd36d'); game.sfx.push('dash'); break; } }
     } else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); }
   }
 }
@@ -524,7 +559,7 @@ function endMatch(pid) { matchOver = true; report = generateReport(pid); game.sf
 function restartMatch() {
   matchOver = false; report = null; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.maxHold = 0;
-  resetInc();
+  resetInc(); containLog.length = 0; bannerText = ''; winBannerT = 0; resetStage();
   resetRound();
 }
 function mostUsedItem() {
@@ -612,6 +647,7 @@ function step(dt) {
       if (f.regrabCd > 0) f.regrabCd -= dt;
       if (f.fumbleT > 0) f.fumbleT -= dt;
       if (f.restunT > 0) f.restunT -= dt;
+      if (f.invuln > 0) f.invuln -= dt;
       // stability regen (paused right after a hit; frozen while stunned/carried)
       if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
       // stun countdown → recover (ungrabbed)
@@ -646,10 +682,10 @@ function step(dt) {
       }
       if (o.escape >= CARRY_ESCAPE_NEED) breakFree(o);
     }
-    // 失控入艙: 被擊退/打滑(速度夠快)或暈眩者進到艙半徑 → 收容(對手勝)
+    // 失控入艙: 被擊退/打滑(速度夠快)或暈眩者進到艙半徑 → 收容(對手勝)。無敵中免疫。
     for (const f of fighters) {
-      if (f.state !== 'alive' || f.carriedBy || f.carrying) continue;
-      if ((f.stunned || Math.hypot(f.vx, f.vy) > SLIDE_CONTAIN_V) && inPod(f.x, f.y)) {
+      if (f.state !== 'alive' || f.carriedBy || f.carrying || f.invuln > 0) continue;
+      if ((f.stunned || Math.hypot(f.vx, f.vy) > slideContainCur) && inPod(f.x, f.y)) {
         const cause = iceAt(f.x, f.y) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind');
         containByEnviron(f, cause); break;
       }
@@ -698,12 +734,26 @@ function drawContainHud() {
     hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y, bw, 4);
     hctx.fillStyle = f.stunned ? '#ffd36d' : (f.stability < 30 ? '#ff7b72' : COLORS[f.pid]); hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
     if (f.stunned) { hctx.fillStyle = '#ffd36d'; hctx.font = '900 16px system-ui, sans-serif'; hctx.fillText('★', s.x, s.y - 6); }
+    if (f.invuln > 0 && Math.floor(game.time * 12) % 2 === 0) { // 出艙無敵:閃爍護盾環
+      const g = project(f.x, f.y, 10);
+      if (!g.behind) { hctx.strokeStyle = '#7fe9ff'; hctx.lineWidth = 3; hctx.beginPath(); hctx.arc(g.x, g.y, 22, 0, Math.PI * 2); hctx.stroke(); }
+    }
     if (f.carriedBy) { // 掙脫條 + 左右交替指示
       const ep = clamp(f.escape / CARRY_ESCAPE_NEED, 0, 1);
       hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw, 5);
       hctx.fillStyle = '#9affd0'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw * ep, 5);
       if (!f.ai) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
     }
+  }
+}
+function drawPips(pid, x0, dir) { // 三格收容進度:填色=收容方式
+  const size = 22, gap = 6, y0 = 26;
+  const mine = containLog.filter(c => c.winner === pid);
+  for (let i = 0; i < WIN_TARGET; i++) {
+    const px = dir === 1 ? x0 + i * (size + gap) : x0 - size - i * (size + gap);
+    hctx.fillStyle = mine[i] ? (METHOD_COL[mine[i].method] || COLORS[pid]) : 'rgba(255,255,255,.12)';
+    hctx.fillRect(px, y0, size, size);
+    hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 2; hctx.strokeRect(px + 1, y0 + 1, size - 2, size - 2);
   }
 }
 function drawItems() {
@@ -746,7 +796,11 @@ function drawReport() {
   hctx.fillText(r.summary, cx, y); y += 34;
   // stats line
   hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
-  hctx.fillText(`勝者：${NAMES[r.winner]}　損害 ${r.damage}%　搬 ${inc.carries[0] + inc.carries[1]}·吹 ${inc.accidentContains.wind}·滑 ${inc.accidentContains.ice}·爆 ${inc.accidentContains.barrel}　反向 ${inc.reverseContains}　自傷 ${inc.itemBackfires}　主要道具 ${r.mostUsed}　${r.time.toFixed(0)}s`, cx, y); y += 34;
+  hctx.fillText(`勝者：${NAMES[r.winner]}　損害 ${r.damage}%　搬 ${inc.carries[0] + inc.carries[1]}·吹 ${inc.accidentContains.wind}·滑 ${inc.accidentContains.ice}·爆 ${inc.accidentContains.barrel}　反向 ${inc.reverseContains}　自傷 ${inc.itemBackfires}　主要道具 ${r.mostUsed}　${r.time.toFixed(0)}s`, cx, y); y += 30;
+  if (containLog.length) { // 三幕封存序列
+    hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
+    hctx.fillText('封存序列：' + containLog.map(c => NAMES[c.winner][0] + '·' + (METHOD_ZH[c.method] || c.method)).join('　→　'), cx, y); y += 30;
+  }
   hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
   hctx.fillText('稱號：' + r.title, cx, y); y += 34;
   // committee comment (the share juice)
@@ -771,19 +825,15 @@ function drawHud() {
   // title
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 · 收容測試　揮拳擊暈 → 抓 → 拖進實驗艙　先贏 ' + WIN_TARGET, W / 2, 28);
-  // round-win score (best-of)
-  hctx.font = '900 40px system-ui, sans-serif';
-  hctx.textAlign = 'left'; hctx.fillStyle = COLORS[0];
-  hctx.fillText(roundWins[0] + '/' + WIN_TARGET, 24, 50);
-  hctx.textAlign = 'right'; hctx.fillStyle = COLORS[1];
-  hctx.fillText(roundWins[1] + '/' + WIN_TARGET, W - 24, 50);
+  hctx.fillText('魔法事故報告 · 收容測試　階段 ' + stage + '：' + STAGE_NAME[stage - 1] + '　封存 ' + WIN_TARGET + ' 次獲勝', W / 2, 28);
+  // 三格收容進度 (每格標收容方式)
+  drawPips(0, 24, 1); drawPips(1, W - 24, -1);
   drawContainHud();
   drawItems();
-  // win banner
-  if (winBannerT > 0) {
-    hctx.textAlign = 'center'; hctx.font = '900 46px system-ui, sans-serif';
-    hctx.fillStyle = COLORS[winnerPid]; hctx.fillText(NAMES[winnerPid] + ' 奪冠！', W / 2, H / 2);
+  // stage / seal banner
+  if (winBannerT > 0 && bannerText) {
+    hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
+    hctx.fillStyle = COLORS[winnerPid] || '#eafaff'; hctx.fillText(bannerText, W / 2, H / 2 - 30);
   }
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
@@ -792,7 +842,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: report-1', W - 10, H - 4);
+  hctx.fillText('build: stage-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -812,7 +862,9 @@ window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, 
   winRound, restartMatch,
   POD, barrels, explodeBarrel, CAMB, camRig,
   punch, startCarry, stunFighter, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport,
-  state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report,
+  state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report, stage,
+    containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
+    invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
     stunned: [fighters[0].stunned, fighters[1].stunned],
     carrying: [fighters[0].carrying ? fighters[0].carrying.pid : -1, fighters[1].carrying ? fighters[1].carrying.pid : -1],
