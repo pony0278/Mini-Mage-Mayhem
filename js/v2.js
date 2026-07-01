@@ -15,7 +15,7 @@ import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } 
 import { clamp, norm } from './utils.js';
 import { game, keys, CAM } from './state.js';
 import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorSubtle } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
 const hud = document.getElementById('hud');
@@ -118,7 +118,7 @@ function buildFlatArena() { // fully walled platform (4 sides). The camera-side 
 const COLORS = ['#5e8bff', '#ff6b6b'];
 const NAMES = ['藍法師', '紅法師'];
 function makeFighter(pid) {
-  const f = { pid, type: 'imp', r: 15, color: COLORS[pid], score: 0, state: 'alive', ai: false };
+  const f = { pid, type: 'imp', r: 19, color: COLORS[pid], score: 0, state: 'alive', ai: false }; // bigger voxel: stays readable as effects/bars/icons pile on (hitbox scales with it)
   resetFighter(f);
   return f;
 }
@@ -641,7 +641,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: occlude-1', W - 10, H - 4);
+  hctx.fillText('build: readable-1', W - 10, H - 4);
 }
 
 function frame(now) {
@@ -693,6 +693,7 @@ if (TERRAIN === 'isles') {
 } else {                                            // 'flat' — plain walled platform, no falling (best for testing)
   buildFlatArena();
   setWallFade(true);                                // see-through walls: occluding walls (esp. the south one) fade
+  setFloorSubtle(true);                             // calm floor: faint grid, no pink motes → eye goes to actors/hazards
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target
   // north, so the player (south of it) rides low in frame → less black void below, more arena ahead. (Live-tune via __v2.CAM.)
   CAM.fov = 38; CAM.angle = 34; CAM.dist = 540; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -40; CAM.lookY = 14;

@@ -124,6 +124,10 @@ let ctx = screenCtx;
   // being knocked off an edge reads as falling into the abyss. Scoped behind a flag — single-player
   // (index.html) keeps the full opaque ground plane + dark void pits. Toggled via setIslandMode().
   let islandMode = false;
+  // Subtle floor: dial the grid lines / decorative motes right down so the eye isn't pulled to the tiling —
+  // only interactive highlights (pod, barrels, danger zones) should pop. v2-only; single-player floor unchanged.
+  let subtleFloor = false;
+  export function setFloorSubtle(on) { subtleFloor = on; }
   // Camera follow vs fixed framing. Default true = follow the controlled player (single-player behaviour).
   // false = lock onto the arena centre (the v2 fixed-diorama framing). Toggled from the camera sandbox.
   let camFollow = true;
@@ -308,10 +312,10 @@ let ctx = screenCtx;
       if (t === TILE_VOID) { gtx.fillStyle = '#000'; gtx.fillRect(px + 1, py + 1, s - 2, s - 2); } // 空洞:暗坑
       if (t === TILE_FLOOR) {
         gtx.strokeStyle = ART.floorEdge;
-        gtx.globalAlpha = 0.36;
+        gtx.globalAlpha = subtleFloor ? 0.1 : 0.36; // subtle: barely-there grid so it doesn't pull the eye
         gtx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
         gtx.globalAlpha = 1;
-        if ((x * 7 + y * 11) % 23 === 0) {
+        if (!subtleFloor && (x * 7 + y * 11) % 23 === 0) { // subtle mode drops the pink floor motes entirely
           gtx.strokeStyle = 'rgba(174,116,255,.42)';
           gtx.lineWidth = 1;
           gtx.beginPath();
