@@ -50,6 +50,12 @@ header('v2 調整台', true);
 const hint = document.createElement('div'); hint.textContent = '?tune=1 · 即時套用';
 hint.style.cssText = 'color:#888;margin-bottom:2px;'; panel.appendChild(hint);
 
+header('對局');
+// AI 對手 — default OFF while tuning so you're not shoved around; toggle on to test against the bot.
+const setAI = (on) => fighters.forEach((f, i) => { if (i !== 0) f.ai = on; });
+toggleRow('AI 對手', false, setAI);
+setAI(false); // apply the default immediately (peaceful tuning)
+
 header('角色');
 slider('大小 (r)', 12, 30, 1, fighters[0].r, (v) => { for (const f of fighters) f.r = v; refreshActors(); });
 
