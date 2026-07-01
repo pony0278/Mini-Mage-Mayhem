@@ -17,9 +17,10 @@
 | [v2-spec-elements.md](v2-spec-elements.md) | **元素/融合/取得**：融合搬到地板成環境反應；元素＝空間動詞；MVP 對稱固定 kit |
 | [v2-spec-D-arenas.md](v2-spec-D-arenas.md) | **規格 D（地圖 + loop）**：搶獎盃→Boss 甦醒→追逐；浮島四周墜落（render-only）；斷橋孤島落地 + 型錄 + 落地順序 |
 | [v2-spec-E-incident-report.md](v2-spec-E-incident-report.md) | **規格 E（北極星再定位）**：魔法事故報告/收容測試；吸收 C 為核心；收容狀態機 + 報告 schema + 等級 + V0.8/0.9/1.0 路線；可重用零件對照 |
-| [v2-spec-F-spells-items.md](v2-spec-F-spells-items.md) | **規格 F（法術系統再定義）**：撿即用道具取代升級樹；基礎動詞改「揮拳→擊暈→抓→搬→入倉」（陣風降為道具，取代 E §4）；道具 5 動詞框架 + 補給座/只拿1 + MVP 道具集（風/傳送/冰+爆桶）+ 砍異變 + 待定清單 |
+| [v2-spec-F-spells-items.md](v2-spec-F-spells-items.md) | **規格 F（法術系統再定義）**：撿即用道具取代升級樹；基礎動詞改「揮拳→擊暈→抓→搬→入倉」（陣風降為道具，取代 E §4）；道具 5 動詞框架 + 補給座/只拿1 + MVP 道具集（風/傳送/冰+爆桶）；**§2.5 回合模型：三階段收容升級（軟重整取代完全重置）**；報告吃道具故事 |
 | [magic-incident-report-concept.md](magic-incident-report-concept.md) | **概念原文**：魔法事故報告完整願景（世界觀/角色/收容/報告/圖鑑/挑戰碼/命名）— spec E 的來源 |
 | [magic-spell-item-concept.md](magic-spell-item-concept.md) | **概念原文**：法術與道具系統設計稿（撿即用/事故來源/道具表/五系終極/元素反應/事故能量）— spec F 的來源 |
+| [magic-containment-3-stage-concept.md](magic-containment-3-stage-concept.md) | **概念原文**：三階段收容勝利規則（先收 3 次；每次收容＝同一場事故升級，不完全重置；軟重整/警戒階段/三幕報告）— spec F §2.5 的來源 |
 | [v2-roadmap.md](v2-roadmap.md) | **進度路線圖**：核心已驗證好玩後的階段規劃（Phase 0 手感→1 加深事故→2 分享→3 美術→4 擴張）+ 驗收 + 出貨缺口 |
 
 > 落地優先序（規格 E）：**V0.8 事故報告雛形（最高 CP，先驗「想不想截圖」）→ V0.9 收容測試原型 → V1.0 社群挑戰版**。
