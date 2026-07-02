@@ -24,6 +24,7 @@
 | [v2-roadmap.md](v2-roadmap.md) | **進度路線圖**：核心已驗證好玩後的階段規劃（Phase 0 手感→1 加深事故→2 分享→3 美術→4 擴張）+ 驗收 + 出貨缺口 |
 | [v2-module-boundaries.md](v2-module-boundaries.md) | **v2 模組邊界定義書**：v2.js 拆分的分析（死碼清單）、目標模組表 + DAG、不變式、驗證協定 |
 | [render-module-boundaries.md](render-module-boundaries.md) | **render.js 模組邊界定義書**：渲染層拆分（core/world/actors/entities/hud + 門面）、跨區依賴分析、雙遊戲驗證協定 |
+| [animation-workflow.md](animation-workflow.md) | **動作工作流**：PUNCH STUDIO 編排器（`tools/punch-studio.html`）→ JSON 匯出 → 貼 `brawler-clips.js`；impact 影格 ↔ `STRIKE_DELAY` 對齊規則、軸支援表、招式插槽 |
 
 > 落地優先序（規格 E）：**V0.8 事故報告雛形（最高 CP，先驗「想不想截圖」）→ V0.9 收容測試原型 → V1.0 社群挑戰版**。
 > 規格 A（蠢死法演出）/B（事故因果）/D（地圖引擎）餵報告；元素 spec 貫穿。單機版（下表）為**零件捐贈庫**（`recordDisaster`/`makeRunStory` 直接餵報告生成）。

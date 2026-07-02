@@ -1,0 +1,3689 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PUNCH STUDIO — 15-part detached model editor (sockets.json B-1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<!-- 方案 B-1: 內嵌 sockets.json 作為唯一真相快照(可日後改為檔案載入覆蓋) -->
+<script type="application/json" id="SOCKETS_JSON">
+{
+ "schema": "tactics5x5.sockets",
+ "version": "0.5.5",
+ "_about": "Single source of truth for the modular character. v0.3: seam_table radii RESET from real skeleton-mesh joint cross-sections (the skeleton mesh is the final playable character); proc-hand auto-rescales to the new wrist seam via the v4 generator. socket_to_bone (13 sockets) + rest_length + load_bearing as in v0.2. collar/neck pending neckPivot.",
+ "_targets_rig": "skeleton-skeleton (Blender). .L = char +X (anatomical left), .R = char -X.",
+ "conventions": {
+  "units": "world",
+  "author_space": {
+   "proximal_seam_at": "origin",
+   "bone_axis": "+Y",
+   "front": "+Z",
+   "_note": "Every part is modelled in its own socket-local space using THIS convention, regardless of the runtime bone orientation."
+  },
+  "runtime_front": "-Y",
+  "_rig_space": "rig armature is Z-up (Blender); character faces -Y. socket_to_bone below is expressed in BONE-LOCAL space so it survives animation.",
+  "mount_model": {
+   "part_to_socket": "identity",
+   "socket_to_bone": "FILLED in v0.2 (was null). Bone-local rotation that maps author space (+Y bone axis / +Z front) onto each bone's rest frame, absorbing the bone roll. Translation = bone head (part proximal seam sits there), so mount offset -> 0. Stored per-socket as sockets[].socket_to_bone.rot_euler_deg.",
+   "scale": "parts authored at world scale -> object scale 1.0 -> mount.scale = 1.0. The legacy 0.24 is retired (it was pipeline residue, same as the -175 roll)."
+  },
+  "length_model": {
+   "_note": "Segment length is a SEPARATE axis from joint radius. Radius interchange = seam_table; length integrity = this.",
+   "rest_length": "per-socket default span of the child_part = rig bone length (canonicalized, see _rig_audit). Author the part to this and it is drop-in.",
+   "part_length_override": "OPTIONAL part field. Omit = use socket.rest_length. If present AND socket.load_bearing == true, assembly re-seats the child socket (and its sub-chain) to this length. If the socket is terminal (load_bearing == false), length is purely cosmetic mesh extent and re-seats nothing (giant fists/feet are free).",
+   "load_bearing": "true when the child_part has a distal socket (intermediate segment); false for terminal parts (hand/foot/head). Derivable from the contract; stored explicitly so runtime need not recompute."
+  },
+  "lr": {
+   "_note": "contract _l = screen-left = char -X = rig .R side ; _r = screen-right = char +X = rig .L. So socket ids use contract naming but bind to the OPPOSITE-letter rig bone.",
+   "map": {
+    "_l": "rig .R",
+    "_r": "rig .L"
+   }
+  },
+  "chirality_rule": "generator picks the hand/limb mirror_sign from sign(anchor_bone.head.x): x>0 -> mirror_sign=-1 ; x<0 -> mirror_sign=+1. Chirality follows the PHYSICAL bone side, never the _l/_r label. VALIDATED against live rig (hand.L head.x=+0.579 -> -1 ; hand.R head.x=-0.574 -> +1)."
+ },
+ "compatibility": {
+  "rule": "compatible = classMatch AND seamFit",
+  "classMatch": "a.class == b.class || a.class == 'universal' || b.class == 'universal'",
+  "seamFit": "abs(part.radius - socket.radius) <= 0.10 * socket.radius",
+  "_note": "universal bypasses the class test only; it still must pass seamFit. Length is NOT part of compatibility; it is handled by length_model (re-seat) at assembly time."
+ },
+ "gender_convention": {
+  "child_distal": "male (plug)",
+  "parent_proximal": "female (receptacle)",
+  "torso_root": "none (screws into spine, no mate)"
+ },
+ "seam_table": {
+  "_note": "world units. v0.3: radii RESET from real skeleton-mesh joint cross-sections (median, per vertex group). See _seam_audit. depth unchanged (connector design, not limb-derived; may need revisiting on thin limbs).",
+  "neck": {
+   "radius": 0.047,
+   "depth": 0.03,
+   "_note": "neck top <-> skull base (back-centre, spine-aligned). v0.4.1.",
+   "_measured": "r_mean 0.056 @ z=0.975 (head bottom)"
+  },
+  "shoulder": {
+   "radius": 0.05,
+   "depth": 0.04,
+   "_measured": "median 0.0499 n=36"
+  },
+  "elbow": {
+   "radius": 0.022,
+   "depth": 0.04,
+   "_note": "armguard overlay shares this",
+   "_measured": "median 0.0217 n=10"
+  },
+  "wrist": {
+   "radius": 0.037,
+   "depth": 0.04,
+   "_note": "drives proc-hand scale via v4 generator",
+   "_measured": "forearm distal median 0.0371 n=8 (old hand region masked)"
+  },
+  "collar": {
+   "radius": 0.035,
+   "depth": 0.04,
+   "_note": "torso-top <-> neck-base. v0.4: measured from mesh xsec at z~0.89 (neck base pinch).",
+   "_measured": "r_mean 0.035 @ z=0.88"
+  },
+  "hip": {
+   "radius": 0.03,
+   "depth": 0.045,
+   "_measured": "median 0.0301 n=35"
+  },
+  "knee": {
+   "radius": 0.025,
+   "depth": 0.045,
+   "_measured": "median 0.0246 n=57"
+  },
+  "ankle": {
+   "radius": 0.042,
+   "depth": 0.04,
+   "_note": "historic 'ankle==wrist' swap now differs ~13% (wrist 0.037); unify to ~0.040 if hand/foot interchange is wanted",
+   "_measured": "median 0.0418 n=20"
+  },
+  "universal": {
+   "radius": "any",
+   "depth": "any"
+  },
+  "_standard": "These radii ARE the canonical seam standard referenced by seam_standard. Author new parts to them."
+ },
+ "sockets": [
+  {
+   "socket_id": "neck",
+   "class": "neck",
+   "child_part": "head",
+   "bone": "head",
+   "seam_ref": "neck",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "rest_length": 0.2297,
+   "load_bearing": false
+  },
+  {
+   "socket_id": "collar",
+   "class": "collar",
+   "child_part": "neck",
+   "bone": "neckPivot",
+   "seam_ref": "collar",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "rest_length": 0.0563,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "shoulder.l",
+   "class": "shoulder",
+   "child_part": "upper_arm_l",
+   "bone": "upperarm.R",
+   "seam_ref": "shoulder",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     -90.0,
+     0.0
+    ]
+   },
+   "rest_length": 0.2456,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "shoulder.r",
+   "class": "shoulder",
+   "child_part": "upper_arm_r",
+   "bone": "upperarm.L",
+   "seam_ref": "shoulder",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     91.05,
+     0.0
+    ]
+   },
+   "rest_length": 0.2456,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "elbow.l",
+   "class": "elbow",
+   "child_part": "forearm_l",
+   "bone": "lowerarm.R",
+   "seam_ref": "elbow",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     -90.65,
+     0.0
+    ]
+   },
+   "rest_length": 0.2047,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "elbow.r",
+   "class": "elbow",
+   "child_part": "forearm_r",
+   "bone": "lowerarm.L",
+   "seam_ref": "elbow",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     89.36,
+     0.0
+    ]
+   },
+   "rest_length": 0.2047,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "wrist.l",
+   "class": "wrist",
+   "child_part": "hand_l",
+   "bone": "hand.R",
+   "seam_ref": "wrist",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     180.0,
+     0.0
+    ]
+   },
+   "rest_length": 0.0992,
+   "load_bearing": false,
+   "_note": "wrist uses the 'A' convention: socket_to_bone = bone_basis . Ry(180). Reproduces _legacy_fit_reference within ~5deg (residual was bone tilt, now in basis). Hand front (+Z author) faces ~down, NOT char-front -Y; this differs from limb parts."
+  },
+  {
+   "socket_id": "wrist.r",
+   "class": "wrist",
+   "child_part": "hand_r",
+   "bone": "hand.L",
+   "seam_ref": "wrist",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     180.0,
+     0.0
+    ]
+   },
+   "rest_length": 0.0992,
+   "load_bearing": false,
+   "_note": "see wrist.l note."
+  },
+  {
+   "socket_id": "hip.l",
+   "class": "hip",
+   "child_part": "thigh_l",
+   "bone": "upperleg.R",
+   "seam_ref": "hip",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     -87.81,
+     0.0
+    ]
+   },
+   "rest_length": 0.2332,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "hip.r",
+   "class": "hip",
+   "child_part": "thigh_r",
+   "bone": "upperleg.L",
+   "seam_ref": "hip",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     88.15,
+     0.0
+    ]
+   },
+   "rest_length": 0.2332,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "knee.l",
+   "class": "knee",
+   "child_part": "calf_l",
+   "bone": "lowerleg.R",
+   "seam_ref": "knee",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     -90.61,
+     0.0
+    ]
+   },
+   "rest_length": 0.2086,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "knee.r",
+   "class": "knee",
+   "child_part": "calf_r",
+   "bone": "lowerleg.L",
+   "seam_ref": "knee",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     91.38,
+     0.0
+    ]
+   },
+   "rest_length": 0.2086,
+   "load_bearing": true
+  },
+  {
+   "socket_id": "ankle.l",
+   "class": "ankle",
+   "child_part": "foot_l",
+   "bone": "foot.R",
+   "seam_ref": "ankle",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "rest_length": 0.1385,
+   "load_bearing": false
+  },
+  {
+   "socket_id": "ankle.r",
+   "class": "ankle",
+   "child_part": "foot_r",
+   "bone": "foot.L",
+   "seam_ref": "ankle",
+   "socket_to_bone": {
+    "space": "bone_local",
+    "rot_euler_deg": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "rest_length": 0.1385,
+   "load_bearing": false
+  }
+ ],
+ "torso_root": {
+  "part": "torso",
+  "bone": "belly",
+  "gender": "none",
+  "_note": "belly is the verified spine root (parent=None). chest parents belly; head parents chest (no neck bone yet)."
+ },
+ "equipment_mounts": [
+  {
+   "mount_id": "armguard.l",
+   "bone": "lowerarm.R",
+   "transform": {
+    "offset": [
+     0,
+     0,
+     0
+    ],
+    "rot_euler_deg": [
+     0,
+     0,
+     0
+    ]
+   },
+   "overlay_class": "elbow",
+   "_note": "overlay on forearm; shares elbow seam"
+  },
+  {
+   "mount_id": "armguard.r",
+   "bone": "lowerarm.L",
+   "transform": {
+    "offset": [
+     0,
+     0,
+     0
+    ],
+    "rot_euler_deg": [
+     0,
+     0,
+     0
+    ]
+   },
+   "overlay_class": "elbow"
+  },
+  {
+   "mount_id": "cloak",
+   "bone": "chest",
+   "transform": {
+    "offset": [
+     0,
+     0,
+     0
+    ],
+    "rot_euler_deg": [
+     0,
+     0,
+     0
+    ]
+   },
+   "_todo": "back-of-chest; placement TBD when asset exists"
+  },
+  {
+   "mount_id": "pouch",
+   "bone": "upperleg.L",
+   "transform": {
+    "offset": [
+     0,
+     0,
+     0
+    ],
+    "rot_euler_deg": [
+     0,
+     0,
+     0
+    ]
+   },
+   "_todo": "hip area; placement TBD"
+  },
+  {
+   "mount_id": "bow",
+   "bone": "chest",
+   "transform": {
+    "offset": [
+     0,
+     0,
+     0
+    ],
+    "rot_euler_deg": [
+     0,
+     0,
+     0
+    ]
+   },
+   "_todo": "back-mounted; placement TBD"
+  }
+ ],
+ "parts": [
+  {
+   "part_id": "hand.skeleton.relaxed.l",
+   "anchor_bone": "hand.R",
+   "proximal": {
+    "mates_class": "wrist",
+    "gender": "male",
+    "radius": 0.037
+   },
+   "_source": "make_procedural_skeleton_hands_v3.py HAND_POSE=relaxed, physical side -X (mirror_sign=+1)"
+  },
+  {
+   "part_id": "hand.skeleton.relaxed.r",
+   "anchor_bone": "hand.L",
+   "proximal": {
+    "mates_class": "wrist",
+    "gender": "male",
+    "radius": 0.037
+   },
+   "_source": "v3 relaxed, physical side +X (mirror_sign=-1)"
+  },
+  {
+   "part_id": "hand.skeleton.finger_gun.l",
+   "anchor_bone": "hand.R",
+   "proximal": {
+    "mates_class": "wrist",
+    "gender": "male",
+    "radius": 0.037
+   },
+   "_source": "v3 finger_gun, -X"
+  },
+  {
+   "part_id": "hand.skeleton.finger_gun.r",
+   "anchor_bone": "hand.L",
+   "proximal": {
+    "mates_class": "wrist",
+    "gender": "male",
+    "radius": 0.037
+   },
+   "_source": "v3 finger_gun, +X"
+  }
+ ],
+ "_rig_audit": {
+  "_note": "Facts measured from the live skeleton-skeleton rig during v0.2 derivation. Provenance + cautions for downstream tools.",
+  "armature": "skeleton-skeleton",
+  "bone_count": 46,
+  "up_axis": "+Z (Blender)",
+  "front_axis": "-Y (face, toes point -Y)",
+  "no_neck_bone": "head parents directly to chest. neckPivot must be inserted (handoff step 4) before collar can be filled.",
+  "do_not_bind_bones": {
+   "elbow.L, elbow.R, knee.L, knee.R": "ROOT-parented IK POLE TARGETS (sit far out at y~-0.5..-0.8), NOT joints. Joint sockets anchor on lowerarm/lowerleg. A string matcher must NOT grab 'elbow.*'/'knee.*'.",
+   "arm.ik.L/R, foot.ik.L/R": "IK control bones (functional, do not delete).",
+   "fingers.*, thumb.*, middlefinger.*, mouth, mouth_end, *_end": "legacy/leaf bones; PROC hands do not consume the finger bones."
+  },
+  "lr_asymmetry": {
+   "_note": "rig was not perfectly symmetric. Handled as: roll fixed in-rig (orientation is bone-coupled), length canonicalized in this file (assembly metric, re-seat covers it).",
+   "leg_roll_fixed_in_rig": "set L = -R for legs. lowerleg.L roll +98.010 -> +87.991 (-10.02deg, the knee outlier). upperleg.L +84.760 -> +85.518 (+0.76deg). Post-fix knee socket_to_bone symmetric within ~0.8deg.",
+   "arm_roll_left_asis": "upperarm/lowerarm ~1deg asymmetric; intentionally NOT touched to protect the existing procedural-hand fit. ~1deg is negligible.",
+   "rest_length_canonicalized": ".R-master. raw measured (L/R): upperarm 0.2456/0.2388, lowerarm 0.2047/0.2069, upperleg 0.2332/0.2351, lowerleg 0.2086/0.2184. Canonical used = the .R value for both sides.",
+   "revert_rolls": "original leg rolls were upperleg.L=+84.760, lowerleg.L=+98.010 (deg) if a revert is ever needed."
+  },
+  "bone_count_v0.4": 47,
+  "neckPivot": "inserted in v0.4 (was 46 bones, no neck)"
+ },
+ "_legacy_fit_reference": {
+  "_note": "Pre-spec rigid fit of the v3 hand. v0.2: VALIDATED and superseded. The derived wrist socket_to_bone (clean bone_basis . Ry(180)) reproduces this orientation within ~5deg; the residual (~4.7deg L / ~5.8deg R) was the bone tilt, now living in the bone basis instead of a magic roll constant. Kept only as a record.",
+  "wrist.r_bind_hand.L": {
+   "scale": 0.24,
+   "roll_deg": -175.277,
+   "offset": [
+    -0.0004,
+    -0.0378,
+    -0.00478
+   ]
+  },
+  "wrist.l_bind_hand.R": {
+   "scale": 0.24,
+   "roll_deg": 174.176,
+   "offset": [
+    0.00049,
+    -0.03823,
+    -0.00478
+   ]
+  }
+ },
+ "next_steps": [
+  "MAIN: integrate the assembled modular character (GLB bundle + sockets.json) into fight_demo_v0 runtime — drive parts off the rig at runtime",
+  "bridge debugging: arm/leg flip-solution artifacts (lL_hz~160 deg) using the two logged test cases",
+  "BODY STUDIO three-view scanning workflow for custom/alternate parts (hands solved procedurally, not blocking)",
+  "make Punch Studio / MOCAP BRIDGE consume BODY STUDIO JSON; reconcile Punch Studio DIM skeleton with this rig",
+  "optional: hand swap variants (finger_gun/open) to demo socket hot-swap; neck thickness tuning (cosmetic); rig L/R symmetrize (risky, affects fight_demo)"
+ ],
+ "_seam_audit": {
+  "_note": "seam_table radii measured from the skeleton mesh (final character) at each joint plane, isolated by vertex group, median of perpendicular radii. Low poly => small n at thin joints => approximate.",
+  "measured_median": {
+   "shoulder": 0.0499,
+   "elbow": 0.0217,
+   "wrist_forearm_distal": 0.0371,
+   "hip": 0.0301,
+   "knee": 0.0246,
+   "ankle": 0.0418
+  },
+  "previous_v0.2": {
+   "shoulder": 0.06,
+   "elbow": 0.05,
+   "wrist": 0.045,
+   "hip": 0.06,
+   "knee": 0.055,
+   "ankle": 0.045,
+   "_note": "prior values were inherited from the chunky procedural hand, ~2x the real limbs at elbow/hip/knee"
+  },
+  "hand_rescale": "v4 generator drives hand scale = wrist_seam/0.18 => 0.037/0.18 = 0.206 (was 0.25); hand ~18% smaller, now flush with forearm.",
+  "depth_caveat": "connector depths unchanged; on the now-thinner limbs a 0.040 depth is large relative to radius and may need reducing when the seam connectors are built."
+ },
+ "_neck_audit": {
+  "neckPivot_inserted": true,
+  "neckPivot": "head=(0,0,0.919)=chest.tail, tail=(0,0,0.975)=head.head, parent=chest, head reparented under it",
+  "head_rest_unchanged": "max delta 0 after reparent; existing head mount unaffected",
+  "neck_part": "PROCEDURAL spine-aligned tube: bottom(z0.88,y+0.015,r0.035) -> top(z0.978,y+0.005,r0.047), near-vertical along spine. Attaches at skull base back-centre near spine (y~0), NOT forward jaw. 96 verts watertight.",
+  "collar_socket_to_bone": "[0,0,0] (neckPivot is straight +Z bone, same orientation as head/belly)",
+  "bone_count": 47,
+  "correction": "v0.4 first pass leaned top to y=-0.12 (jaw); corrected to spine line y~0 since skull base reaches back to y=0..+0.09."
+ },
+ "seam_standard": {
+  "_purpose": "Authoring contract for swappable parts. Any part authored/scanned for a socket MUST build its seam ring(s) to this standard so parts interchange flush across bodies, with no retrofit needed.",
+  "ring_geometry": "Each seam ring is a PLANAR CIRCLE: centred on the bone axis (socket-local X=0, Z=0), in the plane perpendicular to the bone axis (constant socket-local Y), radius = seam_table[class].radius.",
+  "seam_planes": "proximal seam at socket-local Y=0 (bone head); distal seam (intermediate/load-bearing parts) at Y = rest_length (bone tail). +Y = bone axis, +Z = front.",
+  "compliance": {
+   "hands": "COMPLIANT & FINAL - v4 generator HAND_POSE=punch (finger_curl 88/100/74, thumb_curl 36/52/46, thumb_wrap 54), normalized to wrist 0.037. Tight white-knuckle fist; both hands. Other presets (open/relaxed/fist/finger_gun) available as swappable variants.",
+   "neck": "COMPLIANT - procedural, built to collar 0.035 / neck 0.047.",
+   "auto_split_body": "NOT retrofitted - head/torso/limb/foot are GetAmped-mesh auto-splits. Already flush within the same body (shared cut planes), but their seam rings are irregular bone cross-sections, not canonical circles. Rebuild to this standard when re-authored in the body-scanning workflow; do not retrofit."
+  },
+  "decision_v0.5": "Retrofit canonicalization DEFERRED. Evidence: (1) current assembly already flush; (2) source bones not centred in limbs (calf ~0.02 off bone axis); (3) head base naturally wide ~0.085 vs neck 0.047; (4) proximal/shoulder ends are non-planar cuts (unreliable to retrofit). Forcing axis-centred circles would distort limb ends + pinch the head for a swap capability not yet exercised. Standard is enforced at AUTHORING TIME instead."
+ },
+ "_history": [
+  "v0.5: locked seam_standard as authoring contract; deferred retrofit canonicalization",
+  "v0.5.1: hands regenerated as fist pose via v4 generator (born seam_standard-compliant); placeholder relaxed hands replaced",
+  "v0.5.2: hand pose finalized as punch (tight fist) on both wrists; v4 generator default set to punch",
+  "v0.5.3: L/R limb parts symmetrized (larger-volume side mirrored to other; faces flipped, proximal seam re-snapped to Y=0). thigh/calf assemble symmetric (err~0); arm/foot residual ~0.02-0.027 from RIG bone asymmetry (rig left unsymmetrized to protect fight_demo).",
+  "v0.5.4: torso re-extracted as belly+chest + medial shoulder/hip caps (was narrow spine-column only). Fixes floating limbs: shoulder gap 0.09->0.01, hip 0.04->0.01. Ankle 0.03 was a heel-measurement artifact (real calf-distal->foot ~0.015).",
+  "v0.5.5a: hand palm fixed — generator v5 replaces the thin trapezoid plate with add_palm_core (solid low-poly tapered elliptical tube, wrist 0.17x0.11 -> knuckle 0.24x0.085, Y -0.20..0.16, mat 1). Fills the hollow metacarpal region so the closed fist reads solid.",
+  "v0.5.5b: ROOT CAUSE of hollow-palm-in-assembler found & fixed in tactics5x5_assembler.html (NOT a mesh issue). Old node-picker chose one child Mesh per slot; a multi-material hand (bone/joint/connector = 3 GLTF primitives -> Group + 3 child Meshes) lost the joint(palm core) + connector primitives. Fix: mount the SHALLOWEST matching node (the container Group) so all primitives render. Single-material body parts were unaffected (1 primitive)."
+ ],
+ "_part_state": {
+  "symmetry": "Limb pairs (upper_arm/forearm/thigh/calf/foot) are exact mirror pairs at mesh level. Hands procedurally mirrored. Residual assembled asymmetry is rig-inherent, not part-level.",
+  "torso": "belly+chest weight + shoulder/hip caps (upperarm/upperleg verts medial of joint plane, shoulder cap extended +0.035 to overlap arm). Reaches all 4 limb joints. Multi-island (vertebra stack) - intentional, no island filtering.",
+  "hand": "punch pose, generator v5. wrist connector (mat2) + solid palm core (mat1, add_palm_core) + finger/thumb bones (mat0) + joints (mat1). normalize seam ring -> 0.037. L/R mirror via mirror_sign_for_bone.",
+  "assembler": "tactics5x5_assembler.html: mounts whole container node per slot (all primitives). DoubleSide material. Reads sockets.json for mount; bone_rest x socket_to_bone reproduces Blender mount <=1e-6."
+ }
+}
+</script>
+<style>
+  :root{
+    --bg:#0b0b12; --bg2:#13131d; --panel:#181824; --line:#262636;
+    --txt:#e7e7f0; --dim:#7a7a92; --hot:#ff2e6e; --cy:#13e0d4; --amber:#ffd23f; --lime:#9eff5c; --orange:#ff8a3d;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0;height:100%}
+  body{background:radial-gradient(1200px 600px at 70% -10%, rgba(19,224,212,.10), transparent 60%),
+       radial-gradient(900px 500px at 0% 110%, rgba(255,138,61,.08), transparent 55%), var(--bg);
+    color:var(--txt); font-family:var(--mono);
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;}
+  header{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+    padding:12px 20px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.02), transparent);}
+  header h1{font-family:'Bungee', sans-serif; font-weight:400; margin:0; font-size:22px; letter-spacing:.5px;
+    background:linear-gradient(90deg,var(--cy),var(--lime)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;}
+  header .sub{color:var(--dim); font-size:11px}
+  header .badge{margin-left:auto; font-size:11px; color:var(--cy); border:1px solid rgba(19,224,212,.4); border-radius:999px; padding:4px 10px;}
+  main{flex:1; display:grid; grid-template-columns:1fr 400px; min-height:0}
+  #stage{position:relative; min-width:0} #c{display:block; width:100%; height:100%}
+  .hud{position:absolute; left:16px; top:14px; pointer-events:none; display:flex; flex-direction:column; gap:8px;}
+  .phasenow{font-size:14px; color:var(--cy); font-weight:700; background:rgba(0,0,0,.5); border:1px solid rgba(19,224,212,.5); padding:6px 12px; border-radius:8px; backdrop-filter:blur(4px); font-family:'Bungee',sans-serif; letter-spacing:1px}
+  .phasenow.playing{color:var(--hot); border-color:rgba(255,46,110,.5)}
+  .hint{position:absolute; right:14px; bottom:12px; color:var(--dim); font-size:10.5px; pointer-events:none; text-align:right; line-height:1.5}
+  aside{border-left:1px solid var(--line); background:var(--panel); overflow-y:auto; padding:14px 14px 28px; font-size:11px}
+  .tabs{display:grid; grid-template-columns:repeat(auto-fit,minmax(72px,1fr)); gap:3px; margin-bottom:10px;}
+  .tabs button{cursor:pointer; padding:8px 2px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--dim); font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.3px}
+  .tabs button.on{color:var(--cy); border-color:var(--cy); background:linear-gradient(180deg,#13262a,#0d1a1c)}
+  .play{display:flex; gap:6px; margin-bottom:10px}
+  .play .big{flex:2; cursor:pointer; padding:11px; border-radius:8px; border:none; font-family:'Bungee',sans-serif; letter-spacing:1px; font-size:13px; color:#0a1a00; background:linear-gradient(180deg,#c8ff8a,var(--lime)); box-shadow:0 4px 0 #5fb800;}
+  .play .big.stop{color:#fff; background:linear-gradient(180deg,#ff5a8a,var(--hot)); box-shadow:0 4px 0 #b50b42;}
+  .play button:active{transform:translateY(2px); box-shadow:0 2px 0 currentColor;}
+  .play .slow{flex:1; cursor:pointer; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:10.5px; font-weight:700}
+  .play .slow.on{border-color:var(--amber); color:var(--amber);}
+  .util{display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; margin-bottom:12px}
+  .util button{cursor:pointer; padding:7px 2px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:10px; font-weight:700}
+  .util button:hover{border-color:var(--orange); color:var(--orange);}
+  .util select{cursor:pointer; padding:7px 2px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:10px; font-weight:700}
+  .group{margin-top:12px; border-top:1px solid var(--line); padding-top:8px}
+  .group h3{font-size:9.5px; letter-spacing:1.2px; color:var(--cy); margin:0 0 4px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center}
+  .group.arms h3{color:var(--orange)}
+  .group.legs h3{color:var(--amber)}
+  .group.timing h3{color:var(--hot)}
+  .group h3 .reset-btn{cursor:pointer; font-size:9px; color:var(--dim); padding:2px 6px; border-radius:4px; background:transparent; border:1px solid var(--line); font-family:var(--mono); font-weight:400}
+  .group h3 .reset-btn:hover{color:var(--txt); border-color:var(--dim)}
+  .ctrl{margin:6px 0;}
+  .ctrl .lab{display:flex; justify-content:space-between; font-size:10px; margin-bottom:2px; line-height:1.2}
+  .ctrl .lab .name{color:var(--dim); font-size:9.5px}
+  .ctrl .lab .val{color:var(--txt); font-weight:700; font-size:10.5px}
+  .ctrl .lab .val .unit{color:var(--dim); font-weight:400; margin-left:1px}
+  input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:3px; border-radius:3px; background:#2a2a3c; outline:none; cursor:pointer; margin:0;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:12px;height:12px;border-radius:50%; background:var(--cy); border:1.5px solid #0a1a1c; cursor:pointer;}
+  input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--cy);border:1.5px solid #0a1a1c;cursor:pointer;}
+  .arms input[type=range]::-webkit-slider-thumb{background:var(--orange)} .arms input[type=range]::-moz-range-thumb{background:var(--orange)}
+  .legs input[type=range]::-webkit-slider-thumb{background:var(--amber)} .legs input[type=range]::-moz-range-thumb{background:var(--amber)}
+  .timing input[type=range]::-webkit-slider-thumb{background:var(--hot)} .timing input[type=range]::-moz-range-thumb{background:var(--hot)}
+  .modal{position:fixed; inset:0; background:rgba(5,5,9,.85); display:none; align-items:center; justify-content:center; padding:24px; z-index:20}
+  .modal.show{display:flex}
+  .modal .box{background:var(--panel); border:1px solid var(--line); border-radius:12px; width:min(640px,100%); padding:18px}
+  .modal h4{margin:0 0 6px; font-size:13px; color:var(--cy); font-family:'Bungee',sans-serif; font-weight:400}
+  .modal p{margin:0 0 10px; font-size:11px; color:var(--dim)}
+  .modal textarea{width:100%; height:380px; background:var(--bg); color:var(--txt); border:1px solid var(--line); border-radius:8px; font-family:var(--mono); font-size:10.5px; padding:10px; resize:vertical}
+  .modal .row{display:flex; gap:8px; margin-top:8px}
+  .modal .row button{flex:1; cursor:pointer; padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:11px; font-weight:700}
+  @media (max-width:900px){main{grid-template-columns:1fr; grid-template-rows:42vh 1fr}#stage{order:1} aside{order:2; border-left:none; border-top:1px solid var(--line)}}
+  /* ── 參考疊圖 + 時間軸 scrub(新增,純視覺輔助)── */
+  .refimg{position:absolute; inset:0; margin:auto; max-width:96%; max-height:90%; object-fit:contain;
+    pointer-events:none; opacity:0; z-index:4; display:none; will-change:transform;}
+  .refimg.align{pointer-events:auto; cursor:move; outline:1px dashed var(--cy); outline-offset:-1px;}
+  .hud{z-index:6} .hint{z-index:6}
+  .scrub{position:absolute; left:50%; bottom:14px; transform:translateX(-50%); z-index:6;
+    display:flex; align-items:center; gap:10px; width:min(72%,560px);
+    padding:8px 14px; border-radius:10px; background:rgba(10,10,18,.62);
+    border:1px solid var(--line); backdrop-filter:blur(6px);}
+  .scrub input[type=range]{flex:1}
+  .scrub input[type=range]::-webkit-slider-thumb{background:var(--amber)}
+  .scrub input[type=range]::-moz-range-thumb{background:var(--amber)}
+  .scrub .slbl{font-size:10px; color:var(--amber); font-weight:700; min-width:70px; text-align:right; letter-spacing:.5px}
+  .group.ref h3{color:var(--lime)}
+  .group.parts h3{color:var(--cy)}
+  .parts-status{font-size:9.5px;color:var(--dim);line-height:1.45;margin-top:6px}
+  .parts-grid{display:grid;grid-template-columns:70px 1fr 52px;gap:5px;align-items:center;margin-top:6px}
+  .parts-grid label{font-size:9.5px;color:var(--dim)}
+  .parts-grid input,.parts-grid select{width:100%;padding:5px;border-radius:6px;border:1px solid var(--line);background:var(--bg2);color:var(--txt);font-family:var(--mono);font-size:10px}
+  .ref-row{display:flex; gap:6px; align-items:center; margin:6px 0; flex-wrap:wrap}
+  .ref-row button, .ref-row label.filebtn{cursor:pointer; padding:6px 9px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:10px; font-weight:700}
+  .ref-row button.on{border-color:var(--lime); color:var(--lime)}
+  .ref-row input[type=file]{display:none}
+  /* ── Cascadeur 風 FK 拖動節點 ── */
+  #nodeLayer{position:absolute; inset:0; z-index:5; pointer-events:none;}
+  .jnode{position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%;
+    border:2px solid #0b0b12; background:var(--cy); pointer-events:auto; cursor:grab;
+    box-shadow:0 0 6px rgba(0,0,0,.5); transition:transform .07s; touch-action:none;}
+  .jnode:hover{transform:scale(1.4)} .jnode:active{cursor:grabbing; transform:scale(1.4)}
+  .jnode.arm{background:var(--orange)} .jnode.leg{background:var(--amber)} .jnode.core{background:var(--cy)}
+  .jnode.hide{display:none}
+  .jnode .jlabel{position:absolute; left:13px; top:-7px; white-space:nowrap; font-family:var(--mono);
+    font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px #000,0 0 5px #000;
+    pointer-events:none; opacity:.8;}
+  .jnode.active{transform:scale(1.5)!important; box-shadow:0 0 0 3px rgba(255,138,61,.6),0 0 14px rgba(255,138,61,.85);}
+  .jnode.active .jlabel{opacity:1; color:var(--orange)}
+  /* ── 關節對位 solver ── */
+  #solveLayer{position:absolute; inset:0; z-index:7; pointer-events:none;}
+  .starget{position:absolute; width:18px; height:18px; margin:-9px 0 0 -9px; border-radius:50%;
+    border:2px solid #fff; background:rgba(0,0,0,.22); pointer-events:auto; cursor:grab;
+    box-shadow:0 0 0 1px rgba(0,0,0,.55), 0 0 8px rgba(0,0,0,.45);}
+  .starget.on{cursor:grabbing; transform:scale(1.25);}
+  .starget.arm{border-color:var(--orange)} .starget.leg{border-color:var(--amber)} .starget.core{border-color:var(--cy)}
+  .starget.off{opacity:.22; border-style:dashed;}
+  .starget .slbl2{position:absolute; left:15px; top:-6px; white-space:nowrap; font-family:var(--mono);
+    font-size:9px; color:#fff; opacity:.72; pointer-events:none; text-shadow:0 1px 2px #000;}
+  .srig{position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%;
+    background:var(--lime); opacity:.92; pointer-events:none; box-shadow:0 0 6px var(--lime);}
+  #solveRun{flex:1.4; border-color:var(--lime)!important; color:#0a1a00!important;
+    background:linear-gradient(180deg,#c8ff8a,var(--lime))!important; font-weight:700;}
+  #solveToggle.on{border-color:var(--lime); color:var(--lime);}
+  #dragReadout{position:absolute; top:52px; left:50%; transform:translateX(-50%); z-index:7; display:none;
+    padding:7px 14px; border-radius:9px; background:rgba(10,10,18,.84); border:1px solid var(--orange);
+    font-family:var(--mono); font-size:11px; color:var(--txt); white-space:nowrap; pointer-events:none;
+    box-shadow:0 6px 18px rgba(0,0,0,.5);}
+  #dragReadout b{color:var(--orange)} #dragReadout .v{color:var(--cy)}
+  /* 動態 phase tab 工具 */
+  #phaseTabs{flex-wrap:wrap}
+  #phaseTabs button.imp{border-color:var(--hot); color:var(--hot)}
+  .seqtools{display:flex; gap:4px; margin:6px 0 2px; flex-wrap:wrap}
+  .seqtools button{flex:0 0 auto; padding:5px 9px; font-size:11px; min-width:28px}
+  .group.timeline h3{color:var(--lime)}
+  .timeline-bar{position:relative; height:42px; margin:7px 0 8px; border:1px solid var(--line); border-radius:9px;
+    background:linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px), rgba(10,10,18,.55);
+    background-size:10% 100%; overflow:hidden;}
+  .timeline-marker{position:absolute; top:6px; transform:translateX(-50%); min-width:28px; height:28px; padding:0 5px;
+    border-radius:8px; border:1px solid var(--line); background:var(--bg2); color:var(--dim);
+    font-family:var(--mono); font-size:9px; font-weight:700; cursor:grab; display:flex; align-items:center; justify-content:center;
+    user-select:none; touch-action:none;}
+  .timeline-marker:active{cursor:grabbing}
+  .timeline-marker.idle{cursor:pointer}
+  .timeline-marker.dragging{z-index:4; transform:translateX(-50%) scale(1.16); border-color:var(--amber); color:var(--amber); box-shadow:0 0 0 3px rgba(255,210,63,.18),0 0 14px rgba(255,210,63,.35)}
+  .timeline-bar.dragging{border-color:var(--amber); box-shadow:inset 0 0 0 1px rgba(255,210,63,.25)}
+  .timeline-marker.on{border-color:var(--cy); color:var(--cy); box-shadow:0 0 0 2px rgba(19,224,212,.15)}
+  .timeline-marker.imp{border-color:var(--hot); color:var(--hot); background:rgba(255,46,110,.08)}
+  .timeline-marker.idle{border-color:var(--lime); color:var(--lime)}
+  .timeline-playhead{position:absolute; top:0; bottom:0; width:2px; background:var(--amber); opacity:.8; pointer-events:none}
+  .timeline-list{display:flex; flex-direction:column; gap:3px; max-height:180px; overflow:auto; padding-right:2px;}
+  .tkey{display:grid; grid-template-columns:42px 1fr 46px 54px; gap:6px; align-items:center;
+    padding:5px 7px; border:1px solid var(--line); border-radius:7px; background:rgba(10,10,18,.42); cursor:pointer;}
+  .tkey.on{border-color:var(--cy); background:rgba(19,224,212,.07)}
+  .tkey.imp{border-color:rgba(255,46,110,.55)}
+  .tkey .fr{color:var(--amber); font-weight:700}.tkey .nm{color:var(--txt); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .tkey .tag{color:var(--dim); font-size:9px}.tkey .ease{color:var(--cy); font-size:9px; text-align:right}
+  .timeline-help{font-size:9.5px; color:var(--dim); line-height:1.45; margin-top:5px}
+  .keyrow{display:grid; grid-template-columns:1fr 96px; gap:6px; align-items:center;}
+  .keyrow input,.keyrow select{width:100%; padding:6px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:10px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>PUNCH&nbsp;STUDIO</h1>
+  <span class="sub" id="metaSub">pose-by-pose keyframe 編輯器 · loading…</span>
+  <span class="badge" id="modeBadge">MODE：TIMELINE EDIT</span>
+</header>
+
+<main>
+  <section id="stage">
+    <canvas id="c"></canvas>
+    <div class="hud"><div class="phasenow" id="phasenow">IDLE</div></div>
+    <div class="hint">滑鼠拖曳：旋轉 · 滾輪：縮放<br>
+      <span style="color:var(--cy)">EDIT:</span> 拖 slider 即時看姿勢 · 點 Timeline key 換編輯目標<br>
+      <span style="color:var(--lime)">PLAY:</span> 按下後動畫照 timing 跑完一輪</div>
+    <img id="refImg" class="refimg" alt="reference overlay">
+    <video id="refVid" class="refimg" playsinline muted preload="auto"></video>
+    <div id="nodeLayer" style="display:none"></div>
+    <div id="solveLayer" style="display:none"></div>
+    <div id="dragReadout"></div>
+    <div id="hitFlash" style="position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:8"></div>
+    <div class="scrub" id="scrubWrap">
+      <span class="slbl" style="min-width:auto;color:var(--dim)">SCRUB</span>
+      <input type="range" id="rscrub" min="0" max="1000" step="1" value="0">
+      <span class="slbl" id="scrubLbl">—</span>
+    </div>
+  </section>
+
+  <aside>
+    <div class="tabs" id="phaseTabs">
+      <button data-p="idle">IDLE</button>
+      <button data-p="anti" class="on">ANTI</button>
+      <button data-p="strike">STRIKE</button>
+      <button data-p="impact">IMPACT</button>
+      <button data-p="recovery">RECOVER</button>
+    </div>
+
+    <div class="group timeline">
+      <h3>FREE TIMELINE <span id="timelineInfo" style="color:var(--dim);font-weight:400"></span></h3>
+      <div id="timelineBar" class="timeline-bar"></div>
+      <div id="timelineList" class="timeline-list"></div>
+      <div class="timeline-help">每個 key 有自己的 frame。可直接拖動上方 marker 改 timing；新增/複製 key 後也可用數字微調。</div>
+    </div>
+
+    <div class="play">
+      <button class="big" id="playBtn">▶ PLAY</button>
+      <button class="slow" id="slowBtn">0.3×</button>
+      <button class="slow" id="loopBtn">LOOP</button>
+    </div>
+
+    <div class="util" style="gap:14px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="whiteToggle"> 白模(白底黑邊觀察)</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="axesToggle" checked> 基準線</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="markerToggle" checked> 🟠 朝向標記</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dragToggle"> 🖐 直接拖動</label>
+    </div>
+
+    <div class="util">
+      <select id="presetSel">
+        <option value="">— 載入預設 —</option>
+        <option value="blank">空白(全 0)</option>
+        <option value="cross">直拳 cross</option>
+        <option value="hookl">左鉤 hook_l</option>
+        <option value="hookr">右鉤 hook_r</option>
+        <option value="upper">上鉤 uppercut</option>
+        <option value="jab">刺拳 jab</option>
+        <option value="punch_l">左拳 punch_l(誇張)</option>
+        <option value="combo8">★ 3連擊 combo(8 key 範本)</option>
+      </select>
+      <button id="mirrorAllBtn" style="border-color:var(--cy)">L↔R 整段鏡像(換手)</button>
+      <button id="mirrorBtn" title="只鏡像目前選中的 key,用於擺姿勢時修正左右">鏡像本 key</button>
+      <button id="copyBtn">複製 key…</button>
+      <button id="goofyBtn">填入站架</button>
+    </div>
+
+    <div class="group ref">
+      <h3>參考疊圖 REFERENCE(onion-skin 對位)</h3>
+      <div class="ref-row">
+        <label class="filebtn">📁 載入參考圖<input type="file" id="refFile" accept="image/*"></label>
+        <button id="refAlign">對齊(拖曳/滾輪)</button>
+        <button id="refFlip">水平翻轉</button>
+        <button id="refClear">清除</button>
+      </div>
+      <div class="ref-row">
+        <label class="filebtn">📹 載入參考影片<input type="file" id="refVidFile" accept="video/*"></label>
+        <button id="refVidPrev" title="上一幀(約 1/30s)">◀ 幀</button>
+        <button id="refVidNext" title="下一幀(約 1/30s)">幀 ▶</button>
+        <span id="refVidTime" style="font-size:10px;color:var(--dim)">—</span>
+      </div>
+      <div class="ctrl" id="refVidScrubWrap" style="display:none">
+        <div class="lab"><span class="name">影片 scrub(拖到要的那一幀)</span><span class="val" id="refVidLbl">0.00s</span></div>
+        <input type="range" id="refVidScrub" min="0" max="1000" step="1" value="0">
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">透明度 opacity</span><span class="val" id="v_refop">0.50</span></div>
+        <input type="range" id="r_refop" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="ref-row" style="margin-top:8px; border-top:1px dashed var(--line); padding-top:9px">
+        <button id="frontBtn" title="鏡頭轉到正面 θ=0">🎥 正面</button>
+        <button id="sideBtn" title="鏡頭轉到側面 θ=90°(第二視角)">🎥 側面</button>
+        <button id="solveToggle" title="顯示/隱藏關節目標點">🎯 點關節對位</button>
+        <button id="solveReset" title="目標點貼回骨架現況">↺ 重設目標</button>
+        <button id="aiDetectBtn" title="用 MediaPipe 從目前參考圖自動放關節目標點(風格化人形需實測)">🤖 AI 偵測</button>
+        <button id="solveRun" title="反求 active key 的關節角度">▶ Solve 反求</button>
+      </div>
+      <div class="ref-row" id="solveViewRow" style="margin-top:6px; border-top:1px dashed var(--line); padding-top:8px">
+        <span style="color:var(--lime); font-size:9px; letter-spacing:.5px; width:100%">多視角三角測量(治景深歧義)</span>
+        <button id="captureViewBtn" title="把目前鏡頭 + 目標點 + 參考圖存成「新」視角">📸 存成視角</button>
+        <button id="updateViewBtn" title="用目前狀態覆寫「作用中」視角">💾 更新</button>
+        <button id="clearViewsBtn" title="清空所有已存視角">🗑 清空</button>
+        <div id="solveViewBar" style="display:flex; gap:4px; flex-wrap:wrap; width:100%; margin-top:4px"></div>
+      </div>
+      <div class="ref-row" style="margin-top:2px">
+        <span id="solveReadout" style="font-family:var(--mono); font-size:9.5px; color:var(--dim); line-height:1.5">空心圈=目標(拖到參考圖關節)· 綠點=骨架現況 · 雙擊圈=排除遮擋關節 · Solve 寫入「目前 key」</span>
+      </div>
+    </div>
+
+
+    <div class="group parts">
+      <h3>15 PARTS 部位式模型 (sockets.json 驅動)</h3>
+      <div class="ref-row">
+        <label class="filebtn" title="上傳一個含全部部位的 GLB,自動對應到所有 slot(深度遍歷,支援巢狀/Armature 包裹)">📦 上傳整包 GLB（一次對應全部）<input type="file" id="partsBundle" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
+      </div>
+      <div class="ref-row">
+        <label class="filebtn" title="逐一/多檔載入單一部位 GLB(檔名需含 head/torso/upper_arm_l…)">＋ 逐一載入部位<input type="file" id="partsFiles" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" multiple></label>
+        <button id="partsDummyToggle" title="隱藏/顯示原本幾何假人，只保留關節群組與載入模型">隱藏假人</button>
+        <button id="partInspectTpose" title="暫時把手臂平舉成 T-pose,讓上臂離開肋廓,確認肩→肘→腕→手接合(不影響存的 phases)">組裝檢視 T-pose</button>
+        <button id="partsClear">清除部位</button>
+      </div>
+      <div class="ref-row">
+        <select id="partSlotSelect" title="選擇要微調的部位 slot"></select>
+        <button id="partResetSlot">重設本部位</button>
+        <button id="partExportCfg">匯出對位 JSON</button>
+      </div>
+      <div class="parts-grid">
+        <label>scale</label><input type="range" id="partScale" min="0.05" max="5" step="0.01" value="1"><input id="partScaleNum" type="number" step="0.01" value="1">
+        <label>x</label><input type="range" id="partX" min="-2" max="2" step="0.01" value="0"><input id="partXNum" type="number" step="0.01" value="0">
+        <label>y</label><input type="range" id="partY" min="-2" max="2" step="0.01" value="0"><input id="partYNum" type="number" step="0.01" value="0">
+        <label>z</label><input type="range" id="partZ" min="-2" max="2" step="0.01" value="0"><input id="partZNum" type="number" step="0.01" value="0">
+        <label>rotX</label><input type="range" id="partRX" min="-180" max="180" step="1" value="0"><input id="partRXNum" type="number" step="1" value="0">
+        <label>rotY</label><input type="range" id="partRY" min="-180" max="180" step="1" value="0"><input id="partRYNum" type="number" step="1" value="0">
+        <label>rotZ</label><input type="range" id="partRZ" min="-180" max="180" step="1" value="0"><input id="partRZNum" type="number" step="1" value="0">
+      </div>
+      <div id="partsStatus" class="parts-status">尚未載入。最快：用「📦 上傳整包 GLB」一次匯入含全部部位的 bundle(如 tactics5x5_body_parts.glb),自動對應 15 個部位。或用「＋ 逐一載入部位」分檔載入。</div>
+    </div>
+
+    <div id="poseGroups"></div>
+    <div id="propGroups"></div>
+
+    <div class="group timing">
+      <h3>TIMING(frame @ 60fps)<button class="reset-btn" data-r="timing">reset</button></h3>
+      <div id="timingControls"></div>
+    </div>
+
+    <div class="group timing">
+      <h3>LAG(per-limb 鞭打延遲)<button class="reset-btn" data-r="lags">reset</button></h3>
+      <div id="lagControls"></div>
+    </div>
+
+    <div class="group">
+      <h3 style="color:var(--hot)">🥊 HIT FEEL（打擊感試打 · 命中段觸發）</h3>
+      <div class="util" style="grid-template-columns:1fr 1fr; gap:12px; margin-bottom:6px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="hfDummy"> 沙包 dummy</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="hfSound" checked> 音效</label>
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">命中停頓 hitstop</span><span class="val"><span id="hfHitstopV">0.08</span><span class="unit">s</span></span></div>
+        <input type="range" id="hfHitstop" min="0" max="0.3" step="0.01" value="0.08">
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">畫面震動 shake</span><span class="val" id="hfShakeV">0.50</span></div>
+        <input type="range" id="hfShake" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">沙包擊退 knockback</span><span class="val" id="hfKbV">0.50</span></div>
+        <input type="range" id="hfKb" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">沙包距離 dist</span><span class="val" id="hfDistV">1.30</span></div>
+        <input type="range" id="hfDist" min="0.6" max="2.2" step="0.01" value="1.3">
+      </div>
+    </div>
+
+    <div class="play" style="margin-top:14px">
+      <button id="importBtn" style="flex:1">📥 匯入參數</button>
+      <button class="slow" id="exportBtn" style="flex:1">EXPORT → Godot</button>
+    </div>
+    <div class="play" style="margin-top:8px">
+      <button class="slow" id="undoBtn" style="flex:1">↶ UNDO</button>
+      <button class="slow" id="redoBtn" style="flex:1">REDO ↷</button>
+      <button class="slow" id="jsonExportBtn" style="flex:1">JSON</button>
+    </div>
+    <div class="play" style="margin-top:8px">
+      <button id="captureBtn" style="flex:1">📷 擷取 contact sheet(播放條 × 雙角度,給 AI 看)</button>
+    </div>
+  </aside>
+</main>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <h4>Export · 完整 pose set</h4>
+    <p id="modalHelp">可輸出 Godot 文字或 JSON。JSON 是推薦保存格式；Godot 文字適合貼到引擎端。</p>
+    <textarea id="modalText" readonly></textarea>
+    <div class="row">
+      <button id="copyText">再複製一次</button>
+      <button id="closeModal">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="importModal">
+  <div class="box">
+    <h4>Import · 貼上 EXPORT 文字</h4>
+    <p>可貼上 Godot EXPORT 文字或 JSON。可貼 JSON 或 Godot text。新格式含 keyorder/frame 會套用完整 timeline；舊格式仍會依勾選 key 覆寫。</p>
+    <textarea id="importText" placeholder="# === IDLE ===&#10;idle.root_y = 0.0&#10;...&#10;frame.anti = 7&#10;frames.anti = 7&#10;dim.headSize = 0.840"></textarea>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; font-size:11px; color:var(--txt); align-items:center">
+      <span style="color:var(--cy)">舊格式覆寫:</span>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="idle" checked> idle</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="anti" checked> anti</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="strike" checked> strike</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="impact" checked> impact</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="recovery" checked> recovery</label>
+      <label style="cursor:pointer; margin-left:6px"><input type="checkbox" id="impMeta" checked> timing/lag/比例</label>
+    </div>
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="impAppend"> 接續匯入：串到目前 timeline 的 CANCEL 點之後（combo 串接，僅 JSON）</label>
+      <button id="importApply">匯入套用</button>
+      <button id="closeImportModal">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="copyModal">
+  <div class="box">
+    <h4>複製 key 姿勢</h4>
+    <p>把哪個 key 的姿勢複製到目前選取的 key?</p>
+    <div class="util" id="copyChoices" style="grid-template-columns:repeat(5,1fr); margin-top:14px"></div>
+    <div class="row"><button id="closeCopyModal">取消</button></div>
+  </div>
+</div>
+
+<script>
+const D2R = Math.PI/180;
+const REF_FPS = 60;
+
+// ===== Pose data model =====
+// 47 軸 / phase(根 7 + 脊椎 3 + 頭 3 + 雙手 16:含腕 wx/wy + 雙腿 18:含接觸鎖 + 腳尖朝向)
+// scale 軸:1=原大小、>1=放大(GetAmped 風攻擊命中放大)、<1=縮小(攻擊時身體縮)
+const POSE_KEYS = [
+  'root_y','root_x','root_py','root_pz','sq','body_scale','squat',
+  'spine_x','spine_y','pelvis_y',
+  'head_y','head_x','head_pz',
+  'aL_sx','aL_sy','aL_sz','aL_ex','aL_idle','aL_scale',
+  'aR_sx','aR_sy','aR_sz','aR_ex','aR_idle','aR_scale',
+  'lL_hx','lL_hy','lL_hz','lL_kx','lL_ax','lL_idle','lL_scale',
+  'lR_hx','lR_hy','lR_hz','lR_kx','lR_ax','lR_idle','lR_scale',
+  'lL_contact','lR_contact',  // 腳掌接觸鎖:0=平踩 1=墊腳(抬跟) 2=抬起(離地,不當地面錨點)
+  'aL_wx','aL_wy','aR_wx','aR_wy',   // 腕關節:wx 屈伸 / wy 沿前臂軸扭轉(旋前旋後)
+  'lL_ty','lR_ty'                    // 腳尖朝向(踝 Y;×side,正=外八)— 可獨立於髖瞄準腳尖
+];
+function defaultPoseValue(k){
+  // 所有 scale 類型預設必須是 1；重置/匯入/匯出都走這個函式，避免資料變 0。
+  if(k === 'body_scale' || k.endsWith('_scale')) return 1;
+  return 0;
+}
+function normalizePose(p={}){
+  const out = {};
+  POSE_KEYS.forEach(k=>{ out[k] = (p[k] !== undefined && isFinite(p[k])) ? Number(p[k]) : defaultPoseValue(k); });
+  return out;
+}
+const ZERO_POSE = Object.fromEntries(POSE_KEYS.map(k=>[k, defaultPoseValue(k)]));
+
+// 滑稽戰鬥站姿:idle 不是直立,而是半蹲、屈膝、手肘彎、含胸、微不對稱
+// (不含 O 型腿 — 那需要新增髖 Z 軸自由度,先保留)
+const GOOFY_IDLE = {
+  root_py:0, root_x:0, root_pz:0, root_y:0, sq:0, body_scale:1, squat:45,
+  spine_x:0, spine_y:0,
+  head_y:23, head_x:6, head_pz:0,
+  aL_sx:-12, aL_sy:0, aL_ex:40,
+  aR_sx:-12, aR_sy:6, aR_ex:40,
+  lL_hx:-31, lL_hy:5, lL_hz:20, lL_kx:40, lL_ax:0,   // 定稿:最佳化半蹲 idle(含 squat 45)
+  lR_hx:-31, lR_hy:5, lR_hz:20, lR_kx:40, lR_ax:0
+};
+
+// 預設動作 — 啟動時用 cross,user 可隨時重置/換
+const PRESETS = {
+  blank: {
+    idle: {...ZERO_POSE},
+    anti: {...ZERO_POSE},
+    strike: {...ZERO_POSE},
+    impact: {...ZERO_POSE},
+    recovery: {...ZERO_POSE}
+  },
+  cross: { // 後手直拳 — 右手出,軀幹側轉,右腿驅動
+    idle:    {...ZERO_POSE},
+    anti:    {root_y:-18, root_x:-2, root_py:0, root_pz:-0.04, sq:0.10,
+              aL_sx:-90, aL_sy:-15, aL_ex:80,
+              aR_sx:-60, aR_sy:25, aR_ex:120,
+              lL_hx:-12, lL_kx:18, lR_hx:14, lR_kx:38},
+    strike:  {root_y:30, root_x:4, root_py:0, root_pz:0.22, sq:-0.18,
+              aL_sx:-70, aL_sy:-10, aL_ex:85,
+              aR_sx:-100, aR_sy:5, aR_ex:5,
+              lL_hx:-8, lL_kx:8, lR_hx:18, lR_kx:6},
+    impact:  {root_y:34, root_x:5, root_py:0, root_pz:0.24, sq:-0.20,
+              aL_sx:-70, aL_sy:-10, aL_ex:85,
+              aR_sx:-108, aR_sy:5, aR_ex:0,
+              lL_hx:-8, lL_kx:8, lR_hx:18, lR_kx:4},
+    recovery:{...ZERO_POSE}
+  },
+  hookl: {
+    idle:    {...ZERO_POSE},
+    anti:    {root_y:-20, root_x:-2, root_py:0, root_pz:-0.03, sq:0.12,
+              aL_sx:-95, aL_sy:-40, aL_ex:90,
+              aR_sx:-95, aR_sy:25, aR_ex:90,
+              lL_hx:-14, lL_kx:38, lR_hx:12, lR_kx:22},
+    strike:  {root_y:35, root_x:3, root_py:0, root_pz:0.18, sq:-0.18,
+              aL_sx:-95, aL_sy:35, aL_ex:75,
+              aR_sx:-90, aR_sy:15, aR_ex:90,
+              lL_hx:-8, lL_kx:10, lR_hx:14, lR_kx:30},
+    impact:  {root_y:42, root_x:3, root_py:0, root_pz:0.20, sq:-0.22,
+              aL_sx:-100, aL_sy:45, aL_ex:70,
+              aR_sx:-90, aR_sy:15, aR_ex:90,
+              lL_hx:-8, lL_kx:8, lR_hx:14, lR_kx:30},
+    recovery:{...ZERO_POSE}
+  },
+  hookr: {
+    idle:    {...ZERO_POSE},
+    anti:    {root_y:20, root_x:-2, root_py:0, root_pz:-0.03, sq:0.12,
+              aL_sx:-95, aL_sy:-15, aL_ex:90,
+              aR_sx:-95, aR_sy:40, aR_ex:90,
+              lL_hx:-12, lL_kx:22, lR_hx:14, lR_kx:38},
+    strike:  {root_y:-35, root_x:3, root_py:0, root_pz:0.20, sq:-0.18,
+              aL_sx:-90, aL_sy:-15, aL_ex:90,
+              aR_sx:-95, aR_sy:-35, aR_ex:75,
+              lL_hx:-12, lL_kx:30, lR_hx:18, lR_kx:8},
+    impact:  {root_y:-42, root_x:3, root_py:0, root_pz:0.22, sq:-0.22,
+              aL_sx:-90, aL_sy:-15, aL_ex:90,
+              aR_sx:-100, aR_sy:-45, aR_ex:70,
+              lL_hx:-12, lL_kx:30, lR_hx:18, lR_kx:6},
+    recovery:{...ZERO_POSE}
+  },
+  upper: {
+    idle:    {...ZERO_POSE},
+    anti:    {root_y:15, root_x:-6, root_py:-0.20, root_pz:-0.05, sq:0.22,
+              aL_sx:-90, aL_sy:-15, aL_ex:95,
+              aR_sx:-30, aR_sy:10, aR_ex:105,
+              lL_hx:-14, lL_kx:42, lR_hx:14, lR_kx:55},
+    strike:  {root_y:-12, root_x:8, root_py:0.10, root_pz:0.15, sq:-0.20,
+              aL_sx:-85, aL_sy:-10, aL_ex:90,
+              aR_sx:-140, aR_sy:5, aR_ex:75,
+              lL_hx:-6, lL_kx:8, lR_hx:8, lR_kx:8},
+    impact:  {root_y:-14, root_x:10, root_py:0.14, root_pz:0.18, sq:-0.24,
+              aL_sx:-85, aL_sy:-10, aL_ex:90,
+              aR_sx:-150, aR_sy:5, aR_ex:70,
+              lL_hx:-6, lL_kx:8, lR_hx:8, lR_kx:6},
+    recovery:{...ZERO_POSE}
+  },
+  jab: { // 前手刺拳 — 左手快速出,小幅動作
+    idle:    {...ZERO_POSE},
+    anti:    {root_y:8, root_x:-1, root_py:0, root_pz:-0.02, sq:0.06,
+              aL_sx:-70, aL_sy:-20, aL_ex:100,
+              aR_sx:-95, aR_sy:20, aR_ex:90,
+              lL_hx:-12, lL_kx:22, lR_hx:14, lR_kx:34},
+    strike:  {root_y:-12, root_x:2, root_py:0, root_pz:0.16, sq:-0.10,
+              aL_sx:-100, aL_sy:0, aL_ex:5,
+              aR_sx:-95, aR_sy:20, aR_ex:90,
+              lL_hx:-8, lL_kx:14, lR_hx:18, lR_kx:24},
+    impact:  {root_y:-15, root_x:3, root_py:0, root_pz:0.18, sq:-0.12,
+              aL_sx:-108, aL_sy:0, aL_ex:0,
+              aR_sx:-95, aR_sy:20, aR_ex:90,
+              lL_hx:-8, lL_kx:14, lR_hx:18, lR_kx:22},
+    recovery:{...ZERO_POSE}
+  },
+  punch_l: { // 左拳(誇張 GetAmped 風)— 巨拳 overshoot + 旋身收招。
+             // 依分鏡逐格;★ 角度為「起點值」,2D 讀不出的 twist/景深載入後拖 slider 微調。
+    idle:    {...ZERO_POSE}, // 強制 = GOOFY_IDLE
+    // ANTI(图10–11 深蹲上膛):左拳拉到極後+大折肘,軀幹反向蓄力,左腿負載較深
+    anti:    {root_y:20, root_x:-3, root_py:0, root_pz:-0.07, sq:0.14, squat:54,
+              spine_y:10, head_y:18, head_x:8,
+              aL_sx:-62, aL_sy:-28, aL_ex:128,    // ★左拳深拉、肘大折(蓄力)
+              aR_sx:-95, aR_sy:22, aR_ex:95,      // 右手護臉
+              lL_hx:-18, lL_kx:50, lR_hx:12, lR_kx:24},
+    // STRIKE(图12 巨拳前撲):左臂全伸直 + aL_scale 巨拳,軀幹旋轉甩出,弓步前撲
+    strike:  {root_y:-30, root_x:6, root_py:0, root_pz:0.36, sq:-0.18,
+              spine_y:-12, head_y:10, head_x:4,
+              aL_sx:-105, aL_sy:6, aL_ex:8, aL_scale:2.1,  // ★巨拳:scale 2.1
+              aR_sx:-68, aR_sy:30, aR_ex:92,               // 右手後收平衡
+              lL_hx:-6, lL_kx:10, lR_hx:22, lR_kx:14},
+    // IMPACT(图12–13 峰值):scale/lunge 再頂一階,命中放大最高點
+    impact:  {root_y:-34, root_x:8, root_py:0, root_pz:0.42, sq:-0.22,
+              spine_y:-14, head_y:8, head_x:4,
+              aL_sx:-110, aL_sy:6, aL_ex:4, aL_scale:2.4,  // ★巨拳峰值:scale 2.4
+              aR_sx:-66, aR_sy:32, aR_ex:90,
+              lL_hx:-4, lL_kx:8, lR_hx:24, lR_kx:10},
+    // RECOVERY(图13–15 旋身風車):自訂收招(非站架)→ makePhasesFromPreset 會尊重它不覆寫。
+    //   loop 回 idle 時自然把旋身收回站架。覺得轉太兇就把 root_y 往 0 拉。
+    recovery:{root_y:-95, sq:0, squat:45, spine_y:-22, head_y:23, head_x:6,
+              aL_sx:-42, aL_sy:55, aL_ex:62,    // 雙臂風車張開
+              aR_sx:-42, aR_sy:-55, aR_ex:62,
+              lL_hx:-28, lL_hy:5, lL_hz:20, lL_kx:42,
+              lR_hx:-28, lR_hy:5, lR_hz:20, lR_kx:42}
+  }
+};
+const DEFAULT_LAGS = {aL:0.0, aR:0.20, lL:0.0, lR:0.10};
+// 時間軸:有序 key 列。SEQ[0]=idle(起點;它的 frames = 收尾回 idle 的時長)。
+// 其後每個 key = 一段「前一 key → 此 key」的過渡:frames 段長、ease 緩動、impact 命中段(無 lag + 紅框 + 放大)。
+const DEFAULT_SEQ = [
+  {name:'idle',     frames:10, ease:'out', impact:false},
+  {name:'anti',     frames:7,  ease:'out', impact:false},
+  {name:'strike',   frames:3,  ease:'in',  impact:false},
+  {name:'impact',   frames:4,  ease:'lin', impact:true },
+  {name:'recovery', frames:12, ease:'out', impact:false},
+];
+const EASES = ['out','in','lin'];
+const KEY_TAGS = ['idle','anti','strike','impact','follow','recover','custom'];
+const DEFAULT_RETURN_FRAMES = 10;
+
+function cleanKeyName(name, fallback='key'){
+  let n = String(name || fallback).trim().replace(/[^\w]/g,'_');
+  if(!n) n = fallback;
+  if(/^\d/.test(n)) n = 'k_'+n;
+  return n;
+}
+function uniqueKeyName(base){
+  const root = cleanKeyName(base || 'key').replace(/_\d+$/,'');
+  let name = root, n = 1;
+  const used = new Set(SEQ.map(s=>s.name));
+  while(used.has(name)) name = root + '_' + (++n);
+  return name;
+}
+function tagFromName(name, impact){
+  if(impact) return 'impact';
+  const n=String(name||'').toLowerCase();
+  if(n==='idle'||n.includes('guard')) return 'idle';
+  if(n.includes('anti')||n.includes('wind')||n.includes('charge')) return 'anti';
+  if(n.includes('strike')||n.includes('launch')) return 'strike';
+  if(n.includes('follow')||n.includes('over')) return 'follow';
+  if(n.includes('recover')) return 'recover';
+  return 'custom';
+}
+function timelineReturnFrames(){
+  const idle = SEQ && SEQ[0] ? SEQ[0] : {};
+  return Math.max(1, Math.round(Number(idle.returnFrames ?? idle.frames ?? DEFAULT_RETURN_FRAMES)));
+}
+function repairTimeline(seqIn){
+  let raw = (Array.isArray(seqIn) && seqIn.length ? seqIn : DEFAULT_SEQ).map((k,i)=>({
+    name: cleanKeyName(k.name || (i===0?'idle':`key_${i}`), i===0?'idle':`key_${i}`),
+    frame: Number.isFinite(Number(k.frame)) ? Math.round(Number(k.frame)) : undefined,
+    frames: Math.max(1, Math.round(Number(k.frames ?? (i===0?DEFAULT_RETURN_FRAMES:6)))),
+    returnFrames: Number.isFinite(Number(k.returnFrames)) ? Math.max(1, Math.round(Number(k.returnFrames))) : undefined,
+    ease: EASES.includes(k.ease) ? k.ease : (i===0?'out':'in'),
+    impact: !!k.impact,
+    cancel: !!k.cancel,
+    tag: KEY_TAGS.includes(k.tag) ? k.tag : tagFromName(k.name, !!k.impact)
+  }));
+  const seen = new Set();
+  raw.forEach(k=>{ let base=k.name, n=1; while(seen.has(k.name)){ k.name=base+'_'+(++n); } seen.add(k.name); });
+  let idleIdx = raw.findIndex(k=>k.name==='idle');
+  if(idleIdx < 0){ raw.unshift({name:'idle', frame:0, frames:DEFAULT_RETURN_FRAMES, returnFrames:DEFAULT_RETURN_FRAMES, ease:'out', impact:false, tag:'idle'}); idleIdx=0; }
+  if(idleIdx !== 0){ const idle = raw.splice(idleIdx,1)[0]; raw.unshift(idle); }
+  raw[0].name='idle'; raw[0].frame=0; raw[0].tag='idle'; raw[0].impact=false;
+  const hasAbs = raw.slice(1).some(k=>Number.isFinite(Number(k.frame)));
+  if(!hasAbs){
+    let acc = 0;
+    for(let i=1;i<raw.length;i++){ acc += Math.max(1, raw[i].frames || 6); raw[i].frame = acc; }
+  } else {
+    let acc = 0;
+    for(let i=1;i<raw.length;i++){
+      if(!Number.isFinite(Number(raw[i].frame))){ acc += Math.max(1, raw[i].frames || 6); raw[i].frame = acc; }
+      else acc = Math.max(acc, raw[i].frame);
+    }
+    const rest = raw.slice(1).sort((a,b)=>a.frame-b.frame || a.name.localeCompare(b.name));
+    raw = [raw[0], ...rest];
+  }
+  let prev = 0;
+  for(let i=1;i<raw.length;i++){
+    raw[i].frame = Math.max(prev+1, Math.round(raw[i].frame));
+    raw[i].frames = raw[i].frame - prev;
+    if(!KEY_TAGS.includes(raw[i].tag)) raw[i].tag = tagFromName(raw[i].name, raw[i].impact);
+    prev = raw[i].frame;
+  }
+  raw[0].returnFrames = Math.max(1, raw[0].returnFrames ?? raw[0].frames ?? DEFAULT_RETURN_FRAMES);
+  raw[0].frames = raw[0].returnFrames;
+  return raw;
+}
+function normalizeTimelineInPlace(){
+  const activeName = activePhase || (SEQ[activeIdx] && SEQ[activeIdx].name);
+  SEQ = repairTimeline(SEQ);
+  activeIdx = SEQ.findIndex(s=>s.name===activeName);
+  if(activeIdx < 0) activeIdx = Math.min(1, SEQ.length-1);
+  activePhase = SEQ[activeIdx].name;
+}
+function timelineLastFrame(){ normalizeTimelineInPlace(); return SEQ.length ? SEQ[SEQ.length-1].frame : 0; }
+function totalTimelineFrames(){ return timelineLastFrame() + timelineReturnFrames(); }
+function timelineDisplayMaxFrame(){
+  const last = timelineLastFrame();
+  const total = totalTimelineFrames();
+  return Math.max(60, Math.ceil((Math.max(last + 20, total) || 60) / 10) * 10);
+}
+function isTimelineFrameFree(frame, excludeName){
+  return !SEQ.some(k => k.name !== excludeName && Math.round(k.frame || 0) === frame);
+}
+function nearestFreeTimelineFrame(frame, excludeName, dir=1){
+  frame = Math.max(1, Math.round(Number(frame) || 1));
+  if(isTimelineFrameFree(frame, excludeName)) return frame;
+  const firstDir = dir >= 0 ? 1 : -1;
+  const secondDir = -firstDir;
+  for(let d=1; d<2000; d++){
+    const a = frame + firstDir * d;
+    if(a >= 1 && isTimelineFrameFree(a, excludeName)) return a;
+    const b = frame + secondDir * d;
+    if(b >= 1 && isTimelineFrameFree(b, excludeName)) return b;
+  }
+  return frame;
+}
+function frameFromTimelineBar(clientX){
+  const bar = document.getElementById('timelineBar');
+  if(!bar) return 0;
+  const rect = bar.getBoundingClientRect();
+  const u = rect.width ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
+  return Math.round(u * timelineDisplayMaxFrame());
+}
+function setKeyFrameByName(name, frame){
+  normalizeTimelineInPlace();
+  const s = SEQ.find(k=>k.name===name);
+  if(!s || s.name==='idle') return;
+  const oldFrame = Math.round(s.frame || 1);
+  const desired = Math.max(1, Math.round(Number(frame)||1));
+  const dir = desired >= oldFrame ? 1 : -1;
+  s.frame = nearestFreeTimelineFrame(desired, name, dir);
+  activePhase = name;
+  normalizeTimelineInPlace();
+}
+
+// 把 preset 補滿 POSE_KEYS(舊 preset 缺新增的 idle/scale 欄位時自動補預設值)
+function makePhasesFromPreset(key){
+  const preset = PRESETS[key];
+  const out = {};
+  ['idle','anti','strike','impact','recovery'].forEach(ph=>{
+    out[ph] = {};
+    POSE_KEYS.forEach(k=>{
+      const defV = defaultPoseValue(k);
+      out[ph][k] = (preset[ph] && preset[ph][k] !== undefined) ? preset[ph][k] : defV;
+    });
+    // idle 永遠 = 定稿站架(loop 基準,不可破壞)
+    if(ph==='idle'){ Object.assign(out[ph], GOOFY_IDLE); }
+    // recovery 解鎖:不再無條件覆寫成站架。
+    //  - preset 提供「非全 0/1」的自訂 recovery → 尊重它(可把誇張旋身/收招 bake 進 preset)
+    //  - 否則以戰鬥站架為預設起點,載入後可自由拖 slider 做誇張收招
+    //    (blank 例外:保留全 0,供從零編輯)
+    if(ph==='recovery'){
+      const r = preset.recovery;
+      const custom = r && Object.keys(r).some(k => r[k] !== 0 && r[k] !== 1);
+      if(!custom && key !== 'blank'){ Object.assign(out[ph], GOOFY_IDLE); }
+    }
+  });
+  return out;
+}
+
+// 啟動載入 cross 當例子
+let PHASES = makePhasesFromPreset('cross');
+let SEQ = DEFAULT_SEQ.map(s=>({...s}));
+let LAGS = {...DEFAULT_LAGS};
+
+let activeIdx = 1;        // 目前編輯第幾個 key(SEQ 索引)
+let activePhase = 'idle'; // = SEQ[activeIdx].name(相容舊程式碼)
+let playing = false;
+let playT = 0;
+let slowMo = 0.3;
+let slowOn = true;
+let loop = false;
+let scrubActive = false, scrubPose = null;   // 時間軸 scrub(只讀凍結幀)
+
+// ===== Slider definitions =====
+const SLIDER_GROUPS = [
+  {h:'軀幹 ROOT', cls:'', keys:[
+    ['root_y', '軀幹 Y(twist/側轉)', -120, 120, 1, '°'],
+    ['root_x', '軀幹 X(pitch/俯仰)', -30, 30, 1, '°'],
+    ['root_py', '軀幹升降(jump/離地)', -0.5, 0.4, 0.01, 'u'],
+    ['root_pz', '軀幹 Z 位置(lunge 前後)', -0.4, 0.6, 0.01, 'u'],
+    ['sq', 'squash/stretch(壓/拉)', -0.4, 0.4, 0.01, ''],
+    ['body_scale', '身體縮放(攻擊縮小)', 0.5, 1.5, 0.01, '×'],
+    ['squat', '蹲下(整體屈膝下沉,自動踩地)', 0, 80, 1, '°']
+  ]},
+  {h:'頭部 HEAD', cls:'', keys:[
+    ['head_y', '頭 Y(左右轉/看目標)', -90, 90, 1, '°'],
+    ['head_x', '頭 X(俯仰/抬下巴)', -45, 45, 1, '°'],
+    ['head_pz', '頭 Z 位置(前凸/縮)', -0.2, 0.5, 0.01, 'u']
+  ]},
+  {h:'脊椎 + 骨盆 SPINE / PELVIS(上下半身扭轉)', cls:'', keys:[
+    ['spine_x', '脊椎 X(前傾/駝背,正=前)', -30, 60, 1, '°'],
+    ['spine_y', '脊椎 Y(上半身甩腰扭轉)', -60, 60, 1, '°'],
+    ['pelvis_y', '骨盆 Y(下半身/後腳碾地轉,正=順 root_y 同向)', -60, 60, 1, '°']
+  ]},
+  {h:'左手 ARM L(前手)', cls:'arms', keys:[
+    ['aL_sx', '肩 X(上下/前後)', -180, 60, 1, '°'],
+    ['aL_sy', '肩 Y(左右橫掃)', -90, 90, 1, '°'],
+    ['aL_sz', '肩 Z(外展/側平舉,正=往外)', -45, 170, 1, '°'],
+    ['aL_ex', '肘(0=直 / 180=折)', -20, 160, 1, '°'],
+    ['aL_idle', '→ IDLE 比例(1=強制垂下)', 0, 1, 0.01, ''],
+    ['aL_scale', '前臂/拳頭縮放(命中放大)', 0.5, 2.5, 0.01, '×'],
+    ['aL_wx', '腕 X(屈伸/勾腕)', -90, 90, 1, '°'],
+    ['aL_wy', '腕 Y(扭轉/旋前旋後)', -90, 90, 1, '°']
+  ]},
+  {h:'右手 ARM R(後手)', cls:'arms', keys:[
+    ['aR_sx', '肩 X(上下/前後)', -180, 60, 1, '°'],
+    ['aR_sy', '肩 Y(左右橫掃)', -90, 90, 1, '°'],
+    ['aR_sz', '肩 Z(外展/側平舉,正=往外)', -45, 170, 1, '°'],
+    ['aR_ex', '肘(0=直 / 180=折)', -20, 160, 1, '°'],
+    ['aR_idle', '→ IDLE 比例(1=強制垂下)', 0, 1, 0.01, ''],
+    ['aR_scale', '前臂/拳頭縮放(命中放大)', 0.5, 2.5, 0.01, '×'],
+    ['aR_wx', '腕 X(屈伸/勾腕)', -90, 90, 1, '°'],
+    ['aR_wy', '腕 Y(扭轉/旋前旋後)', -90, 90, 1, '°']
+  ]},
+  {h:'左腿 LEG L(前腿)', cls:'legs', keys:[
+    ['lL_hx', '髖 X(前後擺)', -60, 60, 1, '°'],
+    ['lL_hy', '髖 Y(外旋/整條腿轉,正=外)', -150, 150, 1, '°'],
+    ['lL_hz', '髖 Z(橫向張開/劈腿,正=往外)', -60, 120, 1, '°'],
+    ['lL_kx', '膝(0=直 / 90=蹲)', -20, 90, 1, '°'],
+    ['lL_ax', '腳踝微調(自動壓平外的額外)', -60, 60, 1, '°'],
+    ['lL_idle', '→ IDLE 比例(1=強制直立)', 0, 1, 0.01, ''],
+    ['lL_scale', '小腿/腳掌縮放(命中放大)', 0.5, 2.5, 0.01, '×'],
+    ['lL_contact', '接觸鎖(0=平踩 1=墊腳 2=抬起)', 0, 2, 1, ''],
+    ['lL_ty', '腳尖朝向(踝 Y,正=外八)', -120, 120, 1, '°']
+  ]},
+  {h:'右腿 LEG R(後腿)', cls:'legs', keys:[
+    ['lR_hx', '髖 X(前後擺)', -60, 60, 1, '°'],
+    ['lR_hy', '髖 Y(外旋/整條腿轉,正=外)', -150, 150, 1, '°'],
+    ['lR_hz', '髖 Z(橫向張開/劈腿,正=往外)', -60, 120, 1, '°'],
+    ['lR_kx', '膝(0=直 / 90=蹲)', -20, 90, 1, '°'],
+    ['lR_ax', '腳踝微調(自動壓平外的額外)', -60, 60, 1, '°'],
+    ['lR_idle', '→ IDLE 比例(1=強制直立)', 0, 1, 0.01, ''],
+    ['lR_scale', '小腿/腳掌縮放(命中放大)', 0.5, 2.5, 0.01, '×'],
+    ['lR_contact', '接觸鎖(0=平踩 1=墊腳 2=抬起)', 0, 2, 1, ''],
+    ['lR_ty', '腳尖朝向(踝 Y,正=外八)', -120, 120, 1, '°']
+  ]}
+];
+
+const TIMING_SLIDERS = [
+  ['anti','ANTI 預備', 1, 30, 1],
+  ['strike','STRIKE 出招', 1, 12, 1],
+  ['impact','IMPACT 命中', 0, 12, 1],
+  ['recovery','RECOVERY 收招', 1, 40, 1]
+];
+const LAG_SLIDERS = [
+  ['aL','左手 lag(0=同步)'],
+  ['aR','右手 lag'],
+  ['lL','左腿 lag'],
+  ['lR','右腿 lag']
+];
+
+// ===== Three.js =====
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(42,1,0.1,100);
+const target=new THREE.Vector3(0,1.15,0);
+let theta=0.6, phi=1.1, radius=6.0;
+function placeCam(){camera.position.set(target.x+radius*Math.sin(phi)*Math.sin(theta), target.y+radius*Math.cos(phi), target.z+radius*Math.sin(phi)*Math.cos(theta)); camera.lookAt(target);}
+let drag=false,lx=0,ly=0;
+canvas.addEventListener('pointerdown',e=>{if(solveMode)return;drag=true;lx=e.clientX;ly=e.clientY;canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointerup',()=>drag=false);
+canvas.addEventListener('pointermove',e=>{if(!drag)return;theta-=(e.clientX-lx)*0.008;phi-=(e.clientY-ly)*0.008;phi=Math.max(0.25,Math.min(1.45,phi));lx=e.clientX;ly=e.clientY;placeCam();});
+canvas.addEventListener('wheel',e=>{if(solveMode){e.preventDefault();return;}e.preventDefault();radius=Math.max(3.2,Math.min(14,radius+e.deltaY*0.01));placeCam();},{passive:false});
+
+scene.add(new THREE.HemisphereLight(0x9fb6ff,0x10121a,0.85));
+const key=new THREE.DirectionalLight(0xffffff,1.1); key.position.set(4,7,5); scene.add(key);
+scene.add(new THREE.DirectionalLight(0x13e0d4,0.3));
+scene.add(new THREE.GridHelper(20,20,0x2e2e44,0x1c1c2a));
+const axes=new THREE.AxesHelper(1.3); scene.add(axes);   // 原點基準線:X 紅(左右)/ Y 綠(上下=垂直)/ Z 藍(前後)
+
+// === 正面方向指示(世界 +Z,固定不隨角色或鏡頭旋轉) ===
+const frontGroup = new THREE.Group();
+const cyanMat = new THREE.MeshBasicMaterial({color: 0x13e0d4, transparent: true, opacity: 0.75});
+const dimMat = new THREE.MeshBasicMaterial({color: 0xff2e6e, transparent: true, opacity: 0.55});
+// 箭桿
+const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.02, 1.6), cyanMat);
+shaft.position.set(0, 0.015, 1.0); frontGroup.add(shaft);
+// 箭頭(圓錐 → 旋轉指向 +Z)
+const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.34, 16), cyanMat);
+arrowHead.position.set(0, 0.015, 1.95); arrowHead.rotation.x = Math.PI / 2; frontGroup.add(arrowHead);
+// 後方小條(BACK 標記)
+const backMark = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.04), dimMat);
+backMark.position.set(0, 0.015, 0.20); frontGroup.add(backMark);
+// 左右側 X 軸小標記(amber,輔助辨識 L/R)
+const xMat = new THREE.MeshBasicMaterial({color: 0xffd23f, transparent: true, opacity: 0.5});
+const xR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.04), xMat);
+xR.position.set(1.0, 0.015, 0); frontGroup.add(xR);
+const xL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.04), xMat);
+xL.position.set(-1.0, 0.015, 0); frontGroup.add(xL);
+scene.add(frontGroup);
+
+// 浮動文字 sprite(永遠面對鏡頭)
+function makeTextSprite(text, hex){
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64;
+  const ctx=cv.getContext('2d');
+  ctx.fillStyle=hex; ctx.font='bold 32px JetBrains Mono, monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text, 128, 32);
+  const tex=new THREE.CanvasTexture(cv);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthTest:false}));
+  sp.scale.set(0.8, 0.2, 1);
+  return sp;
+}
+const lblFront = makeTextSprite('FRONT →', '#13e0d4'); lblFront.position.set(0, 0.35, 2.2); scene.add(lblFront);
+const lblBack  = makeTextSprite('BACK',     '#ff2e6e'); lblBack.position.set(0, 0.25, -0.3);
+lblBack.material.opacity = 0.55; scene.add(lblBack);
+const lblR = makeTextSprite('R (+X)', '#ffd23f'); lblR.position.set(1.45, 0.22, 0); lblR.material.opacity = 0.5; scene.add(lblR);
+const lblL = makeTextSprite('L (-X)', '#ffd23f'); lblL.position.set(-1.45, 0.22, 0); lblL.material.opacity = 0.5; scene.add(lblL);
+
+function box(w,h,d,color){
+  const g=new THREE.Group();
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshStandardMaterial({color,roughness:.55,metalness:.05}));
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w,h,d)), new THREE.LineBasicMaterial({color:0x0b0b12}));
+  g.add(m,e); return g;
+}
+// 通用實體:任意 geometry + 黑描邊。flat=true → 多面切角的硬陰影(GetAmped 頭/拳/鞋風)
+function solid(geo, color, flat){
+  const g=new THREE.Group();
+  const m=new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color,roughness:.55,metalness:.05, flatShading:!!flat}));
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color:0x0b0b12}));
+  g.add(m,e); return g;
+}
+
+const root=new THREE.Group(); scene.add(root);
+const pelvis=new THREE.Group(); root.add(pelvis);   // 骨盆扭轉群組:雙腿掛此 → pelvis_y 轉動下半身(含腳,拳擊碾地)
+const _footBox=new THREE.Box3();   // 用於自動踩地(算雙腳最低點)
+const baseY=0;
+// ===== 角色比例(結構;獨立於 per-phase pose schema)=====
+const DIM = {
+  headSize:0.84,
+  bodyH:0.78, bodyW:0.86, bodyD:0.56,
+  armUpper:0.25, armLower:0.30, armThick:0.90,
+  armLenL:1.00, armLenR:1.00,
+  legUpper:0.34, legLower:0.45, legThick:1.23,
+  fist:0.71, shoe:1.11,
+  shoulderDrop:0.08, legSpread:0.22
+};
+const DIM_DEFAULTS = Object.assign({}, DIM);
+
+// ===== 珊瑚朝向標記系統(coral = 身體前面;白模下保持珊瑚色以便驗證朝向)=====
+const GI_C     = 0x7b786f;   // 道服改為中性暖灰 → 讓珊瑚標記有對比
+const MARKER_C = 0xd85a30;   // 珊瑚:前胸板、鼻標、指節、各關節前側點、鞋頭
+let MARKERS = [];
+let markersOn = true;
+function tagMarker(obj){
+  obj.traverse(o=>{ if(o.isMesh && o.material) o.material.userData.keepColor = true; });
+  obj.visible = markersOn; MARKERS.push(obj); return obj;
+}
+function jointMark(parent, x, y, z, r){
+  const m = tagMarker(solid(new THREE.IcosahedronGeometry(r||0.05, 1), MARKER_C, true));
+  m.position.set(x, y, z); parent.add(m); return m;
+}
+
+
+// ===== State safety: JSON save/load, undo/redo, autosave =====
+const STATE_VERSION = 4;
+const STORAGE_KEY = 'PUNCH_STUDIO_AUTOSAVE_V2';
+let UNDO_STACK = [];
+let REDO_STACK = [];
+let autosaveTimer = null;
+let suppressHistory = false;
+
+function updateHeaderMeta(){
+  const el = document.getElementById('metaSub');
+  if(!el) return;
+  el.textContent = `free timeline keyframe 編輯器 · ${SEQ.length} key · ${timelineLastFrame()}f × ${POSE_KEYS.length} 軸 + lag · JSON/Undo/Autosave`;
+}
+function clonePlain(o){ return JSON.parse(JSON.stringify(o)); }
+function snapshotObject(){
+  normalizeTimelineInPlace();
+  return {
+    version: STATE_VERSION,
+    createdBy: 'PUNCH STUDIO',
+    poseKeys: [...POSE_KEYS],
+    seq: clonePlain(SEQ),
+    phases: clonePlain(PHASES),
+    lags: clonePlain(LAGS),
+    dim: clonePlain(DIM)
+  };
+}
+function snapshotString(){ return JSON.stringify(snapshotObject()); }
+function normalizeState(data){
+  const src = data || {};
+  const seqIn = src.seq || src.SEQ || DEFAULT_SEQ;
+  const phasesIn = src.phases || src.PHASES || PHASES || {};
+  const seq = repairTimeline(seqIn);
+  const phases = {};
+  seq.forEach(k=>{ phases[k.name] = normalizePose(phasesIn[k.name] || (k.name==='idle'?GOOFY_IDLE:{})); });
+  const lags = {...DEFAULT_LAGS, ...(src.lags || src.LAGS || {})};
+  Object.keys(lags).forEach(k=>{ lags[k]=Number.isFinite(Number(lags[k]))?Number(lags[k]):DEFAULT_LAGS[k]; });
+  const dim = {...DIM_DEFAULTS, ...(src.dim || src.DIM || {})};
+  Object.keys(dim).forEach(k=>{ dim[k]=Number.isFinite(Number(dim[k]))?Number(dim[k]):DIM_DEFAULTS[k]; });
+  return {seq, phases, lags, dim};
+}
+function applyStateData(data, opts={}){
+  const st = normalizeState(data);
+  PHASES = st.phases;
+  SEQ = st.seq;
+  Object.assign(LAGS, st.lags);
+  Object.assign(DIM, st.dim);
+  if(activeIdx >= SEQ.length) activeIdx = SEQ.length - 1;
+  if(activeIdx < 0) activeIdx = 0;
+  activePhase = SEQ[activeIdx].name;
+  if(opts.rebuild !== false){
+    rebuildCharacter();
+    buildPropPanel();
+    buildPhaseTabs();
+    buildTimingControls();
+    setActiveKey(activeIdx);
+  }
+  updateHeaderMeta();
+}
+function pushHistory(){
+  if(suppressHistory) return;
+  const snap = snapshotString();
+  if(UNDO_STACK[UNDO_STACK.length-1] === snap) return;
+  UNDO_STACK.push(snap);
+  if(UNDO_STACK.length > 80) UNDO_STACK.shift();
+  REDO_STACK.length = 0;
+  updateHistoryButtons();
+}
+function restoreSnapshotString(snap){
+  suppressHistory = true;
+  try{ applyStateData(JSON.parse(snap)); }
+  finally{ suppressHistory = false; updateHistoryButtons(); scheduleAutosave(); }
+}
+function undo(){
+  if(!UNDO_STACK.length) return;
+  REDO_STACK.push(snapshotString());
+  restoreSnapshotString(UNDO_STACK.pop());
+}
+function redo(){
+  if(!REDO_STACK.length) return;
+  UNDO_STACK.push(snapshotString());
+  restoreSnapshotString(REDO_STACK.pop());
+}
+function updateHistoryButtons(){
+  const u=document.getElementById('undoBtn'), r=document.getElementById('redoBtn');
+  if(u){ u.disabled = !UNDO_STACK.length; u.style.opacity = u.disabled ? .45 : 1; }
+  if(r){ r.disabled = !REDO_STACK.length; r.style.opacity = r.disabled ? .45 : 1; }
+}
+function scheduleAutosave(){
+  if(suppressHistory) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(()=>{
+    try{ localStorage.setItem(STORAGE_KEY, snapshotString()); }
+    catch(e){ console.warn('autosave failed', e); }
+  }, 250);
+}
+function tryLoadAutosave(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) applyStateData(JSON.parse(raw), {rebuild:false});
+  }catch(e){ console.warn('autosave load failed', e); }
+}
+function exportJson(){ return JSON.stringify(snapshotObject(), null, 2); }
+function importJson(text){
+  const data = JSON.parse(text);
+  pushHistory();
+  applyStateData(data);
+  scheduleAutosave();
+  return {applied:Object.keys(PHASES).length * POSE_KEYS.length, skipped:0, type:'json'};
+}
+// 接續匯入:把另一份 snapshot 的 keys 串到目前 timeline 的 CANCEL 點之後(combo 串接)。
+// 不套用對方的 dim/lags(沿用目前角色與延遲設定);對方的 idle 會被略過。
+function appendJson(text){
+  const st = normalizeState(JSON.parse(text));
+  pushHistory();
+  normalizeTimelineInPlace();
+  // 接點:最後一個 cancel key → 否則最後一個 impact key → 否則最後一個 key
+  let cut=-1;
+  for(let i=SEQ.length-1;i>=0;i--){ if(SEQ[i].cancel){cut=i;break;} }
+  if(cut<0) for(let i=SEQ.length-1;i>=0;i--){ if(SEQ[i].impact){cut=i;break;} }
+  if(cut<0) cut=SEQ.length-1;
+  // 砍掉接點之後的收招 keys(被取消的部分)
+  SEQ.slice(cut+1).forEach(k=>{ if(k.name!=='idle') delete PHASES[k.name]; });
+  SEQ.length=cut+1;
+  // 串接:略過對方 idle、改名避免衝突、frame 平移 + 4 格混合段
+  const BLEND=4;
+  const baseF=SEQ[SEQ.length-1].frame||0;
+  const inc=st.seq.filter(k=>k.name!=='idle');
+  if(!inc.length){ return {applied:0, skipped:0, type:'append'}; }
+  const f0=inc[0].frame||0;
+  let added=0;
+  inc.forEach((k,i)=>{
+    let nm=k.name, n=2;
+    while(PHASES[nm]||SEQ.some(x=>x.name===nm)) nm=k.name+'_'+(n++);
+    SEQ.push({name:nm, frame:baseF+BLEND+Math.max(0,(k.frame||0)-f0),
+      ease:(i===0?'out':k.ease), impact:!!k.impact, cancel:!!k.cancel, tag:k.tag||'custom'});
+    PHASES[nm]={...st.phases[k.name]};
+    added++;
+  });
+  normalizeTimelineInPlace();
+  buildPhaseTabs(); buildTimelineUI(); buildTimingControls(); refreshSliders();
+  scheduleAutosave();
+  return {applied:added, skipped:0, type:'append'};
+}
+
+tryLoadAutosave();
+// 衍生值與部件節點(由 buildCharacter 建立/更新 → rebuild 可整批重建)
+let hipY, bodyCY, bodyTop, headCY;
+let spine, body, headPivot, head, nub, armL, armR, legL, legR;
+
+function buildTorso(){
+  // 上窄下寬的錐形八面軀幹(肩窄、腰腹寬),深度壓扁烤進 geometry → 不佔用 group.scale
+  const g=new THREE.Group(); g.position.y=bodyCY-hipY;
+  const bw=DIM.bodyW, depthScale=DIM.bodyD/DIM.bodyW;
+  const topR=bw*0.40, midR=bw*0.56, botR=bw*0.50;        // 肩 / 腰(最寬) / 下襬
+  const beltY=hipY+DIM.bodyH*0.34;                        // 腰帶接縫
+  const CB=GI_C, CW=0xeeeeee, CK=0x141414, CS=0xb8b8c0;
+  const prism=(rT,rB,h,color)=>{
+    const geo=new THREE.CylinderGeometry(rT,rB,h,8); geo.rotateY(Math.PI/8); geo.scale(1,1,depthScale);
+    return solid(geo,color,true);
+  };
+  const up=prism(topR,midR, bodyTop-beltY, CB);  up.position.y=(beltY+bodyTop)/2 - bodyCY; g.add(up);
+  const lo=prism(midR,botR, beltY-hipY,   CW);   lo.position.y=(hipY+beltY)/2   - bodyCY; g.add(lo);
+  const belt=box(midR*2*1.05,0.085,midR*2*depthScale*1.05,CK); belt.position.y=beltY-bodyCY; g.add(belt);
+  const buckle=box(0.13,0.075,0.04,CS); buckle.position.set(0,beltY-bodyCY, midR*0.92*depthScale+0.01); g.add(buckle);
+  // 白色 V/Y 字毛領(位置相對軀幹頂端,隨比例縮放)
+  const fz=topR*0.92*depthScale+0.02, clY=(bodyTop-0.13)-bodyCY, tailY=(bodyTop-0.29)-bodyCY;
+  const tail=box(0.07,0.26,0.05,CW); tail.position.set(0, tailY, fz); g.add(tail);
+  const cl=box(0.07,0.22,0.05,CW);   cl.position.set(-0.10, clY, fz); cl.rotation.z= 0.6; g.add(cl);
+  const cr=box(0.07,0.22,0.05,CW);   cr.position.set( 0.10, clY, fz); cr.rotation.z=-0.6; g.add(cr);
+  // 珊瑚前胸板:毛領下、腰帶上;面寬隨軀幹比例縮放
+  const plate=tagMarker(box(midR*0.62, 0.16, 0.05, MARKER_C));
+  plate.position.set(0, (bodyTop-0.42)-bodyCY, midR*0.85*depthScale*0.92+0.04);
+  g.add(plate);
+  spine.add(g); return g;
+}
+function buildHead(){
+  // 八角體:CylinderGeometry(…,8) 轉成軸朝前(Z),正面看到八邊形;flat shading 出硬切角
+  const hs=DIM.headSize;
+  const g=new THREE.CylinderGeometry(hs*0.55, hs*0.55, hs*0.92, 8);
+  g.rotateZ(Math.PI/8); g.rotateX(Math.PI/2);
+  const h=solid(g, 0xe8c98f, true); // 暫用膚色,之後貼臉
+  h.position.y=hs/2; h.scale.set(1.02,0.96,1.0);
+  return h;
+}
+
+function arm2(side){
+  const SLEEVE=GI_C, CUFF=0xeeeeee, SKIN=0xd9c3a0;   // 道服:灰袖 / 白袖口 / 膚色拳
+  const lenMul = (side<0 ? (DIM.armLenL||1) : (DIM.armLenR||1));  // 左右臂各自長度倍率
+  const t=DIM.armThick, au=DIM.armUpper*lenMul, al=DIM.armLower*lenMul, fs=DIM.fist;
+  const sh=new THREE.Group(); sh.position.set(side*(DIM.bodyW/2+0.04), bodyTop-DIM.shoulderDrop-hipY, 0); spine.add(sh);
+  const shoulder=solid(new THREE.IcosahedronGeometry(0.20*t,0), SLEEVE, true);
+  shoulder.scale.set(1.08,0.82,1.0); shoulder.position.y=0.03; sh.add(shoulder);
+  const um=box(0.24*t, au, 0.26*t, SLEEVE); um.position.y=-au/2; sh.add(um);
+  const el=new THREE.Group(); el.position.set(0,-au,0); sh.add(el);
+  const elbow=solid(new THREE.IcosahedronGeometry(0.155*t,0), SLEEVE, true);
+  elbow.scale.set(1.0,0.9,1.0); el.add(elbow);
+  const lm=box(0.22*t, al, 0.24*t, SLEEVE); lm.position.y=-al/2; el.add(lm);
+  const wr=new THREE.Group(); wr.position.set(0,-al,0); el.add(wr);   // 腕關節(前臂末端)
+  const cuff=box(0.27*t,0.10,0.29*t,CUFF); cuff.position.y=0; wr.add(cuff);
+  const fist=solid(new THREE.BoxGeometry(0.42*fs,0.40*fs,0.46*fs), SKIN, true);
+  fist.position.set(0,-0.18*fs,0.02); wr.add(fist);
+  // 指節脊(前上方)→ 改珊瑚:手背朝向標記,腕屈伸(wx)/旋前旋後(wy)一眼可辨
+  const knuck=tagMarker(box(0.40*fs,0.13*fs,0.12*fs,MARKER_C)); knuck.position.set(0,0.10*fs,0.20*fs); fist.add(knuck);
+  // 關節前側珊瑚點:肩 / 肘 / 腕(local +Z = 該肢段的「前」)
+  jointMark(sh, 0, 0.03, 0.13*t+0.07, 0.05);
+  jointMark(el, 0, 0,    0.12*t+0.06, 0.042);
+  jointMark(wr, 0, 0,    0.145*t+0.05, 0.038);
+  return {sh, el, wr, lm, fist, side};
+}
+function leg2(side){
+  const PANT=GI_C, CUFF=0xeeeeee, SHOE=0x161620;     // 灰褲 / 白腳踝袖口 / 黑鞋
+  const t=DIM.legThick, lu=DIM.legUpper, ll=DIM.legLower, ss=DIM.shoe;
+  const legPrism=(rT,rB,h)=>{ const g=new THREE.CylinderGeometry(rT,rB,h,8); g.rotateY(Math.PI/8); return solid(g,PANT,true); };
+  const hp=new THREE.Group(); hp.position.set(side*DIM.legSpread, hipY, 0); pelvis.add(hp);
+  const um=legPrism(0.18*t,0.14*t, lu); um.position.y=-lu/2; hp.add(um);
+  const kn=new THREE.Group(); kn.position.set(0,-lu,0); hp.add(kn);
+  const knee=solid(new THREE.IcosahedronGeometry(0.15*t,0), PANT, true); knee.scale.set(1.0,0.9,1.0); kn.add(knee);
+  const lm=legPrism(0.145*t,0.13*t, ll); lm.position.y=-ll/2; kn.add(lm);
+  const cuff=box(0.30*t,0.10,0.32*t,CUFF); cuff.position.y=-ll; kn.add(cuff);
+  const ankle=new THREE.Group(); ankle.position.set(0,-ll,0); kn.add(ankle);
+  const foot=solid(new THREE.BoxGeometry(0.36*ss,0.20*ss,0.52*ss), SHOE, true);
+  foot.position.set(0,-0.07*ss,0.11); ankle.add(foot);
+  // 珊瑚鞋頭(腳尖朝向 = 鼻子同面)+ 髖 / 膝 / 踝關節前側標記
+  const toe=tagMarker(box(0.31*ss,0.17*ss,0.10,MARKER_C));
+  toe.position.set(0,-0.07*ss, 0.11+0.26*ss-0.04); ankle.add(toe);
+  jointMark(hp,    0, -0.04, 0.18*t+0.06, 0.048);
+  jointMark(kn,    0,  0,    0.15*t+0.055, 0.048);
+  jointMark(ankle, 0,  0.02, 0.10*t+0.06, 0.038);
+  return {hp, kn, lm, foot, ankle, side};
+}
+function buildCharacter(){
+  MARKERS = [];                              // 重建時清空標記註冊(舊物件隨 spine/legs dispose)
+  hipY = DIM.legUpper + DIM.legLower;        // 腳長決定髖高 → 改腿長整個上半身跟著升降
+  bodyCY = hipY + DIM.bodyH/2;
+  bodyTop = hipY + DIM.bodyH;
+  headCY = bodyTop + DIM.headSize/2;
+  spine = new THREE.Group(); spine.position.set(0, hipY, 0); root.add(spine);
+  body = buildTorso();
+  headPivot = new THREE.Group(); headPivot.position.set(0, bodyTop-hipY, 0); spine.add(headPivot);
+  head = buildHead(); headPivot.add(head);
+  nub = tagMarker(box(0.12,0.12,0.12,MARKER_C)); nub.position.set(0, DIM.headSize/2, DIM.headSize*0.46); headPivot.add(nub);   // 鼻標:臉的朝向
+  armR = arm2(+1); armL = arm2(-1);
+  legR = leg2(+1); legL = leg2(-1);
+}
+function disposeObj(o){ o.traverse(n=>{ if(n.geometry) n.geometry.dispose(); if(n.material){ (Array.isArray(n.material)?n.material:[n.material]).forEach(m=>m.dispose()); } }); }
+function rebuildCharacter(){
+  if(typeof detachPunchPartsForRebuild === 'function') detachPunchPartsForRebuild();
+  if(spine){ disposeObj(spine); root.remove(spine); }
+  if(legL){ disposeObj(legL.hp); pelvis.remove(legL.hp); }
+  if(legR){ disposeObj(legR.hp); pelvis.remove(legR.hp); }
+  buildCharacter();
+  if(whiteModel) applyWhiteModel(true);   // 重建後若在白模,重新套白
+  applyPose(PHASES[activePhase] || PHASES.idle || ZERO_POSE);
+  if(typeof reattachPunchPartsAfterRebuild === 'function') reattachPunchPartsAfterRebuild();
+}
+buildCharacter();
+placeCam();
+
+// ===== Pose apply =====
+function applyPose(p){
+  root.rotation.x = p.root_x * D2R;
+  root.rotation.y = p.root_y * D2R;
+  root.rotation.z = 0;
+  root.position.set(0, baseY, p.root_pz);   // y 先暫定,最後自動踩地;x=0 永遠置中
+  if(p.sq>=0){const sy=1-p.sq, sxz=1/Math.sqrt(Math.max(sy,0.1)); root.scale.set(sxz,sy,sxz);}
+  else{const sz=1-p.sq, sxy=1/Math.sqrt(Math.max(sz,0.1)); root.scale.set(sxy,sxy,sz);}
+  // 身體獨立縮放(GetAmped 風:攻擊時身體縮小)
+  body.scale.setScalar(p.body_scale||1);
+  // 脊椎:只彎上半身(腳留在地面)。X=前後傾、Y=甩腰扭轉
+  spine.rotation.set((p.spine_x||0)*D2R, (p.spine_y||0)*D2R, 0);
+  // 骨盆:下半身繞垂直軸扭轉(獨立於 spine);雙腿+腳掛在 pelvis → 後腳跟著碾地轉
+  pelvis.rotation.y = (p.pelvis_y||0)*D2R;
+  // 頭部(headPivot 現在掛在 spine 下,Y 用 spine 子空間)
+  headPivot.rotation.set((p.head_x||0)*D2R, (p.head_y||0)*D2R, 0);
+  headPivot.position.set(0, bodyTop-hipY, (p.head_pz||0));
+  // 每肢體的 idle weight:0=照值跑、1=強制垂下/直立
+  const aLw = 1 - (p.aL_idle||0);
+  const aRw = 1 - (p.aR_idle||0);
+  const lLw = 1 - (p.lL_idle||0);
+  const lRw = 1 - (p.lR_idle||0);
+  armL.sh.rotation.set(p.aL_sx*aLw*D2R, p.aL_sy*aLw*D2R, (p.aL_sz||0)*aLw*armL.side*D2R);
+  armL.el.rotation.set(-p.aL_ex*aLw*D2R, 0, 0);   // 負號:正值 = 手肘往前彎(解剖正確)
+  armR.sh.rotation.set(p.aR_sx*aRw*D2R, p.aR_sy*aRw*D2R, (p.aR_sz||0)*aRw*armR.side*D2R);
+  armR.el.rotation.set(-p.aR_ex*aRw*D2R, 0, 0);
+  // 腕關節:wx 屈伸 · wy 沿前臂軸扭轉(旋前旋後)
+  armL.wr.rotation.set((p.aL_wx||0)*aLw*D2R, (p.aL_wy||0)*aLw*D2R, 0);
+  armR.wr.rotation.set((p.aR_wx||0)*aRw*D2R, (p.aR_wy||0)*aRw*D2R, 0);
+  // 髖:X=前後擺、Z=橫向張開(×side → 正值兩腿都往外張成 O 型腿);膝 X=蹲
+  // 蹲下 macro:整體屈膝(膝 +squat、髖 -0.7×squat),身體靠自動踩地自然下沉
+  const sqd = p.squat||0;
+  const hxL=p.lL_hx - sqd*0.7, kxL=p.lL_kx + sqd;
+  const hxR=p.lR_hx - sqd*0.7, kxR=p.lR_kx + sqd;
+  legL.hp.rotation.set(hxL*lLw*D2R, (p.lL_hy||0)*lLw*legL.side*D2R, (p.lL_hz||0)*lLw*legL.side*D2R); legL.kn.rotation.set(kxL*lLw*D2R, 0, 0);
+  legR.hp.rotation.set(hxR*lRw*D2R, (p.lR_hy||0)*lRw*legR.side*D2R, (p.lR_hz||0)*lRw*legR.side*D2R); legR.kn.rotation.set(kxR*lRw*D2R, 0, 0);
+  // 腳踝:自動把腳掌壓平(用蹲下後的有效角度),ax 為額外手動微調
+  // 腳踝:X=自動壓平+ax 微調;Y=腳尖朝向(ty,×side)可獨立於髖瞄準腳尖
+  legL.ankle.rotation.set((-(hxL + kxL) + (p.lL_ax||0)) * lLw * D2R, (p.lL_ty||0)*lLw*legL.side*D2R, 0);
+  legR.ankle.rotation.set((-(hxR + kxR) + (p.lR_ax||0)) * lRw * D2R, (p.lR_ty||0)*lRw*legR.side*D2R, 0);
+  // 腳掌接觸鎖:0=平踩 1=墊腳(抬跟,以腳尖為支點) 2=抬起(離地)
+  const cL = Math.round(p.lL_contact||0), cR = Math.round(p.lR_contact||0);
+  const HEEL_LIFT = 55*D2R;   // 墊腳抬跟量(正 ankle.x = 趾下、跟上)
+  if(cL===1) legL.ankle.rotation.x += HEEL_LIFT*lLw;
+  if(cR===1) legR.ankle.rotation.x += HEEL_LIFT*lRw;
+  // 前臂/小腿縮放(命中放大,chibi 浮誇)
+  armL.lm.scale.setScalar(p.aL_scale||1);
+  armR.lm.scale.setScalar(p.aR_scale||1);
+  legL.lm.scale.setScalar(p.lL_scale||1);
+  legR.lm.scale.setScalar(p.lR_scale||1);
+  // 拳套/鞋同步放大 → 出拳/踢擊末端更誇張
+  armL.fist.scale.setScalar(p.aL_scale||1);
+  armR.fist.scale.setScalar(p.aR_scale||1);
+  legL.foot.scale.setScalar(p.lL_scale||1);
+  legR.foot.scale.setScalar(p.lR_scale||1);
+  // 自動踩地(接觸鎖):只用「踩地中」的腳(平踩/墊腳)當地面錨點 → 重心落在支撐腳;
+  // 抬起(2)的腳不算錨點,可自由離地不會把身體拉下來。root_py 作為額外升降(跳躍/浮空)。
+  root.updateMatrixWorld(true);
+  _footBox.makeEmpty();
+  let grounded=false;
+  if(cL!==2){ _footBox.expandByObject(legL.foot); grounded=true; }
+  if(cR!==2){ _footBox.expandByObject(legR.foot); grounded=true; }
+  if(!grounded){ _footBox.expandByObject(legL.foot); _footBox.expandByObject(legR.foot); }   // 雙腳皆抬:仍用雙腳防止飄走
+  root.position.y = isFinite(_footBox.min.y) ? (baseY - _footBox.min.y + (p.root_py||0)) : (baseY + (p.root_py||0));
+}
+
+function ease(p,m){p=Math.max(0,Math.min(1,p)); if(m==='in')return p*p; if(m==='out')return 1-(1-p)*(1-p); return p;}
+
+function lerpPose(a,b,t,lags){
+  const out={};
+  for(const k of POSE_KEYS){
+    let lag=0;
+    if(k.startsWith('aL_')) lag=lags.aL;
+    else if(k.startsWith('aR_')) lag=lags.aR;
+    else if(k.startsWith('lL_')) lag=lags.lL;
+    else if(k.startsWith('lR_')) lag=lags.lR;
+    const lt = lag>0 ? Math.max(0,Math.min(1,(t-lag)/Math.max(1-lag,0.001))) : t;
+    const defV = k.endsWith('_scale') ? 1 : 0;
+    const av = (a[k] !== undefined) ? a[k] : defV;
+    const bv = (b[k] !== undefined) ? b[k] : defV;
+    out[k] = av + (bv-av) * lt;
+  }
+  return out;
+}
+
+// ===== Play / Edit loop =====
+// SEQ 展開成過渡段:每段 from→to + frames + ease + impact;結尾自動加「最後一個 key → idle」收尾段。
+function buildSegments(){
+  normalizeTimelineInPlace();
+  const segs=[];
+  for(let i=1;i<SEQ.length;i++){
+    const s=SEQ[i], prev=SEQ[i-1];
+    const frames=Math.max(1, s.frame - prev.frame);
+    s.frames = frames;
+    segs.push({from:prev.name, to:s.name, startFrame:prev.frame, endFrame:s.frame, frames, ease:s.ease, impact:!!s.impact, label:s.name.toUpperCase()});
+  }
+  const last=SEQ[SEQ.length-1], idle=SEQ[0];
+  const rf=timelineReturnFrames();
+  idle.frames=rf; idle.returnFrames=rf;
+  segs.push({from:last.name, to:idle.name, startFrame:last.frame, endFrame:last.frame+rf, frames:rf, ease:idle.ease||'out', impact:false, label:'→IDLE'});
+  return segs;
+}
+function getPlayPose(){
+  const segs=buildSegments();
+  const frameT = playT * REF_FPS;
+  for(const s of segs){
+    if(frameT < s.endFrame){
+      const lp=(frameT-s.startFrame)/Math.max(s.frames,0.0001);
+      const lags = s.impact ? {aL:0,aR:0,lL:0,lR:0} : LAGS;
+      return {phase:s.label, isImpact:s.impact, frame:frameT, pose:lerpPose(PHASES[s.from]||{}, PHASES[s.to]||{}, ease(lp, s.ease), lags)};
+    }
+  }
+  return null; // 結束
+}
+
+// ===== 打擊感試打台(HIT FEEL):命中段觸發 hitstop + 震動 + 沙包反應 + 閃光 + 音效 =====
+// 純預覽演出,不影響匯出資料。參數之後可升格成招式資料(打擊感)的一部分。
+const HITFEEL = { dummy:false, sound:true, hitstop:0.08, shake:0.5, knockback:0.5, dist:1.3 };
+let hitstopT=0, shakeT=0, dummyHitT=0, wasImpact=false;
+const SHAKE_DUR=0.18, DUMMY_DUR=0.35;
+let audioCtx=null;
+try{ const sv=localStorage.getItem('PUNCH_HITFEEL'); if(sv) Object.assign(HITFEEL, JSON.parse(sv)); }catch(e){}
+function saveHitFeel(){ try{ localStorage.setItem('PUNCH_HITFEEL', JSON.stringify(HITFEEL)); }catch(e){} }
+
+let sandbag=null; const sandbagBaseY=1.05;
+(function buildSandbag(){
+  const g=new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.30,1.05,18), new THREE.MeshStandardMaterial({color:0x9a5b34, roughness:.85})));
+  const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.30,0.30,0.12,18), new THREE.MeshStandardMaterial({color:0x444444, roughness:.6})); cap.position.y=0.55; g.add(cap);
+  const strap=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.5,8), new THREE.MeshStandardMaterial({color:0x2a2a2a})); strap.position.y=0.82; g.add(strap);
+  g.position.set(0, sandbagBaseY, HITFEEL.dist); g.visible=HITFEEL.dummy;
+  scene.add(g); sandbag=g;
+})();
+
+const hitFlash=document.getElementById('hitFlash');
+function doFlash(){ if(!hitFlash)return; hitFlash.style.transition='none';
+  hitFlash.style.opacity=String(Math.min(0.65, 0.28+HITFEEL.shake*0.4));
+  requestAnimationFrame(()=>{ hitFlash.style.transition='opacity .16s ease-out'; hitFlash.style.opacity='0'; }); }
+function ensureAudio(){ if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ audioCtx=null; } }
+  if(audioCtx && audioCtx.state==='suspended') audioCtx.resume(); }
+function playThud(){
+  ensureAudio(); if(!audioCtx) return; const t=audioCtx.currentTime;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(48,t+0.12);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.6,t+0.005); g.gain.exponentialRampToValueAtTime(0.0001,t+0.18);
+  o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t+0.2);
+  const len=Math.floor(audioCtx.sampleRate*0.05), b=audioCtx.createBuffer(1,len,audioCtx.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2);
+  const ns=audioCtx.createBufferSource(); ns.buffer=b; const ng=audioCtx.createGain(); ng.gain.value=0.3;
+  ns.connect(ng); ng.connect(audioCtx.destination); ns.start(t);
+}
+function triggerHit(){ hitstopT=HITFEEL.hitstop; shakeT=SHAKE_DUR; dummyHitT=DUMMY_DUR; doFlash(); if(HITFEEL.sound) playThud(); }
+
+function bindHF(id, vid, key, fmt){
+  const el=document.getElementById(id); if(!el) return;
+  const setv=()=>{ HITFEEL[key]=parseFloat(el.value); const vv=document.getElementById(vid); if(vv) vv.textContent=fmt?fmt(HITFEEL[key]):HITFEEL[key].toFixed(2); };
+  el.addEventListener('input',setv); el.addEventListener('change',saveHitFeel); el.value=HITFEEL[key]; setv();
+}
+(function initHitFeelUI(){
+  const dummy=document.getElementById('hfDummy'), sound=document.getElementById('hfSound');
+  if(dummy){ dummy.checked=HITFEEL.dummy; dummy.addEventListener('change',()=>{ HITFEEL.dummy=dummy.checked; if(sandbag) sandbag.visible=dummy.checked; saveHitFeel(); }); }
+  if(sound){ sound.checked=HITFEEL.sound; sound.addEventListener('change',()=>{ HITFEEL.sound=sound.checked; ensureAudio(); saveHitFeel(); }); }
+  bindHF('hfHitstop','hfHitstopV','hitstop', v=>v.toFixed(2));
+  bindHF('hfShake','hfShakeV','shake'); bindHF('hfKb','hfKbV','knockback'); bindHF('hfDist','hfDistV','dist');
+})();
+
+let lastT=performance.now();
+function tick(now){
+  const dt=Math.min((now-lastT)/1000, 0.05); lastT=now;
+  if(playing){
+    let advance = dt * (slowOn?slowMo:1);
+    if(hitstopT>0){ hitstopT-=dt; advance=0; }   // 命中凍結:暫停推進時間軸
+    playT += advance;
+    const r = getPlayPose();
+    if(!r){
+      wasImpact=false;
+      if(loop){playT=0;}
+      else{playing=false; setPhaseTab(activePhase); updateUI();}
+    } else {
+      applyPose(r.pose);
+      if(r.isImpact && !wasImpact) triggerHit();   // 進入命中段 → 打擊感
+      wasImpact = r.isImpact;
+      document.getElementById('phasenow').textContent = r.phase;
+      document.getElementById('phasenow').classList.add('playing');
+      const _tt=totalTime(); const _rs=document.getElementById('rscrub');
+      if(_rs) _rs.value = Math.max(0,Math.min(1000,(playT/_tt)*1000));
+      const _tlph=document.querySelector('.timeline-playhead'); if(_tlph) _tlph.style.left=Math.max(0,Math.min(100,(playT*REF_FPS/timelineDisplayMaxFrame())*100))+'%';
+    }
+  } else if(scrubActive && scrubPose){
+    applyPose(scrubPose); wasImpact=false;
+  } else {
+    applyPose(PART_INSPECT_TPOSE ? inspectTposePose() : (PHASES[activePhase] || PHASES.idle || ZERO_POSE));
+    document.getElementById('phasenow').textContent = PART_INSPECT_TPOSE ? '組裝檢視 T-POSE' : activePhase.toUpperCase();
+    document.getElementById('phasenow').classList.remove('playing');
+    wasImpact=false;
+  }
+  // 沙包反應(被打退 + 壓扁 → 回彈)
+  if(sandbag){
+    sandbag.visible = HITFEEL.dummy;
+    const baseZ = HITFEEL.dist;
+    if(dummyHitT>0){ dummyHitT-=dt; const k=Math.max(0,dummyHitT/DUMMY_DUR);
+      sandbag.position.set(0, sandbagBaseY, baseZ + HITFEEL.knockback*0.55*k);
+      sandbag.scale.set(1+0.12*k, 1-0.18*k, 1+0.12*k);
+    } else { sandbag.position.set(0, sandbagBaseY, baseZ); sandbag.scale.set(1,1,1); }
+  }
+  if(nodesOn) updateNodes();
+  if(solveMode) updateSolveLayer();
+  // 畫面震動(命中後衰減)
+  let sox=0, soy=0;
+  if(shakeT>0){ shakeT-=dt; const k=Math.max(0,shakeT/SHAKE_DUR), amp=HITFEEL.shake*0.13*k;
+    sox=(Math.random()*2-1)*amp; soy=(Math.random()*2-1)*amp; camera.position.x+=sox; camera.position.y+=soy; }
+  renderer.render(scene,camera);
+  if(sox||soy){ camera.position.x-=sox; camera.position.y-=soy; }
+  requestAnimationFrame(tick);
+}
+
+// ===== UI builders =====
+function buildPoseGroups(){
+  const host=document.getElementById('poseGroups'); host.innerHTML='';
+  SLIDER_GROUPS.forEach(g=>{
+    const div=document.createElement('div'); div.className='group '+g.cls;
+    div.innerHTML='<h3>'+g.h+'<button class="reset-btn" data-r="'+g.h+'">reset</button></h3>';
+    g.keys.forEach(([k,label,min,max,step,unit])=>{
+      const c=document.createElement('div'); c.className='ctrl';
+      c.innerHTML='<div class="lab"><span class="name">'+label+'</span>'
+        +'<span class="val" id="v_'+k+'">0<span class="unit">'+unit+'</span></span></div>'
+        +'<input type="range" id="r_'+k+'" min="'+min+'" max="'+max+'" step="'+step+'">';
+      div.appendChild(c);
+    });
+    host.appendChild(div);
+  });
+  // hook reset buttons for each pose group
+  document.querySelectorAll('.group .reset-btn[data-r]').forEach(btn=>{
+    if(btn.dataset.r==='timing'||btn.dataset.r==='lags') return;
+    btn.addEventListener('click',()=>{
+      // reset this group within current phase to zeros
+      const groupH = btn.dataset.r;
+      const grp = SLIDER_GROUPS.find(g=>g.h===groupH);
+      if(grp){
+        pushHistory();
+        grp.keys.forEach(([k])=>{ PHASES[activePhase][k]=defaultPoseValue(k); });
+        refreshSliders(); scheduleAutosave();
+      }
+    });
+  });
+}
+
+function buildTimingControls(){
+  normalizeTimelineInPlace();
+  const host=document.getElementById('timingControls'); host.innerHTML='';
+  const s=SEQ[activeIdx]; const isIdle=(activeIdx===0);
+
+  const meta=document.createElement('div'); meta.className='ctrl';
+  meta.innerHTML='<div class="lab"><span class="name">目前 key</span><span class="val">#'+activeIdx+' · '+s.name+'</span></div>'
+    +'<div class="keyrow"><select id="rt_tag"></select><select id="rt_ease"></select></div>';
+  host.appendChild(meta);
+  const tagSel=document.getElementById('rt_tag');
+  KEY_TAGS.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent='tag: '+t; if(t===s.tag)o.selected=true; tagSel.appendChild(o); });
+  tagSel.addEventListener('change',e=>{ pushHistory(); s.tag=e.target.value; buildPhaseTabs(); scheduleAutosave(); });
+  const easeSel=document.getElementById('rt_ease');
+  EASES.forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent='ease: '+m; if(m===s.ease)o.selected=true; easeSel.appendChild(o); });
+  easeSel.addEventListener('change',e=>{ pushHistory(); s.ease=e.target.value; buildPhaseTabs(); scheduleAutosave(); });
+  if(!isIdle){
+    const cBtn=document.createElement('button'); cBtn.style.width='100%'; cBtn.style.marginTop='4px';
+    const paintC=()=>{ cBtn.textContent=s.cancel?'✂ CANCEL 點:此 key 起可取消接招':'設為 CANCEL 點'; cBtn.style.borderColor=s.cancel?'var(--lime)':''; cBtn.style.color=s.cancel?'var(--lime)':''; };
+    paintC();
+    cBtn.addEventListener('click',()=>{ pushHistory(); s.cancel=!s.cancel; paintC(); scheduleAutosave(); });
+    meta.appendChild(cBtn);
+  }
+
+  const fc=document.createElement('div'); fc.className='ctrl';
+  if(isIdle){
+    const rf=timelineReturnFrames();
+    fc.innerHTML='<div class="lab"><span class="name">Loop 收尾 → IDLE</span><span class="val" id="vt_f">'+rf+'<span class="unit">f</span></span></div>'
+      +'<input type="range" id="rt_f" min="1" max="60" step="1" value="'+rf+'">';
+    host.appendChild(fc);
+    document.getElementById('rt_f').addEventListener('input',e=>{ s.returnFrames=s.frames=parseInt(e.target.value); document.getElementById('vt_f').innerHTML=s.frames+'<span class="unit">f</span>'; updateHeaderMeta(); buildTimelineUI(); scheduleAutosave(); });
+  } else {
+    const prev=SEQ[activeIdx-1];
+    const maxF=Math.max(240, totalTimelineFrames()+60);
+    fc.innerHTML='<div class="lab"><span class="name">絕對 frame 位置</span><span class="val" id="vt_f">'+s.frame+'<span class="unit">f</span></span></div>'
+      +'<input type="range" id="rt_f" min="1" max="'+maxF+'" step="1" value="'+s.frame+'">'
+      +'<div class="timeline-help">上一段長度：'+Math.max(1,s.frame-prev.frame)+'f。可把 key 放到任意 frame，系統會自動排序。</div>';
+    host.appendChild(fc);
+    document.getElementById('rt_f').addEventListener('input',e=>{
+      const name=s.name;
+      setKeyFrameByName(name, parseInt(e.target.value));
+      document.getElementById('vt_f').innerHTML=(SEQ.find(x=>x.name===name)?.frame||0)+'<span class="unit">f</span>';
+      buildPhaseTabs(); buildTimingControls(); scheduleAutosave();
+    });
+  }
+
+  if(!isIdle){
+    const ic=document.createElement('label'); ic.className='ctrl';
+    ic.style.cssText='cursor:pointer;display:flex;gap:8px;align-items:center';
+    ic.innerHTML='<input type="checkbox" id="rt_imp" '+(s.impact?'checked':'')+'> <span class="name">impact(命中:無 lag · 紅框 · 放大段)</span>';
+    host.appendChild(ic);
+    document.getElementById('rt_imp').addEventListener('change',e=>{ pushHistory(); s.impact=e.target.checked; if(e.target.checked) s.tag='impact'; buildPhaseTabs(); buildTimingControls(); scheduleAutosave(); });
+  }
+
+  const lagHost=document.getElementById('lagControls'); lagHost.innerHTML='';
+  LAG_SLIDERS.forEach(([k,label])=>{
+    const c=document.createElement('div'); c.className='ctrl';
+    c.innerHTML='<div class="lab"><span class="name">'+label+'</span>'
+      +'<span class="val" id="vl_'+k+'">'+LAGS[k].toFixed(2)+'</span></div>'
+      +'<input type="range" id="rl_'+k+'" min="0" max="0.6" step="0.02" value="'+LAGS[k]+'">';
+    lagHost.appendChild(c);
+    document.getElementById('rl_'+k).addEventListener('input',e=>{
+      LAGS[k]=parseFloat(e.target.value);
+      document.getElementById('vl_'+k).textContent=LAGS[k].toFixed(2); scheduleAutosave();
+    });
+  });
+}
+
+function bindPoseSliders(){
+  POSE_KEYS.forEach(k=>{
+    const r=document.getElementById('r_'+k);
+    r.addEventListener('input',e=>{
+      const v = parseFloat(e.target.value);
+      PHASES[activePhase][k]=v; scheduleAutosave();
+      const isFloat = (k==='root_py'||k==='root_pz'||k==='sq'||k.endsWith('_idle')||k.endsWith('_scale'));
+      document.getElementById('v_'+k).innerHTML=(isFloat?v.toFixed(2):Math.round(v))+'<span class="unit">'+(r.parentElement.querySelector('.unit').textContent)+'</span>';
+    });
+  });
+}
+
+function refreshSliders(){
+  const p = PHASES[activePhase] || {};
+  POSE_KEYS.forEach(k=>{
+    const r=document.getElementById('r_'+k);
+    if(!r) return;
+    const pv = (p[k] !== undefined) ? p[k] : defaultPoseValue(k);
+    r.value = pv;
+    const isFloat = (k==='root_py'||k==='root_pz'||k==='sq'||k.endsWith('_idle')||k.endsWith('_scale'));
+    const unit = r.parentElement.querySelector('.unit').textContent;
+    document.getElementById('v_'+k).innerHTML=(isFloat?pv.toFixed(2):Math.round(pv))+'<span class="unit">'+unit+'</span>';
+  });
+}
+
+// ===== Timeline marker drag =====
+let timelineDrag = null;
+function updateDraggedKeyFrame(clientX){
+  if(!timelineDrag) return;
+  const key = SEQ.find(k=>k.name===timelineDrag.name);
+  if(!key || key.name === 'idle') return;
+  const desired = frameFromTimelineBar(clientX);
+  const dir = desired >= timelineDrag.lastDesired ? 1 : -1;
+  timelineDrag.lastDesired = desired;
+  const nextFrame = nearestFreeTimelineFrame(desired, key.name, dir);
+  if(nextFrame === key.frame && timelineDrag.didMove) return;
+  if(!timelineDrag.historyPushed){ pushHistory(); timelineDrag.historyPushed = true; }
+  timelineDrag.didMove = true;
+  key.frame = nextFrame;
+  activePhase = key.name;
+  // 拖曳中「不要」重建 timeline DOM(會把正在拖的 marker 砍掉 → 拖不動);只即時移動它 + 更新預覽
+  const displayMax = timelineDisplayMaxFrame();
+  const leftPct = Math.max(0, Math.min(100, (key.frame/displayMax)*100));
+  if(timelineDrag.el) timelineDrag.el.style.left = leftPct+'%';
+  activeIdx = SEQ.findIndex(k=>k.name===timelineDrag.name);
+  playT = (key.frame||0) / REF_FPS;
+  scrubActive = false;
+  const p = PHASES[activePhase];
+  if(p) applyPose(p);
+  const pn=document.getElementById('phasenow');
+  if(pn){ pn.textContent=activePhase.toUpperCase()+' @ '+key.frame+'F'; pn.classList.remove('playing'); }
+  const rs=document.getElementById('rscrub');
+  if(rs){ rs.value = Math.max(0, Math.min(1000, (playT / Math.max(totalTime(), 0.0001)) * 1000)); }
+  const tlph=document.querySelector('.timeline-playhead');
+  if(tlph) tlph.style.left = leftPct+'%';
+}
+function startTimelineMarkerDrag(e, name, el){
+  const key = SEQ.find(k=>k.name===name);
+  if(!key) return;
+  if(key.name === 'idle'){ setActiveKey(0); return; }
+  e.preventDefault(); e.stopPropagation();
+  if(playing){ playing=false; updateUI(); }
+  activePhase = name;
+  activeIdx = SEQ.findIndex(k=>k.name===name);
+  timelineDrag = {name, el:el||null, startX:e.clientX, lastDesired:key.frame, didMove:false, historyPushed:false};
+  const bar=document.getElementById('timelineBar'); if(bar) bar.classList.add('dragging');
+  // 注意:不在這裡呼叫 setActiveKey/buildTimelineUI — 那會重建 DOM、把剛抓住的 marker 砍掉。
+  if(el){ el.classList.add('dragging','on'); try{ el.setPointerCapture(e.pointerId); }catch(_){} }
+  window.addEventListener('pointermove', onTimelineDragMove, {passive:false});
+  window.addEventListener('pointerup', endTimelineMarkerDrag, {once:true});
+  window.addEventListener('pointercancel', endTimelineMarkerDrag, {once:true});
+}
+function onTimelineDragMove(e){
+  if(!timelineDrag) return;
+  e.preventDefault();
+  updateDraggedKeyFrame(e.clientX);
+}
+function endTimelineMarkerDrag(){
+  if(!timelineDrag) return;
+  const changed = timelineDrag.didMove;
+  const name = timelineDrag.name;
+  timelineDrag = null;
+  const bar=document.getElementById('timelineBar'); if(bar) bar.classList.remove('dragging');
+  window.removeEventListener('pointermove', onTimelineDragMove);
+  normalizeTimelineInPlace();
+  setActiveKey(SEQ.findIndex(k=>k.name===name));   // 收尾:完整選取 + 重建 timeline(此時重建才安全)
+  if(changed) scheduleAutosave();
+}
+
+// ===== 動態 phase tab(可新增/刪除/改名/排序)=====
+function buildTimelineUI(){
+  normalizeTimelineInPlace();
+  const bar=document.getElementById('timelineBar');
+  const list=document.getElementById('timelineList');
+  const info=document.getElementById('timelineInfo');
+  if(!bar || !list) return;
+  const last=Math.max(1,timelineLastFrame());
+  const total=totalTimelineFrames();
+  const displayMax=timelineDisplayMaxFrame();
+  if(info) info.textContent = `${SEQ.length} keys · ${last}f + return ${timelineReturnFrames()}f · drag markers`;
+  bar.innerHTML=''; list.innerHTML='';
+  const ph=document.createElement('div'); ph.className='timeline-playhead';
+  const pp = Math.max(0, Math.min(100, ((playT*REF_FPS)/displayMax)*100));
+  ph.style.left=pp+'%'; bar.appendChild(ph);
+  SEQ.forEach((s,i)=>{
+    const m=document.createElement('button');
+    m.className='timeline-marker '+(i===activeIdx?'on ':'')+(s.impact?'imp ':'')+(i===0?'idle ':'')+(timelineDrag&&timelineDrag.name===s.name?'dragging ':'');
+    m.style.left=(s.frame/displayMax*100)+'%';
+    m.textContent=i;
+    m.title=(i===0?`${s.name} 固定 @ 0f`:`拖曳改 frame · ${s.name} @ ${s.frame}f`);
+    m.addEventListener('click',()=>setActiveKey(i));
+    m.addEventListener('pointerdown',e=>startTimelineMarkerDrag(e,s.name,m));
+    bar.appendChild(m);
+
+    const row=document.createElement('div');
+    row.className='tkey '+(i===activeIdx?'on ':'')+(s.impact?'imp ':'');
+    row.innerHTML='<span class="fr">'+s.frame+'f</span><span class="nm">'+s.name+(s.impact?' ●':'')+'</span><span class="tag">'+(s.tag||'custom')+'</span><span class="ease">'+s.ease+'</span>';
+    row.addEventListener('click',()=>setActiveKey(i));
+    list.appendChild(row);
+  });
+}
+function buildPhaseTabs(){
+  normalizeTimelineInPlace();
+  updateHeaderMeta();
+  const host=document.getElementById('phaseTabs'); host.innerHTML='';
+  SEQ.forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.textContent=(i===0?'0':s.frame)+' '+s.name.toUpperCase()+(s.impact?' ●':'');
+    b.className=(i===activeIdx?'on':'')+(s.impact?' imp':'');
+    b.title=s.name+' @ '+s.frame+'f'+(s.impact?' (impact)':'');
+    b.addEventListener('click',()=>setActiveKey(i));
+    host.appendChild(b);
+  });
+  let tools=document.getElementById('seqTools');
+  if(!tools){ tools=document.createElement('div'); tools.id='seqTools'; tools.className='seqtools'; host.parentElement.insertBefore(tools, host.nextSibling); }
+  tools.innerHTML='';
+  const mk=(label,title,fn)=>{ const b=document.createElement('button'); b.textContent=label; b.title=title; b.addEventListener('click',fn); tools.appendChild(b); };
+  mk('➕ after','在目前 key 之後插入新 key',addKey);
+  mk('⧉ duplicate','複製目前 key 到下一格',duplicateKey);
+  mk('＋ scrub','在 scrub/playhead 位置插入 key',insertKeyAtScrub);
+  mk('✕ delete','刪除目前 key(idle 不可刪)',delKey);
+  mk('✎ rename','重新命名目前 key',renameKey);
+  mk('◀ frame','與前一個 key 交換 frame',()=>moveKey(-1));
+  mk('▶ frame','與後一個 key 交換 frame',()=>moveKey(1));
+  buildTimelineUI();
+}
+function setActiveKey(i){
+  normalizeTimelineInPlace();
+  activeIdx=Math.max(0,Math.min(SEQ.length-1,i));
+  activePhase=SEQ[activeIdx].name;
+  scrubActive=false;
+  buildPhaseTabs();
+  buildTimingControls();
+  refreshSliders();
+}
+function setPhaseTab(name){ const i=SEQ.findIndex(s=>s.name===name); setActiveKey(i>=0?i:activeIdx); }
+function createKeyAfter(srcName, frame, options={}){
+  normalizeTimelineInPlace();
+  const src = SEQ.find(s=>s.name===srcName) || SEQ[activeIdx] || SEQ[0];
+  const base = options.name || src.name.replace(/_\d+$/,'') + '_key';
+  const name = uniqueKeyName(base);
+  const srcPose = PHASES[src.name] || ZERO_POSE;
+  PHASES[name] = {...srcPose};
+  const newKey = {name, frame:Math.max(1,Math.round(frame)), frames:5, ease:options.ease||src.ease||'in', impact:!!options.impact, tag:options.tag||tagFromName(name, !!options.impact)};
+  SEQ.push(newKey);
+  activePhase=name; normalizeTimelineInPlace();
+  return SEQ.findIndex(s=>s.name===name);
+}
+function addKey(){
+  pushHistory();
+  normalizeTimelineInPlace();
+  const cur=SEQ[activeIdx];
+  const next=SEQ[activeIdx+1];
+  let frame;
+  if(next && next.frame-cur.frame>1) frame=Math.floor((cur.frame+next.frame)/2);
+  else { frame=cur.frame+5; SEQ.forEach(k=>{ if(k.frame>=frame) k.frame+=5; }); }
+  const idx=createKeyAfter(cur.name, frame, {tag:cur.tag});
+  setActiveKey(idx); scheduleAutosave();
+}
+function duplicateKey(){
+  pushHistory();
+  normalizeTimelineInPlace();
+  const cur=SEQ[activeIdx];
+  const newFrame=cur.frame+3;
+  SEQ.forEach(k=>{ if(k.name!==cur.name && k.frame>=newFrame) k.frame+=3; });
+  const idx=createKeyAfter(cur.name, newFrame, {name:cur.name+'_copy', ease:cur.ease, impact:cur.impact, tag:cur.tag});
+  setActiveKey(idx); scheduleAutosave();
+}
+function insertKeyAtScrub(){
+  pushHistory();
+  const frame = Math.max(1, Math.round(playT * REF_FPS));
+  const r=getPlayPose();
+  const pose = r ? r.pose : PHASES[activePhase];
+  const name = uniqueKeyName('key_'+frame);
+  PHASES[name] = {...pose};
+  SEQ.push({name, frame, frames:5, ease:'in', impact:false, tag:'custom'});
+  activePhase=name; normalizeTimelineInPlace();
+  setActiveKey(SEQ.findIndex(s=>s.name===name)); scheduleAutosave();
+}
+function delKey(){
+  if(activeIdx===0 || SEQ.length<=2) return;
+  pushHistory();
+  const nm=SEQ[activeIdx].name; SEQ.splice(activeIdx,1);
+  if(nm!=='idle') delete PHASES[nm];
+  normalizeTimelineInPlace();
+  setActiveKey(Math.min(activeIdx, SEQ.length-1)); scheduleAutosave();
+}
+function renameKey(){
+  const cur=SEQ[activeIdx]; const nn=cleanKeyName(prompt('key 名稱(英數/底線):', cur.name)||'', '');
+  if(!nn || nn===cur.name) return;
+  if(SEQ.some(s=>s.name===nn)){ alert('名稱已存在'); return; }
+  pushHistory();
+  PHASES[nn]=PHASES[cur.name]; delete PHASES[cur.name];
+  cur.name=nn; activePhase=nn; setActiveKey(activeIdx); scheduleAutosave();
+}
+function moveKey(d){
+  if(activeIdx===0) return;
+  normalizeTimelineInPlace();
+  const j=activeIdx+d; if(j<1 || j>=SEQ.length) return;
+  pushHistory();
+  const cur=SEQ[activeIdx], other=SEQ[j];
+  const f=cur.frame; cur.frame=other.frame; other.frame=f;
+  activePhase=cur.name; normalizeTimelineInPlace(); setActiveKey(SEQ.findIndex(s=>s.name===cur.name)); scheduleAutosave();
+}
+
+function updateUI(){
+  document.getElementById('playBtn').textContent = playing ? '■ STOP' : '▶ PLAY';
+  document.getElementById('playBtn').classList.toggle('stop', playing);
+  document.getElementById('modeBadge').textContent = 'MODE：' + (playing?'PLAY':'EDIT');
+}
+
+// ===== Bindings =====
+buildPoseGroups();
+buildPropPanel();
+bindPoseSliders();
+buildPhaseTabs();
+setActiveKey(Math.min(activeIdx || 1, SEQ.length-1));  // 預設編輯 anti；若有 autosave 則沿用索引
+// slider 拖曳前先記 undo，拖曳中只 autosave，避免 undo stack 爆量
+let _rangeHistoryArmed = false;
+document.addEventListener('pointerdown',e=>{
+  if(e.target && e.target.matches && e.target.matches('input[type=range]')){ pushHistory(); _rangeHistoryArmed = true; }
+}, true);
+document.addEventListener('pointerup',()=>{ if(_rangeHistoryArmed){ _rangeHistoryArmed=false; scheduleAutosave(); } }, true);
+// timing / lag reset(一次性綁定,避免重複堆疊)
+const _rtT=document.querySelector('.reset-btn[data-r="timing"]');
+if(_rtT) _rtT.addEventListener('click',()=>{ pushHistory(); const s=SEQ[activeIdx]; if(activeIdx===0){ s.frames=s.returnFrames=DEFAULT_RETURN_FRAMES; } else { const prev=SEQ[activeIdx-1]; setKeyFrameByName(s.name, (prev?prev.frame:0)+6); } buildPhaseTabs(); buildTimingControls(); scheduleAutosave(); });
+const _rtL=document.querySelector('.reset-btn[data-r="lags"]');
+if(_rtL) _rtL.addEventListener('click',()=>{ pushHistory(); Object.assign(LAGS,DEFAULT_LAGS); buildTimingControls(); scheduleAutosave(); });
+
+let rebuildQueued = false;
+function scheduleRebuild(){
+  if(rebuildQueued) return;
+  rebuildQueued = true;
+  requestAnimationFrame(()=>{
+    rebuildQueued = false;
+    rebuildCharacter();
+    scheduleAutosave();
+  });
+}
+
+// 比例 PROPORTIONS 面板:改尺寸即時重建模型(獨立於 pose schema)
+function buildPropPanel(){
+  const PROP=[
+    ['headSize','頭大小',0.5,1.2,0.01],
+    ['bodyH','軀幹高',0.4,1.2,0.01],
+    ['bodyW','軀幹寬',0.5,1.2,0.01],
+    ['bodyD','軀幹深',0.3,0.9,0.01],
+    ['armUpper','上臂長(共用)',0.2,0.6,0.01],
+    ['armLower','前臂長(共用)',0.2,0.6,0.01],
+    ['armThick','手臂粗細',0.6,1.6,0.01],
+    ['armLenL','左臂長度倍率',0.4,2.0,0.01],
+    ['armLenR','右臂長度倍率',0.4,2.0,0.01],
+    ['legUpper','大腿長',0.25,0.7,0.01],
+    ['legLower','小腿長',0.25,0.7,0.01],
+    ['legThick','腿粗細',0.6,1.6,0.01],
+    ['fist','拳大小',0.6,1.8,0.01],
+    ['shoe','鞋大小',0.6,1.8,0.01],
+    ['shoulderDrop','肩下移(肩pivot=bodyTop-此值)',0.0,0.4,0.005],
+    ['legSpread','髖橫距(髖pivot x=±此值)',0.10,0.40,0.005]
+  ];
+  const host=document.getElementById('propGroups'); if(!host) return; host.innerHTML='';
+  const div=document.createElement('div'); div.className='group';
+  div.innerHTML='<h3>比例 PROPORTIONS(角色結構)<button class="reset-btn" id="propReset">reset</button></h3>';
+  PROP.forEach(([k,label,min,max,step])=>{
+    const c=document.createElement('div'); c.className='ctrl';
+    c.innerHTML='<div class="lab"><span class="name">'+label+'</span>'
+      +'<span class="val" id="vp_'+k+'">'+DIM[k].toFixed(2)+'</span></div>'
+      +'<input type="range" id="rp_'+k+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+DIM[k]+'">';
+    div.appendChild(c);
+  });
+  host.appendChild(div);
+  PROP.forEach(([k])=>{
+    const r=document.getElementById('rp_'+k);
+    r.addEventListener('input',()=>{ DIM[k]=parseFloat(r.value); document.getElementById('vp_'+k).textContent=DIM[k].toFixed(2); scheduleRebuild(); });
+  });
+  document.getElementById('propReset').addEventListener('click',()=>{ pushHistory(); Object.assign(DIM,DIM_DEFAULTS); buildPropPanel(); rebuildCharacter(); scheduleAutosave(); });
+}
+
+// phase tab 由 buildPhaseTabs() 動態產生並綁定
+
+// 白模觀察:全部 mesh 改白底,邊改純黑(關閉時還原各部件原色)
+let whiteModel=false;
+function applyWhiteModel(on){
+  whiteModel=on;
+  root.traverse(o=>{
+    if(o.isMesh && o.material){
+      const m=o.material;
+      if(m.userData.keepColor) return;   // 珊瑚朝向標記:白模下保持原色,方便驗證
+      if(m.userData.orig===undefined) m.userData.orig=m.color.getHex();
+      m.color.setHex(on ? 0xffffff : m.userData.orig);
+    } else if(o.isLineSegments && o.material){
+      o.material.color.setHex(on ? 0x000000 : 0x0b0b12);
+    }
+  });
+}
+document.getElementById('whiteToggle').addEventListener('change',e=>applyWhiteModel(e.target.checked));
+document.getElementById('axesToggle').addEventListener('change',e=>{ axes.visible=e.target.checked; });
+document.getElementById('markerToggle').addEventListener('change',e=>{ markersOn=e.target.checked; MARKERS.forEach(m=>m.visible=markersOn); });
+
+document.getElementById('playBtn').addEventListener('click',()=>{
+  ensureAudio();   // 在使用者手勢內解鎖音效(瀏覽器要求)
+  if(playing){playing=false;}
+  else{playing=true; playT=0; scrubActive=false; wasImpact=false;}
+  updateUI();
+});
+const slowBtn=document.getElementById('slowBtn');
+slowBtn.classList.add('on');
+slowBtn.addEventListener('click',()=>{slowOn=!slowOn; slowBtn.classList.toggle('on',slowOn);});
+const loopBtn=document.getElementById('loopBtn');
+loopBtn.addEventListener('click',()=>{loop=!loop; loopBtn.classList.toggle('on',loop);});
+
+// preset 載入
+function loadCombo8(){
+  const b = makePhasesFromPreset('cross');
+  PHASES = {
+    idle:{...b.idle}, anti_1:{...b.anti}, impact_1:{...b.impact},
+    transfer:{...b.strike}, impact_2:{...b.impact}, recoil:{...b.anti},
+    impact_3:{...b.impact}, recovery:{...b.recovery}
+  };
+  SEQ = [
+    {name:'idle',     frames:10, ease:'out', impact:false},
+    {name:'anti_1',   frames:7,  ease:'out', impact:false},
+    {name:'impact_1', frames:4,  ease:'in',  impact:true },
+    {name:'transfer', frames:6,  ease:'out', impact:false},
+    {name:'impact_2', frames:4,  ease:'in',  impact:true },
+    {name:'recoil',   frames:7,  ease:'out', impact:false},
+    {name:'impact_3', frames:5,  ease:'in',  impact:true },
+    {name:'recovery', frames:12, ease:'out', impact:false}
+  ];
+  normalizeTimelineInPlace();
+}
+document.getElementById('presetSel').addEventListener('change',e=>{
+  const v=e.target.value;
+  if(!v) return;
+  pushHistory();
+  if(v==='combo8'){ loadCombo8(); }
+  else { PHASES = makePhasesFromPreset(v); SEQ = DEFAULT_SEQ.map(s=>({...s})); }
+  normalizeTimelineInPlace(); buildPhaseTabs(); setActiveKey(Math.min(1, SEQ.length-1)); scheduleAutosave();
+  e.target.value = '';
+});
+
+// mirror L<->R (swap aL/aR, lL/lR, negate Y rotations)
+function mirrorPose(p){
+  const swap=(a,b)=>{const t=p[a]; p[a]=p[b]; p[b]=t;};
+  swap('aL_sx','aR_sx'); swap('aL_sz','aR_sz'); swap('aL_ex','aR_ex'); swap('aL_idle','aR_idle'); swap('aL_scale','aR_scale'); swap('aL_wx','aR_wx');
+  swap('lL_hx','lR_hx'); swap('lL_hy','lR_hy'); swap('lL_hz','lR_hz'); swap('lL_kx','lR_kx'); swap('lL_ax','lR_ax'); swap('lL_idle','lR_idle'); swap('lL_scale','lR_scale'); swap('lL_contact','lR_contact'); swap('lL_ty','lR_ty');
+  // Y 軸鏡像時要反號
+  const tmpY = p.aL_sy; p.aL_sy = -(p.aR_sy||0); p.aR_sy = -(tmpY||0);
+  const tmpWy = p.aL_wy||0; p.aL_wy = -(p.aR_wy||0); p.aR_wy = -tmpWy;
+  // root twist 與 head_y 也反號
+  p.root_y = -(p.root_y||0);
+  p.spine_y = -(p.spine_y || 0);
+  p.pelvis_y = -(p.pelvis_y || 0);
+  p.head_y = -(p.head_y || 0);
+}
+document.getElementById('mirrorBtn').addEventListener('click',()=>{
+  pushHistory();
+  mirrorPose(PHASES[activePhase]);
+  refreshSliders(); scheduleAutosave();
+});
+// 整段鏡像:時間軸上所有 key 一起鏡像 + LAGS 左右交換(右拳出擊 → 左拳出擊)
+document.getElementById('mirrorAllBtn').addEventListener('click',()=>{
+  pushHistory();
+  Object.keys(PHASES).forEach(k=>mirrorPose(PHASES[k]));
+  let t=LAGS.aL; LAGS.aL=LAGS.aR; LAGS.aR=t;
+  t=LAGS.lL; LAGS.lL=LAGS.lR; LAGS.lR=t;
+  Object.keys(LAGS).forEach(k=>{
+    const r=document.getElementById('rl_'+k), v=document.getElementById('vl_'+k);
+    if(r)r.value=LAGS[k]; if(v)v.textContent=LAGS[k].toFixed(2);
+  });
+  refreshSliders(); scheduleAutosave();
+  const btn=document.getElementById('mirrorAllBtn'); const orig=btn.textContent;
+  btn.textContent='✓ 已鏡像 '+Object.keys(PHASES).length+' 個 key + lag';
+  setTimeout(()=>{btn.textContent=orig;}, 1600);
+});
+
+// copy from another phase
+document.getElementById('copyBtn').addEventListener('click',()=>{
+  const host=document.getElementById('copyChoices'); host.innerHTML='';
+  SEQ.map(s=>s.name).forEach(ph=>{
+    if(ph===activePhase) return;
+    const b=document.createElement('button'); b.textContent=ph.toUpperCase();
+    b.addEventListener('click',()=>{
+      pushHistory();
+      PHASES[activePhase] = {...PHASES[ph]};
+      refreshSliders(); scheduleAutosave();
+      document.getElementById('copyModal').classList.remove('show');
+    });
+    host.appendChild(b);
+  });
+  document.getElementById('copyModal').classList.add('show');
+});
+document.getElementById('closeCopyModal').addEventListener('click',()=>document.getElementById('copyModal').classList.remove('show'));
+
+// 填入站架(GOOFY_IDLE):把目前 phase 一鍵填回乾淨戰鬥站姿。
+// 先鋪 ZERO_POSE(把 scale 歸 1、idle 比例歸 0),再覆蓋站架姿勢 → 真正乾淨的起點。
+// 主要給 recovery 當誇張旋身/收招的編輯基準,但任何 phase 都能用。
+document.getElementById('goofyBtn').addEventListener('click',()=>{
+  pushHistory();
+  Object.assign(PHASES[activePhase], {...ZERO_POSE, ...GOOFY_IDLE});
+  refreshSliders(); scheduleAutosave();
+});
+
+// ===== Contact sheet 擷取 =====
+// 給 AI 診斷用:沿 anti→recovery 等距取樣「插值後」的姿勢(看得到動作路徑,不只 key pose),
+// 每格同時 front + 左側兩個角度(讀得出繞垂直軸的扭轉/景深),並標上 phase / 進度。
+// 直接把 WebGL canvas drawImage 到 2D 合成畫布 → 輸出單張 PNG 下載。
+function captureContactSheet(){
+  const N = 10;                       // 時間軸取樣格數
+  const capW = 300, capH = 360;       // 每個 view 的渲染解析度
+  const cellW = 165, cellH = 198;     // contact sheet 上每格繪製尺寸
+  const padL = 80, padT = 60, rowGap = 28;
+  const sheetW = padL + N*cellW + 12;
+  const sheetH = padT + cellH + rowGap + cellH + 26;
+
+  // 沿用 getPlayPose 的相位時間算總時長
+  const total = totalTime();
+
+  // 備份狀態(try/finally 保證還原)
+  const oldPlayT = playT, oldPlaying = playing;
+  const oldSize = new THREE.Vector2(); renderer.getSize(oldSize);
+  const oldAspect = camera.aspect;
+
+  const sheet = document.createElement('canvas');
+  sheet.width = sheetW; sheet.height = sheetH;
+  const x = sheet.getContext('2d');
+  x.fillStyle = '#0b0b12'; x.fillRect(0,0,sheetW,sheetH);
+  x.textBaseline = 'middle';
+
+  try{
+    playing = false;
+    renderer.setSize(capW, capH, false);
+    camera.aspect = capW/capH; camera.updateProjectionMatrix();
+
+    // 擷取相機:固定角度 — FRONT=正對 +Z 正面;SIDE=從左側 -X 看(出拳手朝鏡頭),略俯視
+    const capTarget = new THREE.Vector3(0, 1.0, 0);
+    const capRadius = 5.2, capPhi = 1.22;
+    const setCapCam = (theta)=>{
+      camera.position.set(
+        capTarget.x + capRadius*Math.sin(capPhi)*Math.sin(theta),
+        capTarget.y + capRadius*Math.cos(capPhi),
+        capTarget.z + capRadius*Math.sin(capPhi)*Math.cos(theta)
+      );
+      camera.lookAt(capTarget);
+    };
+    const ANGLES = [['FRONT', 0], ['SIDE(左)', -Math.PI/2]];
+
+    // 標題:keyorder / frames / lag 一起記在圖上,我才知道你截圖當下的設定
+    x.fillStyle = '#13e0d4'; x.font = 'bold 15px monospace';
+    x.fillText('punch_studio  ·  '
+      + SEQ.map(k=>k.name+(k.impact?'*':'')+':'+k.frames+'f').join('  ')
+      + '  ·  lag '+LAGS.aL+'/'+LAGS.aR+'/'+LAGS.lL+'/'+LAGS.lR, 12, 24);
+
+    for(let r=0; r<ANGLES.length; r++){
+      const [angName, angTheta] = ANGLES[r];
+      setCapCam(angTheta);
+      const rowY = padT + r*(cellH + rowGap);
+      // 直排列標籤
+      x.save(); x.translate(16, rowY + cellH/2); x.rotate(-Math.PI/2);
+      x.fillStyle = '#ffd23f'; x.font = 'bold 14px monospace'; x.textAlign = 'center';
+      x.fillText(angName, 0, 0); x.restore(); x.textAlign = 'left';
+
+      for(let i=0; i<N; i++){
+        const t = Math.min((i/(N-1))*total, total - 1e-4);
+        playT = t;
+        const res = getPlayPose();
+        if(res){ applyPose(res.pose); }
+        renderer.render(scene, camera);
+        const cx = padL + i*cellW;
+        x.fillStyle = '#15151f'; x.fillRect(cx+2, rowY, cellW-4, cellH);
+        x.drawImage(renderer.domElement, cx+2, rowY, cellW-4, cellH);
+        const isImpact = res && res.isImpact;
+        x.strokeStyle = isImpact ? '#ff2e6e' : '#2e2e44';
+        x.lineWidth = isImpact ? 2 : 1;
+        x.strokeRect(cx+2.5, rowY+0.5, cellW-5, cellH-1);
+        if(r===0){ // 只在上排標 phase + 進度
+          x.fillStyle = '#c9c9e0'; x.font = '11px monospace';
+          x.fillText((res?res.phase:'-')+' '+Math.round((t/total)*100)+'%', cx+6, rowY-10);
+        }
+      }
+    }
+  } finally {
+    renderer.setSize(oldSize.x, oldSize.y, false);
+    camera.aspect = oldAspect; camera.updateProjectionMatrix();
+    placeCam();
+    playT = oldPlayT; playing = oldPlaying;
+  }
+
+  const a = document.createElement('a');
+  a.download = 'punch_contact_sheet.png';
+  a.href = sheet.toDataURL('image/png');
+  a.click();
+}
+document.getElementById('captureBtn').addEventListener('click', captureContactSheet);
+
+// Export
+function exportGd(){
+  let s='# PUNCH STUDIO export — variable-length keyframe sequence\n';
+  s+='# keyorder = 播放順序;每 key 一塊 pose(POSE_KEYS 軸)+ frame/ease/impact 參數\n';
+  s+='# frame.KEY = 絕對時間軸幀位;frames.KEY = 舊相容段長;idle.frames = 收尾回 idle 時長\n';
+  s+='# *_idle(0..1)該肢體回 idle 比例;*_scale(預設1)mesh 縮放(GetAmped 命中放大/縮身)\n';
+  s+='\nkeyorder = '+SEQ.map(k=>k.name).join(',')+'\n';
+  const _cn=SEQ.find(k=>k.cancel);
+  s+='# cancel point: '+(_cn?(_cn.name+' @ frame '+(_cn.frame||0)):'(未設定)')+' — 引擎可從此 key 取消接下一招\n';
+  SEQ.forEach(k=>{
+    s+='\n# === '+k.name.toUpperCase()+(k.impact?'  (impact)':'')+(k.cancel?'  (cancel)':'')+' ===\n';
+    s+='frame.'+k.name+' = '+(k.frame||0)+'\n';
+    s+='frames.'+k.name+' = '+k.frames+'\n';
+    s+='ease.'+k.name+' = '+k.ease+'\n';
+    s+='impact.'+k.name+' = '+(k.impact?'1':'0')+'\n';
+    s+='cancel.'+k.name+' = '+(k.cancel?'1':'0')+'\n';
+    const p=PHASES[k.name]||{};
+    POSE_KEYS.forEach(key=>{
+      const isFloat=(key==='root_py'||key==='root_pz'||key==='sq'||key.endsWith('_idle')||key.endsWith('_scale'));
+      const val=(p[key]!==undefined)?p[key]:defaultPoseValue(key);
+      s+=k.name+'.'+key+' = '+(isFloat?val.toFixed(3):val.toFixed(1))+'\n';
+    });
+  });
+  s+='\n# === LAG ===\n';
+  Object.keys(LAGS).forEach(k=>{s+='lag.'+k+' = '+LAGS[k].toFixed(3)+'\n';});
+  s+='\n# === PROPORTIONS(整角色一份)===\n';
+  Object.keys(DIM).forEach(k=>{s+='dim.'+k+' = '+DIM[k].toFixed(3)+'\n';});
+  return s;
+}
+function showExport(text, title, help){
+  const titleEl=document.querySelector('#modal h4');
+  const helpEl=document.getElementById('modalHelp');
+  if(titleEl) titleEl.textContent=title;
+  if(helpEl) helpEl.textContent=help;
+  document.getElementById('modalText').value=text;
+  document.getElementById('modal').classList.add('show');
+  document.getElementById('modalText').select();
+  try{navigator.clipboard.writeText(text);}catch(e){}
+}
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  showExport(exportGd(), 'Export · Godot text', 'Godot 文字格式：適合貼到引擎端；長期保存建議另存 JSON。');
+});
+document.getElementById('jsonExportBtn').addEventListener('click',()=>{
+  showExport(exportJson(), 'Export · JSON project', 'JSON 是推薦保存格式：包含 sequence、pose、lag、角色比例，可直接再匯入。');
+});
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('redoBtn').addEventListener('click', redo);
+updateHistoryButtons();
+document.getElementById('copyText').addEventListener('click',()=>{document.getElementById('modalText').select();try{navigator.clipboard.writeText(document.getElementById('modalText').value);}catch(e){}});
+document.getElementById('closeModal').addEventListener('click',()=>document.getElementById('modal').classList.remove('show'));
+document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')document.getElementById('modal').classList.remove('show')});
+
+// ===== 匯入 EXPORT 文字 → 還原 PHASES / FRAMES / LAGS / DIM =====
+function importGd(text, phases, allowMeta){
+  pushHistory();
+  const poseSet = new Set(POSE_KEYS);
+  let applied=0, skipped=0;
+  const lines = text.split('\n').map(l=>l.trim());
+
+  // 1) 先掃 keyorder / frames / ease / impact
+  let newOrder=null;
+  const frMap={}, frameMap={}, easeMap={}, impMap={}, cnMap={};
+  lines.forEach(l=>{
+    let m;
+    if((m=l.match(/^keyorder\s*=\s*(.+)$/))) newOrder=m[1].split(',').map(x=>x.trim()).filter(Boolean);
+    else if((m=l.match(/^frame\.(\w+)\s*=\s*(-?[0-9.]+)/))) frameMap[m[1]]=Math.round(parseFloat(m[2]));
+    else if((m=l.match(/^frames\.(\w+)\s*=\s*(-?[0-9.]+)/))) frMap[m[1]]=Math.round(parseFloat(m[2]));
+    else if((m=l.match(/^ease\.(\w+)\s*=\s*(\w+)/))) easeMap[m[1]]=m[2];
+    else if((m=l.match(/^impact\.(\w+)\s*=\s*(-?[0-9.]+)/))) impMap[m[1]]=(parseFloat(m[2])>0.5);
+    else if((m=l.match(/^cancel\.(\w+)\s*=\s*(-?[0-9.]+)/))) cnMap[m[1]]=(parseFloat(m[2])>0.5);
+  });
+
+  // 2) 重建 / 更新 SEQ
+  if(newOrder && allowMeta){
+    SEQ = newOrder.map((nm,i)=>({
+      name:nm,
+      frame: frameMap[nm],
+      frames: frMap[nm]!==undefined?frMap[nm]:(i===0?10:6),
+      ease: easeMap[nm]||(i===0?'out':'in'),
+      impact: impMap[nm]!==undefined?impMap[nm]:false,
+      cancel: cnMap[nm]!==undefined?cnMap[nm]:false
+    }));
+    newOrder.forEach(nm=>{ if(!PHASES[nm]){ PHASES[nm]={}; POSE_KEYS.forEach(k=>PHASES[nm][k]=defaultPoseValue(k)); } });
+  } else if(allowMeta){
+    SEQ.forEach(s=>{ if(frameMap[s.name]!==undefined)s.frame=frameMap[s.name]; if(frMap[s.name]!==undefined)s.frames=frMap[s.name]; if(easeMap[s.name])s.ease=easeMap[s.name]; if(impMap[s.name]!==undefined)s.impact=impMap[s.name]; if(cnMap[s.name]!==undefined)s.cancel=cnMap[s.name]; });
+    normalizeTimelineInPlace();
+  }
+
+  const order = newOrder || SEQ.map(s=>s.name);
+  const nameSet = new Set(order);
+  const gateByCheckbox = !newOrder;   // 新格式(有 keyorder)→ 全套用;舊格式 → 尊重勾選
+
+  // 3) pose / lag / dim 行
+  lines.forEach(line=>{
+    if(!line || line.startsWith('#')) return;
+    const m = line.match(/^(\w+)\.(\w+)\s*=\s*(-?[0-9.]+)/);
+    if(!m){ if(line.indexOf('=')>=0 && !/^(keyorder|ease|frame)\b/.test(line)) skipped++; return; }
+    const prefix=m[1], field=m[2], v=parseFloat(m[3]);
+    if(prefix==='keyorder'||prefix==='ease'||prefix==='frames'||prefix==='frame'||prefix==='impact'||prefix==='cancel') return; // 已處理
+    if(prefix==='lag'){ if(allowMeta && Object.prototype.hasOwnProperty.call(LAGS,field)){ LAGS[field]=v; applied++; } else skipped++; return; }
+    if(prefix==='dim'){ if(allowMeta && Object.prototype.hasOwnProperty.call(DIM,field)){ DIM[field]=v; applied++; } else skipped++; return; }
+    if(nameSet.has(prefix)){
+      const ok = (!gateByCheckbox || phases.has(prefix)) && poseSet.has(field) && isFinite(v);
+      if(ok){
+        if(!PHASES[prefix]){ PHASES[prefix]={}; POSE_KEYS.forEach(k=>PHASES[prefix][k]=defaultPoseValue(k)); }
+        PHASES[prefix][field]=v; applied++;
+      } else skipped++;
+    } else skipped++;
+  });
+
+  rebuildCharacter();
+  buildPropPanel();
+  buildPhaseTabs();
+  if(activeIdx>=SEQ.length) activeIdx=SEQ.length-1;
+  setActiveKey(activeIdx);
+  scheduleAutosave();
+  return {applied, skipped, type:'godot'};
+}
+document.getElementById('importBtn').addEventListener('click',()=>{
+  document.getElementById('importText').value='';
+  document.getElementById('importModal').classList.add('show');
+  document.getElementById('importText').focus();
+});
+document.getElementById('importApply').addEventListener('click',()=>{
+  const txt=document.getElementById('importText').value;
+  if(!txt.trim()){ return; }
+  const phases=new Set([...document.querySelectorAll('.impPh:checked')].map(c=>c.value));
+  const allowMeta=document.getElementById('impMeta').checked;
+  let res;
+  try{
+    const _app=document.getElementById('impAppend').checked;
+    res = txt.trim().startsWith('{') ? (_app?appendJson(txt):importJson(txt)) : importGd(txt, phases, allowMeta);
+  }catch(err){
+    alert('匯入失敗：' + err.message);
+    return;
+  }
+  document.getElementById('importModal').classList.remove('show');
+  const btn=document.getElementById('importBtn'); const orig=btn.textContent;
+  btn.textContent='✓ 匯入 '+(res.type==='json'?'JSON ':'')+res.applied+' 筆'+(res.skipped?'(略過 '+res.skipped+')':''); 
+  setTimeout(()=>{btn.textContent=orig;}, 1800);
+});
+document.getElementById('closeImportModal').addEventListener('click',()=>document.getElementById('importModal').classList.remove('show'));
+document.getElementById('importModal').addEventListener('click',e=>{if(e.target.id==='importModal')document.getElementById('importModal').classList.remove('show')});
+document.getElementById('copyModal').addEventListener('click',e=>{if(e.target.id==='copyModal')document.getElementById('copyModal').classList.remove('show')});
+
+// 鍵盤
+window.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey) && e.code==='KeyZ'){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); return; }
+  if((e.ctrlKey||e.metaKey) && e.code==='KeyY'){ e.preventDefault(); redo(); return; }
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  if(e.code==='Space'){e.preventDefault(); document.getElementById('playBtn').click();}
+  else if(e.code.startsWith('Digit')){ const n=parseInt(e.code.slice(5)); if(n>=1 && n<=SEQ.length){ setActiveKey(n-1); } }
+});
+
+function resize(){const r=canvas.parentElement.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); camera.aspect=r.width/r.height; camera.updateProjectionMatrix();}
+window.addEventListener('resize',resize); resize();
+
+// ===== 參考疊圖(onion-skin)===== 純視覺輔助,完全不碰 pose schema
+const refImg=document.getElementById('refImg');
+const refVid=document.getElementById('refVid');
+const refState={x:0,y:0,scale:1,flip:false,opacity:0.5};
+let refSrc=null;     // 目前「靜態」參考圖(data URL,可序列化 → 綁進 view)
+let refKind=null;    // null | 'image' | 'video'(影片只供即時 scrub 找幀;存 view 時烘成靜圖)
+let refAlignOn=false, refDrag=false, _rpx=0,_rpy=0;
+function applyRef(){
+  const sx=refState.scale*(refState.flip?-1:1);
+  const t='translate('+refState.x+'px,'+refState.y+'px) scale('+sx+','+refState.scale+')';
+  [refImg, refVid].forEach(el=>{ if(!el)return; el.style.opacity=refState.opacity; el.style.transform=t; });
+}
+function setRefUI(){
+  document.getElementById('r_refop').value=refState.opacity;
+  document.getElementById('v_refop').textContent=refState.opacity.toFixed(2);
+  document.getElementById('refFlip').classList.toggle('on',refState.flip);
+}
+function hideVideo(){
+  if(!refVid) return;
+  try{ refVid.pause(); }catch(e){}
+  refVid.removeAttribute('src'); try{ refVid.load(); }catch(e){}
+  refVid.style.display='none';
+  document.getElementById('refVidScrubWrap').style.display='none';
+  document.getElementById('refVidTime').textContent='—';
+}
+// 目前參考 → 可存物件(影片烘「目前那一幀」成靜圖;靜圖直接給);無則 null
+function curRef(){
+  if(refKind==='video' && refVid.videoWidth){
+    try{
+      const c=document.createElement('canvas'); c.width=refVid.videoWidth; c.height=refVid.videoHeight;
+      c.getContext('2d').drawImage(refVid,0,0);
+      return {src:c.toDataURL('image/jpeg',0.85), x:refState.x, y:refState.y, scale:refState.scale, flip:refState.flip, opacity:refState.opacity};
+    }catch(e){}
+  }
+  return refSrc ? {src:refSrc, x:refState.x, y:refState.y, scale:refState.scale, flip:refState.flip, opacity:refState.opacity} : null;
+}
+// 把某 view 的(靜態)參考圖套上畫面;切視角一律回靜圖模式
+function showRef(ref){
+  hideVideo();
+  if(ref && ref.src){
+    refKind='image'; refSrc=ref.src; refImg.src=ref.src; refImg.style.display='block';
+    refState.x=ref.x||0; refState.y=ref.y||0; refState.scale=ref.scale||1; refState.flip=!!ref.flip;
+    if(ref.opacity!=null) refState.opacity=ref.opacity;
+  } else {
+    refKind=null; refSrc=null; refImg.removeAttribute('src'); refImg.style.display='none';
+    refState.x=0; refState.y=0; refState.scale=1; refState.flip=false;
+  }
+  setRefUI(); applyRef();
+}
+// ── 靜態參考圖 ──
+document.getElementById('refFile').addEventListener('change',e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    hideVideo();
+    refKind='image'; refSrc=rd.result; refImg.src=refSrc; refImg.style.display='block';
+    if(refState.opacity<0.05) refState.opacity=0.5;
+    setRefUI(); applyRef();
+  };
+  rd.readAsDataURL(f);
+  e.target.value='';   // 允許重新載入同一個檔案
+});
+// ── 參考影片(scrub 找幀;存 view 時由 curRef 烘成靜圖)──
+document.getElementById('refVidFile').addEventListener('change',e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f)return;
+  refImg.style.display='none'; refSrc=null;        // 關靜圖
+  refKind='video';
+  refVid.src=URL.createObjectURL(f); refVid.style.display='block';
+  if(refState.opacity<0.05) refState.opacity=0.5;
+  document.getElementById('refVidScrubWrap').style.display='';
+  refVid.addEventListener('loadedmetadata',()=>{ updateVidTime(); applyRef(); },{once:true});
+  setRefUI(); applyRef();
+  e.target.value='';
+});
+const refVidScrub=document.getElementById('refVidScrub');
+function updateVidTime(){
+  const d=refVid.duration||0, t=refVid.currentTime||0;
+  document.getElementById('refVidLbl').textContent=t.toFixed(2)+'s';
+  document.getElementById('refVidTime').textContent=t.toFixed(2)+' / '+(isFinite(d)?d.toFixed(2):'?')+'s';
+  if(isFinite(d)&&d>0 && document.activeElement!==refVidScrub) refVidScrub.value=Math.round(t/d*1000);
+}
+refVidScrub.addEventListener('input',()=>{ if(refKind==='video'&&isFinite(refVid.duration)) refVid.currentTime=(refVidScrub.value/1000)*refVid.duration; });
+refVid.addEventListener('seeked',updateVidTime);
+refVid.addEventListener('timeupdate',updateVidTime);
+function stepFrame(dir){ if(refKind!=='video'||!isFinite(refVid.duration))return; const fps=30; refVid.currentTime=Math.max(0,Math.min(refVid.duration,(refVid.currentTime||0)+dir/fps)); }
+document.getElementById('refVidPrev').addEventListener('click',()=>stepFrame(-1));
+document.getElementById('refVidNext').addEventListener('click',()=>stepFrame(1));
+// ── 共用:opacity / 翻轉 / 清除 / 對齊 ──
+document.getElementById('r_refop').addEventListener('input',e=>{ refState.opacity=parseFloat(e.target.value); document.getElementById('v_refop').textContent=refState.opacity.toFixed(2); applyRef(); });
+document.getElementById('refFlip').addEventListener('click',e=>{ refState.flip=!refState.flip; e.target.classList.toggle('on',refState.flip); applyRef(); });
+document.getElementById('refClear').addEventListener('click',()=>{ hideVideo(); refKind=null; refSrc=null; refImg.removeAttribute('src'); refImg.style.display='none'; refState.x=0; refState.y=0; refState.scale=1; refState.flip=false; document.getElementById('refFlip').classList.remove('on'); applyRef(); });
+document.getElementById('refAlign').addEventListener('click',e=>{ refAlignOn=!refAlignOn; e.target.classList.toggle('on',refAlignOn); refImg.classList.toggle('align',refAlignOn); refVid.classList.toggle('align',refAlignOn); });
+[refImg, refVid].forEach(el=>{
+  el.addEventListener('pointerdown',e=>{ if(!refAlignOn)return; refDrag=true; _rpx=e.clientX; _rpy=e.clientY; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove',e=>{ if(!refDrag)return; refState.x+=e.clientX-_rpx; refState.y+=e.clientY-_rpy; _rpx=e.clientX; _rpy=e.clientY; applyRef(); });
+  el.addEventListener('pointerup',()=>{ refDrag=false; });
+  el.addEventListener('wheel',e=>{ if(!refAlignOn)return; e.preventDefault(); refState.scale=Math.max(0.2,Math.min(4,refState.scale - e.deltaY*0.0012)); applyRef(); },{passive:false});
+});
+
+// ===== 關節對位 SOLVER(單視角 MVP)===== 純表現層;phase-agnostic:一律讀寫「目前 active key」
+let solveMode=false;
+const _sp=new THREE.Vector3();
+const solveLayer=document.getElementById('solveLayer');
+// 模型端點:每個關節對應一個 3D 物件(端點 world position)
+const SOLVE_JOINTS=[
+  {id:'head', lbl:'頭',  cls:'core', obj:()=>headPivot},
+  {id:'shL',  lbl:'左肩',cls:'arm',  obj:()=>armL && armL.sh},
+  {id:'elL',  lbl:'左肘',cls:'arm',  obj:()=>armL && armL.el},
+  {id:'fiL',  lbl:'左拳',cls:'arm',  obj:()=>armL && armL.fist},
+  {id:'shR',  lbl:'右肩',cls:'arm',  obj:()=>armR && armR.sh},
+  {id:'elR',  lbl:'右肘',cls:'arm',  obj:()=>armR && armR.el},
+  {id:'fiR',  lbl:'右拳',cls:'arm',  obj:()=>armR && armR.fist},
+  {id:'hipL', lbl:'左髖',cls:'leg',  obj:()=>legL && legL.hp},
+  {id:'knL',  lbl:'左膝',cls:'leg',  obj:()=>legL && legL.kn},
+  {id:'anL',  lbl:'左踝',cls:'leg',  obj:()=>legL && legL.ankle},
+  {id:'hipR', lbl:'右髖',cls:'leg',  obj:()=>legR && legR.hp},
+  {id:'knR',  lbl:'右膝',cls:'leg',  obj:()=>legR && legR.kn},
+  {id:'anR',  lbl:'右踝',cls:'leg',  obj:()=>legR && legR.ankle},
+];
+// 只解「旋轉」軸(排除位移/縮放/idle-blend/腳踝微調);單視角下深度由起始姿勢+正則化收斂
+const SOLVE_PARAMS=['root_y','root_x','spine_x','spine_y','pelvis_y','head_y','head_x',
+  'aL_sx','aL_sy','aL_sz','aL_ex','aR_sx','aR_sy','aR_sz','aR_ex',
+  'lL_hx','lL_hy','lL_hz','lL_kx','lR_hx','lR_hy','lR_hz','lR_kx'];
+const solveTargets={};               // id -> {x,y,enabled}
+const stgtEls={}, srigEls={};
+function projPx(obj){ if(!obj) return null; obj.getWorldPosition(_sp); _sp.project(camera);
+  if(_sp.z>1) return null; const r=canvas.getBoundingClientRect();
+  return [(_sp.x*0.5+0.5)*r.width, (-_sp.y*0.5+0.5)*r.height]; }
+// 建立目標圈 + 骨架綠點
+SOLVE_JOINTS.forEach(j=>{
+  solveTargets[j.id]={x:0,y:0,enabled:true};
+  const t=document.createElement('div'); t.className='starget '+j.cls;
+  const lb=document.createElement('span'); lb.className='slbl2'; lb.textContent=j.lbl; t.appendChild(lb);
+  let dragging=false,px=0,py=0;
+  t.addEventListener('pointerdown',e=>{ e.stopPropagation(); e.preventDefault();
+    if(e.button!==0) return; dragging=true; px=e.clientX; py=e.clientY; t.setPointerCapture(e.pointerId); t.classList.add('on'); });
+  t.addEventListener('pointermove',e=>{ if(!dragging)return; const st=solveTargets[j.id];
+    st.x+=e.clientX-px; st.y+=e.clientY-py; px=e.clientX; py=e.clientY; placeTgt(j.id); });
+  const end=()=>{ if(dragging){dragging=false; t.classList.remove('on');} };
+  t.addEventListener('pointerup',end); t.addEventListener('pointercancel',end);
+  const toggle=e=>{ e.preventDefault(); const st=solveTargets[j.id]; st.enabled=!st.enabled; t.classList.toggle('off',!st.enabled); };
+  t.addEventListener('dblclick',toggle); t.addEventListener('contextmenu',toggle);
+  solveLayer.appendChild(t); stgtEls[j.id]=t;
+  const rg=document.createElement('div'); rg.className='srig'; solveLayer.appendChild(rg); srigEls[j.id]=rg;
+});
+function placeTgt(id){ const st=solveTargets[id], el=stgtEls[id]; el.style.left=st.x+'px'; el.style.top=st.y+'px'; }
+function syncCam(){ camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); }
+function snapTargetsToRig(){ syncCam(); SOLVE_JOINTS.forEach(j=>{ const p=projPx(j.obj()); const st=solveTargets[j.id];
+  if(p){ st.x=p[0]; st.y=p[1]; } st.enabled=true; placeTgt(j.id); stgtEls[j.id].classList.remove('off'); }); }
+function updateSolveLayer(){ SOLVE_JOINTS.forEach(j=>{ const p=projPx(j.obj()); const el=srigEls[j.id];
+  if(!p){ el.style.display='none'; return; } el.style.display='block'; el.style.left=p[0]+'px'; el.style.top=p[1]+'px'; }); }
+// ===== Multi-view solve(三角測量地基)=====
+// 存多個鏡頭(cam 參數)+ 各自的 2D 目標點。solver 同時最小化「所有視角」的重投影誤差,
+// 只要有第二個(側)視角,就能鎖死單視角解不出的前後深度(twist / lunge)。
+// 無任何已存視角時,自動退化為「目前鏡頭」單一視角 = 舊行為。
+let SOLVE_VIEWS = [];      // [{name, cam:{theta,phi,radius}, targets:{id:{x,y,enabled}}}]
+let activeViewIdx = -1;    // 目前載入到 solveTargets 的視角索引(-1 = 尚未存/即興)
+const SOLVEVIEW_KEY = 'PUNCH_STUDIO_SOLVEVIEWS_V1';
+
+function curCam(){ return {theta, phi, radius}; }
+function setCam(c){ theta=c.theta; phi=c.phi; radius=c.radius; placeCam(); }
+function sideView(){ theta=Math.PI/2; phi=Math.PI/2; radius=6.0; placeCam(); syncCam(); snapTargetsToRig();
+  setReadout('側視角(θ=90°):把目標點拖到「側面參考圖」的關節,再按「📸 存成視角」。≥2 視角到齊 → Solve 解出深度。'); }
+function cloneTargets(src){ const o={}; SOLVE_JOINTS.forEach(j=>{ const s=src[j.id]||{x:0,y:0,enabled:true};
+  o[j.id]={x:s.x, y:s.y, enabled:s.enabled!==false}; }); return o; }
+
+function saveSolveViews(){
+  try{ localStorage.setItem(SOLVEVIEW_KEY, JSON.stringify(SOLVE_VIEWS)); }
+  catch(e){
+    // 多半是 localStorage 配額超過(參考圖 data URL 太大)→ 退而求其次:只存幾何,不存圖
+    try{ localStorage.setItem(SOLVEVIEW_KEY, JSON.stringify(
+      SOLVE_VIEWS.map(v=>({...v, ref: v.ref ? {...v.ref, src:null} : null})))); }catch(_){}
+  }
+}
+function loadSolveViews(){ try{ const r=localStorage.getItem(SOLVEVIEW_KEY); SOLVE_VIEWS = r ? (JSON.parse(r)||[]) : []; }catch(e){ SOLVE_VIEWS=[]; } }
+
+function captureView(){
+  if(!solveMode){ setReadout('先按「🎯 點關節對位」進入對位模式'); return; }
+  const name='V'+(SOLVE_VIEWS.length+1);
+  SOLVE_VIEWS.push({name, cam:curCam(), targets:cloneTargets(solveTargets), ref:curRef()});
+  activeViewIdx=SOLVE_VIEWS.length-1;
+  saveSolveViews(); renderViewBar();
+  setReadout('已存「'+name+'」('+SOLVE_VIEWS.length+' 個視角)。'+(SOLVE_VIEWS.length<2
+    ? '換鏡頭角度(🎥 側面)、重貼目標點後再存第二個,Solve 才解得出深度。'
+    : '已 ≥2 視角 → 按「▶ Solve 反求」即可三角測量解深度。'));
+}
+function saveActiveView(){
+  const v=SOLVE_VIEWS[activeViewIdx]; if(!v) return;
+  v.cam=curCam(); v.targets=cloneTargets(solveTargets); v.ref=curRef(); saveSolveViews();
+}
+function updateActiveView(){
+  if(activeViewIdx<0 || !SOLVE_VIEWS[activeViewIdx]){ setReadout('沒有作用中的視角可更新 — 先點一個視角 chip,或按「📸 存成視角」新增'); return; }
+  saveActiveView();
+  setReadout('已更新「'+SOLVE_VIEWS[activeViewIdx].name+'」(鏡頭 + 目標點 + 參考圖)');
+}
+function loadView(idx){
+  const v=SOLVE_VIEWS[idx]; if(!v) return;
+  activeViewIdx=idx; setCam(v.cam); syncCam();
+  SOLVE_JOINTS.forEach(j=>{ const s=v.targets[j.id]||{x:0,y:0,enabled:true}; const st=solveTargets[j.id];
+    st.x=s.x; st.y=s.y; st.enabled=s.enabled!==false; placeTgt(j.id); stgtEls[j.id].classList.toggle('off',!st.enabled); });
+  showRef(v.ref);
+  renderViewBar();
+  setReadout('載入「'+v.name+'」(含專屬參考圖)。調整後按「💾 更新」存回此視角;或「📸 存成視角」另存新的。');
+}
+function deleteView(idx){
+  SOLVE_VIEWS.splice(idx,1);
+  if(activeViewIdx>=SOLVE_VIEWS.length) activeViewIdx=SOLVE_VIEWS.length-1;
+  saveSolveViews(); renderViewBar();
+  setReadout(SOLVE_VIEWS.length?('剩 '+SOLVE_VIEWS.length+' 個視角'):'已無視角,Solve 將以目前鏡頭單視角求解');
+}
+function clearViews(){ SOLVE_VIEWS=[]; activeViewIdx=-1; saveSolveViews(); renderViewBar(); setReadout('已清空所有視角。'); }
+function renderViewBar(){
+  const bar=document.getElementById('solveViewBar'); if(!bar) return;
+  bar.innerHTML='';
+  if(!SOLVE_VIEWS.length){ const s=document.createElement('span');
+    s.style.cssText='color:var(--dim);font-size:9px'; s.textContent='尚無視角 — 擺好鏡頭+目標點後按「📸 存成視角」'; bar.appendChild(s); return; }
+  SOLVE_VIEWS.forEach((v,i)=>{
+    const chip=document.createElement('button');
+    chip.textContent=v.name+(i===activeViewIdx?' ●':''); chip.className=(i===activeViewIdx?'on':'');
+    chip.title='點:載入此視角 · 右鍵/雙擊:刪除';
+    chip.addEventListener('click',()=>loadView(i));
+    const del=e=>{ e.preventDefault(); deleteView(i); };
+    chip.addEventListener('contextmenu',del); chip.addEventListener('dblclick',del);
+    bar.appendChild(chip);
+  });
+}
+
+// solver:跨所有視角累加重投影誤差(無視角→退化為單一「目前鏡頭」視角)
+function gatherViews(){
+  return SOLVE_VIEWS.length ? SOLVE_VIEWS : [{name:'(current)', cam:curCam(), targets:solveTargets}];
+}
+function viewsEnabledCount(views){ let n=0;
+  views.forEach(v=>SOLVE_JOINTS.forEach(j=>{ const st=v.targets[j.id]; if(st&&st.enabled) n++; })); return n; }
+function solveResidualMV(views){ let s=0,n=0;
+  views.forEach(v=>{ setCam(v.cam); syncCam();
+    SOLVE_JOINTS.forEach(j=>{ const st=v.targets[j.id]; if(!st||!st.enabled)return;
+      const p=projPx(j.obj()); if(!p)return; s+=Math.hypot(p[0]-st.x,p[1]-st.y); n++; }); });
+  return n?s/n:0; }
+function solveErrMV(wp,p0,lam,views){ applyPose(wp); let e=0;
+  views.forEach(v=>{ setCam(v.cam); syncCam();
+    SOLVE_JOINTS.forEach(j=>{ const st=v.targets[j.id]; if(!st||!st.enabled)return;
+      const p=projPx(j.obj()); if(!p)return; e+=(p[0]-st.x)**2+(p[1]-st.y)**2; }); });
+  if(lam) SOLVE_PARAMS.forEach(k=>{ const d=(wp[k]||0)-(p0[k]||0); e+=lam*d*d; });
+  return e; }
+function runSolve(){
+  const views=gatherViews();
+  const enabled=viewsEnabledCount(views);
+  if(enabled<2){ setReadout('至少要 2 個啟用的目標(跨視角合計)才能解'); return; }
+  if(playing){ playing=false; if(typeof updateUI==='function') updateUI(); }
+  scrubActive=false; pushHistory();
+  const restoreCam=(activeViewIdx>=0 && SOLVE_VIEWS[activeViewIdx]) ? {...SOLVE_VIEWS[activeViewIdx].cam} : curCam();
+  const base=PHASES[activePhase]; const wp={...base}, p0={...base}; const lam=0.04;
+  const before=solveResidualMV(views);
+  const step={}; SOLVE_PARAMS.forEach(k=>step[k]=10);
+  let cur=solveErrMV(wp,p0,lam,views);
+  for(let sweep=0; sweep<48; sweep++){
+    let improved=false;
+    for(const k of SOLVE_PARAMS){
+      const rg=KEYRANGE[k]||[-180,180];
+      for(const dir of [1,-1]){
+        const old=wp[k]||0; let nv=Math.max(rg[0],Math.min(rg[1],old+dir*step[k]));
+        if(nv===old) continue; wp[k]=nv; const e=solveErrMV(wp,p0,lam,views);
+        if(e<cur-1e-6){ cur=e; improved=true; } else { wp[k]=old; }
+      }
+    }
+    if(!improved){ let tot=0; SOLVE_PARAMS.forEach(k=>{ step[k]*=0.5; tot+=step[k]; }); if(tot<SOLVE_PARAMS.length*0.2) break; }
+  }
+  SOLVE_PARAMS.forEach(k=>{ const rg=KEYRANGE[k]; let v=wp[k]; if(rg) v=Math.max(rg[0],Math.min(rg[1],v)); base[k]=Math.round(v*10)/10; });
+  applyPose(base); if(typeof refreshSliders==='function') refreshSliders();
+  if(typeof scheduleAutosave==='function') scheduleAutosave();
+  setCam(restoreCam); syncCam(); updateSolveLayer();
+  const after=solveResidualMV(views);
+  const depth = views.length>=2 ? ('多視角('+views.length+')→ 深度可解') : '單視角 → 深度沿用現值';
+  setReadout('殘差 '+before.toFixed(1)+'px → '+after.toFixed(1)+'px　·　'+depth+'　·　寫入 key「'+activePhase+'」('+enabled+' 點)');
+}
+function setReadout(t){ const el=document.getElementById('solveReadout'); if(el) el.textContent=t; }
+function frontView(){ theta=0; phi=Math.PI/2; radius=6.0; placeCam(); syncCam(); }
+function setSolveMode(on){
+  solveMode=on;
+  document.getElementById('solveToggle').classList.toggle('on',on);
+  solveLayer.style.display=on?'block':'none';
+  if(on){ if(playing){ playing=false; if(typeof updateUI==='function') updateUI(); } scrubActive=false;
+    if(SOLVE_VIEWS.length){ loadView(activeViewIdx>=0?activeViewIdx:0); }
+    else { frontView(); snapTargetsToRig(); }
+    renderViewBar();
+    setReadout('正面=第一視角。拖目標點對齊參考圖 →「📸 存成視角」;再切「🎥 側面」貼第二視角。≥2 視角 Solve 即可解出深度。'); }
+}
+document.getElementById('frontBtn').addEventListener('click',frontView);
+document.getElementById('solveToggle').addEventListener('click',()=>setSolveMode(!solveMode));
+document.getElementById('solveReset').addEventListener('click',()=>{ if(!solveMode) setSolveMode(true); else snapTargetsToRig(); });
+document.getElementById('solveRun').addEventListener('click',()=>{ if(!solveMode){ setSolveMode(true); return; } runSolve(); });
+document.getElementById('sideBtn').addEventListener('click',()=>{ if(!solveMode) setSolveMode(true); sideView(); });
+document.getElementById('captureViewBtn').addEventListener('click',captureView);
+document.getElementById('updateViewBtn').addEventListener('click',updateActiveView);
+document.getElementById('clearViewsBtn').addEventListener('click',clearViews);
+
+// ===== AI 偵測姿勢(MediaPipe)→ 自動放 Solve 目標點(spike) =====
+// MediaPipe Pose 33 landmark index → 我們 13 個關節目標。
+// 注意:MediaPipe 用「真人」訓練,風格化/非人比例可能抓不準 → 偵測完仍可手拖微調。
+const MP_MAP = { head:0, shL:11, elL:13, fiL:15, shR:12, elR:14, fiR:16, hipL:23, knL:25, anL:27, hipR:24, knR:26, anR:28 };
+async function aiDetectToTargets(){
+  if(!solveMode) setSolveMode(true);
+  if(!refSrc){ setReadout('先載入「此視角」的參考圖,再 AI 偵測'); return; }
+  if(typeof window.aiDetectPose!=='function'){ setReadout('AI 模組尚未就緒(需連網,且建議用本機 http 開,而非 file://)'); return; }
+  setReadout('AI 偵測中…(首次會下載模型,稍候)');
+  let lms;
+  try{ lms = await window.aiDetectPose(refImg); }
+  catch(err){ setReadout('AI 偵測失敗:'+((err&&err.message)||err)+'(多半是離線或 file:// 限制)'); return; }
+  if(!lms){ setReadout('AI 沒抓到人形 — 風格化太強?可改手拖目標點,或換一張比例更接近真人的參考圖'); return; }
+  const rect = refImg.getBoundingClientRect();   // 參考圖在螢幕上的實際矩形(已含 align 位移/縮放)
+  const cr = canvas.getBoundingClientRect();
+  let placed=0, low=0;
+  SOLVE_JOINTS.forEach(j=>{
+    const idx = MP_MAP[j.id]; if(idx==null) return;
+    const lm = lms[idx]; if(!lm) return;
+    const st = solveTargets[j.id];
+    const nx = refState.flip ? (1-lm.x) : lm.x;   // 顯示翻轉 → x 鏡射
+    st.x = (rect.left + nx*rect.width) - cr.left;
+    st.y = (rect.top + lm.y*rect.height) - cr.top;
+    const vis = (lm.visibility!=null) ? lm.visibility : 1;
+    st.enabled = vis >= 0.5;                        // 低信心 → 自動排除(雙擊可手動再開)
+    if(!st.enabled) low++;
+    placeTgt(j.id); stgtEls[j.id].classList.toggle('off',!st.enabled);
+    placed++;
+  });
+  updateSolveLayer();
+  setReadout('AI 放好 '+placed+' 點'+(low?('('+low+' 個低信心已排除)'):'')+'。對歪了用手拖修;L/R 反了按「L↔R 鏡像」。OK 後「▶ Solve」,或丟側面圖再偵測一次。');
+}
+document.getElementById('aiDetectBtn').addEventListener('click',aiDetectToTargets);
+
+loadSolveViews(); renderViewBar();
+
+
+// ===== 時間軸 scrub ===== 凍結在任一 in-between 幀觀察弧線(只讀,不改 pose)
+const rscrub=document.getElementById('rscrub');
+const scrubLbl=document.getElementById('scrubLbl');
+function totalTime(){ return totalTimelineFrames()/REF_FPS; }
+rscrub.addEventListener('input',()=>{
+  if(playing){ playing=false; updateUI(); }
+  scrubActive=true;
+  const tt=totalTime();
+  playT=Math.min((parseFloat(rscrub.value)/1000)*tt, tt-1e-4);
+  const r=getPlayPose();
+  if(r){
+    scrubPose=r.pose; applyPose(r.pose);
+    const pn=document.getElementById('phasenow');
+    pn.textContent=r.phase; pn.classList.add('playing');
+    scrubLbl.textContent=Math.round(playT*REF_FPS)+'f · '+r.phase+' '+Math.round((playT/tt)*100)+'%';
+    buildTimelineUI();
+  }
+});
+
+// ===== Cascadeur 風 FK 直接拖動 ===== 拖角色身上節點 = 改對應 schema 軸(sliders/export 仍單一來源)
+// 靈敏度/方向(每像素度數)為可調常數;覺得某顆拖反了把該 sens 變號即可。
+const KEYRANGE={}; SLIDER_GROUPS.forEach(g=>g.keys.forEach(a=>{KEYRANGE[a[0]]=[a[2],a[3]];}));
+const KEYLBL={ head_y:'偏轉', head_x:'俯仰', root_y:'旋身', spine_x:'前傾',
+  aL_sx:'前後抬', aR_sx:'前後抬', aL_sy:'旋臂', aR_sy:'旋臂', aL_sz:'側平舉', aR_sz:'側平舉',
+  aL_ex:'肘彎', aR_ex:'肘彎', lL_hx:'髖前後', lR_hx:'髖前後', lL_hz:'髖外開', lR_hz:'髖外開',
+  lL_kx:'膝彎', lR_kx:'膝彎' };
+const NODES=[
+  {id:'頭',   cls:'core', obj:()=>head,    keys:[['head_y','x',0.45],['head_x','y',0.45]], hint:'↔ 偏轉 · ↕ 俯仰'},
+  {id:'軀幹', cls:'core', obj:()=>body,    keys:[['root_y','x',0.5],['spine_x','y',0.45]], hint:'↔ 旋身 · ↕ 前傾'},
+  // 肩=3軸:預設 ↕前後抬 + ↔側平舉(看得見的瞄準軸);Shift+↔ 旋臂
+  {id:'左肩', cls:'arm',  obj:()=>armL.sh, keys:[['aL_sz','x',-0.5],['aL_sx','y',0.5]], keysShift:[['aL_sy','x',0.5]], hint:'↕ 前後抬 · ↔ 側平舉 · Shift+↔ 旋臂'},
+  {id:'左肘', cls:'arm',  obj:()=>armL.el, keys:[['aL_ex','y',0.6]], hint:'↕ 肘彎'},
+  {id:'右肩', cls:'arm',  obj:()=>armR.sh, keys:[['aR_sz','x',0.5],['aR_sx','y',0.5]],  keysShift:[['aR_sy','x',0.5]], hint:'↕ 前後抬 · ↔ 側平舉 · Shift+↔ 旋臂'},
+  {id:'右肘', cls:'arm',  obj:()=>armR.el, keys:[['aR_ex','y',0.6]], hint:'↕ 肘彎'},
+  {id:'左髖', cls:'leg',  obj:()=>legL.hp, keys:[['lL_hz','x',0.35],['lL_hx','y',0.45]], hint:'↔ 外開 · ↕ 前後'},
+  {id:'左膝', cls:'leg',  obj:()=>legL.kn, keys:[['lL_kx','y',0.5]], hint:'↕ 膝彎'},
+  {id:'右髖', cls:'leg',  obj:()=>legR.hp, keys:[['lR_hz','x',0.35],['lR_hx','y',0.45]], hint:'↔ 外開 · ↕ 前後'},
+  {id:'右膝', cls:'leg',  obj:()=>legR.kn, keys:[['lR_kx','y',0.5]], hint:'↕ 膝彎'},
+];
+const nodeLayer=document.getElementById('nodeLayer');
+const dragReadout=document.getElementById('dragReadout');
+const nodeEls={}; const _np=new THREE.Vector3();
+let nodesOn=false, dragNode=null, _ndx=0,_ndy=0;
+
+// 抓住節點時,把下游骨頭暫時上色(clone 材質,放開還原)→ 一眼看出哪根在動
+const _hl=[];
+function setHL(n,on){
+  if(on){
+    n.obj().traverse(o=>{
+      if(o.isMesh && o.material && !Array.isArray(o.material) && o.material.clone){
+        const orig=o.material, c=orig.clone();
+        if(c.emissive){ c.emissive.setHex(0xff8a3d); c.emissiveIntensity=0.85; }
+        o.material=c; _hl.push({mesh:o, mat:orig, clone:c});
+      }
+    });
+  } else {
+    _hl.forEach(h=>{ h.mesh.material=h.mat; if(h.clone&&h.clone.dispose) h.clone.dispose(); });
+    _hl.length=0;
+  }
+}
+function showReadout(n){
+  const p=PHASES[activePhase];
+  const all=(n.keys||[]).concat(n.keysShift||[]);
+  const parts=all.map(a=>(KEYLBL[a[0]]||a[0])+' <span class="v">'+Math.round(p[a[0]]||0)+'°</span>');
+  dragReadout.innerHTML='<b>'+n.id+'</b>　'+parts.join(' · ')+(n.hint?'　<span style="opacity:.55">'+n.hint+'</span>':'');
+  dragReadout.style.display='block';
+}
+NODES.forEach(n=>{
+  const d=document.createElement('div'); d.className='jnode '+n.cls;
+  const lb=document.createElement('span'); lb.className='jlabel'; lb.textContent=n.id; d.appendChild(lb);
+  d.addEventListener('pointerdown',e=>{
+    e.stopPropagation(); e.preventDefault();
+    if(playing){playing=false; updateUI();} scrubActive=false;
+    pushHistory();
+    dragNode=n; _ndx=e.clientX; _ndy=e.clientY; d.setPointerCapture(e.pointerId);
+    d.classList.add('active'); setHL(n,true); showReadout(n);
+  });
+  d.addEventListener('pointermove',e=>{
+    if(dragNode!==n)return;
+    const dx=e.clientX-_ndx, dy=e.clientY-_ndy; _ndx=e.clientX; _ndy=e.clientY;
+    const p=PHASES[activePhase];
+    const ks=(e.shiftKey && n.keysShift)? n.keysShift : n.keys;
+    ks.forEach(([k,axis,sens])=>{
+      let v=(p[k]||0)+(axis==='x'?dx:dy)*sens;
+      const rg=KEYRANGE[k]; if(rg) v=Math.max(rg[0],Math.min(rg[1],v));
+      p[k]=v;
+    });
+    applyPose(p); refreshSliders(); showReadout(n); scheduleAutosave();
+  });
+  function endDrag(){ if(dragNode===n){ dragNode=null; d.classList.remove('active'); setHL(n,false); dragReadout.style.display='none'; scheduleAutosave(); } }
+  d.addEventListener('pointerup',endDrag);
+  d.addEventListener('pointercancel',endDrag);
+  nodeLayer.appendChild(d); nodeEls[n.id]=d;
+});
+function updateNodes(){
+  const rect=canvas.getBoundingClientRect();
+  NODES.forEach(n=>{
+    const o=n.obj(); const el=nodeEls[n.id];
+    if(!o){el.classList.add('hide');return;}
+    o.getWorldPosition(_np); _np.project(camera);
+    if(_np.z>1){el.classList.add('hide');return;}
+    el.classList.remove('hide');
+    el.style.left=((_np.x*0.5+0.5)*rect.width)+'px';
+    el.style.top =((-_np.y*0.5+0.5)*rect.height)+'px';
+  });
+}
+const dragToggle=document.getElementById('dragToggle');
+dragToggle.addEventListener('change',e=>{ nodesOn=e.target.checked; nodeLayer.style.display=nodesOn?'block':'none'; if(nodesOn) updateNodes(); });
+
+
+// ===== PUNCH STUDIO PART KIT LOADER (方案 B: GetAmped-like detached parts) =====
+// Load static GLB parts exported by export_ranger_parts_for_punch_studio.py and attach them to the existing pose nodes.
+const PART_CFG_STORAGE_KEY = 'PUNCH_STUDIO_PART_KIT_CFG_V3_SOCKETLOCAL_MOUNT';
+const PART_HIDE_STORAGE_KEY = 'PUNCH_STUDIO_PART_KIT_HIDE_DUMMY_V2_14PARTS_AXISFIX';
+// ===== 方案 B-1: sockets.json = 唯一真相,動態生成 PART_SLOT_DEFS =====
+// sockets.json 的 child_part 命名與 PS slot 命名一致(已驗證),L/R 翻轉已被 sockets.json
+// 內部吸收(socket .l 坐 .R 骨)。PS 只保留一張「邏輯 slot -> PS DIM rig 節點」適配表,
+// 其餘 roster(哪些 slot、seam class、load_bearing、相容規則)全部來自 sockets.json。
+// 部位的 socket->bone 由 PS 自己 rig 的 rest pose 自動滿足(零 config 即對位),
+// 不套用 sockets.json 的 skeleton-bone-local 旋轉(那是給 skeleton rig / assembler 用的)。
+
+// (1) 邏輯 slot/childPart -> PS DIM rig 節點存取器(唯一 PS-specific 適配層)
+const PS_RIG_TARGET = {
+  torso:       ()=>spine,
+  head:        ()=>headPivot,
+  neck:        ()=>spine,                     // neck 掛 spine + y 偏移(對齊可動的 fight demo)
+  upper_arm_l: ()=>armL && armL.sh,
+  forearm_l:   ()=>armL && armL.el,
+  hand_l:      ()=>armL && armL.wr,
+  upper_arm_r: ()=>armR && armR.sh,
+  forearm_r:   ()=>armR && armR.el,
+  hand_r:      ()=>armR && armR.wr,
+  thigh_l:     ()=>legL && legL.hp,
+  calf_l:      ()=>legL && legL.kn,
+  foot_l:      ()=>legL && legL.ankle,
+  thigh_r:     ()=>legR && legR.hp,
+  calf_r:      ()=>legR && legR.kn,
+  foot_r:      ()=>legR && legR.ankle,
+  // 配件(sockets.json equipment_mounts 擺位多為 _todo;PS rig 無 chest 節點,
+  //  沿用 PS 既有掛點,待資產到位再對 sockets.json 收斂)
+  armguard_l:  ()=>armL && armL.el,
+  armguard_r:  ()=>armR && armR.el,
+  cloak:       ()=>headPivot,
+  pouch:       ()=>spine,
+  bow:         ()=>armR && armR.wr,
+};
+
+// (2) 中文標籤(未列者自動用 slot 名)
+const PS_SLOT_LABEL = {
+  head:'HEAD 頭', neck:'NECK 脖子', torso:'TORSO 身體',
+  upper_arm_l:'UPPER_ARM_L 左大臂', forearm_l:'FOREARM_L 左前臂', hand_l:'HAND_L 左手',
+  upper_arm_r:'UPPER_ARM_R 右大臂', forearm_r:'FOREARM_R 右前臂', hand_r:'HAND_R 右手',
+  thigh_l:'THIGH_L 左大腿', calf_l:'CALF_L 左小腿', foot_l:'FOOT_L 左腳',
+  thigh_r:'THIGH_R 右大腿', calf_r:'CALF_R 右小腿', foot_r:'FOOT_R 右腳',
+  armguard_l:'ARMGUARD_L 左護腕', armguard_r:'ARMGUARD_R 右護腕',
+  cloak:'CLOAK 披風', pouch:'POUCH 腰包', bow:'BOW 弓/武器',
+};
+
+// (3) 內嵌 sockets.json 讀取 + slot 推導
+function readSocketsJson(){
+  try{
+    const el = document.getElementById('SOCKETS_JSON');
+    if(el && el.textContent.trim()) return JSON.parse(el.textContent);
+  }catch(e){ console.warn('[B-1] sockets.json 解析失敗,改用 fallback', e); }
+  return null;
+}
+function socketsToSlotDefs(j){
+  const out = [];
+  const push = (slot, seamClass, kind, extra)=>{
+    const tfn = PS_RIG_TARGET[slot];
+    out.push(Object.assign({
+      slot, label: PS_SLOT_LABEL[slot] || slot,
+      target: tfn || (()=>null), seamClass: seamClass||null, kind
+    }, extra||{}));
+  };
+  if(j.torso_root) push(j.torso_root.part, null, 'root', {bone:j.torso_root.bone, loadBearing:false});
+  (j.sockets||[]).forEach(s=> push(s.child_part, s.class, 'structural',
+    {bone:s.bone, loadBearing:!!s.load_bearing, restLength:s.rest_length, socketId:s.socket_id}));
+  (j.equipment_mounts||[]).forEach(e=> push(e.mount_id.replace(/\./g,'_'), e.overlay_class||null, 'equipment',
+    {bone:e.bone, todo:!!e._todo}));
+  // 僅保留 PS rig 有對應節點的項目(或 torso root)
+  return out.filter(d=> PS_RIG_TARGET[d.slot] || d.kind==='root');
+}
+
+// fallback:萬一內嵌 sockets.json 缺失/解析失敗,沿用原本硬編 19 slot(無 neck)
+const PART_SLOT_DEFS_FALLBACK = [
+  {slot:'head',label:'HEAD 頭',target:()=>headPivot},
+  {slot:'torso',label:'TORSO 身體',target:()=>spine},
+  {slot:'upper_arm_l',label:'UPPER_ARM_L 左大臂',target:()=>armL && armL.sh},
+  {slot:'forearm_l',label:'FOREARM_L 左前臂',target:()=>armL && armL.el},
+  {slot:'hand_l',label:'HAND_L 左手',target:()=>armL && armL.wr},
+  {slot:'upper_arm_r',label:'UPPER_ARM_R 右大臂',target:()=>armR && armR.sh},
+  {slot:'forearm_r',label:'FOREARM_R 右前臂',target:()=>armR && armR.el},
+  {slot:'hand_r',label:'HAND_R 右手',target:()=>armR && armR.wr},
+  {slot:'thigh_l',label:'THIGH_L 左大腿',target:()=>legL && legL.hp},
+  {slot:'calf_l',label:'CALF_L 左小腿',target:()=>legL && legL.kn},
+  {slot:'foot_l',label:'FOOT_L 左腳',target:()=>legL && legL.ankle},
+  {slot:'thigh_r',label:'THIGH_R 右大腿',target:()=>legR && legR.hp},
+  {slot:'calf_r',label:'CALF_R 右小腿',target:()=>legR && legR.kn},
+  {slot:'foot_r',label:'FOOT_R 右腳',target:()=>legR && legR.ankle},
+  {slot:'armguard_l',label:'ARMGUARD_L 左護腕',target:()=>armL && armL.el},
+  {slot:'armguard_r',label:'ARMGUARD_R 右護腕',target:()=>armR && armR.el},
+  {slot:'cloak',label:'CLOAK 披風',target:()=>headPivot},
+  {slot:'pouch',label:'POUCH 腰包',target:()=>spine},
+  {slot:'bow',label:'BOW 弓/武器',target:()=>armR && armR.wr},
+];
+
+const SOCKETS_DATA = readSocketsJson();
+const PART_SLOT_DEFS = (()=>{
+  if(SOCKETS_DATA){
+    try{
+      const defs = socketsToSlotDefs(SOCKETS_DATA);
+      if(defs.length >= 15){ console.log(`[B-1] PART_SLOT_DEFS 由 sockets.json v${SOCKETS_DATA.version} 動態生成:${defs.length} slot (含 neck)`); return defs; }
+    }catch(e){ console.warn('[B-1] 動態生成失敗,改用 fallback', e); }
+  }
+  console.warn('[B-1] 使用硬編 fallback slot 清單(無 neck)');
+  return PART_SLOT_DEFS_FALLBACK;
+})();
+
+// (4) sockets.json 相容性判定(classMatch AND seamFit),供日後 hot-swap 驗證
+function socketSeamRadius(cls){
+  const t = SOCKETS_DATA && SOCKETS_DATA.seam_table; const e = t && t[cls];
+  return e ? e.radius : null;
+}
+function partSocketCompatible(part, socket){
+  if(!SOCKETS_DATA) return {ok:true, reason:'no-sockets-data'};
+  const aCls=part.class, bCls=socket.class;
+  const classMatch = aCls===bCls || aCls==='universal' || bCls==='universal';
+  if(!classMatch) return {ok:false, reason:'classMismatch'};
+  const sr = socket.radius!=null ? socket.radius : socketSeamRadius(bCls);
+  const pr = part.radius!=null ? part.radius : socketSeamRadius(aCls);
+  if(sr==='any'||pr==='any') return {ok:true, reason:'universal-seam'};
+  if(typeof sr!=='number'||typeof pr!=='number') return {ok:false, reason:'missingRadius'};
+  const ok = Math.abs(pr-sr) <= 0.10*sr;
+  return {ok, reason: ok?'fit':'seamFail', delta:+(pr-sr).toFixed(4)};
+}
+
+// ===== Socket-local 部位的 mount 變換(移植自可動的 fight_demo_v0_modular Plan A)=====
+// GLB 部位是 socket-local(seam 在原點、沿 +Y 生長)。DIM rig 的手臂/腿關節朝 -Y,
+// 軀幹/頭朝 +Y,所以每個部位需要各自的「預設」旋轉/位移才能正確接上,不能用零變換。
+// 這些值是 fight demo 已調好、實機可動的常數;PS 與 fight demo 用同一套 DIM rig,可直接沿用。
+const PART_MOUNT_XFORM = {
+  // 手臂(關節朝 -Y)→ 繞 Z 翻 180;手掌繞 X 翻 180
+  upper_arm_l:{rot:[0,0,180],pos:[0,0,0]}, forearm_l:{rot:[0,0,180],pos:[0,0,0]}, hand_l:{rot:[180,0,0],pos:[0,0,0]},
+  upper_arm_r:{rot:[0,0,180],pos:[0,0,0]}, forearm_r:{rot:[0,0,180],pos:[0,0,0]}, hand_r:{rot:[180,0,0],pos:[0,0,0]},
+  // 腿(關節朝 -Y)→ 繞 Z 翻 180;腳掌繞 X 翻 90
+  thigh_l:{rot:[0,0,180],pos:[0,0,0]}, calf_l:{rot:[0,0,180],pos:[0,0,0]}, foot_l:{rot:[90,0,0],pos:[0,0,0]},
+  thigh_r:{rot:[0,0,180],pos:[0,0,0]}, calf_r:{rot:[0,0,180],pos:[0,0,0]}, foot_r:{rot:[90,0,0],pos:[0,0,0]},
+  // 軀幹/頸/頭(朝 +Y);pos 把 seam 抬到 bone 高度。neck 掛 spine + 大 y 偏移
+  torso:{rot:[0,0,0],pos:[0,0.0222,0]}, neck:{rot:[0,0,0],pos:[0,0.4772,0]}, head:{rot:[0,0,0],pos:[0,0.0944,0]},
+};
+
+// Plan-A DIM:把假人骨長對齊 skeleton rig 真值(armUpper/Lower、legUpper/Lower 來自 socket rest_length)。
+// 不對齊的話關節間距與部位長度不符 → 有縫/錯位。*Thick/fist/shoe/headSize 只餵被隱藏的佔位幾何。
+const PLAN_A_DIM = {
+  headSize:0.50, bodyH:0.4388, bodyW:0.1772, bodyD:0.221,
+  armUpper:0.2456, armLower:0.2047, armThick:0.55, armLenL:1, armLenR:1,
+  legUpper:0.2332, legLower:0.2086, legThick:0.70, fist:1.0, shoe:1.0
+};
+// 髖部側向偏移(rig 非對稱,L/R 不同):leg2() 用 DIM.legSpread 對稱,故載入部位後個別覆蓋。
+const HIP_X = { L:-0.0735, R:0.0761 };
+function applyHipX(){
+  const active = ['thigh_l','calf_l','foot_l','thigh_r','calf_r','foot_r'].some(s=>PART_MODELS[s]||PART_DETACHED[s]);
+  if(!active) return;
+  if(legL && legL.hp) legL.hp.position.x = HIP_X.L;
+  if(legR && legR.hp) legR.hp.position.x = HIP_X.R;
+}
+// socket-local bundle 載入時:DIM 對齊 PLAN_A_DIM(GLB 自帶 extras.dim 則覆蓋),重建 rig 一次。
+function applySocketLocalRig(gltf){
+  let applied=0;
+  Object.keys(PLAN_A_DIM).forEach(k=>{ if(k in DIM){ DIM[k]=PLAN_A_DIM[k]; applied++; } });
+  try{
+    const exDim = gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extras && gltf.parser.json.extras.dim;
+    if(exDim){ Object.keys(exDim).forEach(k=>{ const v=Number(exDim[k]); if(Number.isFinite(v) && (k in DIM)){ DIM[k]=v; applied++; } }); }
+  }catch(e){ console.warn('extras.dim 套用失敗', e); }
+  if(applied){ buildPropPanel(); rebuildCharacter(); if(typeof scheduleAutosave==='function') scheduleAutosave(); }
+}
+// 比照 fight demo mount():載入整包後自動隱藏佔位假人,避免盒狀袖子/拳頭與骨架部位重疊破圖
+function autoHideDummyOnBundle(){
+  PARTS_HIDE_DUMMY = true;
+  try{ localStorage.setItem(PART_HIDE_STORAGE_KEY, '1'); }catch(e){}
+  setSyntheticDummyVisible(false);
+  const b=document.getElementById('partsDummyToggle'); if(b) b.textContent='顯示假人';
+}
+const PART_ALIASES = {
+  'head':'head','region_head':'head','maclass_head':'head',
+  'neck':'neck','part2_neck':'neck','region_neck':'neck','collar':'neck',
+  'torso':'torso','body':'torso','region_torso':'torso','mregion_torso':'torso','maclass_torso':'torso',
+
+  'upper_arm_l':'upper_arm_l','upperarml':'upper_arm_l','leftupperarm':'upper_arm_l','upper_l':'upper_arm_l','uarm_l':'upper_arm_l','arm_l':'upper_arm_l','arml':'upper_arm_l','leftarm':'upper_arm_l','region_upper_arm_l':'upper_arm_l','mregion_upper_arm_l':'upper_arm_l','maclass_upper_arm_l':'upper_arm_l',
+  'forearm_l':'forearm_l','forearml':'forearm_l','lower_arm_l':'forearm_l','lowerarml':'forearm_l','leftforearm':'forearm_l','leftlowerarm':'forearm_l','larm_l':'forearm_l','region_forearm_l':'forearm_l','mregion_forearm_l':'forearm_l','maclass_forearm_l':'forearm_l',
+  'hand_l':'hand_l','handl':'hand_l','lefthand':'hand_l','fist_l':'hand_l','region_hand_l':'hand_l','mregion_hand_l':'hand_l','maclass_hand_l':'hand_l',
+
+  'upper_arm_r':'upper_arm_r','upperarmr':'upper_arm_r','rightupperarm':'upper_arm_r','upper_r':'upper_arm_r','uarm_r':'upper_arm_r','arm_r':'upper_arm_r','armr':'upper_arm_r','rightarm':'upper_arm_r','region_upper_arm_r':'upper_arm_r','mregion_upper_arm_r':'upper_arm_r','maclass_upper_arm_r':'upper_arm_r',
+  'forearm_r':'forearm_r','forearmr':'forearm_r','lower_arm_r':'forearm_r','lowerarmr':'forearm_r','rightforearm':'forearm_r','rightlowerarm':'forearm_r','larm_r':'forearm_r','region_forearm_r':'forearm_r','mregion_forearm_r':'forearm_r','maclass_forearm_r':'forearm_r',
+  'hand_r':'hand_r','handr':'hand_r','righthand':'hand_r','fist_r':'hand_r','region_hand_r':'hand_r','mregion_hand_r':'hand_r','maclass_hand_r':'hand_r',
+
+  'thigh_l':'thigh_l','thighl':'thigh_l','upper_leg_l':'thigh_l','upperlegl':'thigh_l','leftthigh':'thigh_l','leftupperleg':'thigh_l','leg_l':'thigh_l','legl':'thigh_l','leftleg':'thigh_l','region_thigh_l':'thigh_l','mregion_thigh_l':'thigh_l','maclass_thigh_l':'thigh_l',
+  'calf_l':'calf_l','calfl':'calf_l','lower_leg_l':'calf_l','lowerlegl':'calf_l','leftcalf':'calf_l','leftlowerleg':'calf_l','shin_l':'calf_l','region_calf_l':'calf_l','mregion_calf_l':'calf_l','maclass_calf_l':'calf_l',
+  'foot_l':'foot_l','footl':'foot_l','leftfoot':'foot_l','region_foot_l':'foot_l','mregion_foot_l':'foot_l','maclass_foot_l':'foot_l',
+
+  'thigh_r':'thigh_r','thighr':'thigh_r','upper_leg_r':'thigh_r','upperlegr':'thigh_r','rightthigh':'thigh_r','rightupperleg':'thigh_r','leg_r':'thigh_r','legr':'thigh_r','rightleg':'thigh_r','region_thigh_r':'thigh_r','mregion_thigh_r':'thigh_r','maclass_thigh_r':'thigh_r',
+  'calf_r':'calf_r','calfr':'calf_r','lower_leg_r':'calf_r','lowerlegr':'calf_r','rightcalf':'calf_r','rightlowerleg':'calf_r','shin_r':'calf_r','region_calf_r':'calf_r','mregion_calf_r':'calf_r','maclass_calf_r':'calf_r',
+  'foot_r':'foot_r','footr':'foot_r','rightfoot':'foot_r','region_foot_r':'foot_r','mregion_foot_r':'foot_r','maclass_foot_r':'foot_r',
+
+  'armguard_l':'armguard_l','attach_arm_guard_l':'armguard_l','armguard.l':'armguard_l',
+  'armguard_r':'armguard_r','attach_arm_guard_r':'armguard_r','armguard.r':'armguard_r',
+  'cloak':'cloak','attach_cloak':'cloak',
+  'pouch':'pouch','attach_pouch':'pouch',
+  'bow':'bow','ranger_bow':'bow','weapon_bow':'bow'
+};
+let PART_MODELS = {};       // slot -> THREE.Group imported scene
+let PART_CONFIG = {};       // slot -> x/y/z/rx/ry/rz/s
+let PART_DETACHED = {};     // slot -> object temporarily detached during character rebuild
+let PARTS_HIDE_DUMMY = false;
+// 組裝檢視:暫時把手臂平舉(T-pose),只是檢視用,不寫入 phases。aL_sz/aR_sz 繞 Z 外展。
+let PART_INSPECT_TPOSE = false;
+function inspectTposePose(){ return Object.assign({}, ZERO_POSE, {aL_sz:90, aR_sz:90}); }
+function applyInspectOrPhase(){
+  if(PART_INSPECT_TPOSE) applyPose(inspectTposePose());
+  else applyPose(PHASES[activePhase] || PHASES.idle || ZERO_POSE);
+}
+
+function partDefaultConfig(slot){
+  const m = (typeof PART_MOUNT_XFORM!=='undefined') && PART_MOUNT_XFORM[slot];
+  if(m) return {x:m.pos[0], y:m.pos[1], z:m.pos[2], rx:m.rot[0], ry:m.rot[1], rz:m.rot[2], s:1};
+  return {x:0,y:0,z:0,rx:0,ry:0,rz:0,s:1};
+}
+function getPartDef(slot){ return PART_SLOT_DEFS.find(d=>d.slot===slot); }
+function getPartTarget(slot){ const d=getPartDef(slot); return d && d.target ? d.target() : null; }
+function normPartName(name){ return String(name||'').replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9_.-]+/g,'_').replace(/-/g,'_'); }
+function inferPartSlot(filename){
+  const n = normPartName(filename);
+  if(PART_ALIASES[n]) return PART_ALIASES[n];
+  // exported files may be like Ranger_HEAD.glb or 01_REGION_ARM_L.glb; prefer longest aliases.
+  const keys = Object.keys(PART_ALIASES).sort((a,b)=>b.length-a.length);
+  for(const k of keys){ if(n.includes(k)) return PART_ALIASES[k]; }
+  return null;
+}
+function partCfg(slot){
+  if(!PART_CONFIG[slot]) PART_CONFIG[slot] = partDefaultConfig(slot);
+  return PART_CONFIG[slot];
+}
+function savePartConfig(){
+  try{ localStorage.setItem(PART_CFG_STORAGE_KEY, JSON.stringify(PART_CONFIG)); }catch(e){}
+}
+function loadPartConfig(){
+  try{ const raw=localStorage.getItem(PART_CFG_STORAGE_KEY); if(raw) PART_CONFIG=JSON.parse(raw)||{}; }catch(e){ PART_CONFIG={}; }
+  PART_SLOT_DEFS.forEach(d=>partCfg(d.slot));
+  try{ PARTS_HIDE_DUMMY = localStorage.getItem(PART_HIDE_STORAGE_KEY)==='1'; }catch(e){}
+}
+function applyPartConfig(slot){
+  const obj = PART_MODELS[slot]; if(!obj) return;
+  const c = partCfg(slot);
+  obj.position.set(Number(c.x)||0, Number(c.y)||0, Number(c.z)||0);
+  obj.rotation.set((Number(c.rx)||0)*D2R, (Number(c.ry)||0)*D2R, (Number(c.rz)||0)*D2R);
+  obj.scale.setScalar(Number(c.s)||1);
+}
+function markPartObject(obj, slot){
+  obj.userData.punchPartModel = true; obj.userData.punchPartSlot = slot;
+  obj.traverse(o=>{ o.userData.punchPartModel = true; o.userData.punchPartSlot = slot; });
+}
+function isInsidePartObject(o){
+  let n=o;
+  while(n){ if(n.userData && n.userData.punchPartModel) return true; n=n.parent; }
+  return false;
+}
+function attachPart(slot, obj){
+  const target = getPartTarget(slot);
+  if(!target){ throw new Error('slot target not ready: '+slot); }
+  if(PART_MODELS[slot] && PART_MODELS[slot].parent){ PART_MODELS[slot].parent.remove(PART_MODELS[slot]); }
+  markPartObject(obj, slot);
+  PART_MODELS[slot]=obj;
+  target.add(obj);
+  applyPartConfig(slot);
+  setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+}
+function clearParts(){
+  Object.values(PART_MODELS).forEach(o=>{ if(o && o.parent) o.parent.remove(o); });
+  PART_MODELS = {}; PART_DETACHED = {}; updatePartsStatus(); setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+}
+function setSyntheticDummyVisible(on){
+  const roots = [root, pelvis].filter(Boolean);
+  roots.forEach(r=>r.traverse(o=>{
+    if((o.isMesh || o.isLine || o.isLineSegments) && !isInsidePartObject(o)) o.visible = !!on;
+  }));
+}
+function detachPunchPartsForRebuild(){
+  PART_DETACHED = {};
+  Object.entries(PART_MODELS).forEach(([slot,obj])=>{
+    if(obj && obj.parent){ obj.parent.remove(obj); PART_DETACHED[slot]=obj; }
+  });
+}
+function reattachPunchPartsAfterRebuild(){
+  Object.entries(PART_DETACHED).forEach(([slot,obj])=>{
+    const target=getPartTarget(slot); if(target){ target.add(obj); applyPartConfig(slot); }
+  });
+  PART_DETACHED = {};
+  applyHipX();
+  if(PART_INSPECT_TPOSE) applyPose(inspectTposePose());
+  setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+}
+function updatePartsStatus(msg){
+  const el=document.getElementById('partsStatus'); if(!el) return;
+  const loaded = Object.keys(PART_MODELS).sort();
+  const missingCore = ['head','neck','torso','upper_arm_l','forearm_l','hand_l','upper_arm_r','forearm_r','hand_r','thigh_l','calf_l','foot_l','thigh_r','calf_r','foot_r'].filter(s=>!PART_MODELS[s]);
+  el.textContent = msg || (loaded.length ? `已載入 ${loaded.length} 個部位：${loaded.join(', ')}${missingCore.length?'｜核心缺：'+missingCore.join(', '):'｜核心部位已完整'}` : '尚未載入。先在 Blender 執行 export_14_parts_for_punch_studio.py，然後一次選取輸出的 HEAD/TORSO/UPPER_ARM/FOREARM/HAND/THIGH/CALF/FOOT .glb。');
+}
+// 從整個 scene graph 深度收集可對應 slot 的節點(支援巢狀 / Armature 包裹)。
+// 同一 slot 多命中時:取樹中最淺者,並跳過已選節點的子孫,避免父子重複掛載。
+function collectBundleParts(rootObj){
+  const depthOf = (o)=>{ let d=0,p=o.parent; while(p){ d++; p=p.parent; } return d; };
+  const hits = [];
+  rootObj.traverse(n=>{ const s = inferPartSlot(n.name); if(s) hits.push({node:n, slot:s, depth:depthOf(n)}); });
+  hits.sort((a,b)=> a.depth - b.depth);
+  const claimed = {}; const picked = [];
+  const underPicked = (node)=>{ let p=node.parent; while(p){ if(picked.some(x=>x.node===p)) return true; p=p.parent; } return false; };
+  for(const h of hits){
+    if(claimed[h.slot]) continue;       // 同 slot 已取(保留最淺)
+    if(underPicked(h.node)) continue;    // 在已選節點底下 → 略過
+    claimed[h.slot]=true; picked.push({node:h.node, slot:h.slot});
+  }
+  return picked; // [{node, slot}]
+}
+
+// 套用 bundle 內嵌比例(glTF 頂層 extras.dim)→ 假人關節間距自動配合此角色
+function applyBundleDim(gltf){
+  try{
+    const exDim = gltf.parser && gltf.parser.json && gltf.parser.json.extras && gltf.parser.json.extras.dim;
+    if(!exDim) return;
+    let applied=0;
+    Object.keys(exDim).forEach(k=>{ const v=Number(exDim[k]); if(Number.isFinite(v) && (k in DIM)){ DIM[k]=v; applied++; } });
+    if(applied){ buildPropPanel(); rebuildCharacter(); if(typeof scheduleAutosave==='function') scheduleAutosave(); }
+  }catch(e){ console.warn('bundle dim apply failed', e); }
+}
+
+// ★ 一次上傳整包 GLB,自動對應到所有部位 slot(深度遍歷,不管巢不巢狀)
+async function loadPartBundle(file){
+  if(!file) return false;
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功；請確認網路可連 CDN，或把 GLTFLoader.js 放到本機。'); return false; }
+  const loader = new THREE.GLTFLoader();
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((resolve,reject)=>loader.load(url, resolve, undefined, reject));
+    const obj = gltf.scene || gltf.scenes[0];
+    const picked = collectBundleParts(obj);
+    if(picked.length === 0){
+      updatePartsStatus(`整包「${file.name}」內找不到可對應的部位節點。節點名需含 head/neck/torso/upper_arm_l…(或 PART2_ 前綴)。`);
+      return false;
+    }
+    applySocketLocalRig(gltf);
+    let ok=0, fails=[];
+    for(const {node, slot} of picked){
+      try{ node.name='PUNCH_PART_'+slot; attachPart(slot, node); ok++; }
+      catch(err){ console.error('bundle attach failed:', slot, err); fails.push(slot); }
+    }
+    applyHipX();
+    autoHideDummyOnBundle();
+    const structural = PART_SLOT_DEFS.filter(d=>d.kind!=='equipment').map(d=>d.slot);
+    const got = picked.map(p=>p.slot);
+    const missing = structural.filter(s=>!got.includes(s));
+    updatePartsStatus(
+      `整包「${file.name}」→ 一次對應 ${ok} 個部位` +
+      (fails.length ? `｜失敗:${fails.join(', ')}` : '') +
+      (missing.length ? `｜整包未含:${missing.join(', ')}` : '｜結構部位齊全') +
+      '。可用下方 slot 下拉 + scale/x/y/z/rot 微調對位。'
+    );
+    return ok>0;
+  }catch(err){
+    console.error(err); updatePartsStatus(`整包載入失敗:${file.name} — ${err.message||err}`); return false;
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function loadPartFile(file){
+  const slot = inferPartSlot(file.name);
+  // 檔名對不到 slot 時不直接放棄:可能是合併部件包(內部子節點名對 slot),先載入再判斷
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功；請確認網路可連 CDN，或把 GLTFLoader.js 放到本機。'); return false; }
+  const loader = new THREE.GLTFLoader();
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((resolve,reject)=>loader.load(url, resolve, undefined, reject));
+    const obj = gltf.scene || gltf.scenes[0];
+    // 合併部件包偵測:深度遍歷整個 scene,有 ≥2 個節點名可對應 slot → 自動拆掛(支援巢狀)
+    const mapped = collectBundleParts(obj).map(p=>({k:p.node, kslot:p.slot}));
+    if(mapped.length >= 2){
+      applySocketLocalRig(gltf);
+      let okCount = 0, fails = [];
+      for(const {k, kslot} of mapped){
+        try{ k.name='PUNCH_PART_'+kslot; attachPart(kslot, k); okCount++; }
+        catch(err){ console.error('bundle attach failed:', kslot, err); fails.push(kslot); }
+      }
+      applyHipX();
+      autoHideDummyOnBundle();
+      updatePartsStatus(`已從 ${file.name} 自動拆出 ${okCount} 個部位` + (fails.length ? `｜失敗：${fails.join(', ')}` : ''));
+      return okCount > 0;
+    }
+    if(!slot){
+      updatePartsStatus(`無法判斷 ${file.name} 要掛到哪個 slot（檔名對不到、內容也不是合併部件包）；請使用 HEAD/TORSO/UPPER_ARM_L 這類檔名，或載入含具名子節點的合併 GLB。`);
+      return false;
+    }
+    obj.name = 'PUNCH_PART_'+slot;
+    attachPart(slot, obj);
+    updatePartsStatus(`已載入 ${file.name} → ${slot}`);
+    return true;
+  }catch(err){
+    console.error(err); updatePartsStatus(`載入失敗：${file.name} — ${err.message||err}`); return false;
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+async function loadPartFiles(files){
+  let ok=0;
+  for(const f of Array.from(files||[])){ if(await loadPartFile(f)) ok++; }
+  updatePartsStatus(ok ? `載入完成：${ok} 個部位。可用下方 scale/x/y/z/rot 微調對位。` : undefined);
+}
+function buildPartSlotUI(){
+  const sel=document.getElementById('partSlotSelect'); if(!sel) return;
+  sel.innerHTML='';
+  PART_SLOT_DEFS.forEach(d=>{ const opt=document.createElement('option'); opt.value=d.slot; opt.textContent=d.label; sel.appendChild(opt); });
+  const syncPair=(rangeId,numId,key)=>{
+    const r=document.getElementById(rangeId), n=document.getElementById(numId); if(!r||!n) return;
+    const write=(val)=>{ const slot=sel.value; const c=partCfg(slot); c[key]=Number(val)||0; if(key==='s' && c[key]<=0) c[key]=0.01; r.value=c[key]; n.value=c[key]; applyPartConfig(slot); savePartConfig(); };
+    r.addEventListener('input',e=>write(e.target.value));
+    n.addEventListener('input',e=>write(e.target.value));
+  };
+  syncPair('partScale','partScaleNum','s');
+  syncPair('partX','partXNum','x'); syncPair('partY','partYNum','y'); syncPair('partZ','partZNum','z');
+  syncPair('partRX','partRXNum','rx'); syncPair('partRY','partRYNum','ry'); syncPair('partRZ','partRZNum','rz');
+  function refresh(){
+    const c=partCfg(sel.value);
+    [['partScale','partScaleNum','s'],['partX','partXNum','x'],['partY','partYNum','y'],['partZ','partZNum','z'],['partRX','partRXNum','rx'],['partRY','partRYNum','ry'],['partRZ','partRZNum','rz']].forEach(([rId,nId,k])=>{
+      const r=document.getElementById(rId), n=document.getElementById(nId); if(r)r.value=c[k]; if(n)n.value=c[k];
+    });
+  }
+  sel.addEventListener('change',refresh);
+  refresh();
+  document.getElementById('partsBundle')?.addEventListener('change',e=>{
+    const f = e.target.files && e.target.files[0];
+    if(f) loadPartBundle(f);
+    e.target.value='';   // 允許同一檔重新上傳再次觸發
+  });
+  document.getElementById('partsFiles')?.addEventListener('change',e=>loadPartFiles(e.target.files));
+  document.getElementById('partsClear')?.addEventListener('click',()=>clearParts());
+  document.getElementById('partsDummyToggle')?.addEventListener('click',()=>{
+    PARTS_HIDE_DUMMY=!PARTS_HIDE_DUMMY;
+    try{ localStorage.setItem(PART_HIDE_STORAGE_KEY, PARTS_HIDE_DUMMY?'1':'0'); }catch(e){}
+    setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+    const b=document.getElementById('partsDummyToggle'); if(b) b.textContent=PARTS_HIDE_DUMMY?'顯示假人':'隱藏假人';
+  });
+  document.getElementById('partInspectTpose')?.addEventListener('click',()=>{
+    PART_INSPECT_TPOSE=!PART_INSPECT_TPOSE;
+    applyInspectOrPhase();
+    const b=document.getElementById('partInspectTpose'); if(b) b.textContent=PART_INSPECT_TPOSE?'結束檢視':'組裝檢視 T-pose';
+  });
+  document.getElementById('partResetSlot')?.addEventListener('click',()=>{
+    PART_CONFIG[sel.value]=partDefaultConfig(sel.value); refresh(); applyPartConfig(sel.value); savePartConfig();
+  });
+  document.getElementById('partExportCfg')?.addEventListener('click',()=>{
+    const out = JSON.stringify({createdBy:'PUNCH STUDIO part kit', config:PART_CONFIG, loaded:Object.keys(PART_MODELS)}, null, 2);
+    const modal=document.getElementById('modal'), text=document.getElementById('modalText'), help=document.getElementById('modalHelp');
+    if(help) help.textContent='保存這份 JSON 可記錄每個部位的 x/y/z/rotation/scale 對位參數。';
+    if(text) text.value=out;
+    if(modal) modal.classList.add('show');
+  });
+  const b=document.getElementById('partsDummyToggle'); if(b) b.textContent=PARTS_HIDE_DUMMY?'顯示假人':'隱藏假人';
+}
+loadPartConfig();
+buildPartSlotUI();
+setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+updatePartsStatus();
+
+
+requestAnimationFrame(tick);
+</script>
+
+<!-- AI 姿勢偵測(MediaPipe Tasks Vision)。獨立 module:lazy-load,首次「AI 偵測」才下載模型;
+     離線/載入失敗只會讓 window.aiDetectPose 不存在,主程式 graceful 處理,不影響其他功能。 -->
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+let _pl=null, _loading=null;
+async function ensure(){
+  if(_pl) return _pl;
+  if(!_loading){
+    _loading = (async()=>{
+      const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+      _pl = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task" },
+        runningMode:"IMAGE", numPoses:1
+      });
+      return _pl;
+    })();
+  }
+  return _loading;
+}
+// 回傳第一個人的 33 個 landmark({x,y,z,visibility},x/y 正規化[0,1]),抓不到回 null
+window.aiDetectPose = async function(imgEl){
+  const pl = await ensure();
+  const r = pl.detect(imgEl);
+  return (r && r.landmarks && r.landmarks[0]) ? r.landmarks[0] : null;
+};
+</script>
+</body>
+</html>
