@@ -146,7 +146,7 @@ const POD = { x: W / 2, y: H / 2, r: 46 };
 const STAB_MAX = 100, STAB_REGEN = 28;
 // 基礎抓捕數值 (spec F §2.3 起始值,實測後調)
 const PUNCH_RANGE = 46, PUNCH_CONE = 0.9; // 揮拳零位移(受擊=純踉蹌);位移只屬於指定攻擊(終結技/風壓/爆桶/Boss)
-// 三連擊:左鉤→右鉤→浮誇直拳(終結技)。命中才接段,揮空或超窗重置
+// 三連擊:左鉤→右鉤→浮誇直拳(終結技)。點擊就接段(空揮也演),超窗 0.9s 才重置
 const COMBO_STAB = [20, 20, 35], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WINDOW = 0.9;
 const FINISHER_KNOCK = 240; // 終結技=指定攻擊:小擊退拉開距離,重置節奏
 // 格擋推開:被打中後 PUSH_WIN 秒內按格擋鍵 → 把攻擊方推開+踉蹌,斷 combo;冷卻 PUSH_CD
@@ -320,12 +320,13 @@ function punch(f) {
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
     if (o.pid === LOCAL) localFlash = 0.2;
   }
-  // 命中才接段,揮空整套重置;終結技回饋全面加重(最長定格/最重鏡頭踹/重音)
+  // 點擊就接段(空揮也演完整套 —— 連點看動作本身就是獎勵,途中不小心打中一拳也爽);
+  // 超過接段窗口才重置。命中回饋照舊分級:終結技最重(定格/鏡頭踹/重音)。
+  f.comboN = (stage + 1) % 3; f.comboT = COMBO_WINDOW;
   if (hit) {
-    f.comboN = (stage + 1) % 3; f.comboT = COMBO_WINDOW;
     if (fin) { addShake(7); addHitstop(0.12); camKick(a, 10); game.sfx.push('smash'); }
     else { addShake(4); addHitstop(0.08); camKick(a, 7); game.sfx.push('thud'); }
-  } else { f.comboN = 0; f.comboT = 0; addShake(1.5); game.sfx.push('whiff'); }
+  } else { addShake(fin ? 2.5 : 1.5); game.sfx.push('whiff'); }
 }
 // 格擋推開:被打中的短窗內按鍵 → 把攻擊方推開一步+踉蹌,combo 斷掉(防守方自己不動)
 function doPushOff(o) {
@@ -968,7 +969,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: combo-1', W - 10, H - 4);
+  hctx.fillText('build: combo-2', W - 10, H - 4);
 }
 
 function frame(now) {
