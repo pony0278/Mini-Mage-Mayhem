@@ -143,7 +143,7 @@ function resetFighter(f) {
 const POD = { x: W / 2, y: H / 2, r: 46 };
 const STAB_MAX = 100, STAB_REGEN = 28;
 // 基礎抓捕數值 (spec F §2.3 起始值,實測後調)
-const PUNCH_RANGE = 46, PUNCH_CONE = 0.9, PUNCH_CD = 0.35, PUNCH_STAB = 25, PUNCH_KNOCK = 130;
+const PUNCH_RANGE = 46, PUNCH_CONE = 0.9, PUNCH_CD = 0.35, PUNCH_STAB = 25; // 揮拳零位移(受擊=純踉蹌);位移只屬於指定攻擊(風壓/爆桶/Boss)
 const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
 const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 const CARRY_ESCAPE_NEED = 100, CARRY_MASH_AI = 45, CARRY_MASH_TAP = 8; // AI 固定填速≈2.2s;人類左右交替每下+8
@@ -295,7 +295,8 @@ function punch(f) {
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > PUNCH_CONE) continue;
     hit = true;
-    o.vx += Math.cos(a) * PUNCH_KNOCK; o.vy += Math.sin(a) * PUNCH_KNOCK;
+    // 揮拳不位移:受擊只有踉蹌(flinch/壓扁,旋轉縮放不動位置)。位移是「指定攻擊」的職責
+    // (風壓/爆桶/Boss)—— 拳頭把人打飛會把要抓的目標推出自己的抓取範圍,跟核心循環相矛盾。
     o.faceT = 0.2; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     o.stability = Math.max(0, o.stability - PUNCH_STAB); o.stabCd = 0.8; // 削穩定值(命中暫停回穩)
     flinch(o, a);                                                        // 受擊:朝受力方向甩頭+壓扁回彈
@@ -917,7 +918,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: solid-2', W - 10, H - 4);
+  hctx.fillText('build: jab-1', W - 10, H - 4);
 }
 
 function frame(now) {
