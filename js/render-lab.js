@@ -221,6 +221,7 @@ export function initLabScene() {
   scene.add(labGroup);
   buildLabWalls();
   buildLabEnergyTubes();
+  buildLabProps();
   labAnimated.push({ update: (t) => {
     magicCircle.rotation.z = t * 0.05;
     circleMat.opacity = 0.55 + Math.sin(t * 1.4) * 0.15;
@@ -308,6 +309,375 @@ function buildLabEnergyTubes() {
   addTube(CORE_W - 4, 0, offZ, Math.PI, colors[2], 3.4);
   addTube(CORE_D - 4, offX, 0, -Math.PI / 2, colors[3], 5.1);
 }
+/* ==========================================================================
+   帶區裝飾 —— 模組化:下面全是純 builder(回傳 Group,原型逐字移植),
+   佈置由 LAB_LAYOUT 編排表決定(改佈局=改表;單位=tile,原點=場地中心)。
+   預設編排原則:南帶是鏡頭前景 → 只放矮件;四座元素站在北帶(牆後露出,
+   景深最佳);水槽/高傢俱進東西帶。
+   ========================================================================== */
+M.glass = (c = 0x7fe8ff, o = 0.22) => new THREE.MeshPhysicalMaterial({
+  color: c, transparent: true, opacity: o, roughness: 0.05, metalness: 0,
+  transmission: 0.6, emissive: c, emissiveIntensity: 0.08, side: THREE.DoubleSide });
+M.wood = () => new THREE.MeshStandardMaterial({ color: 0x3a2b3f, roughness: 0.85 });
+
+function groundDecal(g, color, r = 2.8) { // 站台腳下的發光環貼花(各站自帶,顏色=站的元素色)
+  const d = new THREE.Mesh(new THREE.RingGeometry(r - 0.2, r + 0.2, 24),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  d.rotation.x = -Math.PI / 2; d.position.y = 0.04; g.add(d);
+  labAnimated.push({ update: t => { d.material.opacity = 0.25 + Math.sin(t * 2 + g.position.x) * 0.12; } });
+}
+
+function containmentTank(color = 0x5ff0e0, specimen = 'orb') {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.15, 1.3, 0.5, 14), M.darkMetal(), 0, 0.25, 0));
+  g.add(mesh(new THREE.CylinderGeometry(1.0, 1.0, 2.8, 14), M.glass(color), 0, 2.0, 0, false));
+  g.add(mesh(new THREE.CylinderGeometry(1.15, 1.0, 0.45, 14), M.metal(), 0, 3.55, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.7, 8), M.glow(color, 1.5), 0, 4.1, 0, false));
+  const core = mesh(new THREE.CylinderGeometry(0.85, 0.85, 2.5, 14),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false }), 0, 2.0, 0, false);
+  g.add(core);
+  let sp;
+  if (specimen === 'orb') sp = mesh(new THREE.SphereGeometry(0.42, 14, 14), M.glow(color, 1.2), 0, 2, 0, false);
+  if (specimen === 'cube') sp = mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), M.glow(color, 1.1), 0, 2, 0, false);
+  if (specimen === 'crystal') sp = mesh(new THREE.OctahedronGeometry(0.45), M.glow(color, 1.3), 0, 2, 0, false);
+  g.add(sp);
+  const bubbles = [];
+  for (let i = 0; i < 5; i++) {
+    const b = mesh(new THREE.SphereGeometry(0.05 + Math.random() * 0.05, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
+      (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 2.4, (Math.random() - 0.5) * 1.2, false);
+    bubbles.push(b); g.add(b);
+  }
+  const light = new THREE.PointLight(color, 0.9, 6 * LAB_SCALE, 2); light.position.y = 2.2; g.add(light);
+  labAnimated.push({ update: (t, dt) => {
+    sp.position.y = 2 + Math.sin(t * 1.3 + g.position.x) * 0.25;
+    sp.rotation.y += dt * 0.8;
+    bubbles.forEach(b => { b.position.y += dt * 0.7; if (b.position.y > 3.3) b.position.y = 0.8; });
+    light.intensity = 0.75 + Math.sin(t * 2.2 + g.position.z) * 0.2;
+  } });
+  return g;
+}
+function alchemyTable() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(3.4, 0.25, 1.5), M.wood(), 0, 1.15, 0));
+  [[-1.4, -0.55], [1.4, -0.55], [-1.4, 0.55], [1.4, 0.55]].forEach(([x, z]) =>
+    g.add(mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), M.darkMetal(), x, 0.55, z)));
+  const cols = [0x6dff9e, 0xff77e0, 0x53c8ff, 0xffb84f];
+  for (let i = 0; i < 4; i++) {
+    const col = cols[i];
+    const fx = -1.2 + i * 0.8, fz = (i % 2 ? 0.3 : -0.25);
+    g.add(mesh(new THREE.SphereGeometry(0.22, 10, 10), M.glass(col, 0.5), fx, 1.5, fz, false));
+    const liquid = mesh(new THREE.SphereGeometry(0.15, 8, 8), M.glow(col, 1.5), fx, 1.44, fz, false);
+    g.add(liquid);
+    g.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.25, 6), M.glass(col, 0.4), fx, 1.78, fz, false));
+    labAnimated.push({ update: t => { liquid.material.emissiveIntensity = 1.2 + Math.sin(t * 3 + i * 2) * 0.5; } });
+  }
+  g.add(mesh(new THREE.BoxGeometry(0.7, 0.08, 0.5), M.glow(0xc9b8ff, 0.35), 1.1, 1.32, 0.3));
+  const l2 = new THREE.PointLight(0x8affc0, 0.6, 4 * LAB_SCALE, 2); l2.position.set(0, 1.9, 0); g.add(l2);
+  return g;
+}
+function bookshelf() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(2.6, 3.4, 0.8), M.wood(), 0, 1.7, 0));
+  const cols = [0x6b4f8f, 0x3f5f8a, 0x8a3f5f, 0x4f8a6b, 0x8a7a3f];
+  for (let row = 0; row < 3; row++) {
+    g.add(mesh(new THREE.BoxGeometry(2.3, 0.08, 0.7), M.darkMetal(), 0, 0.9 + row * 0.95, 0.02));
+    let x = -1.0;
+    while (x < 1.0) {
+      const w2 = 0.14 + Math.random() * 0.12, h2b = 0.55 + Math.random() * 0.25;
+      const b = mesh(new THREE.BoxGeometry(w2, h2b, 0.5), M.stone(cols[Math.floor(Math.random() * cols.length)]), x, 0.95 + row * 0.95 + h2b / 2, 0.05);
+      if (Math.random() < 0.15) b.rotation.z = 0.12;
+      g.add(b); x += w2 + 0.05;
+    }
+  }
+  const tome = mesh(new THREE.BoxGeometry(0.2, 0.6, 0.5), M.glow(0xff6db0, 1.4), 0.6, 2.35, 0.06, false);
+  g.add(tome);
+  labAnimated.push({ update: t => { tome.material.emissiveIntensity = 1.0 + Math.sin(t * 1.8) * 0.6; } });
+  return g;
+}
+function machinery() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(2.6, 2.2, 1.6), M.darkMetal(), 0, 1.1, 0));
+  g.add(mesh(new THREE.BoxGeometry(2.8, 0.3, 1.8), M.metal(), 0, 2.35, 0));
+  const screen = mesh(new THREE.PlaneGeometry(1.4, 0.8), M.glow(0x53e0ff, 1.1), 0, 1.5, 0.82, false);
+  g.add(screen);
+  for (let i = 0; i < 3; i++) {
+    const d = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), M.glow([0xff5c5c, 0xffc14f, 0x6dff9e][i], 1.6), -0.8 + i * 0.8, 0.7, 0.82, false);
+    d.rotation.x = Math.PI / 2; g.add(d);
+    labAnimated.push({ update: t => { d.material.emissiveIntensity = (Math.sin(t * 4 + i * 2.1) > 0.3) ? 1.8 : 0.35; } });
+  }
+  const pipe = mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 16, Math.PI), M.metal(0x453a6e), 0.7, 2.5, 0);
+  pipe.rotation.z = Math.PI; g.add(pipe);
+  labAnimated.push({ update: t => { screen.material.emissiveIntensity = 0.9 + Math.sin(t * 7) * 0.15; } });
+  return g;
+}
+function displayCabinet(color, trophy) {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(1.6, 0.9, 1.6), M.darkMetal(), 0, 0.45, 0));
+  g.add(mesh(new THREE.BoxGeometry(1.35, 1.5, 1.35), M.glass(color, 0.16), 0, 1.65, 0, false));
+  g.add(mesh(new THREE.BoxGeometry(1.6, 0.2, 1.6), M.metal(), 0, 2.5, 0));
+  let item;
+  if (trophy === 'skull') {
+    item = new THREE.Group();
+    item.add(mesh(new THREE.SphereGeometry(0.32, 10, 10), M.stone(0xcfc7e8), 0, 0.1, 0, false));
+    item.add(mesh(new THREE.BoxGeometry(0.3, 0.2, 0.25), M.stone(0xcfc7e8), 0, -0.15, 0.08, false));
+  } else if (trophy === 'sword') {
+    item = new THREE.Group();
+    item.add(mesh(new THREE.BoxGeometry(0.08, 1.0, 0.02), M.glow(color, 0.9), 0, 0.15, 0, false));
+    item.add(mesh(new THREE.BoxGeometry(0.4, 0.07, 0.07), M.metal(0x6e5a9e), 0, -0.3, 0, false));
+  } else {
+    item = mesh(new THREE.IcosahedronGeometry(0.35), M.glow(color, 1.5), 0, 0, 0, false);
+  }
+  item.position.y = 1.55; g.add(item);
+  const l2 = new THREE.PointLight(color, 0.7, 4 * LAB_SCALE, 2); l2.position.y = 2.1; g.add(l2);
+  labAnimated.push({ update: (t, dt) => { item.rotation.y += dt * 0.9; item.position.y = 1.55 + Math.sin(t * 1.5) * 0.08; } });
+  return g;
+}
+function warningSign() {
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+  const g2 = c.getContext('2d');
+  g2.fillStyle = '#181228'; g2.fillRect(0, 0, S, S);
+  g2.save(); g2.beginPath(); g2.rect(8, 8, S - 16, S - 16); g2.clip();
+  for (let i = -S; i < S * 2; i += 34) {
+    g2.fillStyle = i / 34 % 2 ? '#e8a83c' : '#141020';
+    g2.beginPath(); g2.moveTo(i, 0); g2.lineTo(i + 34, 0); g2.lineTo(i + 34 - S, S); g2.lineTo(i - S, S); g2.fill();
+  }
+  g2.restore();
+  g2.fillStyle = '#181228'; g2.fillRect(34, 34, S - 68, S - 68);
+  g2.strokeStyle = '#e8a83c'; g2.lineWidth = 6; g2.strokeRect(34, 34, S - 68, S - 68);
+  g2.fillStyle = '#e8a83c'; g2.font = 'bold 110px serif'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  g2.fillText('⚠', S / 2, S / 2 - 14);
+  g2.font = 'bold 26px monospace'; g2.fillText('ᛗᚨᚷᛁᚲ', S / 2, S / 2 + 62);
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5),
+    new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.25, roughness: 0.8 }));
+  const g = new THREE.Group(); m.position.y = 2.1; g.add(m); return g;
+}
+function crackedGlassPanel() {
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+  const g2 = c.getContext('2d');
+  g2.strokeStyle = 'rgba(190,230,255,0.8)'; g2.lineWidth = 2;
+  const cx = S * 0.4 + Math.random() * S * 0.2, cy = S * 0.4 + Math.random() * S * 0.2;
+  for (let i = 0; i < 10; i++) {
+    const a = i / 10 * 6.28 + Math.random() * 0.4;
+    let x = cx, y = cy;
+    g2.beginPath(); g2.moveTo(x, y);
+    for (let s = 0; s < 4; s++) { x += Math.cos(a) * (20 + Math.random() * 20); y += Math.sin(a) * (20 + Math.random() * 20); g2.lineTo(x, y); }
+    g2.stroke();
+  }
+  for (let r = 18; r < 70; r += 20) { g2.beginPath(); g2.arc(cx, cy, r + Math.random() * 8, Math.random() * 3, Math.random() * 3 + 2.5); g2.stroke(); }
+  const tex = new THREE.CanvasTexture(c);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4),
+    new THREE.MeshPhysicalMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.18, roughness: 0.05,
+      emissiveMap: tex, emissive: 0xbfe6ff, emissiveIntensity: 0.5, side: THREE.DoubleSide }));
+  const g = new THREE.Group(); m.position.y = 1.25; m.rotation.x = -0.1; g.add(m); return g;
+}
+/* --- 四座元素實驗站(火/冰/毒/雷;原型逐字) --- */
+function fireStation() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.7, 2.0, 0.5, 10), M.stone(0x33203a), 0, 0.25, 0));
+  g.add(mesh(new THREE.CylinderGeometry(1.1, 1.35, 0.9, 10), M.darkMetal(), 0, 0.95, 0));
+  g.add(mesh(new THREE.CylinderGeometry(1.25, 0.9, 0.5, 10), M.metal(0x4a2f3a), 0, 1.6, 0));
+  g.add(mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.1, 10), M.glow(0xff7a2a, 2.2), 0, 1.85, 0, false));
+  const flames = [];
+  const fcols = [0xffd24f, 0xff8c2e, 0xff5c2a];
+  for (let i = 0; i < 3; i++) {
+    const f = mesh(new THREE.ConeGeometry(0.85 - i * 0.22, 1.9 - i * 0.35, 8),
+      new THREE.MeshBasicMaterial({ color: fcols[i], transparent: true, opacity: 0.55 - i * 0.1, blending: THREE.AdditiveBlending, depthWrite: false }),
+      0, 2.7 + i * 0.15, 0, false);
+    flames.push(f); g.add(f);
+  }
+  const embers = [];
+  for (let i = 0; i < 8; i++) {
+    const e = mesh(new THREE.SphereGeometry(0.05, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffb04f, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }),
+      (Math.random() - 0.5) * 1.2, 2 + Math.random() * 2, (Math.random() - 0.5) * 1.2, false);
+    embers.push(e); g.add(e);
+  }
+  g.add(mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.4, 10), M.metal(0x5a2f2a), 1.8, 0.7, 0.6));
+  g.add(mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.4, 10), M.metal(0x5a2f2a), 1.8, 0.7, -0.6));
+  const light = new THREE.PointLight(0xff7a2a, 2.4, 12 * LAB_SCALE, 2); light.position.set(0, 3, 0); g.add(light);
+  groundDecal(g, 0xff7a2a);
+  labAnimated.push({ update: (t, dt) => {
+    flames.forEach((f, i) => {
+      f.scale.set(1 + Math.sin(t * 9 + i) * 0.12, 1 + Math.sin(t * 11 + i * 2) * 0.18, 1 + Math.cos(t * 9 + i) * 0.12);
+      f.rotation.y += dt * (1 + i * 0.5);
+    });
+    embers.forEach((e, i) => {
+      e.position.y += dt * (0.8 + i * 0.1);
+      e.material.opacity = Math.max(0, e.material.opacity - dt * 0.4);
+      if (e.position.y > 4.4) { e.position.y = 2.1; e.position.x = (Math.random() - 0.5) * 1.2; e.position.z = (Math.random() - 0.5) * 1.2; e.material.opacity = 0.9; }
+    });
+    light.intensity = 2.0 + Math.sin(t * 13) * 0.35 + Math.sin(t * 7.3) * 0.25;
+  } });
+  return g;
+}
+function frostStation() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.9, 2.1, 0.4, 10), M.metal(0x2a3350), 0, 0.2, 0));
+  g.add(mesh(new THREE.CylinderGeometry(1.05, 1.05, 2.6, 12), M.glass(0x9fe8ff, 0.3), 0, 1.9, 0, false));
+  g.add(mesh(new THREE.CylinderGeometry(1.2, 1.05, 0.5, 12), M.metal(0x3a4a70), 0, 3.4, 0));
+  const frozen = mesh(new THREE.OctahedronGeometry(0.5), M.glow(0x9fe8ff, 0.8), 0, 1.9, 0, false);
+  g.add(frozen);
+  const crys = M.glass(0xbdf2ff, 0.5); crys.emissive = new THREE.Color(0x7fdcff); crys.emissiveIntensity = 0.6;
+  for (let i = 0; i < 9; i++) {
+    const a = i / 9 * 6.28, r = 1.4 + Math.random() * 0.8;
+    const s = mesh(new THREE.ConeGeometry(0.22 + Math.random() * 0.18, 0.9 + Math.random() * 1.3, 5), crys,
+      Math.cos(a) * r, 0.4, Math.sin(a) * r);
+    s.rotation.z = (Math.random() - 0.5) * 0.9; s.rotation.x = (Math.random() - 0.5) * 0.9;
+    g.add(s);
+  }
+  const mist = mesh(new THREE.TorusGeometry(1.9, 0.35, 8, 20),
+    new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }),
+    0, 0.35, 0, false);
+  mist.rotation.x = Math.PI / 2; g.add(mist);
+  const light = new THREE.PointLight(0x7fdcff, 1.8, 11 * LAB_SCALE, 2); light.position.set(0, 2.5, 0); g.add(light);
+  groundDecal(g, 0x7fdcff);
+  labAnimated.push({ update: (t, dt) => {
+    frozen.rotation.y += dt * 0.15;
+    frozen.material.emissiveIntensity = 0.6 + Math.sin(t * 1.2) * 0.3;
+    mist.scale.setScalar(1 + Math.sin(t * 1.5) * 0.08);
+    mist.material.opacity = 0.09 + Math.sin(t * 1.5) * 0.04;
+    light.intensity = 1.6 + Math.sin(t * 1.8) * 0.3;
+  } });
+  return g;
+}
+function poisonStation() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.7, 1.5, 2.2, 12), M.metal(0x2c3a2e), 0, 1.1, 0));
+  const rim2 = mesh(new THREE.TorusGeometry(1.7, 0.16, 8, 16), M.darkMetal(), 0, 2.2, 0);
+  rim2.rotation.x = Math.PI / 2; g.add(rim2);
+  const liquid = mesh(new THREE.CylinderGeometry(1.55, 1.55, 0.12, 12), M.glow(0x6dff5c, 1.8), 0, 2.18, 0, false);
+  g.add(liquid);
+  const bubbles = [];
+  for (let i = 0; i < 7; i++) {
+    const b = mesh(new THREE.SphereGeometry(0.1 + Math.random() * 0.12, 8, 8), M.glow(0x8aff6d, 1.2),
+      (Math.random() - 0.5) * 2.2, 2.25, (Math.random() - 0.5) * 2.2, false);
+    b.userData.s = 0.4 + Math.random(); bubbles.push(b); g.add(b);
+  }
+  const pipe = mesh(new THREE.CylinderGeometry(0.14, 0.14, 2.4, 8), M.metal(0x3a4a3a), 1.2, 3.3, 0);
+  pipe.rotation.z = 0.5; g.add(pipe);
+  g.add(mesh(new THREE.CylinderGeometry(0.4, 0.5, 1.1, 8), M.metal(0x3a4a3a), 2.1, 3.9, 0));
+  const spill = mesh(new THREE.CircleGeometry(2.6, 16),
+    new THREE.MeshBasicMaterial({ color: 0x4fdd3c, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }),
+    0.6, 0.035, 0.6, false);
+  spill.rotation.x = -Math.PI / 2; g.add(spill);
+  const light = new THREE.PointLight(0x6dff5c, 1.7, 11 * LAB_SCALE, 2); light.position.set(0, 3.2, 0); g.add(light);
+  groundDecal(g, 0x6dff5c);
+  labAnimated.push({ update: (t) => {
+    bubbles.forEach((b, i) => {
+      const ph = (t * b.userData.s + i) % 2;
+      b.position.y = 2.25 + ph * 0.35;
+      b.scale.setScalar(Math.max(0.01, 1 - ph * 0.5));
+    });
+    liquid.material.emissiveIntensity = 1.5 + Math.sin(t * 2.6) * 0.4;
+    light.intensity = 1.5 + Math.sin(t * 2.6) * 0.35;
+  } });
+  return g;
+}
+function lightningStation() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.6, 1.9, 0.5, 10), M.darkMetal(), 0, 0.25, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.55, 0.75, 4.2, 10), M.metal(0x3a3260), 0, 2.6, 0));
+  for (let i = 0; i < 4; i++) {
+    const ring = mesh(new THREE.TorusGeometry(0.85, 0.1, 8, 16), M.glow(0x9a6bff, 1.2), 0, 1.4 + i * 0.9, 0, false);
+    ring.rotation.x = Math.PI / 2; g.add(ring);
+    labAnimated.push({ update: t => { ring.material.emissiveIntensity = 0.8 + Math.sin(t * 5 - i * 1.2) * 0.7; } });
+  }
+  const orb = mesh(new THREE.SphereGeometry(0.6, 14, 14), M.glow(0xcaa8ff, 2.4), 0, 5.2, 0, false);
+  g.add(orb);
+  const rods = [];
+  for (let i = 0; i < 4; i++) {
+    const a = i / 4 * 6.28 + 0.4;
+    const rod = mesh(new THREE.CylinderGeometry(0.1, 0.14, 1.6, 6), M.metal(0x4a4080), Math.cos(a) * 2.3, 0.8, Math.sin(a) * 2.3);
+    const tip = mesh(new THREE.SphereGeometry(0.15, 8, 8), M.glow(0xb58cff, 1.5), Math.cos(a) * 2.3, 1.7, Math.sin(a) * 2.3, false);
+    rods.push(tip.position.clone()); g.add(rod); g.add(tip);
+  }
+  const arcMat = new THREE.LineBasicMaterial({ color: 0xd9c2ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+  const arcs = rods.map(() => {
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    const line = new THREE.Line(geo, arcMat.clone()); g.add(line); return line;
+  });
+  const top = new THREE.Vector3(0, 5.2, 0);
+  function boltPoints(a, b) {
+    const pts = []; const N = 9;
+    for (let i = 0; i <= N; i++) {
+      const p = a.clone().lerp(b, i / N);
+      if (i > 0 && i < N) { p.x += (Math.random() - 0.5) * 0.45; p.y += (Math.random() - 0.5) * 0.45; p.z += (Math.random() - 0.5) * 0.45; }
+      pts.push(p);
+    }
+    return pts;
+  }
+  const light = new THREE.PointLight(0xb58cff, 1.8, 13 * LAB_SCALE, 2); light.position.set(0, 4.5, 0); g.add(light);
+  groundDecal(g, 0xb58cff);
+  let boltT = 0;
+  labAnimated.push({ update: (t, dt) => {
+    orb.material.emissiveIntensity = 2.0 + Math.sin(t * 6) * 0.8;
+    orb.scale.setScalar(1 + Math.sin(t * 6) * 0.06);
+    boltT -= dt;
+    if (boltT <= 0) {
+      boltT = 0.08 + Math.random() * 0.12;
+      arcs.forEach((line, i) => {
+        const on = Math.random() < 0.55;
+        line.visible = on;
+        if (on) line.geometry.setFromPoints(boltPoints(top, rods[i]));
+      });
+      light.intensity = 1.2 + Math.random() * 2.2;
+    }
+  } });
+  return g;
+}
+function crate() { // 帶區散落小木箱
+  const g = new THREE.Group();
+  const c = mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), M.stone(0x2c2450), 0, 0.35, 0);
+  c.rotation.y = Math.random() * Math.PI;
+  const band = mesh(new THREE.BoxGeometry(0.74, 0.12, 0.74), M.glow(0x7a4dff, 0.7), 0, 0, 0, false);
+  c.add(band); g.add(c); return g;
+}
+
+/* ---------- LAB_LAYOUT 編排表:改佈局=改這張表(x/z 單位=tile,原點=場地中心) ----------
+   核心牆在 x=±14.5 / z=±9.5;帶區:北/南 z=±10..±15,東/西 x=±15..±17。
+   南帶=鏡頭前景 → 只放矮件;元素站全在北帶(從北牆後露出,景深最佳)。 */
+const BUILDERS = { tank: containmentTank, alchemy: alchemyTable, shelf: bookshelf, machine: machinery,
+  cabinet: displayCabinet, sign: warningSign, glass: crackedGlassPanel, crate,
+  fire: fireStation, frost: frostStation, poison: poisonStation, lightning: lightningStation };
+export const LAB_LAYOUT = [
+  // 北帶:四座元素實驗站(火/冰/毒/雷)
+  { type: 'fire',      x: -11.5, z: -11.7, ry: Math.PI * 0.25 },
+  { type: 'frost',     x: -4,    z: -11.9, ry: -Math.PI * 0.25 },
+  { type: 'poison',    x: 4,     z: -11.9, ry: -Math.PI * 0.2 },
+  { type: 'lightning', x: 11.5,  z: -11.7, ry: 0 },
+  // 東/西帶:收容水槽+高傢俱
+  { type: 'tank', x: -16, z: -6,   ry: Math.PI / 2,  args: [0x5ff0e0, 'orb'] },
+  { type: 'tank', x: -16, z: 0,    ry: Math.PI / 2,  args: [0x8aff6d, 'cube'] },
+  { type: 'tank', x: -16, z: 6,    ry: Math.PI / 2,  args: [0xb58cff, 'orb'] },
+  { type: 'tank', x: 16,  z: -6,   ry: -Math.PI / 2, args: [0x53c8ff, 'crystal'] },
+  { type: 'tank', x: 16,  z: 6,    ry: -Math.PI / 2, args: [0xff8ad0, 'crystal'] },
+  { type: 'shelf',   x: 16,  z: 0,    ry: -Math.PI / 2 },
+  { type: 'machine', x: -16, z: -11,  ry: Math.PI / 2 },
+  // 南帶(前景):矮件
+  { type: 'alchemy', x: 0,    z: 11.6, ry: Math.PI },
+  { type: 'cabinet', x: -5.8, z: 11.6, ry: Math.PI, args: [0xffc14f, 'skull'] },
+  { type: 'cabinet', x: 5.4,  z: 11.6, ry: Math.PI, args: [0x53e0ff, 'sword'] },
+  { type: 'crate', x: -10.5, z: 11.2 }, { type: 'crate', x: 9.8, z: 11.5 }, { type: 'crate', x: 12.6, z: 11 },
+  { type: 'crate', x: -8, z: -11.2 }, { type: 'crate', x: 8.2, z: -11 },
+  // 警告標誌(掛核心牆內面)+裂玻璃(斜靠牆)
+  { type: 'sign', x: -2,     z: -9.12, ry: 0 },
+  { type: 'sign', x: 9,      z: -9.12, ry: 0 },
+  { type: 'sign', x: 14.12,  z: 5,     ry: -Math.PI / 2 },
+  { type: 'sign', x: -14.12, z: -5,    ry: Math.PI / 2 },
+  { type: 'glass', x: -9.8,  z: -9.05, ry: 0 },
+  { type: 'glass', x: 14.05, z: -6.5,  ry: -Math.PI / 2 },
+];
+function buildLabProps() {
+  for (const item of LAB_LAYOUT) {
+    const b = BUILDERS[item.type]; if (!b) continue;
+    const g = b(...(item.args || []));
+    g.position.set(item.x, 0, item.z); g.rotation.y = item.ry || 0;
+    labGroup.add(g);
+  }
+}
+
 /* ---------- lab 牆的穿牆淡出:鏡頭→本機角色射線打到的牆板/角柱 → 淡出 ---------- */
 const _labRay = new THREE.Raycaster();
 const _labDir = new THREE.Vector3();

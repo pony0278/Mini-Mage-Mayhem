@@ -120,4 +120,4 @@ export function resetInc() {
 
 // --- 有界跟隨攝影機的代理點 + 夾界(見 v2.js updateCamRig 說明) ---
 export const camRig = { x: SPAWN[0].x, y: SPAWN[0].y };
-export const CAMB = { ix: 250, ny: 210, sy: 500, ease: 8 }; // ix=左右夾界(跟隨玩家 X，兩側牆內留邊), ny/sy=北/南夾界, ease=平滑
+export const CAMB = { ix: 250, ny: 190, sy: 500, ease: 8 }; // ny 190:靠北時多看到一點北帶元素站 // ix=左右夾界(跟隨玩家 X，兩側牆內留邊), ny/sy=北/南夾界, ease=平滑
