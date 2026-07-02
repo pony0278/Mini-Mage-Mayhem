@@ -701,7 +701,7 @@ function updateLabWallFade() {
   if (!_fadeMeshes.length) for (const u of _fadeUnits) _fadeMeshes.push(...u.meshes);
   labGroup.updateMatrixWorld(true);
   for (const hit of _labRay.intersectObjects(_fadeMeshes, false)) {
-    const u = hit.object.userData.unit; if (u) u.target = 0.18;
+    const u = hit.object.userData.unit; if (u) u.target = 0; // 完全透明(玩家反饋:0.18 殘影仍擋視線);邊界提示由牆基能量管+地板邊緣承擔
   }
   for (const u of _fadeUnits) {
     u.op += (u.target - u.op) * 0.25;
