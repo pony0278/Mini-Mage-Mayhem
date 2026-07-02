@@ -16,6 +16,7 @@ The game JS now lives in **`js/` ES modules** (build-free); the three HTML files
 - `js/render.js` — 3D (Three.js voxel world) + 2D HUD. Reads game state; owns scene/camera/renderer/`ctx`. Imports sim only for HUD presentation helpers (`render → sim`, never reverse).
 - `js/main.js` — app glue: input handlers + main loop + boot. Shared by all three shells.
 - `js/camera-panel.js`, `js/training-panel.js` — page-specific add-ons (camera-tuning sliders / sandbox test panel).
+- `js/v2*.js` — the **v2 mode** (魔法事故報告 · 收容測試, loaded by `v2.html` only): `v2-state` (all tuning consts + shared mutable state incl. the `v2s` scalar container) → `v2-terrain` / `v2-report` → `v2-combat` → `v2-items`; `v2-hud` (2D overlay); `v2.js` is the glue (input + step loop + boot + `window.__v2` test hook); `v2-tuning.js` is the opt-in `?tune=1` panel. Boundaries + invariants: `docs/v2-module-boundaries.md`. v2 never touches the single-player DAG.
 - `index.html` — the game (site root). Loads `js/main.js`.
 - `camera-sandbox.html` — game + camera panel. Loads `main.js` + `camera-panel.js`.
 - `training.html` — repo-only test arena (spawn enemies/props, switch builds; `window.__game` debug hook). Loads `main.js` + `training-panel.js`.
