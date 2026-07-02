@@ -420,6 +420,7 @@ import { scene, camera, ART, boxGeo, octaGeo, cylGeo, coneGeo, matLambert, makeB
 
 // --- lab 場景(render-lab.js 復刻版)用的小開關:藏舊地板 / 舊牆壓暗(正式牆板前的過渡) ---
 export function setStockGroundVisible(on) { groundMesh.visible = on; }
+export function setStockWallsVisible(on) { wallGroup.visible = on; }
 export function setWallDarkTint(on) {
   wallMat.color.setHex(on ? 0x151129 : ART.wall); wallTopMat.color.setHex(on ? 0x1c1636 : ART.wallTop);
   wallDirty = true;

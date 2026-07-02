@@ -5,7 +5,7 @@ import { W, H } from './constants.js';
 import { rnd } from './utils.js';
 import { game, CAM } from './state.js';
 import { renderer, gl3dOk, scene, camera, setStockLights } from './render-core.js';
-import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, updateWallFade, setStockGroundVisible, setWallDarkTint } from './render-world.js';
+import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, updateWallFade, setStockGroundVisible, setStockWallsVisible, setWallFade as _setWallFade } from './render-world.js';
 import { initLabScene, updateLabScene } from './render-lab.js';
 import { syncActors } from './render-actors.js';
 import { syncProps, syncProjectiles, syncZones } from './render-entities.js';
@@ -21,8 +21,8 @@ let labOn = false;
 export function setLabTheme(on) {
   labOn = on;
   setStockLights(!on); // lab 燈組接管,關掉單機常設燈(疊加會過曝)
-  if (on) { initLabScene(); setStockGroundVisible(false); setWallDarkTint(true); }
-  else { setStockGroundVisible(true); setWallDarkTint(false); }
+  if (on) { initLabScene(); setStockGroundVisible(false); setStockWallsVisible(false); _setWallFade(false); } // 舊牆整組隱藏,lab 牆板自帶淡出
+  else { setStockGroundVisible(true); setStockWallsVisible(true); }
 }
 
 // camera-sandbox 的跟隨開關(camTarget 存在時被覆寫)

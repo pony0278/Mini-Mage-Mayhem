@@ -5,7 +5,7 @@
 // builder 幾乎逐字移植。碰撞/模擬完全不動(牆的碰撞仍在 30×20 核心邊界)。
 import { W, H, TILE } from './constants.js';
 import { game } from './state.js';
-import { renderer, scene } from './render-core.js';
+import { renderer, scene, camera } from './render-core.js';
 
 const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
 const CX = W / 2, CZ = H / 2;           // 場地中心(世界px)
@@ -218,6 +218,9 @@ export function initLabScene() {
   scene.add(magicCircle);
   const circleGlow = new THREE.PointLight(0x9a5cff, 1.6, 16 * LAB_SCALE, 2);
   circleGlow.position.set(CX, 1.2 * LAB_SCALE, CZ); scene.add(circleGlow);
+  scene.add(labGroup);
+  buildLabWalls();
+  buildLabEnergyTubes();
   labAnimated.push({ update: (t) => {
     magicCircle.rotation.z = t * 0.05;
     circleMat.opacity = 0.55 + Math.sin(t * 1.4) * 0.15;
@@ -225,9 +228,114 @@ export function initLabScene() {
   } });
 }
 
+/* ---------- 原型材質庫(牆/柱/管用;MeshStandard) ---------- */
+const M = {
+  metal: (c = 0x2b2545) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.45, metalness: 0.8 }),
+  darkMetal: () => new THREE.MeshStandardMaterial({ color: 0x1c1832, roughness: 0.5, metalness: 0.85 }),
+  stone: (c = 0x241e3e) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, metalness: 0.1 }),
+  glow: (c, i = 1.6) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i, roughness: 0.4 }),
+};
+function mesh(geo, mat, x = 0, y = 0, z = 0, shadow = true) {
+  const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z);
+  m.castShadow = shadow; m.receiveShadow = true; return m;
+}
+// 所有原型 builder 都建在這個 ×32 縮放的 group 裡 → 幾何常數可逐字保留(原型單位)
+const labGroup = new THREE.Group();
+labGroup.scale.setScalar(LAB_SCALE); labGroup.position.set(CX, 0, CZ);
+
+/* ---------- 牆板/角柱(原型 buildWalls;移到 30×20 核心邊界=碰撞位置) ---------- */
+const WALL_HX = CORE_W / 2 - 0.5;   // 14.5:牆磚帶(最外圈 tile)的中心線
+const WALL_HZ = CORE_D / 2 - 0.5;   // 9.5
+const _fadeUnits = [];               // { meshes, mats, op, target } — lab 牆自己的穿牆淡出
+function buildLabWalls() {
+  const wall = new THREE.Group();
+  function addPanelSide(length, fixedX, fixedZ, rotY, sideIndex) {
+    const panelCount = Math.ceil(length / 4);
+    const seg = length / panelCount;
+    for (let i = 0; i < panelCount; i++) {
+      const local = -length / 2 + seg / 2 + i * seg;
+      const p = mesh(new THREE.BoxGeometry(seg * 0.96, 3.4, 0.7), M.stone(0x201a38), 0, 1.7, 0);
+      p.scale.y = 0.92 + ((i * 7 + sideIndex * 3) % 5) * 0.05;
+      const trim = mesh(new THREE.BoxGeometry(seg * 0.96, 0.14, 0.16), M.glow(0x7a4dff, 1.2), 0, 3.15 * p.scale.y, 0.32, false);
+      const g = new THREE.Group(); g.add(p); g.add(trim);
+      const unit = { meshes: [p], mats: [p.material, trim.material], op: 1, target: 1 };
+      if (i % 2 === 0) {
+        const seam = mesh(new THREE.BoxGeometry(0.1, 2.6, 0.06), M.glow(0x4a2fd0, 0.8), -seg / 2, 1.6, 0.34, false);
+        g.add(seam); unit.mats.push(seam.material);
+      }
+      for (const m of unit.mats) { m.transparent = true; }
+      _fadeUnits.push(unit); p.userData.unit = unit;
+      g.rotation.y = rotY;
+      if (Math.abs(Math.sin(rotY)) < 0.1) g.position.set(local, 0, fixedZ);
+      else g.position.set(fixedX, 0, local);
+      wall.add(g);
+    }
+  }
+  addPanelSide(CORE_W, 0, -WALL_HZ, 0, 0);           // north
+  addPanelSide(CORE_W, 0, WALL_HZ, Math.PI, 1);      // south
+  addPanelSide(CORE_D, -WALL_HX, 0, Math.PI / 2, 2); // west
+  addPanelSide(CORE_D, WALL_HX, 0, -Math.PI / 2, 3); // east
+  // corner pillars + 脈動光球
+  const pillarG = new THREE.CylinderGeometry(0.9, 1.1, 5.4, 8);
+  const capG = new THREE.CylinderGeometry(1.05, 0.9, 0.5, 8);
+  [[-WALL_HX, -WALL_HZ], [WALL_HX, -WALL_HZ], [-WALL_HX, WALL_HZ], [WALL_HX, WALL_HZ]].forEach(([x, z]) => {
+    const pil = mesh(pillarG, M.darkMetal(), x, 2.7, z);
+    const cap = mesh(capG, M.metal(0x352c58), x, 5.6, z);
+    const orb = mesh(new THREE.SphereGeometry(0.34, 12, 12), M.glow(0xb08cff, 2), x, 6.1, z, false);
+    const unit = { meshes: [pil], mats: [pil.material, cap.material, orb.material], op: 1, target: 1 };
+    for (const m of unit.mats) m.transparent = true;
+    _fadeUnits.push(unit); pil.userData.unit = unit;
+    labAnimated.push({ update: t => { orb.material.emissiveIntensity = 1.6 + Math.sin(t * 2 + x + z) * 0.6; } });
+    wall.add(pil); wall.add(cap); wall.add(orb);
+  });
+  labGroup.add(wall);
+}
+/* ---------- 能量管(原型 buildEnergyTubes;沿牆基內側) ---------- */
+function buildLabEnergyTubes() {
+  const colors = [0x53e0ff, 0x8a5cff, 0x6dff9e, 0xffa14f];
+  const offX = WALL_HX - 0.6, offZ = WALL_HZ - 0.6;
+  function addTube(length, x, z, rotY, color, phase) {
+    const tube = mesh(new THREE.CylinderGeometry(0.13, 0.13, length, 10), M.glow(color, 1.4), 0, 0, 0, false);
+    tube.rotation.z = Math.PI / 2;
+    const g = new THREE.Group(); g.add(tube);
+    g.rotation.y = rotY;
+    g.position.set(x, 0.5, z);
+    labGroup.add(g);
+    labAnimated.push({ update: t => { tube.material.emissiveIntensity = 1.1 + Math.sin(t * 3 + phase) * 0.5; } });
+  }
+  addTube(CORE_W - 4, 0, -offZ, 0, colors[0], 0.0);
+  addTube(CORE_D - 4, -offX, 0, Math.PI / 2, colors[1], 1.7);
+  addTube(CORE_W - 4, 0, offZ, Math.PI, colors[2], 3.4);
+  addTube(CORE_D - 4, offX, 0, -Math.PI / 2, colors[3], 5.1);
+}
+/* ---------- lab 牆的穿牆淡出:鏡頭→本機角色射線打到的牆板/角柱 → 淡出 ---------- */
+const _labRay = new THREE.Raycaster();
+const _labDir = new THREE.Vector3();
+const _fadeMeshes = [];
+function updateLabWallFade() {
+  const tgt = game.occludeTarget;
+  if (!tgt) return;
+  for (const u of _fadeUnits) u.target = 1;
+  _labDir.set(tgt.x, 26, tgt.y).sub(camera.position);
+  const distTo = _labDir.length(); _labDir.normalize();
+  _labRay.set(camera.position, _labDir); _labRay.far = distTo;
+  if (!_fadeMeshes.length) for (const u of _fadeUnits) _fadeMeshes.push(...u.meshes);
+  labGroup.updateMatrixWorld(true);
+  for (const hit of _labRay.intersectObjects(_fadeMeshes, false)) {
+    const u = hit.object.userData.unit; if (u) u.target = 0.18;
+  }
+  for (const u of _fadeUnits) {
+    u.op += (u.target - u.op) * 0.25;
+    if (Math.abs(u.target - u.op) < 0.01) u.op = u.target;
+    for (const m of u.mats) m.opacity = u.op;
+  }
+}
+
 /* ---------- 每幀更新(facade render3D 呼叫;dt 由 t 差分) ---------- */
+window.__lab = { fadeUnits: _fadeUnits, labGroup, labAnimated }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;
   for (const a of labAnimated) a.update(t, dt);
+  updateLabWallFade();
 }
