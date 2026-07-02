@@ -133,8 +133,10 @@ function resetFighter(f) {
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
   f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0; f.wasCarryingT = -9; f.invuln = 0;
-  f.punchFx = -9; f.punchArm = 0; // 出拳動畫時間戳 + 左右手交替 (render 的 brawler 姿勢吃這兩個)
+  f.punchFx = -9; f.punchArm = 0; f.punchKind = 0; // 出拳動畫:時間戳+用哪隻手+段數(0左鉤/1右鉤/2終結直拳)
   f.flinchT = 0; f.flinchA = 0;   // 受擊反應:朝受力方向甩頭+壓扁回彈 (render 吃這兩個)
+  f.comboN = 0; f.comboT = 0;     // 連段:下一拳是第幾段 / 接段窗口
+  f.pushWinT = 0; f.pushCd = 0; f.pushFrom = null; f._aiPushAt = 0; // 格擋推開:窗口/冷卻/攻擊者/AI排程
   f.item = null;
   f.state = 'alive';
 }
@@ -143,7 +145,12 @@ function resetFighter(f) {
 const POD = { x: W / 2, y: H / 2, r: 46 };
 const STAB_MAX = 100, STAB_REGEN = 28;
 // 基礎抓捕數值 (spec F §2.3 起始值,實測後調)
-const PUNCH_RANGE = 46, PUNCH_CONE = 0.9, PUNCH_CD = 0.35, PUNCH_STAB = 25; // 揮拳零位移(受擊=純踉蹌);位移只屬於指定攻擊(風壓/爆桶/Boss)
+const PUNCH_RANGE = 46, PUNCH_CONE = 0.9; // 揮拳零位移(受擊=純踉蹌);位移只屬於指定攻擊(終結技/風壓/爆桶/Boss)
+// 三連擊:左鉤→右鉤→浮誇直拳(終結技)。命中才接段,揮空或超窗重置
+const COMBO_STAB = [20, 20, 35], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WINDOW = 0.9;
+const FINISHER_KNOCK = 240; // 終結技=指定攻擊:小擊退拉開距離,重置節奏
+// 格擋推開:被打中後 PUSH_WIN 秒內按格擋鍵 → 把攻擊方推開+踉蹌,斷 combo;冷卻 PUSH_CD
+const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, PUSH_STAGGER = 0.45, AI_PUSH_CHANCE = 0.35;
 const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
 const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 const CARRY_ESCAPE_NEED = 100, CARRY_MASH_AI = 45, CARRY_MASH_TAP = 8; // AI 固定填速≈2.2s;人類左右交替每下+8
@@ -284,10 +291,12 @@ function stunFighter(o) {
 }
 function punch(f) {
   if (f.punchCd > 0 || f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return;
-  f.punchCd = PUNCH_CD;
-  f.punchFx = game.time; f.punchArm = f.punchArm ? 0 : 1; // 觸發出拳動畫(左右手交替)
+  if (f.comboT <= 0) f.comboN = 0;                        // 超窗 → 從第一段重來
+  const stage = f.comboN, fin = stage === 2;              // 0 左鉤 / 1 右鉤 / 2 浮誇直拳(終結技)
+  f.punchCd = COMBO_CD[stage];
+  f.punchFx = game.time; f.punchKind = stage; f.punchArm = stage === 0 ? 0 : 1;
   const a = f.facing; let hit = false;
-  f.vx += Math.cos(a) * 110; f.vy += Math.sin(a) * 110; // 出拳衝步(lunge):整個人往前撲,不只手臂在動
+  f.vx += Math.cos(a) * (fin ? 150 : 110); f.vy += Math.sin(a) * (fin ? 150 : 110); // 出拳衝步:整個人往前撲,終結技撲更大步
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
@@ -295,19 +304,50 @@ function punch(f) {
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > PUNCH_CONE) continue;
     hit = true;
-    // 揮拳不位移:受擊只有踉蹌(flinch/壓扁,旋轉縮放不動位置)。位移是「指定攻擊」的職責
-    // (風壓/爆桶/Boss)—— 拳頭把人打飛會把要抓的目標推出自己的抓取範圍,跟核心循環相矛盾。
+    // 鉤拳不位移(受擊=純踉蹌);終結技是「指定攻擊」→ 小擊退拉開距離,結束這一套
+    if (fin) { o.vx += Math.cos(a) * FINISHER_KNOCK; o.vy += Math.sin(a) * FINISHER_KNOCK; }
     o.faceT = 0.2; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
-    o.stability = Math.max(0, o.stability - PUNCH_STAB); o.stabCd = 0.8; // 削穩定值(命中暫停回穩)
-    flinch(o, a);                                                        // 受擊:朝受力方向甩頭+壓扁回彈
-    const cpx = o.x - Math.cos(a) * o.r * 0.7, cpy = o.y - Math.sin(a) * o.r * 0.7; // 火花開在拳頭接觸點,不是身體中心
-    hitSpark(cpx, cpy, '#ffe0a3', 1.5); addRing(cpx, cpy, 20, '#ffd36d', 0.22, 3);
+    o.stability = Math.max(0, o.stability - COMBO_STAB[stage]); o.stabCd = 0.8;
+    flinch(o, a, fin ? 0.32 : 0.22);
+    const cpx = o.x - Math.cos(a) * o.r * 0.7, cpy = o.y - Math.sin(a) * o.r * 0.7; // 火花開在拳頭接觸點
+    hitSpark(cpx, cpy, '#ffe0a3', fin ? 2.2 : 1.5); addRing(cpx, cpy, fin ? 34 : 20, '#ffd36d', fin ? 0.32 : 0.22, fin ? 5 : 3);
+    if (fin) addText(o.x, o.y - 34, '重擊！', '#ffb14a');
+    // 格擋窗口:被打中(還能動)→ 短窗內按格擋鍵可推開攻擊方;AI 有機率排程一次推開
+    if (!o.stunned && !o.carriedBy) {
+      o.pushWinT = PUSH_WIN; o.pushFrom = f;
+      if (o.ai && o.pushCd <= 0 && !o._aiPushAt && Math.random() < AI_PUSH_CHANCE) o._aiPushAt = game.time + 0.15 + Math.random() * 0.3;
+    }
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
     if (o.pid === LOCAL) localFlash = 0.2;
   }
-  // 揮空/命中分離回饋:命中=悶擊聲+長定格+方向性鏡頭踹;揮空=風聲+輕震(出拳動作本身由手臂動畫承擔)
-  if (hit) { addShake(4); addHitstop(0.09); camKick(a, 7); game.sfx.push('thud'); }
-  else { addShake(1.5); game.sfx.push('whiff'); }
+  // 命中才接段,揮空整套重置;終結技回饋全面加重(最長定格/最重鏡頭踹/重音)
+  if (hit) {
+    f.comboN = (stage + 1) % 3; f.comboT = COMBO_WINDOW;
+    if (fin) { addShake(7); addHitstop(0.12); camKick(a, 10); game.sfx.push('smash'); }
+    else { addShake(4); addHitstop(0.08); camKick(a, 7); game.sfx.push('thud'); }
+  } else { f.comboN = 0; f.comboT = 0; addShake(1.5); game.sfx.push('whiff'); }
+}
+// 格擋推開:被打中的短窗內按鍵 → 把攻擊方推開一步+踉蹌,combo 斷掉(防守方自己不動)
+function doPushOff(o) {
+  if (o.state !== 'alive' || o.stunned || o.carriedBy || o.fumbleT > 0) return;
+  if (o.pushWinT <= 0 || o.pushCd > 0) return;
+  const f = o.pushFrom;
+  if (!f || f.state !== 'alive' || f.carriedBy || f.stunned) return;
+  if (Math.hypot(f.x - o.x, f.y - o.y) > PUSH_RANGE + f.r) return;
+  const a = Math.atan2(f.y - o.y, f.x - o.x);
+  o.pushCd = PUSH_CDT; o.pushWinT = 0; o._aiPushAt = 0;
+  f.vx += Math.cos(a) * PUSH_FORCE; f.vy += Math.sin(a) * PUSH_FORCE; // 攻擊方被推開(指定動作位移)
+  f.fumbleT = PUSH_STAGGER; f.comboN = 0; f.comboT = 0;               // 踉蹌+斷 combo
+  flinch(f, a, 0.28); camKick(a, 5); inc.pushOffs++;
+  addText(o.x, o.y - 34, '推開！', '#9affd0'); addRing(o.x, o.y, 30, '#9affd0', 0.3, 4);
+  addShake(4); addHitstop(0.06); game.sfx.push('dash');
+  dlog('PUSHOFF', NAMES[o.pid], '→', NAMES[f.pid]);
+}
+// edge-triggered guard key (human only): 藍=空白鍵, 紅(熱座)=Enter
+const guardPrev = [false, false];
+function pollGuard() {
+  const pressed = [keys.has(' '), keys.has('enter')];
+  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !guardPrev[i]) doPushOff(fighters[i]); guardPrev[i] = pressed[i]; }
 }
 function startCarry(f, o) {
   f.carrying = o; o.carriedBy = f; o.escape = 0; o.stunned = false; o.stunT = 0; o.mashSide = 0; o._aPrev = false; o._dPrev = false;
@@ -548,11 +588,11 @@ const containLog = []; // { winner, method, stage } per containment → 三格 U
 let matchOver = false, report = null;
 const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0,
   contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0, itemUses: { wind: 0, teleport: 0, ice: 0 },
-  carries: [0, 0], accidentContains: { wind: 0, ice: 0, barrel: 0 }, reverseContains: 0, teleportEscapes: 0, struggleEscapes: 0, itemBackfires: 0 };
+  carries: [0, 0], accidentContains: { wind: 0, ice: 0, barrel: 0 }, reverseContains: 0, teleportEscapes: 0, struggleEscapes: 0, itemBackfires: 0, pushOffs: 0 };
 function resetInc() {
   inc.contains = [0, 0]; inc.overloads = 0; inc.selfPods = 0; inc.barrelBooms = 0; inc.itemUses = { wind: 0, teleport: 0, ice: 0 };
   inc.carries = [0, 0]; inc.accidentContains = { wind: 0, ice: 0, barrel: 0 }; inc.reverseContains = 0; inc.teleportEscapes = 0; inc.struggleEscapes = 0; inc.itemBackfires = 0;
-  inc.types = new Set(); inc.matchT = 0;
+  inc.types = new Set(); inc.matchT = 0; inc.pushOffs = 0;
 }
 const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
 
@@ -684,9 +724,9 @@ function step(dt) {
   if (localFlash > 0) localFlash -= dt;
   if (fallReasonT > 0) fallReasonT -= dt;
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
-  if (game.hitstop > 0) { game.hitstop -= dt; }
+  if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); } // 定格中也收格擋輸入:玩家的反應常落在凍結幀裡,不能吃掉
   else {
-    pollAction(); pollItem();
+    pollAction(); pollItem(); pollGuard();
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
       // cooldown timers
@@ -696,6 +736,10 @@ function step(dt) {
       if (f.restunT > 0) f.restunT -= dt;
       if (f.invuln > 0) f.invuln -= dt;
       if (f.flinchT > 0) f.flinchT -= dt;
+      if (f.comboT > 0) f.comboT -= dt;
+      if (f.pushCd > 0) f.pushCd -= dt;
+      if (f.pushWinT > 0) { f.pushWinT -= dt; if (f.pushWinT <= 0) f._aiPushAt = 0; }
+      if (f.ai && f._aiPushAt && game.time >= f._aiPushAt) { f._aiPushAt = 0; doPushOff(f); } // AI 的格擋反應
       // stability regen (paused right after a hit; frozen while stunned/carried)
       if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
       // stun countdown → recover (ungrabbed)
@@ -815,6 +859,12 @@ function drawContainHud() {
       hctx.fillStyle = '#9affd0'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw * ep, 5);
       if (!f.ai) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
     }
+    // 格擋推開提示:被打中的短窗內亮起(像掙脫指示),按對=把攻擊方推開
+    if (!f.ai && f.pushWinT > 0 && f.pushCd <= 0 && !f.stunned && !f.carriedBy) {
+      const pk = 0.75 + 0.25 * Math.sin(game.time * 18);
+      hctx.fillStyle = `rgba(154,255,208,${pk})`; hctx.font = '900 14px system-ui, sans-serif';
+      hctx.fillText((f.pid === 0 ? '空白鍵' : 'Enter') + ' 推開！', s.x, s.y - 18);
+    }
   }
 }
 function drawPips(pid, x0, dir) { // 三格收容進度:填色=收容方式
@@ -914,11 +964,11 @@ function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵揮拳 · 右鍵抓／放技能（補給座撿：風/傳送/冰）　B：開關 AI', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵抓／放技能 · 空白鍵推開（被打時）　B：開關 AI', W / 2, H - 18);
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: jab-1', W - 10, H - 4);
+  hctx.fillText('build: combo-1', W - 10, H - 4);
 }
 
 function frame(now) {

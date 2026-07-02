@@ -712,8 +712,8 @@ let ctx = screenCtx;
       }
     }
     if (e.type === 'brawler') {
-      // 程序動畫:面向 + 走路擺動(用實際位移推相位,擊退滑行不擺) + 出拳刺出 + 暈眩搖晃 + 搬運舉手
-      g.rotation.set(0, Math.atan2(Math.cos(e.facing || 0), Math.sin(e.facing || 0)), 0);
+      // 程序動畫:面向 + 走路擺動(用實際位移推相位,擊退滑行不擺) + 三段連擊 + 暈眩搖晃 + 搬運舉手
+      const yaw = Math.atan2(Math.cos(e.facing || 0), Math.sin(e.facing || 0));
       const u = g.userData, L = u.limbs;
       if (!u.lp) u.lp = { x: e.x, y: e.y };
       const disp = Math.hypot(e.x - u.lp.x, e.y - u.lp.y); u.lp.x = e.x; u.lp.y = e.y;
@@ -721,7 +721,7 @@ let ctx = screenCtx;
       u.amp = (u.amp || 0) + ((walking ? 1 : 0) - (u.amp || 0)) * 0.2;      // 擺幅緩入緩出
       u.ph = (u.ph || 0) + Math.min(disp, 6) * 0.18;                        // 相位隨移動距離走 → 步頻跟速度
       const sw = Math.sin(u.ph) * 0.75 * u.amp;
-      let aL = -sw * 0.55, aR = sw * 0.55, lL = sw, lR = -sw, wob = 0, lean = 0;
+      let aL = -sw * 0.55, aR = sw * 0.55, lL = sw, lR = -sw, wob = 0, lean = 0, ryL = 0, ryR = 0, twist = 0;
       g.position.y = Math.abs(Math.sin(u.ph)) * 1.6 * u.amp;               // 步伐小彈跳
       if (e.carriedBy) {           // 被扛走:四肢亂踢掙扎
         const t = game.time * 11;
@@ -731,21 +731,39 @@ let ctx = screenCtx;
       } else if (e.carrying) {     // 扛人:雙臂高舉過頭
         aL = -2.35; aR = -2.35;
       } else {
-        const pt = game.time - (e.punchFx != null ? e.punchFx : -9);        // 出拳:快出慢收,左右手交替
-        if (pt >= 0 && pt < 0.3) {
-          const k = pt < 0.07 ? pt / 0.07 : Math.max(0, 1 - (pt - 0.1) / 0.2);
-          const rot = 0.35 - 1.95 * k;                                      // 後拉預備 → 前刺過水平
-          if (e.punchArm) aR = rot; else aL = rot;
-          lean = 0.24 * k;                                                  // 軀幹前傾:整個人撲進這一拳
+        const pt = game.time - (e.punchFx != null ? e.punchFx : -9);
+        const kind = e.punchKind || 0;                                       // 0 左鉤 / 1 右鉤 / 2 浮誇直拳
+        if (pt >= 0 && pt < (kind === 2 ? 0.44 : 0.3)) {
+          if (kind === 2) {          // 終結直拳:後拉蓄力 → 爆發前刺 → 定格 → 收回
+            let s;
+            if (pt < 0.1) s = -(pt / 0.1);
+            else if (pt < 0.18) s = (pt - 0.1) / 0.08;
+            else if (pt < 0.26) s = 1;
+            else s = Math.max(0, 1 - (pt - 0.26) / 0.18);
+            if (s < 0) { const w = -s; if (e.punchArm) aR = 0.35 + 0.6 * w; else aL = 0.35 + 0.6 * w; lean = -0.14 * w; } // 蓄力:手往後拉+微後仰
+            else {
+              const rot = 0.35 - 2.15 * s;                                   // 刺過水平,伸到最遠
+              if (e.punchArm) { aR = rot; aL = 0.45 * s; } else { aL = rot; aR = 0.45 * s; } // 另一手往後甩平衡
+              lean = 0.42 * s;                                               // 全身大前傾
+            }
+          } else {                   // 左/右鉤拳:手臂抬平橫掃弧線 + 腰部扭轉
+            const k = pt < 0.07 ? pt / 0.07 : Math.max(0, 1 - (pt - 0.1) / 0.2);
+            const dir = e.punchArm ? 1 : -1;
+            const raise = Math.min(1, k * 1.8);
+            if (e.punchArm) { aR = -1.2 * raise; ryR = dir * (0.9 - 1.3 * k); }
+            else { aL = -1.2 * raise; ryL = dir * (0.9 - 1.3 * k); }
+            twist = -dir * 0.28 * k;
+            lean = 0.16 * k;
+          }
         }
         if (e.stunned) wob = Math.sin(game.time * 9) * 0.14;                // 暈眩:左右搖晃
       }
-      if (L) { L.armL.rotation.x = aL; L.armR.rotation.x = aR; L.legL.rotation.x = lL; L.legR.rotation.x = lR; }
-      g.rotation.z = wob;
+      if (L) { L.armL.rotation.x = aL; L.armR.rotation.x = aR; L.armL.rotation.y = ryL; L.armR.rotation.y = ryR; L.legL.rotation.x = lL; L.legR.rotation.x = lR; }
+      g.rotation.set(0, yaw + twist, wob);
       // 受擊 flinch:上身朝受力方向猛地一倒(hitstop 期間凍在最大變形,定格更有戲) + 壓扁回彈
       const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / 0.22) : 0;
       if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, 0.55 * fk * fk); }
-      if (lean > 0) { const fa = e.facing || 0; _tip.set(Math.sin(fa), 0, -Math.cos(fa)); g.rotateOnWorldAxis(_tip, lean); }
+      if (lean) { const fa = e.facing || 0; _tip.set(Math.sin(fa), 0, -Math.cos(fa)); g.rotateOnWorldAxis(_tip, lean); }
       g.scale.set(1 + 0.15 * fk, 1 - 0.2 * fk, 1 + 0.15 * fk);             // squash & stretch(也順帶每幀復位 scale)
     }
     else if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
