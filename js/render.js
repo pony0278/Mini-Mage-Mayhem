@@ -4,16 +4,26 @@
 import { W, H } from './constants.js';
 import { rnd } from './utils.js';
 import { game, CAM } from './state.js';
-import { renderer, gl3dOk, scene, camera } from './render-core.js';
-import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, updateWallFade } from './render-world.js';
+import { renderer, gl3dOk, scene, camera, setStockLights } from './render-core.js';
+import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, updateWallFade, setStockGroundVisible, setWallDarkTint } from './render-world.js';
+import { initLabScene, updateLabScene } from './render-lab.js';
 import { syncActors } from './render-actors.js';
 import { syncProps, syncProjectiles, syncZones } from './render-entities.js';
 
 // 公開 API re-export(引用方 import 零改動)
 export { project, mouseScreen, updateMouseWorld, camera, setActorShadow, setVividFx, setGroundMarkers } from './render-core.js';
-export { setRichFloor, setFloorParams, getFloorParams, setFloorSubtle, setWallFade, setIslandMode, setIslandShapes, setApron, setLabTheme } from './render-world.js';
+export { setRichFloor, setFloorParams, getFloorParams, setFloorSubtle, setWallFade, setIslandMode, setIslandShapes, setApron } from './render-world.js';
 export { refreshActors } from './render-actors.js';
 export { draw, drawPanicFaces } from './render-hud.js';
+
+// v2 實驗室場景(復刻原型):ACES 管線 + emissive 地板 + 魔法陣;藏舊地板、舊牆壓暗過渡
+let labOn = false;
+export function setLabTheme(on) {
+  labOn = on;
+  setStockLights(!on); // lab 燈組接管,關掉單機常設燈(疊加會過曝)
+  if (on) { initLabScene(); setStockGroundVisible(false); setWallDarkTint(true); }
+  else { setStockGroundVisible(true); setWallDarkTint(false); }
+}
 
 // camera-sandbox 的跟隨開關(camTarget 存在時被覆寫)
   // false = lock onto the arena centre (the v2 fixed-diorama framing). Toggled from the camera sandbox.
@@ -22,7 +32,8 @@ export { draw, drawPanicFaces } from './render-hud.js';
 
   export function render3D() {
     if (!gl3dOk) return;
-    if (!freeIslands) { drawGroundTexture(); syncWalls(); if (islandMode) syncIsland(); }
+    if (!freeIslands) { if (!labOn) drawGroundTexture(); syncWalls(); if (islandMode) syncIsland(); }
+    if (labOn) updateLabScene(game.time); // lab 場景動畫(魔法陣/之後的元素站等)
     syncProps();
     // Camera target: an explicit game.camTarget (v2 follows one fighter) wins; else the player when
     // following; else the arena centre (fixed framing). camTarget overrides the sandbox follow toggle.

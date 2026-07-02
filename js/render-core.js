@@ -103,24 +103,12 @@ export const VIEW_W = canvas.width, VIEW_H = canvas.height;
     return mat;
   }
 
-// 實驗室氛圍(v2 lab 主題):背景/霧/燈光切換成暗藍紫冷色調(參考 arcane containment 原型)。
-// 亮度刻意比原型高一截 —— 角色是 Lambert 受光的,太暗會吃掉藍/紅身分色的可讀性。
-export function setLabAtmosphere(on) {
-  if (on) {
-    scene.background = new THREE.Color(0x0a0818);
-    scene.fog = new THREE.Fog(0x0d0a20, 820, 1580);
-    hemi.color.setHex(0xbfb4ff); hemi.groundColor.setHex(0x0e0b1c); hemi.intensity = 0.85;
-    sun.color.setHex(0x9a8fe0); sun.intensity = 0.95;
-    rim.color.setHex(0x53e0ff); rim.intensity = 0.4;
-    magicFill.color.setHex(0xaa72ff); magicFill.intensity = 0.9;
-  } else {
-    scene.background = new THREE.Color(0x100e18);
-    scene.fog = new THREE.Fog(0x100e18, 820, 1580);
-    hemi.color.setHex(0xfff2d2); hemi.groundColor.setHex(0x1c1630); hemi.intensity = 0.92;
-    sun.color.setHex(0xffd88a); sun.intensity = 1.18;
-    rim.color.setHex(0x7ddcff); rim.intensity = 0.42;
-    magicFill.color.setHex(0xaa72ff); magicFill.intensity = 0.52;
-  }
+// lab 場景(render-lab)接管燈光時,關掉單機的四盞常設燈(避免疊加過曝)
+export function setStockLights(on) {
+  hemi.intensity = on ? 0.92 : 0;
+  sun.intensity = on ? 1.18 : 0;
+  rim.intensity = on ? 0.42 : 0;
+  magicFill.intensity = on ? 0.52 : 0;
 }
 
 // --- 共用顯示旗標(v2 開機經門面設定;actors/entities 讀) ---
