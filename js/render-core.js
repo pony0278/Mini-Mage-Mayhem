@@ -6,24 +6,27 @@ import { clamp } from './utils.js';
 import { mouse, CAM } from './state.js';
 
 const canvas = document.getElementById('game');
+// 視圖尺寸(畫布內部解析度)由 HTML 殼的 canvas 屬性決定,與世界尺寸(W/H,模擬座標)解耦:
+// v2.html 用 960×540(16:9,CrazyGames responsive);index.html 維持 960×640(3:2)。
+export const VIEW_W = canvas.width, VIEW_H = canvas.height;
 
   export function project(wx, wy, wz = 0) {
     const v = _projV.set(wx, wz, wy).project(camera);
-    return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H, behind: v.z > 1 };
+    return { x: (v.x * 0.5 + 0.5) * VIEW_W, y: (-v.y * 0.5 + 0.5) * VIEW_H, behind: v.z > 1 };
   }
 
   // ===================================================================
   //  3D RENDERER (Three.js) — voxel world, fixed 45° follow camera.
   //  Game logic is unchanged; this replaces the old 2D world drawing.
   // ===================================================================
-  export const mouseScreen = { x: W / 2, y: H / 2 };
+  export const mouseScreen = { x: VIEW_W / 2, y: VIEW_H / 2 };
   const _projV = new THREE.Vector3();
 
   let renderer = null, gl3dOk = false;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(W, H, false);
+    renderer.setSize(VIEW_W, VIEW_H, false);
     renderer.shadowMap.enabled = false;
     gl3dOk = true;
   } catch (err) {
@@ -35,7 +38,7 @@ const canvas = document.getElementById('game');
   scene.fog = new THREE.Fog(0x100e18, 820, 1580);
 
   // Tuned in the camera sandbox: telephoto, low diagonal follow cam.
-  export const camera = new THREE.PerspectiveCamera(CAM.fov, W / H, 1, 5000);
+  export const camera = new THREE.PerspectiveCamera(CAM.fov, VIEW_W / VIEW_H, 1, 5000);
 
   const hemi = new THREE.HemisphereLight(0xfff2d2, 0x1c1630, 0.92);
   scene.add(hemi);
@@ -111,7 +114,7 @@ const canvas = document.getElementById('game');
   const _ndc = new THREE.Vector2();
   const _hit = new THREE.Vector3();
   export function updateMouseWorld() {
-    _ndc.set(mouseScreen.x / W * 2 - 1, -(mouseScreen.y / H * 2 - 1));
+    _ndc.set(mouseScreen.x / VIEW_W * 2 - 1, -(mouseScreen.y / VIEW_H * 2 - 1));
     raycaster.setFromCamera(_ndc, camera);
     if (raycaster.ray.intersectPlane(groundPlane, _hit)) {
       mouse.x = clamp(_hit.x, 0, W);

@@ -22,7 +22,7 @@
 
 | 模組 | 內容 | 匯入 |
 |---|---|---|
-| `render-core.js` | renderer/`gl3dOk`/scene/camera/燈光、`ART` 調色盤、幾何+材質快取（`makeBox`/`matLambert`/`colorHex`…）、`project`/`mouseScreen`/`updateMouseWorld`、共用顯示旗標（`actorShadow`/`vividFx`/`groundMarkers`＋setter） | constants, utils, state |
+| `render-core.js` | renderer/`gl3dOk`/scene/camera/燈光、`ART` 調色盤、幾何+材質快取（`makeBox`/`matLambert`/`colorHex`…）、`project`/`mouseScreen`/`updateMouseWorld`、共用顯示旗標（`actorShadow`/`vividFx`/`groundMarkers`＋setter）；**`VIEW_W/VIEW_H` 視圖尺寸**（由 HTML 殼的 canvas 屬性決定，與世界尺寸 W/H 解耦：v2=960×540 (16:9)、單機=960×640） | constants, utils, state |
 | `render-world.js` | 地板紋理烘焙（含富材質）、格子浮島+海、自由浮島+吊橋、牆體+穿牆淡出、裝飾；`islandMode`/`freeIslands`（export let，唯一寫入點在本檔） | core, constants, state |
 | `render-actors.js` | 巫師+全部敵人體素建模、`updateActor` 程序動畫、`syncActors`/`refreshActors`；brawler 委派給 `actor-brawler.js` | core, world(freeIslands), state, data, sim(dashElement), actor-brawler |
 | `actor-brawler.js` | v2 小人專屬：`BRAWLER_SPEC` 建模規格表＋`ANIM` 動作參數表＋組裝/姿勢狀態機——**改模型/動作＝改表** | core, state |

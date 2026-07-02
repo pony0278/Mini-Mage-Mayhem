@@ -1,7 +1,7 @@
 // v2 的 2D HUD 繪製 (docs/v2-module-boundaries.md §3):持有 #hud 畫布的 2D context,
 // 每幀由 v2.js 的 frame() 呼叫 drawHud()。只讀狀態(v2-state)不寫玩法狀態;
 // 3D 世界點 → 螢幕座標用 render.js 的 project()。
-import { W, H } from './constants.js';
+
 import { clamp } from './utils.js';
 import { game } from './state.js';
 import { project } from './render.js';
@@ -13,6 +13,7 @@ import {
 
 const hud = document.getElementById('hud');
 const hctx = hud.getContext('2d');
+const VW = hud.width, VH = hud.height; // 視圖尺寸(v2.html 的 16:9 畫布);世界座標一律走 project()
 
 function drawContainHud() {
   // 實驗艙地面光環 + 穩定值小條 + 暈眩冒星 + 搬運掙脫條/交替指示
@@ -102,17 +103,17 @@ function drawItems() {
   }
   const me = fighters[LOCAL]; // 本機持有 HUD
   hctx.textAlign = 'left'; hctx.font = '800 14px system-ui, sans-serif';
-  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（右鍵使用）', 24, H - 40); }
-  else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, H - 40); }
+  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（右鍵使用）', 24, VH - 40); }
+  else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, VH - 40); }
 }
 const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
 function drawReport() {
   const r = v2s.report;
-  hctx.fillStyle = 'rgba(8,10,16,.62)'; hctx.fillRect(0, 0, W, H); // dim the frozen world
-  const pw = 640, ph = 446, px = (W - pw) / 2, py = (H - ph) / 2;
+  hctx.fillStyle = 'rgba(8,10,16,.62)'; hctx.fillRect(0, 0, VW, VH); // dim the frozen world
+  const pw = 640, ph = 446, px = (VW - pw) / 2, py = (VH - ph) / 2;
   hctx.fillStyle = 'rgba(20,24,34,.97)'; hctx.fillRect(px, py, pw, ph);
   hctx.strokeStyle = 'rgba(255,211,109,.5)'; hctx.lineWidth = 2; hctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
-  let y = py + 40; const cx = W / 2;
+  let y = py + 40; const cx = VW / 2;
   hctx.textAlign = 'center';
   hctx.font = '900 24px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
   hctx.fillText('魔法事故報告 #' + r.num, cx, y); y += 40;
@@ -141,40 +142,40 @@ function drawReport() {
   hctx.fillText('按 R 再來一場　·　按 C 複製分享文字', cx, py + ph - 18);
 }
 export function drawHud() {
-  hctx.clearRect(0, 0, W, H);
+  hctx.clearRect(0, 0, VW, VH);
   // red edge pulse when YOU get knocked — so a hit is never invisible
   if (v2s.localFlash > 0) {
-    const g = hctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75);
+    const g = hctx.createRadialGradient(VW / 2, VH / 2, VH * 0.3, VW / 2, VH / 2, VH * 0.75);
     g.addColorStop(0, 'rgba(255,60,60,0)'); g.addColorStop(1, `rgba(255,40,40,${Math.min(0.5, v2s.localFlash * 1.6)})`);
-    hctx.fillStyle = g; hctx.fillRect(0, 0, W, H);
+    hctx.fillStyle = g; hctx.fillRect(0, 0, VW, VH);
   }
   hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
   // why you fell (diagnostic + feedback, isles)
-  if (v2s.fallReasonT > 0) { hctx.font = '900 30px system-ui, sans-serif'; hctx.fillStyle = '#ff9a9a'; hctx.fillText(v2s.fallReason, W / 2, H / 2 - 40); }
+  if (v2s.fallReasonT > 0) { hctx.font = '900 30px system-ui, sans-serif'; hctx.fillStyle = '#ff9a9a'; hctx.fillText(v2s.fallReason, VW / 2, VH / 2 - 40); }
   // title
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 · 收容測試　階段 ' + v2s.stage + '：' + STAGE_NAME[v2s.stage - 1] + '　封存 ' + WIN_TARGET + ' 次獲勝', W / 2, 28);
+  hctx.fillText('魔法事故報告 · 收容測試　階段 ' + v2s.stage + '：' + STAGE_NAME[v2s.stage - 1] + '　封存 ' + WIN_TARGET + ' 次獲勝', VW / 2, 28);
   // AI 狀態(練習模式)— 永遠可見,B 切換
   const aiOn = fighters[1 - LOCAL].ai;
   hctx.font = '800 13px system-ui, sans-serif';
   hctx.fillStyle = aiOn ? 'rgba(255,140,140,.92)' : 'rgba(154,255,208,.96)';
-  hctx.fillText(aiOn ? '紅方：AI 對手　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', W / 2, 48);
+  hctx.fillText(aiOn ? '紅方：AI 對手　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', VW / 2, 48);
   // 三格收容進度 (每格標收容方式)
-  drawPips(0, 24, 1); drawPips(1, W - 24, -1);
+  drawPips(0, 24, 1); drawPips(1, VW - 24, -1);
   drawContainHud();
   drawItems();
   // stage / seal banner
   if (v2s.winBannerT > 0 && v2s.bannerText) {
     hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
-    hctx.fillStyle = COLORS[v2s.winnerPid] || '#eafaff'; hctx.fillText(v2s.bannerText, W / 2, H / 2 - 30);
+    hctx.fillStyle = COLORS[v2s.winnerPid] || '#eafaff'; hctx.fillText(v2s.bannerText, VW / 2, VH / 2 - 30);
   }
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵抓／放技能 · 空白鍵推開（被打時）　B：開關 AI', W / 2, H - 18);
+  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵抓／放技能 · 空白鍵推開（被打時）　B：開關 AI', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: actor-1', W - 10, H - 4);
+  hctx.fillText('build: view169-1', VW - 10, VH - 4);
 }

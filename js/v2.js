@@ -9,7 +9,7 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM } from './state.js';
 import { updateDeathTheater, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, updateMouseWorld, mouseScreen } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setApron, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -223,8 +223,8 @@ window.addEventListener('pointerdown', unlockAudio);
 const gameCanvas = document.getElementById('game');
 gameCanvas.addEventListener('mousemove', (e) => {
   const rect = gameCanvas.getBoundingClientRect();
-  mouseScreen.x = (e.clientX - rect.left) / rect.width * W;
-  mouseScreen.y = (e.clientY - rect.top) / rect.height * H;
+  mouseScreen.x = (e.clientX - rect.left) / rect.width * gameCanvas.width;   // 視圖像素(16:9 畫布),非世界座標
+  mouseScreen.y = (e.clientY - rect.top) / rect.height * gameCanvas.height;
 });
 gameCanvas.addEventListener('mousedown', (e) => {
   unlockAudio();
@@ -250,6 +250,7 @@ if (TERRAIN === 'isles') {
 } else {                                            // 'flat' — plain walled platform, no falling (best for testing)
   buildFlatArena();
   setWallFade(true);                                // see-through walls: occluding walls (esp. the south one) fade
+  setApron(true);                                   // 場外暗地板:蓋掉牆外黑虛空(16:9 視野較寬)
   // 視覺:暗藍紫地板 + 低亮度紫格線 + 牆底暗角;角色/箱子腳下陰影;魔法特效高亮
   setFloorParams({ floorA: '#2a2c4e', floorB: '#22243f', floorEdge: '#6a5bb0', gridAlpha: 0.16, motes: false, ao: true });
   setRichFloor(true);   // detailed stone/metal slab material (noise/scratches/grout bevel/edge lip, baked once)

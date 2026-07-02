@@ -418,3 +418,15 @@ import { scene, camera, ART, boxGeo, octaGeo, cylGeo, coneGeo, matLambert, makeB
   }
   buildToyboxDecor();
 
+
+// 場外暗色圍裙地板:蓋掉越過牆外看到的純黑虛空(16:9 視野更寬後更明顯)。
+// 只在 v2 平台場開(setApron);浮島/單機不開 —— 那裡的黑就是「虛空」本身。
+let apronMesh = null;
+export function setApron(on, color = 0x0d0b16) {
+  if (on && !apronMesh) {
+    apronMesh = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshBasicMaterial({ color }));
+    apronMesh.rotation.x = -Math.PI / 2; apronMesh.position.set(W / 2, -2, H / 2);
+    scene.add(apronMesh);
+  } else if (!on && apronMesh) { scene.remove(apronMesh); apronMesh = null; }
+  if (apronMesh) apronMesh.material.color.setHex(color);
+}
