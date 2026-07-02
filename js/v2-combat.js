@@ -1,6 +1,6 @@
 // v2 戰鬥動詞與移動 (spec F §2;docs/v2-module-boundaries.md §3):
 // 移動(冰面/實心碰撞/擊退滑行)、打擊回饋管線(flinch/camKick)、三連擊、格擋推開、
-// 抓-搬-掙脫、收容裁定(三階段軟重整→最終封存)、測試 AI。
+// 抓-搬-掙脫-投擲、收容裁定(三階段軟重整→最終封存)、測試 AI。
 // 不 import render/hud —— 模擬保持 headless 可跑。
 import { W, H } from './constants.js';
 import { clamp, norm } from './utils.js';
@@ -12,6 +12,7 @@ import {
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, FINISHER_KNOCK,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
+  THROW_FORCE, THROW_TUMBLE, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   ICE_ACCEL, ICE_FRICTION, STAGE_NAME, STAGE_BANNER,
 } from './v2-state.js';
 import { FREEFORM, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
@@ -158,6 +159,26 @@ export function startCarry(f, o) {
   dlog('GRAB', NAMES[f.pid], '→', NAMES[o.pid]);
 }
 export function dropCarry(f) { const o = f.carrying; if (o) { o.carriedBy = null; o.stability = Math.max(o.stability, 30); } f.carrying = null; f.regrabCd = REGRAB_CD; }
+// 投擲:扛著的人朝面向方向丟出去 → 翻滾滑行(不能自走)。翻滾中進艙=遠距收容;
+// 丟歪則對方落地恢復=白抓一趟。飛行路過爆桶會點燃引信(updateBarrels 的接近點火,免費湧現)。
+export function throwCarried(f) {
+  const o = f.carrying;
+  if (!o || f.state !== 'alive' || f.stunned) return;
+  f.carrying = null; o.carriedBy = null; o.escape = 0; o.mashSide = 0; f.regrabCd = REGRAB_CD;
+  const a = f.facing;
+  o.x = f.x + Math.cos(a) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(a) * (f.r + o.r * 0.7);
+  o.vx = Math.cos(a) * THROW_FORCE; o.vy = Math.sin(a) * THROW_FORCE;
+  o.fumbleT = THROW_TUMBLE; o._thrownT = game.time;            // 翻滾:moveFighter 只走 slideKnock
+  o.lastHitBy = f.pid; o.lastHitT = game.time; o.faceT = 0.3;
+  o.stability = Math.max(o.stability, 30);                     // 同放下:落地不至於原地再被打暈
+  f.punchFx = game.time; f.punchKind = 2; f.punchArm = 1;      // 借終結技的大動作當投擲姿勢
+  f.punchCd = 0.5;                                             // 投擲後恢復:丟完不能立刻接拳
+  inc.throws[f.pid]++;
+  flinch(o, a, 0.3); camKick(a, 7); addShake(5); game.sfx.push('dash');
+  addText(o.x, o.y - 32, '拋出！', COLORS[f.pid]); addRing(f.x, f.y, 30, COLORS[f.pid], 0.3, 4);
+  dlog('THROW', NAMES[f.pid], '→', NAMES[o.pid]);
+}
+export function inThrowFlight(f) { return f.fumbleT > 0 && game.time - (f._thrownT ?? -9) < THROW_TUMBLE + 0.05; } // 翻滾中(入艙判定用)
 export function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
   const f = o.carriedBy; o.carriedBy = null; o.escape = 0; o.stability = ESCAPE_STAB; inc.struggleEscapes++;
   if (f) { f.carrying = null; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; f.wasCarryingT = game.time; if (f.pid === LOCAL) v2s.localFlash = 0.28; }
@@ -175,8 +196,11 @@ export function containByCarry(f, o) { // 拖進艙 = 收容成功 (spec F §2.2
 export function containByEnviron(v, cause) { // 被擊退/打滑失控進艙 → v 被收容, 對手勝(spec F §2.2)
   const w = 1 - v.pid, rev = isReversal(v);
   inc.contains[w]++; inc.types.add('contain');
-  inc.accidentContains[cause] = (inc.accidentContains[cause] || 0) + 1; inc.types.add(cause);
-  if (cause === 'ice') inc.itemBackfires++;                 // 踩(自己的)冰面滑進艙 = 自作自受
+  if (cause === 'throw') { inc.throwContains++; inc.types.add('throw'); } // 拋進艙=蓄意的指定攻擊,不算意外
+  else {
+    inc.accidentContains[cause] = (inc.accidentContains[cause] || 0) + 1; inc.types.add(cause);
+    if (cause === 'ice') inc.itemBackfires++;               // 踩(自己的)冰面滑進艙 = 自作自受
+  }
   if (rev) { inc.reverseContains++; inc.types.add('reverse'); }
   if (v.carriedBy) { v.carriedBy.carrying = null; v.carriedBy = null; }
   resolveContain(w, v, rev ? 'reverse' : cause);
@@ -218,7 +242,15 @@ export function doAction(f) { // 情境動作鍵
 export function aiMove(f) {
   const o = fighters[1 - f.pid]; // the rival (1v1)
   let gx, gy;
-  if (f.carrying) { gx = POD.x; gy = POD.y; }             // 扛著人 → 拖去實驗艙
+  if (f.carrying) {                                       // 扛著人 → 拖去實驗艙
+    gx = POD.x; gy = POD.y;
+    // 投擲決策:夠近了穩穩丟進去;或對方掙脫條快滿 → 恐慌拋(太遠會丟歪=戲劇性)。帶反應延遲。
+    const pd = Math.hypot(POD.x - f.x, POD.y - f.y);
+    if (pd <= AI_THROW_DIST || f.carrying.escape >= AI_THROW_PANIC) {
+      if (!f._aiThrowAt) f._aiThrowAt = game.time + AI_THROW_DELAY;
+      if (game.time >= f._aiThrowAt) { f.facing = Math.atan2(POD.y - f.y, POD.x - f.x); throwCarried(f); f._aiThrowAt = 0; }
+    } else f._aiThrowAt = 0;
+  }
   else { gx = o.x; gy = o.y; }                            // 追對手(打暈/抓)
   // 出拳後的後撤喘息:短暫遠離對手(給玩家反打窗口)
   if (!f.carrying && game.time < (f._aiBackoffUntil || 0)) { gx = f.x - (o.x - f.x); gy = f.y - (o.y - f.y); }

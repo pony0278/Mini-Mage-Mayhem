@@ -19,7 +19,7 @@ import {
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, doAction, doPushOff, startCarry, dropCarry, breakFree, stunFighter, containByCarry, containByEnviron } from './v2-combat.js';
+import { moveFighter, punch, doAction, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron } from './v2-combat.js';
 import { updatePads, updateIce, updateBarrels, useItem, castWind, castTeleport, castIce, explodeBarrel } from './v2-items.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -49,7 +49,11 @@ function updateCamRig(dt) {
 }
 
 // --- 輸入:情境動作(J)/道具(K)/格擋(空白鍵),邊緣觸發;滑鼠=瞄準+左鍵連擊+右鍵情境 ---
-function mouseLeft(f) { if (f.state === 'alive') punch(f); }                   // 左鍵=揮拳(punch 自帶狀態守衛)
+function mouseLeft(f) {                                                         // 左鍵=揮拳;扛著人=朝滑鼠方向拋擲
+  if (f.state !== 'alive') return;
+  if (f.carrying) { throwCarried(f); return; }
+  punch(f);
+}
 function mouseRight(f) {                                                        // 右鍵=拖被擊暈的人 / 放技能(道具)
   if (f.state !== 'alive') return;
   if (f.carrying) { dropCarry(f); return; }                                    // 搬運中 → 放下
@@ -136,11 +140,12 @@ function step(dt) {
       }
       if (o.escape >= CARRY_ESCAPE_NEED) breakFree(o);
     }
-    // 失控入艙: 被擊退/打滑(速度夠快)或暈眩者進到艙半徑 → 收容(對手勝)。無敵中免疫。
+    // 失控入艙: 被擊退/打滑(速度夠快)、暈眩者、或被拋出翻滾中進到艙半徑 → 收容(對手勝)。無敵中免疫。
     for (const f of fighters) {
       if (f.state !== 'alive' || f.carriedBy || f.carrying || f.invuln > 0) continue;
-      if ((f.stunned || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
-        const cause = iceAt(f.x, f.y) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind');
+      const thrown = inThrowFlight(f);
+      if ((f.stunned || thrown || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
+        const cause = thrown ? 'throw' : iceAt(f.x, f.y) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind');
         containByEnviron(f, cause); break;
       }
     }
@@ -184,7 +189,7 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   restartMatch,
   POD, barrels, explodeBarrel, CAMB, camRig,
-  punch, startCarry, stunFighter, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport,
+  punch, startCarry, stunFighter, throwCarried, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -195,7 +200,9 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
     items: [fighters[0].item, fighters[1].item], pads: pads.map(p => p.item), iceZones: iceZones.length,
     contains: [inc.contains[0], inc.contains[1]], carries: inc.carries, accidentContains: inc.accidentContains,
     reverseContains: inc.reverseContains, teleportEscapes: inc.teleportEscapes, struggleEscapes: inc.struggleEscapes,
-    itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses }) };
+    itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses,
+    throws: [inc.throws[0], inc.throws[1]], throwContains: inc.throwContains,
+    fumble: [+fighters[0].fumbleT.toFixed(2), +fighters[1].fumbleT.toFixed(2)] }) };
 // 練習模式:B 鍵切換 AI 開關。關掉後紅方不動(不追、不打),當成手感練習的假人。
 // 讀 fighters[1].ai 為唯一真相(tune 面板的勾選也吃這條),HUD 據此顯示狀態。
 function toggleAI() {
