@@ -222,11 +222,28 @@ function bridgeAssist(f) {
 }
 function slideKnock(f, dt) { // apply lingering knockback velocity only (no self-control)
   const sx = f.vx * dt, sy = f.vy * dt;
-  if (!circleHitsSolid(f.x + sx, f.y, f.r)) f.x += sx; else f.vx = 0;
-  if (!circleHitsSolid(f.x, f.y + sy, f.r)) f.y += sy; else f.vy = 0;
+  if (!circleHitsSolid(f.x + sx, f.y, f.r) && !hitsFighter(f, f.x + sx, f.y)) f.x += sx; else f.vx = 0;
+  if (!circleHitsSolid(f.x, f.y + sy, f.r) && !hitsFighter(f, f.x, f.y + sy)) f.y += sy; else f.vy = 0;
   f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
   const k = Math.pow(KNOCK_FRICTION, dt); f.vx *= k; f.vy *= k;
   if (KNOCK_CUTOFF && f.vx * f.vx + f.vy * f.vy < KNOCK_CUTOFF * KNOCK_CUTOFF) { f.vx = 0; f.vy = 0; }
+}
+// --- 角色實心化:角色不能互相重疊,但也「不能推」——走進對方會被擋下(對方原地不動)。
+// 只擋「會讓兩人更靠近」的移動:已重疊時(換位傳送/出生點被蹲)永遠允許往外走,不會卡死。
+// 搬運對豁免(被扛者本來就貼在搬運者身前)。BODY_SEP<1 讓視覺上能貼近到體素肩碰肩才停。
+const BODY_SEP = 0.8;
+function hitsFighter(f, nx, ny) {
+  for (const o of fighters) {
+    if (o === f || o.state !== 'alive' || o.falling) continue;
+    if (f.carrying === o || o.carrying === f) continue;
+    const rr = (f.r + o.r) * BODY_SEP;
+    const dxn = nx - o.x, dyn = ny - o.y, d2n = dxn * dxn + dyn * dyn;
+    if (d2n >= rr * rr) continue;
+    const dxc = f.x - o.x, dyc = f.y - o.y;
+    if (d2n >= dxc * dxc + dyc * dyc) continue; // 正在遠離 → 放行(防重疊卡死)
+    return true;
+  }
+  return false;
 }
 function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
@@ -238,16 +255,16 @@ function moveFighter(f, dt) {
     f.vx += m.x * sp * ICE_ACCEL * dt; f.vy += m.y * sp * ICE_ACCEL * dt;
     const vv = Math.hypot(f.vx, f.vy), vmax = sp * 1.4; if (vv > vmax) { f.vx *= vmax / vv; f.vy *= vmax / vv; }
     const isx = f.vx * dt, isy = f.vy * dt;
-    if (!circleHitsSolid(f.x + isx, f.y, f.r)) f.x += isx; else f.vx = 0;
-    if (!circleHitsSolid(f.x, f.y + isy, f.r)) f.y += isy; else f.vy = 0;
+    if (!circleHitsSolid(f.x + isx, f.y, f.r) && !hitsFighter(f, f.x + isx, f.y)) f.x += isx; else f.vx = 0;
+    if (!circleHitsSolid(f.x, f.y + isy, f.r) && !hitsFighter(f, f.x, f.y + isy)) f.y += isy; else f.vy = 0;
     f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
     const ik = Math.pow(ICE_FRICTION, dt); f.vx *= ik; f.vy *= ik;
     return;
   }
   const stepX = (m.x * sp + f.vx) * dt;
   const stepY = (m.y * sp + f.vy) * dt;
-  if (!circleHitsSolid(f.x + stepX, f.y, f.r)) f.x += stepX; else f.vx = 0;
-  if (!circleHitsSolid(f.x, f.y + stepY, f.r)) f.y += stepY; else f.vy = 0;
+  if (!circleHitsSolid(f.x + stepX, f.y, f.r) && !hitsFighter(f, f.x + stepX, f.y)) f.x += stepX; else f.vx = 0;
+  if (!circleHitsSolid(f.x, f.y + stepY, f.r) && !hitsFighter(f, f.x, f.y + stepY)) f.y += stepY; else f.vy = 0;
   f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
   if (FREEFORM) bridgeAssist(f);
   const k = Math.pow(KNOCK_FRICTION, dt); f.vx *= k; f.vy *= k;
@@ -900,7 +917,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: hitfx-1', W - 10, H - 4);
+  hctx.fillText('build: solid-1', W - 10, H - 4);
 }
 
 function frame(now) {
