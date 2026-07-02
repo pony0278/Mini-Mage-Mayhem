@@ -76,11 +76,12 @@ function pollGuard() {
 }
 
 function step(dt) {
-  if (v2s.matchOver) return; // freeze gameplay while the incident report is up
-  game.time += dt; inc.matchT += dt;
+  // 視覺計時器先衰減再檢查 matchOver —— 否則最終封存的震屏(12)在結算畫面永遠不歸零,鏡頭抖不停
   game.screenShake = Math.max(0, game.screenShake - dt * 28);
   if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt;
   if (game.kickX || game.kickY) { const kd = Math.pow(0.00005, dt); game.kickX *= kd; game.kickY *= kd; if (Math.abs(game.kickX) + Math.abs(game.kickY) < 0.1) { game.kickX = 0; game.kickY = 0; } } // 鏡頭踹:~80ms 彈回
+  if (v2s.matchOver) return; // freeze gameplay while the incident report is up
+  game.time += dt; inc.matchT += dt;
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
   if (v2s.localFlash > 0) v2s.localFlash -= dt;
   if (v2s.fallReasonT > 0) v2s.fallReasonT -= dt;

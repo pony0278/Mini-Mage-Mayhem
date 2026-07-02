@@ -10,7 +10,7 @@ import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   SPEED, POD, inPod, iceAt, resetFighter, applyStage,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, FINISHER_KNOCK,
-  PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE,
+  PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   ICE_ACCEL, ICE_FRICTION, STAGE_NAME, STAGE_BANNER,
 } from './v2-state.js';
@@ -220,14 +220,26 @@ export function aiMove(f) {
   let gx, gy;
   if (f.carrying) { gx = POD.x; gy = POD.y; }             // 扛著人 → 拖去實驗艙
   else { gx = o.x; gy = o.y; }                            // 追對手(打暈/抓)
+  // 出拳後的後撤喘息:短暫遠離對手(給玩家反打窗口)
+  if (!f.carrying && game.time < (f._aiBackoffUntil || 0)) { gx = f.x - (o.x - f.x); gy = f.y - (o.y - f.y); }
   const dx = gx - f.x, dy = gy - f.y, dl = Math.hypot(dx, dy) || 1;
   const dir = FREEFORM ? aiSafeDir(f, dx / dl, dy / dl) : { x: dx / dl, y: dy / dl };
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
-  // actions: grab a stunned rival, else punch when in range
+  // actions: grab a stunned rival (after a human-like reaction delay), else sometimes punch when in range
   if (!f.carrying && f.fumbleT <= 0 && o.state === 'alive' && !o.carriedBy && o.invuln <= 0) {
     const od = Math.hypot(o.x - f.x, o.y - f.y);
-    if (o.stunned && f.regrabCd <= 0 && od <= GRAB_RANGE + o.r) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); startCarry(f, o); }
-    else if (!o.stunned && f.punchCd <= 0 && od <= PUNCH_RANGE + o.r) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); punch(f); }
-  }
+    if (o.stunned) {
+      if (!f._aiGrabAt) f._aiGrabAt = game.time + AI_GRAB_DELAY;   // 看到暈 → 排一個「反應時間」
+      if (game.time >= f._aiGrabAt && f.regrabCd <= 0 && od <= GRAB_RANGE + o.r) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); startCarry(f, o); f._aiGrabAt = 0; }
+    } else {
+      f._aiGrabAt = 0;
+      if (f.punchCd <= 0 && od <= PUNCH_RANGE + o.r && game.time >= (f._aiSkipUntil || 0) && game.time >= (f._aiBackoffUntil || 0)) {
+        if (Math.random() < AI_PUNCH_CHANCE) {                     // 6 成真的出拳;打完後撤喘息
+          f.facing = Math.atan2(o.y - f.y, o.x - f.x); punch(f);
+          if (f.comboN === 0) f._aiBackoffUntil = game.time + AI_BACKOFF_T; // 一套打完才後撤(不打斷三連)
+        } else f._aiSkipUntil = game.time + 0.3;                   // 猶豫:0.3s 後再考慮
+      }
+    }
+  } else f._aiGrabAt = 0;
   return dir;
 }

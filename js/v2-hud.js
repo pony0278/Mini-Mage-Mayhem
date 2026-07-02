@@ -76,6 +76,30 @@ function drawContainHud() {
     }
   }
 }
+// 教練提示線(玩家反饋:「指示要更明顯地告訴我現在該做什麼」):
+// 按優先序只顯示一條,大字置中脈動,告訴本機玩家當下最重要的行動。
+function drawCoachLine() {
+  const me = fighters[LOCAL], o = fighters[1 - LOCAL];
+  let msg = null, col = '#ffd36d';
+  if (me.carriedBy) { msg = '連打 ◀A D▶ 掙脫！'; col = '#9affd0'; }
+  else if (me.carrying) { msg = '拖進中央魔法陣收容！'; col = '#c98cff'; }
+  else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '⚡ 對手暈了！右鍵抓住他'; col = '#ffd36d'; }
+  else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
+  else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
+  if (!msg) return;
+  const pk = 0.8 + 0.2 * Math.sin(game.time * 10);
+  hctx.save();
+  hctx.textAlign = 'center'; hctx.font = '900 24px system-ui, sans-serif';
+  const w = hctx.measureText(msg).width;
+  hctx.fillStyle = 'rgba(8,8,16,.72)';
+  const bx = VW / 2 - w / 2 - 16, by = 62;
+  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(bx, by, w + 32, 38, 10) : hctx.rect(bx, by, w + 32, 38); hctx.fill();
+  hctx.strokeStyle = col; hctx.globalAlpha = 0.7; hctx.lineWidth = 2;
+  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(bx, by, w + 32, 38, 10) : hctx.rect(bx, by, w + 32, 38); hctx.stroke();
+  hctx.globalAlpha = pk; hctx.fillStyle = col;
+  hctx.fillText(msg, VW / 2, by + 27);
+  hctx.restore();
+}
 function drawPips(pid, x0, dir) { // 三格收容進度:填色=收容方式
   const size = 22, gap = 6, y0 = 26;
   const mine = containLog.filter(c => c.winner === pid);
@@ -165,6 +189,7 @@ export function drawHud() {
   drawPips(0, 24, 1); drawPips(1, VW - 24, -1);
   drawContainHud();
   drawItems();
+  drawCoachLine();
   // stage / seal banner
   if (v2s.winBannerT > 0 && v2s.bannerText) {
     hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
@@ -177,5 +202,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: arclab-4', VW - 10, VH - 4);
+  hctx.fillText('build: feedback-1', VW - 10, VH - 4);
 }
