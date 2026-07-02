@@ -28,7 +28,7 @@
 | `actor-brawler.js` | v2 小人專屬：`BRAWLER_SPEC` 建模規格表＋`ANIM` 動作參數表＋組裝/姿勢狀態機——**改模型/動作＝改表** | core, state |
 | `render-entities.js` | 箱子/投射物/法陣/爆炸環/粒子/地面標記的每幀重建（`syncProps`/`syncProjectiles`/`syncZones`） | core, state, utils |
 | `render-hud.js` | 單機 2D HUD 全部（`draw()`/`drawPanicFaces`/標題/升級/結算/觸控）；持有 hud ctx | core, render.js(render3D), sim/data/strings/touch |
-| `render-lab.js` | **v2 實驗室場景**（復刻 arcane containment 原型）：ACES/sRGB/陰影管線 profile、emissive 雙貼圖地板、魔法陣、牆板+角柱+能量管（自帶穿牆淡出）、`LAB_LAYOUT` 帶區裝飾編排表（改佈局=改表）、魔塵；`FX_LOW`（?fx=low）關陰影/裝飾點光/transmission | core, state |
+| `render-lab.js` | **v2 實驗室場景**（復刻 arcane containment 原型）：ACES/sRGB/陰影管線 profile、emissive 雙貼圖地板、魔法陣、力場邊界（發光矮緣+角落光球+能量管；高牆已拆，無穿牆淡出）、`LAB_LAYOUT` 帶區裝飾編排表（改佈局=改表）、魔塵；`FX_LOW`（?fx=low）關陰影/裝飾點光/transmission；`setLabFlicker`（減閃爍：凍結脈動光時鐘） | core, state |
 | `render.js`（門面） | `render3D()` 每幀編排＋攝影機定位＋`camFollow`；**re-export 全部公開 API**（project/draw/set* 等） | 以上全部 |
 
 ### DAG（無環；hud→render.js 的 `render3D` 引用是函式呼叫期解析，ESM 安全）

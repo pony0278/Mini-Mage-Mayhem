@@ -79,6 +79,7 @@ export const v2s = {
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝
   fallReason: '', fallReasonT: 0,            // isles:「為什麼掉下去」讀出
+  lowFlicker: false,                         // 減閃爍(光敏無障礙):L 鍵切換,localStorage 記憶;3D 脈動由 render 的 setLabFlicker 吃
 };
 export function resetStage() { v2s.stage = 1; v2s.barrelRespawnCur = BARREL_RESPAWN; v2s.barrelFuseCur = BARREL_FUSE; v2s.padRespawnCur = PAD_RESPAWN; v2s.slideContainCur = SLIDE_CONTAIN_V; }
 export function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門檻)

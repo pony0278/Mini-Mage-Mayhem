@@ -4,8 +4,7 @@
 // 原型單位:1 unit = 1 tile;我們的世界:1 tile = 32px → 一律乘 LAB_SCALE 換算,
 // builder 幾乎逐字移植。碰撞/模擬完全不動(牆的碰撞仍在 30×20 核心邊界)。
 import { W, H, TILE } from './constants.js';
-import { game } from './state.js';
-import { renderer, scene, camera } from './render-core.js';
+import { renderer, scene } from './render-core.js';
 
 const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
 const CX = W / 2, CZ = H / 2;           // 場地中心(世界px)
@@ -248,49 +247,40 @@ function mesh(geo, mat, x = 0, y = 0, z = 0, shadow = true) {
 const labGroup = new THREE.Group();
 labGroup.scale.setScalar(LAB_SCALE); labGroup.position.set(CX, 0, CZ);
 
-/* ---------- 牆板/角柱(原型 buildWalls;移到 30×20 核心邊界=碰撞位置) ---------- */
-const WALL_HX = CORE_W / 2 - 0.5;   // 14.5:牆磚帶(最外圈 tile)的中心線
+/* ---------- 力場邊界(30×20 核心=碰撞位置):膝蓋高發光矮緣 + 角落矮墩光球。
+   高牆已拆——玩家反饋三連(殘影擋視線/單片消失像缺牙/牆後裝飾穿幫)的共同根因
+   是低角度鏡頭前的高牆。邊界視覺=矮緣+牆基能量管+角落「力場錨點」光球,
+   視線永不被擋,穿牆淡出系統整組退役;帶區裝飾自然變成環繞的實驗室環境。 ---------- */
+const WALL_HX = CORE_W / 2 - 0.5;   // 14.5:邊界帶(最外圈 tile)的中心線
 const WALL_HZ = CORE_D / 2 - 0.5;   // 9.5
-const _fadeUnits = [];               // { meshes, mats, op, target } — lab 牆自己的穿牆淡出
 function buildLabWalls() {
   const wall = new THREE.Group();
-  function addPanelSide(length, fixedX, fixedZ, rotY, sideIndex) {
-    const panelCount = Math.ceil(length / 4);
-    const seg = length / panelCount;
-    for (let i = 0; i < panelCount; i++) {
+  function addCurbSide(length, fixedX, fixedZ, rotY, sideIndex) {
+    const segCount = Math.ceil(length / 4);
+    const seg = length / segCount;
+    for (let i = 0; i < segCount; i++) {
       const local = -length / 2 + seg / 2 + i * seg;
-      const p = mesh(new THREE.BoxGeometry(seg * 0.96, 3.4, 0.7), M.stone(0x201a38), 0, 1.7, 0);
-      p.scale.y = 0.92 + ((i * 7 + sideIndex * 3) % 5) * 0.05;
-      const trim = mesh(new THREE.BoxGeometry(seg * 0.96, 0.14, 0.16), M.glow(0x7a4dff, 1.2), 0, 3.15 * p.scale.y, 0.32, false);
+      const p = mesh(new THREE.BoxGeometry(seg * 0.96, 0.44, 0.6), M.stone(0x201a38), 0, 0.22, 0);
+      p.scale.y = 0.9 + ((i * 7 + sideIndex * 3) % 5) * 0.06;  // 沿用舊牆板的高低參差
+      const trim = mesh(new THREE.BoxGeometry(seg * 0.96, 0.1, 0.22), M.glow(0x7a4dff, 1.2), 0, 0.47 * p.scale.y, 0, false);
       const g = new THREE.Group(); g.add(p); g.add(trim);
-      const unit = { meshes: [p], mats: [p.material, trim.material], op: 1, target: 1, sides: [sideIndex] };
-      if (i % 2 === 0) {
-        const seam = mesh(new THREE.BoxGeometry(0.1, 2.6, 0.06), M.glow(0x4a2fd0, 0.8), -seg / 2, 1.6, 0.34, false);
-        g.add(seam); unit.mats.push(seam.material);
-      }
-      for (const m of unit.mats) { m.transparent = true; }
-      _fadeUnits.push(unit); p.userData.unit = unit;
       g.rotation.y = rotY;
       if (Math.abs(Math.sin(rotY)) < 0.1) g.position.set(local, 0, fixedZ);
       else g.position.set(fixedX, 0, local);
       wall.add(g);
     }
   }
-  addPanelSide(CORE_W, 0, -WALL_HZ, 0, 0);           // north
-  addPanelSide(CORE_W, 0, WALL_HZ, Math.PI, 1);      // south
-  addPanelSide(CORE_D, -WALL_HX, 0, Math.PI / 2, 2); // west
-  addPanelSide(CORE_D, WALL_HX, 0, -Math.PI / 2, 3); // east
-  // corner pillars + 脈動光球
-  const pillarG = new THREE.CylinderGeometry(0.9, 1.1, 5.4, 8);
-  const capG = new THREE.CylinderGeometry(1.05, 0.9, 0.5, 8);
-  // 角柱屬於相鄰兩面牆(0北/1南/2西/3東):整面牆淡出時端點角柱一起淡
-  [[-WALL_HX, -WALL_HZ, [0, 2]], [WALL_HX, -WALL_HZ, [0, 3]], [-WALL_HX, WALL_HZ, [1, 2]], [WALL_HX, WALL_HZ, [1, 3]]].forEach(([x, z, sides]) => {
-    const pil = mesh(pillarG, M.darkMetal(), x, 2.7, z);
-    const cap = mesh(capG, M.metal(0x352c58), x, 5.6, z);
-    const orb = mesh(new THREE.SphereGeometry(0.34, 12, 12), M.glow(0xb08cff, 2), x, 6.1, z, false);
-    const unit = { meshes: [pil], mats: [pil.material, cap.material, orb.material], op: 1, target: 1, sides };
-    for (const m of unit.mats) m.transparent = true;
-    _fadeUnits.push(unit); pil.userData.unit = unit;
+  addCurbSide(CORE_W, 0, -WALL_HZ, 0, 0);           // north
+  addCurbSide(CORE_W, 0, WALL_HZ, Math.PI, 1);      // south
+  addCurbSide(CORE_D, -WALL_HX, 0, Math.PI / 2, 2); // west
+  addCurbSide(CORE_D, WALL_HX, 0, -Math.PI / 2, 3); // east
+  // 角落矮墩 + 脈動光球(力場錨點)
+  const pillarG = new THREE.CylinderGeometry(0.55, 0.75, 1.1, 8);
+  const capG = new THREE.CylinderGeometry(0.62, 0.55, 0.28, 8);
+  [[-WALL_HX, -WALL_HZ], [WALL_HX, -WALL_HZ], [-WALL_HX, WALL_HZ], [WALL_HX, WALL_HZ]].forEach(([x, z]) => {
+    const pil = mesh(pillarG, M.darkMetal(), x, 0.55, z);
+    const cap = mesh(capG, M.metal(0x352c58), x, 1.24, z);
+    const orb = mesh(new THREE.SphereGeometry(0.3, 12, 12), M.glow(0xb08cff, 2), x, 1.62, z, false);
     labAnimated.push({ update: t => { orb.material.emissiveIntensity = 1.6 + Math.sin(t * 2 + x + z) * 0.6; } });
     wall.add(pil); wall.add(cap); wall.add(orb);
   });
@@ -460,8 +450,10 @@ function warningSign() {
   g2.font = 'bold 26px monospace'; g2.fillText('ᛗᚨᚷᛁᚲ', S / 2, S / 2 + 62);
   const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5),
-    new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.25, roughness: 0.8 }));
-  const g = new THREE.Group(); m.position.y = 2.1; g.add(m); return g;
+    new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.25, roughness: 0.8, side: THREE.DoubleSide }));
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.05, 0.07, 2.0, 6), M.darkMetal(), 0, 1.0, 0)); // 立牌支柱(高牆拆除後改自立)
+  m.position.y = 2.05; g.add(m); return g;
 }
 function crackedGlassPanel() {
   const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
@@ -625,6 +617,7 @@ function lightningStation() {
     orb.material.emissiveIntensity = 2.0 + Math.sin(t * 6) * 0.8;
     orb.scale.setScalar(1 + Math.sin(t * 6) * 0.06);
     boltT -= dt;
+    if (LOW_FLICKER) { arcs.forEach(l => { l.visible = false; }); if (light) light.intensity = 1.6; return; } // 減閃爍:電弧全滅,燈固定
     if (boltT <= 0) {
       boltT = 0.08 + Math.random() * 0.12;
       arcs.forEach((line, i) => {
@@ -646,8 +639,8 @@ function crate() { // 帶區散落小木箱
 }
 
 /* ---------- LAB_LAYOUT 編排表:改佈局=改這張表(x/z 單位=tile,原點=場地中心) ----------
-   核心牆在 x=±14.5 / z=±9.5;帶區:北/南 z=±10..±15,東/西 x=±15..±17。
-   南帶=鏡頭前景 → 只放矮件;元素站全在北帶(從北牆後露出,景深最佳)。 */
+   力場矮緣在 x=±14.5 / z=±9.5;帶區:北/南 z=±10..±15,東/西 x=±15..±17。
+   南帶=鏡頭前景 → 只放矮件;元素站全在北帶(景深最佳)。 */
 const BUILDERS = { tank: containmentTank, alchemy: alchemyTable, shelf: bookshelf, machine: machinery,
   cabinet: displayCabinet, sign: warningSign, glass: crackedGlassPanel, crate,
   fire: fireStation, frost: frostStation, poison: poisonStation, lightning: lightningStation };
@@ -671,13 +664,13 @@ export const LAB_LAYOUT = [
   { type: 'cabinet', x: 5.4,  z: 11.6, ry: Math.PI, args: [0x53e0ff, 'sword'] },
   { type: 'crate', x: -10.5, z: 11.2 }, { type: 'crate', x: 9.8, z: 11.5 }, { type: 'crate', x: 12.6, z: 11 },
   { type: 'crate', x: -8, z: -11.2 }, { type: 'crate', x: 8.2, z: -11 },
-  // 警告標誌(掛核心牆內面)+裂玻璃(斜靠牆)
-  { type: 'sign', x: -2,     z: -9.12, ry: 0 },
-  { type: 'sign', x: 9,      z: -9.12, ry: 0 },
-  { type: 'sign', x: 14.12,  z: 5,     ry: -Math.PI / 2 },
-  { type: 'sign', x: -14.12, z: -5,    ry: Math.PI / 2 },
-  { type: 'glass', x: -9.8,  z: -9.05, ry: 0 },
-  { type: 'glass', x: 14.05, z: -6.5,  ry: -Math.PI / 2 },
+  // 警告立牌(自立支柱;高牆拆除後從掛牆改立在邊界外帶區)+裂玻璃(靠帶區傢俱)
+  { type: 'sign', x: -2,     z: -10.2, ry: 0 },
+  { type: 'sign', x: 9,      z: -10.2, ry: 0 },
+  { type: 'sign', x: 15.1,   z: 5,     ry: -Math.PI / 2 },
+  { type: 'sign', x: -15.1,  z: -5,    ry: Math.PI / 2 },
+  { type: 'glass', x: -9.8,  z: -10.1, ry: 0 },
+  { type: 'glass', x: 14.9,  z: -6.5,  ry: -Math.PI / 2 },
 ];
 function buildLabProps() {
   for (const item of LAB_LAYOUT) {
@@ -685,36 +678,6 @@ function buildLabProps() {
     const g = b(...(item.args || []));
     g.position.set(item.x, 0, item.z); g.rotation.y = item.ry || 0;
     labGroup.add(g);
-  }
-}
-
-/* ---------- lab 牆的穿牆淡出:鏡頭→本機角色射線打到牆 → 整面牆(含角柱)完全透明
-   玩家反饋兩輪:0.18 殘影仍擋視線 → 淡到 0;單片消失像缺牙 → 升級成整側淡出。
-   邊界提示由牆基能量管+地板邊緣承擔;未被擋到的其他三面牆不受影響。 ---------- */
-const _labRay = new THREE.Raycaster();
-const _labDir = new THREE.Vector3();
-const _fadeMeshes = [];
-const _hitSides = new Set();
-function updateLabWallFade() {
-  const tgt = game.occludeTarget;
-  if (!tgt) return;
-  for (const u of _fadeUnits) u.target = 1;
-  _labDir.set(tgt.x, 26, tgt.y).sub(camera.position);
-  const distTo = _labDir.length(); _labDir.normalize();
-  _labRay.set(camera.position, _labDir); _labRay.far = distTo;
-  if (!_fadeMeshes.length) for (const u of _fadeUnits) _fadeMeshes.push(...u.meshes);
-  labGroup.updateMatrixWorld(true);
-  _hitSides.clear();
-  for (const hit of _labRay.intersectObjects(_fadeMeshes, false)) {
-    const u = hit.object.userData.unit;
-    if (u) for (const s of u.sides) _hitSides.add(s);
-  }
-  if (_hitSides.size) for (const u of _fadeUnits)
-    if (u.sides.some(s => _hitSides.has(s))) u.target = 0;
-  for (const u of _fadeUnits) {
-    u.op += (u.target - u.op) * 0.25;
-    if (Math.abs(u.target - u.op) < 0.01) u.op = u.target;
-    for (const m of u.mats) m.opacity = u.op;
   }
 }
 
@@ -745,10 +708,14 @@ function buildLabDust() {
 }
 
 /* ---------- 每幀更新(facade render3D 呼叫;dt 由 t 差分) ---------- */
-window.__lab = { fadeUnits: _fadeUnits, labGroup, labAnimated }; // debug hook(headless 測試用)
+// 減閃爍(玩家反饋:光汙染傷眼):凍結動畫時鐘 → 所有 sin(t) 脈動光固定在單一亮度;
+// dt 照常傳 → 純運動(魔塵/氣泡/旋轉)不受影響。雷電弧另在自己的 updater 裡讀這旗標。
+export let LOW_FLICKER = false;
+export function setLabFlicker(low) { LOW_FLICKER = low; }
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;
-  for (const a of labAnimated) a.update(t, dt);
-  updateLabWallFade();
+  const ta = LOW_FLICKER ? 1.7 : t; // 凍結的動畫時鐘(任選相位)
+  for (const a of labAnimated) a.update(ta, dt);
 }

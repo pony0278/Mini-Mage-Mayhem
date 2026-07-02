@@ -17,7 +17,7 @@ const VW = hud.width, VH = hud.height; // 視圖尺寸(v2.html 的 16:9 畫布);
 
 function drawContainHud() {
   // 實驗艙地面光環 + 穩定值小條 + 暈眩冒星 + 搬運掙脫條/交替指示
-  const pulse = 0.6 + 0.4 * Math.sin(game.time * 5);
+  const pulse = v2s.lowFlicker ? 0.5 : 0.6 + 0.4 * Math.sin(game.time * 5); // 減閃爍:艙環常亮
   const c = project(POD.x, POD.y, 2), edge = project(POD.x + POD.r, POD.y, 2);
   if (!c.behind) {
     const rad = Math.max(14, Math.abs(edge.x - c.x));
@@ -58,7 +58,7 @@ function drawContainHud() {
     // 血條:暈眩=黃、低穩定=橘(危險色,刻意不用紅色以免撞到紅方身分色)、其餘=自身身分色
     hctx.fillStyle = f.stunned ? '#ffd36d' : (f.stability < 30 ? '#ff9a4a' : COLORS[f.pid]); hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
     if (f.stunned) { hctx.fillStyle = '#ffd36d'; hctx.font = '900 16px system-ui, sans-serif'; hctx.fillText('★', s.x, s.y - 6); }
-    if (f.invuln > 0 && Math.floor(game.time * 12) % 2 === 0) { // 出艙無敵:閃爍護盾環
+    if (f.invuln > 0 && (v2s.lowFlicker || Math.floor(game.time * 12) % 2 === 0)) { // 出艙無敵:閃爍護盾環(減閃爍=常亮)
       const g = project(f.x, f.y, 10);
       if (!g.behind) { hctx.strokeStyle = '#7fe9ff'; hctx.lineWidth = 3; hctx.beginPath(); hctx.arc(g.x, g.y, 22, 0, Math.PI * 2); hctx.stroke(); }
     }
@@ -70,7 +70,7 @@ function drawContainHud() {
     }
     // 格擋推開提示:被打中的短窗內亮起(像掙脫指示),按對=把攻擊方推開
     if (!f.ai && f.pushWinT > 0 && f.pushCd <= 0 && !f.stunned && !f.carriedBy) {
-      const pk = 0.75 + 0.25 * Math.sin(game.time * 18);
+      const pk = v2s.lowFlicker ? 0.95 : 0.75 + 0.25 * Math.sin(game.time * 18);
       hctx.fillStyle = `rgba(154,255,208,${pk})`; hctx.font = '900 14px system-ui, sans-serif';
       hctx.fillText((f.pid === 0 ? '空白鍵' : 'Enter') + ' 推開！', s.x, s.y - 18);
     }
@@ -87,7 +87,7 @@ function drawCoachLine() {
   else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
   if (!msg) return;
-  const pk = 0.8 + 0.2 * Math.sin(game.time * 10);
+  const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
   hctx.textAlign = 'center'; hctx.font = '900 24px system-ui, sans-serif';
   const w = hctx.measureText(msg).width;
@@ -198,9 +198,9 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵抓／放技能 · 扛人左鍵拋擲 · 空白鍵推開（被打時）　B：開關 AI', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵抓／放技能 · 扛人左鍵拋擲 · 空白鍵推開（被打時）　B：開關 AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: throw-1', VW - 10, VH - 4);
+  hctx.fillText('build: field-1', VW - 10, VH - 4);
 }

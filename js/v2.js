@@ -9,7 +9,7 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM } from './state.js';
 import { updateDeathTheater, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setApron, updateMouseWorld, mouseScreen } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -169,6 +169,7 @@ function step(dt) {
     marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: '#ff7a3a', pulse: true, op: 0.92, fill: 0.24, speed: 18 });
   for (const z of iceZones) marks.push({ x: z.x, y: z.y, r: z.r, color: '#bfe9ff', pulse: false, op: 0.4, fill: 0.28 }); // 冰面
   for (const p of pads) if (p.item) marks.push({ x: p.x, y: p.y, r: 24, color: ITEM_INFO[p.item].color, pulse: true, op: 0.5, fill: 0.12, speed: 4 }); // 補給座光圈
+  if (v2s.lowFlicker) for (const m of marks) m.pulse = false; // 減閃爍:標記全改常亮
   setGroundMarkers(marks);
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
 }
@@ -213,12 +214,22 @@ function toggleAI() {
   addText(o.x, o.y - 42, on ? 'AI 開啟' : 'AI 關閉 · 練習模式', on ? '#ff6b6b' : '#9affd0');
   game.sfx.push('upgrade');
 }
+// 減閃爍(光敏無障礙,玩家反饋「一直閃爍對眼睛不好」):L 切換,localStorage 記憶
+function toggleFlicker() {
+  v2s.lowFlicker = !v2s.lowFlicker;
+  try { localStorage.setItem('mmm_lowFlicker', v2s.lowFlicker ? '1' : '0'); } catch { /* 隱私模式沒有 storage 也能玩 */ }
+  setLabFlicker(v2s.lowFlicker);
+  const me = fighters[LOCAL];
+  addText(me.x, me.y - 42, v2s.lowFlicker ? '減閃爍:開' : '減閃爍:關', '#9affd0');
+  game.sfx.push('upgrade');
+}
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
   keys.add(k);
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(k)) e.preventDefault();
   if (k === 'b') toggleAI(); // 切換 AI / 練習模式
+  if (k === 'l') toggleFlicker(); // 減閃爍開關
   if (v2s.matchOver) { // incident report screen: R = rematch, C = copy share text
     if (k === 'r') restartMatch();
     else if (k === 'c' && v2s.report && navigator.clipboard) { navigator.clipboard.writeText(v2s.report.share); dlog('copied share text'); }
@@ -261,6 +272,8 @@ if (TERRAIN === 'isles') {
   setApron(true);                                   // 場外暗地板:蓋掉牆外黑虛空(16:9 視野較寬)
   // 實驗室主題(arcane containment 原型換皮):暗藍紫做舊地板+發光溝縫+焦痕符文+冷色氛圍
   setLabTheme(true);
+  try { v2s.lowFlicker = localStorage.getItem('mmm_lowFlicker') === '1'; } catch { /* no storage */ }
+  setLabFlicker(v2s.lowFlicker); // 減閃爍偏好開機還原
   setActorShadow(true);
   setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target

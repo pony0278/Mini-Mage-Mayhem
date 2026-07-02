@@ -105,7 +105,8 @@ export function punch(f) {
   f.punchCd = COMBO_CD[stage];
   f.punchFx = game.time; f.punchKind = stage; f.punchArm = stage === 0 ? 0 : 1;
   const a = f.facing; let hit = false;
-  f.vx += Math.cos(a) * (fin ? 150 : 110); f.vy += Math.sin(a) * (fin ? 150 : 110); // 出拳衝步:整個人往前撲,終結技撲更大步
+  // 出拳衝步只留終結技(玩家反饋:每一拳都不受控滑一步=不自然的主因)。鉤拳原地穩定連擊,進拳靠走位。
+  if (fin) { f.vx += Math.cos(a) * 150; f.vy += Math.sin(a) * 150; }
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
