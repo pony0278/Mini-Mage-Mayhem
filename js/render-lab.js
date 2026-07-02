@@ -263,7 +263,7 @@ function buildLabWalls() {
       p.scale.y = 0.92 + ((i * 7 + sideIndex * 3) % 5) * 0.05;
       const trim = mesh(new THREE.BoxGeometry(seg * 0.96, 0.14, 0.16), M.glow(0x7a4dff, 1.2), 0, 3.15 * p.scale.y, 0.32, false);
       const g = new THREE.Group(); g.add(p); g.add(trim);
-      const unit = { meshes: [p], mats: [p.material, trim.material], op: 1, target: 1 };
+      const unit = { meshes: [p], mats: [p.material, trim.material], op: 1, target: 1, sides: [sideIndex] };
       if (i % 2 === 0) {
         const seam = mesh(new THREE.BoxGeometry(0.1, 2.6, 0.06), M.glow(0x4a2fd0, 0.8), -seg / 2, 1.6, 0.34, false);
         g.add(seam); unit.mats.push(seam.material);
@@ -283,11 +283,12 @@ function buildLabWalls() {
   // corner pillars + 脈動光球
   const pillarG = new THREE.CylinderGeometry(0.9, 1.1, 5.4, 8);
   const capG = new THREE.CylinderGeometry(1.05, 0.9, 0.5, 8);
-  [[-WALL_HX, -WALL_HZ], [WALL_HX, -WALL_HZ], [-WALL_HX, WALL_HZ], [WALL_HX, WALL_HZ]].forEach(([x, z]) => {
+  // 角柱屬於相鄰兩面牆(0北/1南/2西/3東):整面牆淡出時端點角柱一起淡
+  [[-WALL_HX, -WALL_HZ, [0, 2]], [WALL_HX, -WALL_HZ, [0, 3]], [-WALL_HX, WALL_HZ, [1, 2]], [WALL_HX, WALL_HZ, [1, 3]]].forEach(([x, z, sides]) => {
     const pil = mesh(pillarG, M.darkMetal(), x, 2.7, z);
     const cap = mesh(capG, M.metal(0x352c58), x, 5.6, z);
     const orb = mesh(new THREE.SphereGeometry(0.34, 12, 12), M.glow(0xb08cff, 2), x, 6.1, z, false);
-    const unit = { meshes: [pil], mats: [pil.material, cap.material, orb.material], op: 1, target: 1 };
+    const unit = { meshes: [pil], mats: [pil.material, cap.material, orb.material], op: 1, target: 1, sides };
     for (const m of unit.mats) m.transparent = true;
     _fadeUnits.push(unit); pil.userData.unit = unit;
     labAnimated.push({ update: t => { orb.material.emissiveIntensity = 1.6 + Math.sin(t * 2 + x + z) * 0.6; } });
@@ -687,10 +688,13 @@ function buildLabProps() {
   }
 }
 
-/* ---------- lab 牆的穿牆淡出:鏡頭→本機角色射線打到的牆板/角柱 → 淡出 ---------- */
+/* ---------- lab 牆的穿牆淡出:鏡頭→本機角色射線打到牆 → 整面牆(含角柱)完全透明
+   玩家反饋兩輪:0.18 殘影仍擋視線 → 淡到 0;單片消失像缺牙 → 升級成整側淡出。
+   邊界提示由牆基能量管+地板邊緣承擔;未被擋到的其他三面牆不受影響。 ---------- */
 const _labRay = new THREE.Raycaster();
 const _labDir = new THREE.Vector3();
 const _fadeMeshes = [];
+const _hitSides = new Set();
 function updateLabWallFade() {
   const tgt = game.occludeTarget;
   if (!tgt) return;
@@ -700,9 +704,13 @@ function updateLabWallFade() {
   _labRay.set(camera.position, _labDir); _labRay.far = distTo;
   if (!_fadeMeshes.length) for (const u of _fadeUnits) _fadeMeshes.push(...u.meshes);
   labGroup.updateMatrixWorld(true);
+  _hitSides.clear();
   for (const hit of _labRay.intersectObjects(_fadeMeshes, false)) {
-    const u = hit.object.userData.unit; if (u) u.target = 0; // 完全透明(玩家反饋:0.18 殘影仍擋視線);邊界提示由牆基能量管+地板邊緣承擔
+    const u = hit.object.userData.unit;
+    if (u) for (const s of u.sides) _hitSides.add(s);
   }
+  if (_hitSides.size) for (const u of _fadeUnits)
+    if (u.sides.some(s => _hitSides.has(s))) u.target = 0;
   for (const u of _fadeUnits) {
     u.op += (u.target - u.op) * 0.25;
     if (Math.abs(u.target - u.op) < 0.01) u.op = u.target;
