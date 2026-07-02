@@ -183,7 +183,7 @@ function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門
 }
 
 const fighters = [makeFighter(0), makeFighter(1)];
-fighters[1].ai = true; // solo testing: red is a bot (flip to false for hot-seat 2-player)
+fighters[1].ai = false; // AI 預設關閉:開場紅方是練習假人,按 B 啟動 AI(HUD 常駐顯示目前狀態)
 
 // camera-relative basis (mirrors main.js buildInput) so screen-up = forward at any azimuth
 function camRel(sx, sy) {
@@ -917,7 +917,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: solid-1', W - 10, H - 4);
+  hctx.fillText('build: solid-2', W - 10, H - 4);
 }
 
 function frame(now) {
