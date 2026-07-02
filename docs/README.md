@@ -23,6 +23,7 @@
 | [magic-containment-3-stage-concept.md](magic-containment-3-stage-concept.md) | **概念原文**：三階段收容勝利規則（先收 3 次；每次收容＝同一場事故升級，不完全重置；軟重整/警戒階段/三幕報告）— spec F §2.5 的來源 |
 | [v2-roadmap.md](v2-roadmap.md) | **進度路線圖**：核心已驗證好玩後的階段規劃（Phase 0 手感→1 加深事故→2 分享→3 美術→4 擴張）+ 驗收 + 出貨缺口 |
 | [v2-module-boundaries.md](v2-module-boundaries.md) | **v2 模組邊界定義書**：v2.js 拆分的分析（死碼清單）、目標模組表 + DAG、不變式、驗證協定 |
+| [render-module-boundaries.md](render-module-boundaries.md) | **render.js 模組邊界定義書**：渲染層拆分（core/world/actors/entities/hud + 門面）、跨區依賴分析、雙遊戲驗證協定 |
 
 > 落地優先序（規格 E）：**V0.8 事故報告雛形（最高 CP，先驗「想不想截圖」）→ V0.9 收容測試原型 → V1.0 社群挑戰版**。
 > 規格 A（蠢死法演出）/B（事故因果）/D（地圖引擎）餵報告；元素 spec 貫穿。單機版（下表）為**零件捐贈庫**（`recordDisaster`/`makeRunStory` 直接餵報告生成）。
