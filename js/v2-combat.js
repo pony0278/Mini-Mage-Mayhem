@@ -9,7 +9,7 @@ import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } fro
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   SPEED, POD, inPod, iceAt, resetFighter, applyStage,
-  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, FINISHER_KNOCK,
+  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, FINISHER_KNOCK,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   THROW_FORCE, THROW_TUMBLE, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
@@ -98,14 +98,24 @@ export function stunFighter(o) {
   addHitstop(0.12); addShake(6); game.sfx.push('hurt'); // 擊暈=大事件:更長定格+重音,把「打崩了」讀出來
   if (o.pid === LOCAL) v2s.localFlash = 0.3;
 }
+// 出拳=起手:播動作、鎖定方向,STRIKE_DELAY 秒後的 impact 影格才判定命中(resolveStrike)。
+// 起手中被打暈/被抓/被推開踉蹌 → resolveStrike 的守衛直接取消 = 格擋推開是能打斷出拳的真反制。
 export function punch(f) {
   if (f.punchCd > 0 || f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return;
   if (f.comboT <= 0) f.comboN = 0;                        // 超窗 → 從第一段重來
-  const stage = f.comboN, fin = stage === 2;              // 0 左鉤 / 1 右鉤 / 2 浮誇直拳(終結技)
+  const stage = f.comboN;                                 // 0 左鉤 / 1 右鉤 / 2 浮誇直拳(終結技)
   f.punchCd = COMBO_CD[stage];
   f.punchFx = game.time; f.punchKind = stage; f.punchArm = stage === 0 ? 0 : 1;
-  const a = f.facing; let hit = false;
-  // 出拳衝步只留終結技(玩家反饋:每一拳都不受控滑一步=不自然的主因)。鉤拳原地穩定連擊,進拳靠走位。
+  f._strikeAt = game.time + STRIKE_DELAY[stage]; f._strikeKind = stage; f._strikeDir = f.facing; // 方向在按下瞬間鎖定(出拳有承諾)
+  // 點擊就接段(空揮也演完整套);超過接段窗口才重置
+  f.comboN = (stage + 1) % 3; f.comboT = COMBO_WINDOW;
+}
+export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打擊回饋
+  const stage = f._strikeKind, fin = stage === 2;
+  f._strikeAt = 0;
+  if (f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return; // 被打斷:這拳不存在
+  const a = f._strikeDir; let hit = false;
+  // 出拳衝步只留終結技(玩家反饋:每拳都滑一步不自然)。鉤拳原地,進拳靠走位。
   if (fin) { f.vx += Math.cos(a) * 150; f.vy += Math.sin(a) * 150; }
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
@@ -130,9 +140,7 @@ export function punch(f) {
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
     if (o.pid === LOCAL) v2s.localFlash = 0.2;
   }
-  // 點擊就接段(空揮也演完整套 —— 連點看動作本身就是獎勵,途中不小心打中一拳也爽);
-  // 超過接段窗口才重置。命中回饋照舊分級:終結技最重(定格/鏡頭踹/重音)。
-  f.comboN = (stage + 1) % 3; f.comboT = COMBO_WINDOW;
+  // 命中回饋分級:終結技最重(定格/鏡頭踹/重音)
   if (hit) {
     if (fin) { addShake(7); addHitstop(0.12); camKick(a, 10); game.sfx.push('smash'); }
     else { addShake(4); addHitstop(0.08); camKick(a, 7); game.sfx.push('thud'); }

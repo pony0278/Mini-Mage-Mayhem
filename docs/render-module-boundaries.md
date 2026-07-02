@@ -25,7 +25,8 @@
 | `render-core.js` | renderer/`gl3dOk`/scene/camera/燈光、`ART` 調色盤、幾何+材質快取（`makeBox`/`matLambert`/`colorHex`…）、`project`/`mouseScreen`/`updateMouseWorld`、共用顯示旗標（`actorShadow`/`vividFx`/`groundMarkers`＋setter）；**`VIEW_W/VIEW_H` 視圖尺寸**（由 HTML 殼的 canvas 屬性決定，與世界尺寸 W/H 解耦：v2=960×540 (16:9)、單機=960×640） | constants, utils, state |
 | `render-world.js` | 地板紋理烘焙（含富材質）、格子浮島+海、自由浮島+吊橋、牆體+穿牆淡出、裝飾；`islandMode`/`freeIslands`（export let，唯一寫入點在本檔） | core, constants, state |
 | `render-actors.js` | 巫師+全部敵人體素建模、`updateActor` 程序動畫、`syncActors`/`refreshActors`；brawler 委派給 `actor-brawler.js` | core, world(freeIslands), state, data, sim(dashElement), actor-brawler |
-| `actor-brawler.js` | v2 小人專屬：`BRAWLER_SPEC` 建模規格表＋`ANIM` 動作參數表＋組裝/姿勢狀態機——**改模型/動作＝改表** | core, state |
+| `actor-brawler.js` | v2 小人專屬：骨架移植自使用者的 **PUNCH STUDIO 動作編排器**（root→pelvis→髖/膝；spine→肩/肘/腕＋headPivot），`BRAWLER_SPEC` 建模規格表＋`applyBrawlerPose`（47 軸姿勢→骨架，含自動踩地）＋狀態機（clip 或程序姿勢→平滑混合）——**改模型＝改表；改招式動作＝改 brawler-clips.js** | core, state, brawler-clips |
+| `brawler-clips.js` | 招式動作資料＋時間軸播放器：`CLIPS`＝編排器 **JSON 匯出直貼**（seq/phases/lags；per-limb lag＝跟隨延遲，impact 段零 lag），`evalClip(clip,t)`→47 軸姿勢。clip 的 impact frame 與 v2-state `STRIKE_DELAY`（傷害判定時刻）對齊，改時序兩邊一起改 | （純資料＋純函式，無依賴） |
 | `render-entities.js` | 箱子/投射物/法陣/爆炸環/粒子/地面標記的每幀重建（`syncProps`/`syncProjectiles`/`syncZones`） | core, state, utils |
 | `render-hud.js` | 單機 2D HUD 全部（`draw()`/`drawPanicFaces`/標題/升級/結算/觸控）；持有 hud ctx | core, render.js(render3D), sim/data/strings/touch |
 | `render-lab.js` | **v2 實驗室場景**（復刻 arcane containment 原型）：ACES/sRGB/陰影管線 profile、emissive 雙貼圖地板、魔法陣、力場邊界（發光矮緣+角落光球+能量管；高牆已拆，無穿牆淡出）、`LAB_LAYOUT` 帶區裝飾編排表（改佈局=改表）、魔塵；`FX_LOW`（?fx=low）關陰影/裝飾點光/transmission；`setLabFlicker`（減閃爍：凍結脈動光時鐘） | core, state |
@@ -64,7 +65,7 @@ setActorShadow, setVividFx, setGroundMarkers, setRichFloor, updateMouseWorld, mo
 
 ## 6. 之後的擴充落點
 
-- **人物建模/動作**：v2 小人＝`actor-brawler.js`（`BRAWLER_SPEC` 比例表 + `ANIM` 動作參數表,改模型=改數據）；單機巫師/其他敵人＝`render-actors.js`。
+- **人物建模/動作**：v2 小人模型＝`actor-brawler.js`（`BRAWLER_SPEC` 比例表）；**招式動作＝在 PUNCH STUDIO 編排器裡編 → JSON 匯出 → 貼進 `brawler-clips.js` 的 CLIPS**（零程式碼）；單機巫師/其他敵人＝`render-actors.js`。
 - **場地視覺**：v2 實驗室＝`render-lab.js`（佈置改 `LAB_LAYOUT` 表）；單機/浮島＝`render-world.js`。
 - **新特效**：`render-entities.js`。
 - **單機 HUD/選單**：`render-hud.js`。
