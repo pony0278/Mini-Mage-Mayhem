@@ -134,6 +134,7 @@ function resetFighter(f) {
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
   f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0; f.wasCarryingT = -9; f.invuln = 0;
   f.punchFx = -9; f.punchArm = 0; // 出拳動畫時間戳 + 左右手交替 (render 的 brawler 姿勢吃這兩個)
+  f.flinchT = 0; f.flinchA = 0;   // 受擊反應:朝受力方向甩頭+壓扁回彈 (render 吃這兩個)
   f.item = null;
   f.state = 'alive';
 }
@@ -253,10 +254,15 @@ function moveFighter(f, dt) {
   if (KNOCK_CUTOFF && f.vx * f.vx + f.vy * f.vy < KNOCK_CUTOFF * KNOCK_CUTOFF) { f.vx = 0; f.vy = 0; } // snap out the ice-slide tail
 }
 
+// --- 打擊回饋管線:受擊 flinch(模型甩頭/壓扁) + 方向性鏡頭踹(camera kick) ---
+function flinch(o, a, t = 0.22) { o.flinchA = a; o.flinchT = Math.max(o.flinchT || 0, t); }
+function camKick(a, mag) { game.kickX = Math.cos(a) * mag; game.kickY = Math.sin(a) * mag; } // render 加在鏡頭上,step 裡快速衰減
+
 // --- 基礎動詞 (spec F §2): 揮拳(削穩定值→擊暈) + 情境動作鍵(暈眩對手在近處→抓; 搬運中→放下; 否則→揮拳) ---
 function stunFighter(o) {
   o.stunned = true; o.stunT = STUN_T; o.vx *= 0.4; o.vy *= 0.4;
   addText(o.x, o.y - 30, '暈！', '#ffd36d'); addRing(o.x, o.y, 30, '#ffd36d', 0.3, 4);
+  addHitstop(0.12); addShake(6); game.sfx.push('hurt'); // 擊暈=大事件:更長定格+重音,把「打崩了」讀出來
   if (o.pid === LOCAL) localFlash = 0.3;
 }
 function punch(f) {
@@ -264,6 +270,7 @@ function punch(f) {
   f.punchCd = PUNCH_CD;
   f.punchFx = game.time; f.punchArm = f.punchArm ? 0 : 1; // 觸發出拳動畫(左右手交替)
   const a = f.facing; let hit = false;
+  f.vx += Math.cos(a) * 110; f.vy += Math.sin(a) * 110; // 出拳衝步(lunge):整個人往前撲,不只手臂在動
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
@@ -274,12 +281,15 @@ function punch(f) {
     o.vx += Math.cos(a) * PUNCH_KNOCK; o.vy += Math.sin(a) * PUNCH_KNOCK;
     o.faceT = 0.2; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     o.stability = Math.max(0, o.stability - PUNCH_STAB); o.stabCd = 0.8; // 削穩定值(命中暫停回穩)
-    hitSpark(o.x, o.y, '#ffe0a3', 1.2); addRing(o.x, o.y, 22, '#ffd36d', 0.25, 3);
+    flinch(o, a);                                                        // 受擊:朝受力方向甩頭+壓扁回彈
+    const cpx = o.x - Math.cos(a) * o.r * 0.7, cpy = o.y - Math.sin(a) * o.r * 0.7; // 火花開在拳頭接觸點,不是身體中心
+    hitSpark(cpx, cpy, '#ffe0a3', 1.5); addRing(cpx, cpy, 20, '#ffd36d', 0.22, 3);
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
     if (o.pid === LOCAL) localFlash = 0.2;
   }
-  // 出拳回饋改由 brawler 手臂動畫承擔(地面光圈太不直覺,移除);命中仍有火花/光環在目標身上
-  addShake(hit ? 4 : 2); if (hit) addHitstop(0.05); game.sfx.push('hit');
+  // 揮空/命中分離回饋:命中=悶擊聲+長定格+方向性鏡頭踹;揮空=風聲+輕震(出拳動作本身由手臂動畫承擔)
+  if (hit) { addShake(4); addHitstop(0.09); camKick(a, 7); game.sfx.push('thud'); }
+  else { addShake(1.5); game.sfx.push('whiff'); }
 }
 function startCarry(f, o) {
   f.carrying = o; o.carriedBy = f; o.escape = 0; o.stunned = false; o.stunT = 0; o.mashSide = 0; o._aPrev = false; o._dPrev = false;
@@ -385,6 +395,7 @@ function castWind(f) { // 前方風錐強擊退; 貼臉發射自身反彈(過載
     hit = true;
     o.vx += Math.cos(a) * WIND_FORCE; o.vy += Math.sin(a) * WIND_FORCE;
     o.faceT = 0.3; o.hurt = 0.1; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    flinch(o, a, 0.3); camKick(a, 6);
     if (o.carrying) dropCarry(o);                                            // 吹中搬運者 → 鬆手
     hitSpark(o.x, o.y, '#dff3ff', 1.3); addRing(o.x, o.y, 32, '#dff3ff', 0.3, 4); addText(o.x, o.y - 26, '吹飛！', '#dff3ff');
     if (o.pid === LOCAL) localFlash = 0.25;
@@ -543,13 +554,14 @@ function dropTrophy(x, y) {
 function explodeBarrel(b) {
   b.alive = false; b.respawn = barrelRespawnCur; inc.barrelBooms++; inc.types.add('barrel');
   addRing(b.x, b.y, BARREL_BLAST, '#ff9a4a', 0.4, 6); addRing(b.x, b.y, BARREL_BLAST * 0.6, '#fff1bb', 0.3, 5);
-  hitSpark(b.x, b.y, '#ffd36d', 2); addShake(8); addHitstop(0.05); game.sfx.push('hit');
+  hitSpark(b.x, b.y, '#ffd36d', 2); addShake(8); addHitstop(0.1); game.sfx.push('explosion');
   addText(b.x, b.y - 30, '爆！', '#ff7b72');
   for (const f of fighters) {
     if (f.state !== 'alive' || f.invuln > 0) continue;
     const dx = f.x - b.x, dy = f.y - b.y, d = Math.hypot(dx, dy) || 1;
     if (d > BARREL_BLAST + f.r) continue;
     f.vx += dx / d * BARREL_FORCE; f.vy += dy / d * BARREL_FORCE;
+    flinch(f, Math.atan2(dy, dx), 0.32);
     f.stability = Math.max(0, f.stability - BARREL_STAB); f.stabCd = 0.8; f.faceT = 0.4; f.lastHitBy = -3; f.lastHitT = game.time; // -3 = 爆桶
     if (f.carrying) dropCarry(f);                                        // 炸到搬運者 → 鬆手
     if (f.stability <= 0 && !f.stunned && f.restunT <= 0) stunFighter(f); // 炸崩 → 可能擊暈
@@ -636,6 +648,7 @@ function updateBoss(dt) {
   if (d <= BOSS_CONTACT + t.r) { // caught the holder → fling them off + drop the trophy
     t.vx += (dx / d) * BOSS_KNOCK; t.vy += (dy / d) * BOSS_KNOCK;
     t.faceT = 0.4; t.hurt = 0.15; t.lastHitBy = -2; t.lastHitT = game.time; // -2 = boss (≠ rival point)
+    flinch(t, Math.atan2(dy, dx), 0.32);
     if (t.pid === LOCAL) { localFlash = 0.32; dlog('BOSS HIT you at', Math.round(t.x) + ',' + Math.round(t.y)); }
     addShake(6); addHitstop(0.06); game.sfx.push('hit');
     addText(t.x, t.y - 30, 'Boss 命中！', '#ff7b72');
@@ -648,6 +661,7 @@ function step(dt) {
   game.time += dt; inc.matchT += dt;
   game.screenShake = Math.max(0, game.screenShake - dt * 28);
   if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt;
+  if (game.kickX || game.kickY) { const kd = Math.pow(0.00005, dt); game.kickX *= kd; game.kickY *= kd; if (Math.abs(game.kickX) + Math.abs(game.kickY) < 0.1) { game.kickX = 0; game.kickY = 0; } } // 鏡頭踹:~80ms 彈回
   if (winBannerT > 0) winBannerT -= dt;
   if (localFlash > 0) localFlash -= dt;
   if (fallReasonT > 0) fallReasonT -= dt;
@@ -663,6 +677,7 @@ function step(dt) {
       if (f.fumbleT > 0) f.fumbleT -= dt;
       if (f.restunT > 0) f.restunT -= dt;
       if (f.invuln > 0) f.invuln -= dt;
+      if (f.flinchT > 0) f.flinchT -= dt;
       // stability regen (paused right after a hit; frozen while stunned/carried)
       if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
       // stun countdown → recover (ungrabbed)
@@ -885,7 +900,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: body-1', W - 10, H - 4);
+  hctx.fillText('build: hitfx-1', W - 10, H - 4);
 }
 
 function frame(now) {

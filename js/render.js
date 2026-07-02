@@ -692,6 +692,7 @@ let ctx = screenCtx;
     }
     return g;
   }
+  const _tip = new THREE.Vector3(); // 世界軸傾倒用(brawler 出拳前傾/受擊後仰)
   function updateActor(e, g) {
     if (e.falling) { // v2 死亡劇場 A: 縮小 + 旋轉 + 沉進洞裡
       const k = Math.max(0, Math.min(1, (e.fallT || 0) / 0.6));
@@ -720,7 +721,7 @@ let ctx = screenCtx;
       u.amp = (u.amp || 0) + ((walking ? 1 : 0) - (u.amp || 0)) * 0.2;      // 擺幅緩入緩出
       u.ph = (u.ph || 0) + Math.min(disp, 6) * 0.18;                        // 相位隨移動距離走 → 步頻跟速度
       const sw = Math.sin(u.ph) * 0.75 * u.amp;
-      let aL = -sw * 0.55, aR = sw * 0.55, lL = sw, lR = -sw, wob = 0;
+      let aL = -sw * 0.55, aR = sw * 0.55, lL = sw, lR = -sw, wob = 0, lean = 0;
       g.position.y = Math.abs(Math.sin(u.ph)) * 1.6 * u.amp;               // 步伐小彈跳
       if (e.carriedBy) {           // 被扛走:四肢亂踢掙扎
         const t = game.time * 11;
@@ -735,11 +736,17 @@ let ctx = screenCtx;
           const k = pt < 0.07 ? pt / 0.07 : Math.max(0, 1 - (pt - 0.1) / 0.2);
           const rot = 0.35 - 1.95 * k;                                      // 後拉預備 → 前刺過水平
           if (e.punchArm) aR = rot; else aL = rot;
+          lean = 0.24 * k;                                                  // 軀幹前傾:整個人撲進這一拳
         }
         if (e.stunned) wob = Math.sin(game.time * 9) * 0.14;                // 暈眩:左右搖晃
       }
       if (L) { L.armL.rotation.x = aL; L.armR.rotation.x = aR; L.legL.rotation.x = lL; L.legR.rotation.x = lR; }
       g.rotation.z = wob;
+      // 受擊 flinch:上身朝受力方向猛地一倒(hitstop 期間凍在最大變形,定格更有戲) + 壓扁回彈
+      const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / 0.22) : 0;
+      if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, 0.55 * fk * fk); }
+      if (lean > 0) { const fa = e.facing || 0; _tip.set(Math.sin(fa), 0, -Math.cos(fa)); g.rotateOnWorldAxis(_tip, lean); }
+      g.scale.set(1 + 0.15 * fk, 1 - 0.2 * fk, 1 + 0.15 * fk);             // squash & stretch(也順帶每幀復位 scale)
     }
     else if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
     else g.rotation.y = Math.atan2((game.player ? game.player.x - e.x : 0), (game.player ? game.player.y - e.y : 1));
@@ -1040,6 +1047,7 @@ let ctx = screenCtx;
     const pz = camObj ? camObj.y : H / 2;
     let shx = 0, shz = 0;
     if (game.screenShake > 0) { shx = rnd(-game.screenShake, game.screenShake); shz = rnd(-game.screenShake, game.screenShake); }
+    shx += game.kickX || 0; shz += game.kickY || 0; // 方向性鏡頭踹(命中瞬間往擊打方向頂一下,v2 sim 快速衰減)
     const _pit = CAM.angle * Math.PI / 180, _az = CAM.azimuth * Math.PI / 180;
     const _hr = Math.cos(_pit) * CAM.dist;
     const _tx = px + CAM.panX, _tz = pz + CAM.panZ;

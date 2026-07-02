@@ -61,6 +61,9 @@ const SFX = {
   upgrade:   () => { tone({ freq: 660, type: 'triangle', dur: 0.1, gain: 0.28 }); tone({ freq: 990, type: 'triangle', dur: 0.14, gain: 0.26, at: 0.09 }); },
   hurt:      () => { tone({ freq: 220, f1: 90, type: 'sawtooth', dur: 0.18, gain: 0.32 }); noise({ dur: 0.1, gain: 0.18, freq: 600 }); },
   dash:      () => noise({ dur: 0.18, gain: 0.22, type: 'bandpass', freq: 500, sweepTo: 2600, q: 0.8 }),
+  // v2 揮拳:命中=悶擊(低頻沉+中頻啪+噪音爆),揮空=短風聲 — 耳朵一聽就知道有沒有打到
+  thud:      () => { tone({ freq: 150, f1: 55, type: 'sine', dur: 0.12, gain: 0.5 }); tone({ freq: 330, f1: 120, type: 'square', dur: 0.05, gain: 0.2 }); noise({ dur: 0.07, gain: 0.26, freq: 1400, sweepTo: 300 }); },
+  whiff:     () => noise({ dur: 0.09, gain: 0.13, type: 'bandpass', freq: 900, sweepTo: 2400, q: 1.2 }),
   grab:      () => noise({ dur: 0.14, gain: 0.2, type: 'bandpass', freq: 400, sweepTo: 1600, q: 1 }),
   throw:     () => { noise({ dur: 0.16, gain: 0.24, type: 'bandpass', freq: 1800, sweepTo: 300, q: 0.8 }); tone({ freq: 300, f1: 150, type: 'square', dur: 0.1, gain: 0.16 }); },
   secondary: () => tone({ freq: 520, f1: 760, type: 'sine', dur: 0.16, gain: 0.26, attack: 0.02 }),
