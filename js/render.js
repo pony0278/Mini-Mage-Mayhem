@@ -11,7 +11,7 @@ import { syncProps, syncProjectiles, syncZones } from './render-entities.js';
 
 // 公開 API re-export(引用方 import 零改動)
 export { project, mouseScreen, updateMouseWorld, camera, setActorShadow, setVividFx, setGroundMarkers } from './render-core.js';
-export { setRichFloor, setFloorParams, getFloorParams, setFloorSubtle, setWallFade, setIslandMode, setIslandShapes, setApron } from './render-world.js';
+export { setRichFloor, setFloorParams, getFloorParams, setFloorSubtle, setWallFade, setIslandMode, setIslandShapes, setApron, setLabTheme } from './render-world.js';
 export { refreshActors } from './render-actors.js';
 export { draw, drawPanicFaces } from './render-hud.js';
 

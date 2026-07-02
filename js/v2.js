@@ -9,7 +9,7 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM } from './state.js';
 import { updateDeathTheater, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setApron, updateMouseWorld, mouseScreen } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setApron, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -251,9 +251,8 @@ if (TERRAIN === 'isles') {
   buildFlatArena();
   setWallFade(true);                                // see-through walls: occluding walls (esp. the south one) fade
   setApron(true);                                   // 場外暗地板:蓋掉牆外黑虛空(16:9 視野較寬)
-  // 視覺:暗藍紫地板 + 低亮度紫格線 + 牆底暗角;角色/箱子腳下陰影;魔法特效高亮
-  setFloorParams({ floorA: '#2a2c4e', floorB: '#22243f', floorEdge: '#6a5bb0', gridAlpha: 0.16, motes: false, ao: true });
-  setRichFloor(true);   // detailed stone/metal slab material (noise/scratches/grout bevel/edge lip, baked once)
+  // 實驗室主題(arcane containment 原型換皮):暗藍紫做舊地板+發光溝縫+焦痕符文+冷色氛圍
+  setLabTheme(true);
   setActorShadow(true);
   setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target

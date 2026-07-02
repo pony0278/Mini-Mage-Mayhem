@@ -4,7 +4,7 @@
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_WALL, TILE_THIN, TILE_GRASS, TILE_BURNT, TILE_WATER, TILE_ICE, TILE_ICEWALL, TILE_OIL, TILE_VOID } from './constants.js';
 import { rnd, clamp } from './utils.js';
 import { game } from './state.js';
-import { scene, camera, ART, boxGeo, octaGeo, cylGeo, coneGeo, matLambert, makeBox, colorHex, tmpMat } from './render-core.js';
+import { scene, camera, ART, boxGeo, octaGeo, cylGeo, coneGeo, matLambert, makeBox, colorHex, tmpMat, setLabAtmosphere } from './render-core.js';
 
   // --- ground (tilemap drawn to a texture on a flat plane) ---
   const groundCanvas = document.createElement('canvas');
@@ -308,8 +308,72 @@ import { scene, camera, ART, boxGeo, octaGeo, cylGeo, coneGeo, matLambert, makeB
         if (isWall(x + 1, y)) gtx.fillRect(px + s - w, py, w, s);
       }
     }
+    if (labTheme) drawLabOverlays(); // 跨磚的全域做舊層(刮痕/污漬/焦痕/裂縫/符文),烘一次
     groundTex.needsUpdate = true;
     if (richFloor) floorBaked = true; // baked; drawGroundTexture will early-return until a param/map change
+  }
+  // --- 實驗室地板做舊覆蓋層(lab 主題;參考 arcane containment 原型的 makeFloorTextures 配方) ---
+  // 全部用 h2 決定性亂數:烘焙結果每次重載一致,不閃爍。畫在整張地板 canvas 上(跨磚)。
+  function drawLabOverlays() {
+    const Wc = groundCanvas.width, Hc = groundCanvas.height;
+    const rnd2 = (i, k) => h2(i * 7.13 + k, i * 3.71, k);
+    // 磨損雜點
+    for (let i = 0; i < 900; i++) {
+      gtx.fillStyle = rnd2(i, 13) > 0.5 ? 'rgba(215,205,255,0.028)' : 'rgba(0,0,0,0.05)';
+      gtx.fillRect(rnd2(i, 11) * Wc, rnd2(i, 12) * Hc, rnd2(i, 14) * 7 + 1, rnd2(i, 15) * 7 + 1);
+    }
+    // 長刮痕(跨磚)
+    for (let i = 0; i < 46; i++) {
+      const x = rnd2(i, 21) * Wc, y = rnd2(i, 22) * Hc, a = rnd2(i, 23) * Math.PI, L = 18 + rnd2(i, 24) * 70;
+      gtx.strokeStyle = `rgba(200,200,235,${(0.03 + rnd2(i, 25) * 0.05).toFixed(3)})`; gtx.lineWidth = 1;
+      gtx.beginPath(); gtx.moveTo(x, y); gtx.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); gtx.stroke();
+    }
+    // 污漬(冷暗/幽綠)
+    for (let i = 0; i < 16; i++) {
+      const x = rnd2(i, 31) * Wc, y = rnd2(i, 32) * Hc, r = 14 + rnd2(i, 33) * 40;
+      const grad = gtx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, `rgba(${rnd2(i, 34) < 0.4 ? '20,40,25' : '12,10,26'},0.30)`); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      gtx.fillStyle = grad; gtx.beginPath(); gtx.arc(x, y, r, 0, 7); gtx.fill();
+    }
+    // 魔法焦痕 + 殘光弧(紫/青)
+    for (let i = 0; i < 9; i++) {
+      const x = rnd2(i, 41) * Wc, y = rnd2(i, 42) * Hc, r = 18 + rnd2(i, 43) * 34;
+      const grad = gtx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, 'rgba(5,3,10,0.8)'); grad.addColorStop(0.6, 'rgba(30,10,50,0.38)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      gtx.fillStyle = grad; gtx.beginPath(); gtx.arc(x, y, r, 0, 7); gtx.fill();
+      gtx.strokeStyle = rnd2(i, 44) < 0.5 ? 'rgba(150,90,255,0.5)' : 'rgba(90,225,255,0.45)';
+      gtx.lineWidth = 2; const a0 = rnd2(i, 45) * 6.28;
+      gtx.beginPath(); gtx.arc(x, y, r * 0.55, a0, a0 + 1.4 + rnd2(i, 46) * 1.8); gtx.stroke();
+    }
+    // 裂縫
+    for (let i = 0; i < 14; i++) {
+      let x = rnd2(i, 51) * Wc, y = rnd2(i, 52) * Hc;
+      gtx.strokeStyle = 'rgba(8,5,16,0.7)'; gtx.lineWidth = 1.4;
+      gtx.beginPath(); gtx.moveTo(x, y);
+      for (let s2 = 0; s2 < 5; s2++) { x += (rnd2(i * 10 + s2, 53) - 0.5) * 34; y += (rnd2(i * 10 + s2, 54) - 0.5) * 34; gtx.lineTo(x, y); }
+      gtx.stroke();
+    }
+    // 發光符文貼花(淡,避免搶戲;中央會被艙口魔法陣蓋掉無妨)
+    const runes = 'ᚠᚢᚦᚨᚱᚲᛃᛇᛉᛋᛏᛒᛖᛗᛚᛝ';
+    gtx.font = '14px serif'; gtx.textAlign = 'center'; gtx.textBaseline = 'middle';
+    for (let i = 0; i < 8; i++) {
+      const x = 40 + rnd2(i, 61) * (Wc - 80), y = 40 + rnd2(i, 62) * (Hc - 80);
+      const col = ['rgba(130,85,255,', 'rgba(80,215,255,', 'rgba(120,255,150,'][Math.floor(rnd2(i, 63) * 3)];
+      gtx.strokeStyle = col + '0.35)'; gtx.lineWidth = 1.5;
+      gtx.beginPath(); gtx.arc(x, y, 11, 0, 7); gtx.stroke();
+      gtx.fillStyle = col + '0.45)';
+      gtx.fillText(runes[Math.floor(rnd2(i, 64) * runes.length)], x, y);
+    }
+    // 溝縫能量線:大多暗紫內凹,稀疏地亮起幾段「還通電的能量線」(原型的 worn energy lines 反向詮釋)
+    const s = floorPx;
+    for (let i = 0; i < 46; i++) {
+      const along = rnd2(i, 71) < 0.5, bright = rnd2(i, 75) < 0.3;
+      const line = Math.floor(rnd2(i, 72) * (along ? COLS : ROWS)) * s;
+      gtx.fillStyle = bright ? 'rgba(150,95,255,0.55)' : 'rgba(6,4,12,0.7)';
+      const len = bright ? 16 + rnd2(i, 74) * 36 : 8 + rnd2(i, 74) * 22;
+      if (along) gtx.fillRect(line - (bright ? 1 : 1.5), rnd2(i, 73) * Hc, bright ? 2 : 3, len);
+      else gtx.fillRect(rnd2(i, 73) * Wc, line - (bright ? 1 : 1.5), len, bright ? 2 : 3);
+    }
   }
 
   // --- raised walls (rebuilt only when the tile map changes) ---
@@ -418,6 +482,17 @@ import { scene, camera, ART, boxGeo, octaGeo, cylGeo, coneGeo, matLambert, makeB
   }
   buildToyboxDecor();
 
+
+// --- 實驗室主題(v2 收容測試場地換皮;單機不開,舊視覺全保留) ---
+let labTheme = false;
+export function setLabTheme(on) {
+  labTheme = on;
+  setRichFloor(on);                       // 32px/磚高解析烘焙管線
+  if (on) setFloorParams({ floorA: '#1b1732', floorB: '#161329', floorEdge: '#2e1a56', gridAlpha: 0.85, motes: false, ao: true }); // 溝縫=暗紫內凹(發光感留給稀疏的能量斷點)
+  wallMat.color.setHex(on ? 0x151129 : ART.wall); wallTopMat.color.setHex(on ? 0x1c1636 : ART.wallTop); wallDirty = true; // 牆先壓暗(正式牆板=下一件)
+  setLabAtmosphere(on);                   // 背景/霧/燈光冷色調
+  floorBaked = false;
+}
 
 // 場外暗色圍裙地板:蓋掉越過牆外看到的純黑虛空(16:9 視野更寬後更明顯)。
 // 只在 v2 平台場開(setApron);浮島/單機不開 —— 那裡的黑就是「虛空」本身。
