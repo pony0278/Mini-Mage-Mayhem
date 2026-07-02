@@ -176,5 +176,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: mod-1', W - 10, H - 4);
+  hctx.fillText('build: actor-1', W - 10, H - 4);
 }
