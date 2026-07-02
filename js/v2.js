@@ -14,7 +14,7 @@
 import { W, H, TILE, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } from './constants.js';
 import { clamp, norm } from './utils.js';
 import { game, keys, mouse, CAM } from './state.js';
-import { overVoid, updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
+import { updateDeathTheater, circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
 import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, project, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 
@@ -23,13 +23,8 @@ const hctx = hud.getContext('2d');
 
 // --- tuning knobs (the laugh-gate dials) ---
 const SPEED = 168;        // walk speed (px/s)
-const SHOVE_FORCE = 540;  // launch velocity — well past the 凸眼 threshold (280), carries ~10 tiles
-const SHOVE_RANGE = 138;  // how close the rival must be to catch the gust
-const SHOVE_CONE = 1.05;  // forward half-cone (rad) — you must roughly face them (~60°)
-const SHOVE_CD = 0.55;    // gust cooldown
 const RESPAWN = 1.3;      // delay before a fallen fighter pops back in
 const FRICTION = 0.25;    // per-second velocity multiplier for the knockback slide
-const AI_SHOVE_CD = 1.6;  // 機制薄修:AI 出陣風間隔(↑=較不壓迫,你有更多空間削弱它/喘息)
 const LOCAL = 0;          // the human-controlled fighter (camera follows it)
 let localFlash = 0;       // red screen pulse when YOU get knocked (so a hit is never invisible)
 let fallReason = '', fallReasonT = 0; // on-screen "why did I fall" readout (diagnostic + feedback)
@@ -73,7 +68,6 @@ const FREEFORM = TERRAIN === 'isles';    // island routing / bridge-rails / fall
 const WEIGHTY = TERRAIN !== 'isles';
 const KNOCK_FRICTION = WEIGHTY ? 0.05 : FRICTION; // ↓ = 更大阻力,擊退衰減更快
 const KNOCK_CUTOFF = WEIGHTY ? 42 : 0;            // 速度 < 此值直接歸零,砍掉指數衰減的長尾巴(溜冰感的來源)
-const SHOVE_MUL = WEIGHTY ? 0.9 : 1;              // 平台場略降力道,配合乾脆的停止
 const ISLANDS = [
   { x: 200, z: 460, r: 120 }, // near-left  (P1 spawn ≈ here)
   { x: 760, z: 460, r: 120 }, // near-right (P2 spawn ≈ here)
@@ -501,17 +495,8 @@ function pollItem() {
   for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
 }
 
-// --- simple test AI (so you can play solo): seek the trophy / chase the holder / flee the boss when
-// carrying, shove rivals in range, and steer to avoid walking off island edges. ---
-function nearestIslandCenter(x, y) {
-  let best = ISLANDS[0], bd = Infinity;
-  for (const I of ISLANDS) { const d = Math.hypot(x - I.x, y - I.z); if (d < bd) { bd = d; best = I; } }
-  return best;
-}
-function wellOnIsland(x, y) {
-  if (TERRAIN !== 'isles') return x > 40 && y > 40 && x < W - 40 && y < H - 40; // flat: anywhere not hugging the wall
-  for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r - 26) return true; return false;
-}
+// --- simple test AI (so you can play solo): chase the rival, punch in range, grab when stunned,
+// drag to the pod; on isles terrain steer to avoid walking off edges (aiSafeDir). ---
 function aiSafeDir(f, dx, dy) { // pick a heading near (dx,dy) that won't step off the island
   const base = Math.atan2(dy, dx);
   for (const off of [0, 0.4, -0.4, 0.9, -0.9, 1.5, -1.5, 2.3, -2.3, Math.PI]) {
@@ -520,21 +505,6 @@ function aiSafeDir(f, dx, dy) { // pick a heading near (dx,dy) that won't step o
     if (onSolid(f.x + c * 20, f.y + s * 20) && onSolid(f.x + c * 42, f.y + s * 42)) return { x: c, y: s };
   }
   return { x: 0, y: 0 }; // boxed in → hold still
-}
-function islandIndexAt(x, y) { for (let i = 0; i < ISLANDS.length; i++) { const I = ISLANDS[i]; if (Math.hypot(x - I.x, y - I.z) <= I.r) return i; } return -1; }
-function bridgeBetween(a, b) { return BRIDGES.find(B => (B.i === a && B.j === b) || (B.i === b && B.j === a)); }
-function bridgeFarEnd(B, fromI) { return fromI === B.i ? { x: B.bx, y: B.bz } : { x: B.ax, y: B.az }; }
-function nextWaypoint(fromI, toI) { // bridge crossing toward the goal island (star graph: hub = centre/2)
-  const direct = bridgeBetween(fromI, toI);
-  if (direct) return bridgeFarEnd(direct, fromI);
-  const viaHub = bridgeBetween(fromI, 2);          // not adjacent → first hop to the centre hub
-  if (viaHub) return bridgeFarEnd(viaHub, fromI);
-  return null;
-}
-function islandFarthestFromBoss() {
-  let best = ISLANDS[0], bd = -1;
-  for (const I of ISLANDS) { const d = Math.hypot(I.x - boss.x, I.z - boss.y); if (d > bd) { bd = d; best = I; } }
-  return best;
 }
 function aiMove(f) {
   const o = fighters[1 - f.pid]; // the rival (1v1)
@@ -569,25 +539,13 @@ function updateCamRig(dt) {
   camRig.x += (tx - camRig.x) * e; camRig.y += (ty - camRig.y) * e;
 }
 
-// ===== 玩法 loop:搶獎盃 → Boss 甦醒追持有者 → 撐滿持有時間者勝 (docs/v2-spec-D §2/§5) =====
-const TROPHY_R = 30;      // grab radius
-const HOLD_WIN = 12;      // cumulative seconds holding the trophy → win the round
-const BOSS_SPEED = 132;   // boss chase speed (px/s)
-const BOSS_CONTACT = 34;  // boss strike radius
-const BOSS_KNOCK = 640;   // boss contact knockback — can fling the holder clean off an island
-const BOSS_WAKE = 1.3;    // grace after pickup before the boss starts chasing (it sleeps on the trophy)
-const FAR = ISLANDS ? ISLANDS[3] : { x: 480, z: 150 }; // trophy/boss island (free-form coords; ≈far grid island)
-const trophy = { x: FAR.x, y: FAR.z, held: false };
-const boss = { type: 'boss', x: FAR.x, y: FAR.z - 12, r: 22, color: '#66e0a6', awake: false, wakeT: 0, facing: 0, hurt: 0, slowTimer: 0 };
-let holderPid = -1;
-const holdMeter = [0, 0];
 let winnerPid = -1, winBannerT = 0, bannerText = '';
 // --- 魔法事故報告 (spec E / V0.8): a match = first to WIN_TARGET containments → generate an incident report ---
 const WIN_TARGET = 3;
 const roundWins = [0, 0];
 const containLog = []; // { winner, method, stage } per containment → 三格 UI + 報告三幕
 let matchOver = false, report = null;
-const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], bossCatches: 0, grabs: [0, 0], types: new Set(), matchT: 0, maxHold: 0,
+const inc = { falls: [0, 0], knockoffs: [0, 0], selfFalls: [0, 0], types: new Set(), matchT: 0,
   contains: [0, 0], overloads: 0, selfPods: 0, barrelBooms: 0, itemUses: { wind: 0, teleport: 0, ice: 0 },
   carries: [0, 0], accidentContains: { wind: 0, ice: 0, barrel: 0 }, reverseContains: 0, teleportEscapes: 0, struggleEscapes: 0, itemBackfires: 0, pushOffs: 0 };
 function resetInc() {
@@ -595,20 +553,10 @@ function resetInc() {
   inc.carries = [0, 0]; inc.accidentContains = { wind: 0, ice: 0, barrel: 0 }; inc.reverseContains = 0; inc.teleportEscapes = 0; inc.struggleEscapes = 0; inc.itemBackfires = 0;
   inc.types = new Set(); inc.matchT = 0; inc.pushOffs = 0;
 }
-const overAir = (x, y) => game.isVoidAt ? game.isVoidAt({ x, y }) : false; // free-form: off-island?
 
 function resetRound() {
-  holderPid = -1; holdMeter[0] = 0; holdMeter[1] = 0;
-  trophy.held = false; trophy.x = FAR.x; trophy.y = FAR.z;
-  boss.awake = false; boss.wakeT = 0; boss.x = FAR.x; boss.y = FAR.z - 12;
   resetBarrels(); resetPads(); iceZones.length = 0;
   for (const f of fighters) resetFighter(f);
-}
-function dropTrophy(x, y) {
-  holderPid = -1; trophy.held = false; boss.awake = false; // boss sleeps until someone grabs again
-  trophy.x = clamp(x, 40, W - 40); trophy.y = clamp(y, 40, H - 40);
-  if (overAir(trophy.x, trophy.y)) { trophy.x = FAR.x; trophy.y = FAR.z; } // don't lose it down the abyss
-  addText(trophy.x, trophy.y - 30, '獎盃掉落！', '#ffd36d');
 }
 function explodeBarrel(b) {
   b.alive = false; b.respawn = barrelRespawnCur; inc.barrelBooms++; inc.types.add('barrel');
@@ -636,15 +584,10 @@ function updateBarrels(dt) {
     } else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); }
   }
 }
-function winRound(pid) {
-  roundWins[pid]++; winnerPid = pid; winBannerT = 2.6;
-  game.sfx.push('waveclear'); addShake(6);
-  if (roundWins[pid] >= WIN_TARGET) endMatch(pid); else resetRound();
-}
 function endMatch(pid) { matchOver = true; report = generateReport(pid); game.sfx.push('upgrade'); dlog('MATCH OVER → report', report.level, report.name); }
 function restartMatch() {
   matchOver = false; report = null; roundWins[0] = 0; roundWins[1] = 0;
-  inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0]; inc.bossCatches = 0; inc.grabs = [0, 0]; inc.maxHold = 0;
+  inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0];
   resetInc(); containLog.length = 0; bannerText = ''; winBannerT = 0; resetStage();
   resetRound();
 }
@@ -691,30 +634,6 @@ function generateReport(winner) {
   const share = `我在《魔法事故報告》觸發了 ${level} 級事故：${name}。\n${NAMES[winner]} 完成收容，基地損害 ${damage}%，主要涉案道具「${mostUsed}」。\n安全委員會：「${comment}」\n挑戰碼：${code}`;
   return { num, name, level, winner, summary, comment, title, code, damage, mostUsed, share, time: inc.matchT };
 }
-function updateBoss(dt) {
-  if (!boss.awake) return;
-  boss.hurt = Math.max(0, boss.hurt - dt);
-  if (boss.wakeT > 0) { // rising telegraph: hold position so the holder gets a head start
-    boss.wakeT -= dt;
-    if ((boss.wakeT * 8 | 0) % 2 === 0) addRing(boss.x, boss.y, 30, '#9affd0', 0.2, 3);
-    return;
-  }
-  const t = holderPid >= 0 ? fighters[holderPid] : null;
-  if (!t || t.state !== 'alive' || t.falling) return;
-  const dx = t.x - boss.x, dy = t.y - boss.y, d = Math.hypot(dx, dy) || 1;
-  boss.facing = Math.atan2(dy, dx);
-  boss.x += (dx / d) * BOSS_SPEED * dt; boss.y += (dy / d) * BOSS_SPEED * dt;
-  if (d <= BOSS_CONTACT + t.r) { // caught the holder → fling them off + drop the trophy
-    t.vx += (dx / d) * BOSS_KNOCK; t.vy += (dy / d) * BOSS_KNOCK;
-    t.faceT = 0.4; t.hurt = 0.15; t.lastHitBy = -2; t.lastHitT = game.time; // -2 = boss (≠ rival point)
-    flinch(t, Math.atan2(dy, dx), 0.32);
-    if (t.pid === LOCAL) { localFlash = 0.32; dlog('BOSS HIT you at', Math.round(t.x) + ',' + Math.round(t.y)); }
-    addShake(6); addHitstop(0.06); game.sfx.push('hit');
-    addText(t.x, t.y - 30, 'Boss 命中！', '#ff7b72');
-    dropTrophy(t.x, t.y);
-  }
-}
-
 function step(dt) {
   if (matchOver) return; // freeze gameplay while the incident report is up
   game.time += dt; inc.matchT += dt;
@@ -986,8 +905,8 @@ function frame(now) {
 }
 
 // --- boot ---
-window.__v2 = { game, fighters, CAM, trophy, boss, holdMeter, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
-  winRound, restartMatch,
+window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
+  restartMatch,
   POD, barrels, explodeBarrel, CAMB, camRig,
   punch, startCarry, stunFighter, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport,
   state: () => ({ winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver, report, stage,
