@@ -118,7 +118,7 @@ function buildFlatArena() { // fully walled platform (4 sides). The camera-side 
 const COLORS = ['#5e8bff', '#ff6b6b'];
 const NAMES = ['藍法師', '紅法師'];
 function makeFighter(pid) {
-  const f = { pid, type: 'imp', r: 19, color: COLORS[pid], score: 0, state: 'alive', ai: false }; // bigger voxel: stays readable as effects/bars/icons pile on (hitbox scales with it)
+  const f = { pid, type: 'brawler', r: 19, color: COLORS[pid], score: 0, state: 'alive', ai: false }; // 關節化體素小人(render.js 'brawler'):真的會走路/出拳 (hitbox scales with r)
   resetFighter(f);
   return f;
 }
@@ -133,6 +133,7 @@ function resetFighter(f) {
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
   f.punchCd = 0; f.regrabCd = 0; f.fumbleT = 0; f.wasCarryingT = -9; f.invuln = 0;
+  f.punchFx = -9; f.punchArm = 0; // 出拳動畫時間戳 + 左右手交替 (render 的 brawler 姿勢吃這兩個)
   f.item = null;
   f.state = 'alive';
 }
@@ -261,6 +262,7 @@ function stunFighter(o) {
 function punch(f) {
   if (f.punchCd > 0 || f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return;
   f.punchCd = PUNCH_CD;
+  f.punchFx = game.time; f.punchArm = f.punchArm ? 0 : 1; // 觸發出拳動畫(左右手交替)
   const a = f.facing; let hit = false;
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
@@ -276,7 +278,7 @@ function punch(f) {
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
     if (o.pid === LOCAL) localFlash = 0.2;
   }
-  addRing(f.x + Math.cos(a) * 22, f.y + Math.sin(a) * 22, 30, '#ffd36d', 0.2, 3);
+  // 出拳回饋改由 brawler 手臂動畫承擔(地面光圈太不直覺,移除);命中仍有火花/光環在目標身上
   addShake(hit ? 4 : 2); if (hit) addHitstop(0.05); game.sfx.push('hit');
 }
 function startCarry(f, o) {
@@ -883,7 +885,7 @@ function drawHud() {
   if (matchOver && report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: prac-1', W - 10, H - 4);
+  hctx.fillText('build: body-1', W - 10, H - 4);
 }
 
 function frame(now) {

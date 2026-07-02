@@ -611,6 +611,15 @@ let ctx = screenCtx;
     const blink = p.invuln > 0 && Math.floor(game.time * 20) % 2 === 0;
     playerMesh.visible = !blink;
   }
+  // 身分色的深/淺變化(素體小人:軀幹=本色、四肢=深一階、頭/拳=淺一階)
+  function shadeHex(h, m) {
+    const r = Math.min(255, Math.round((h >> 16 & 255) * m)), g = Math.min(255, Math.round((h >> 8 & 255) * m)), b = Math.min(255, Math.round((h & 255) * m));
+    return (r << 16) | (g << 8) | b;
+  }
+  function lightenHex(h, t) {
+    const r = Math.round((h >> 16 & 255) + (255 - (h >> 16 & 255)) * t), g = Math.round((h >> 8 & 255) + (255 - (h >> 8 & 255)) * t), b = Math.round((h & 255) + (255 - (h & 255)) * t);
+    return (r << 16) | (g << 8) | b;
+  }
   function buildEnemy(e) {
     const g = new THREE.Group(); const r = e.r; const tints = [];
     const base = colorHex(e.color);
@@ -633,6 +642,27 @@ let ctx = screenCtx;
       const hornR = makeBox(3.4, r * 0.85, 3.4, 0xffe0a3); hornR.position.set(r * 0.45, r * 2.02, 0); g.add(hornR);
       const eL = makeBox(3.7, 3.7, 1.2, 0xfff0a3, 0xffdf7a, 0.5); eL.position.set(-r * 0.35, r * 1.3, r * 0.75); g.add(eL);
       const eR = makeBox(3.7, 3.7, 1.2, 0xfff0a3, 0xffdf7a, 0.5); eR.position.set(r * 0.35, r * 1.3, r * 0.75); g.add(eR);
+    } else if (e.type === 'brawler') {
+      // v2 收容測試的關節化體素小人(素體):頭/軀幹/肩/上臂+拳/腿 分件,
+      // 腿軸心在髖、手臂軸心在肩 → updateActor 用旋轉做走路擺動與真出拳。
+      const limb = shadeHex(base, 0.68), pale = lightenHex(base, 0.42);
+      const mkPivot = (x, y) => { const p = new THREE.Group(); p.position.set(x, y, 0); g.add(p); return p; };
+      const legL = mkPivot(-5.4, 14), legR = mkPivot(5.4, 14);
+      for (const [lg] of [[legL], [legR]]) { const b = makeBox(7, 13, 8, limb); b.position.y = -7; lg.add(b); }
+      const torso = tintable(g, tints, makeBox(22, 18, 13, base, base, 0.06)); torso.position.y = 23;
+      const shL = makeBox(7, 5.5, 9, limb); shL.position.set(-13.2, 30.5, 0); g.add(shL);
+      const shR = makeBox(7, 5.5, 9, limb); shR.position.set(13.2, 30.5, 0); g.add(shR);
+      const armL = mkPivot(-14, 29), armR = mkPivot(14, 29);
+      for (const [ar] of [[armL], [armR]]) {
+        const ua = makeBox(6, 14, 7, limb); ua.position.y = -7.3; ar.add(ua);
+        const fist = makeBox(8.4, 7.2, 8.4, pale); fist.position.y = -16; ar.add(fist);
+      }
+      const head = makeBox(14.5, 13, 13.5, pale); head.position.y = 39.5; g.add(head);
+      // 髮蓋:頭頂一片「身分色」— 這個 44° 俯視攝影機看到最多的就是頭頂,沒這片藍/紅會被淺色頭洗掉
+      const hair = tintable(g, tints, makeBox(15.2, 4.5, 14.2, base, base, 0.06)); hair.position.y = 47.5;
+      const eL = makeBox(3, 3.6, 1.2, black); eL.position.set(-3.5, 40.5, 6.9); g.add(eL);
+      const eR = makeBox(3, 3.6, 1.2, black); eR.position.set(3.5, 40.5, 6.9); g.add(eR);
+      g.userData.limbs = { legL, legR, armL, armR };
     } else if (e.type === 'charger') {
       const b = tintable(g, tints, makeBox(r * 1.75, r * 1.65, r * 1.5, 0xb9925e)); b.position.y = r * 0.8;
       const helm = makeBox(r * 1.55, r * 0.75, r * 1.35, 0x81716b); helm.position.y = r * 1.88; g.add(helm);
@@ -680,7 +710,38 @@ let ctx = screenCtx;
         orbs[i].position.set(Math.cos(a) * 42, 18 + Math.sin(a) * 12, Math.sin(a) * 42);
       }
     }
-    if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
+    if (e.type === 'brawler') {
+      // 程序動畫:面向 + 走路擺動(用實際位移推相位,擊退滑行不擺) + 出拳刺出 + 暈眩搖晃 + 搬運舉手
+      g.rotation.set(0, Math.atan2(Math.cos(e.facing || 0), Math.sin(e.facing || 0)), 0);
+      const u = g.userData, L = u.limbs;
+      if (!u.lp) u.lp = { x: e.x, y: e.y };
+      const disp = Math.hypot(e.x - u.lp.x, e.y - u.lp.y); u.lp.x = e.x; u.lp.y = e.y;
+      const walking = disp > 0.25 && !e.stunned && !e.carriedBy;
+      u.amp = (u.amp || 0) + ((walking ? 1 : 0) - (u.amp || 0)) * 0.2;      // 擺幅緩入緩出
+      u.ph = (u.ph || 0) + Math.min(disp, 6) * 0.18;                        // 相位隨移動距離走 → 步頻跟速度
+      const sw = Math.sin(u.ph) * 0.75 * u.amp;
+      let aL = -sw * 0.55, aR = sw * 0.55, lL = sw, lR = -sw, wob = 0;
+      g.position.y = Math.abs(Math.sin(u.ph)) * 1.6 * u.amp;               // 步伐小彈跳
+      if (e.carriedBy) {           // 被扛走:四肢亂踢掙扎
+        const t = game.time * 11;
+        lL = Math.sin(t) * 0.6; lR = -Math.sin(t) * 0.6;
+        aL = -0.6 + Math.sin(t * 0.7) * 0.35; aR = -0.6 - Math.sin(t * 0.7) * 0.35;
+        wob = Math.sin(game.time * 7) * 0.16;
+      } else if (e.carrying) {     // 扛人:雙臂高舉過頭
+        aL = -2.35; aR = -2.35;
+      } else {
+        const pt = game.time - (e.punchFx != null ? e.punchFx : -9);        // 出拳:快出慢收,左右手交替
+        if (pt >= 0 && pt < 0.3) {
+          const k = pt < 0.07 ? pt / 0.07 : Math.max(0, 1 - (pt - 0.1) / 0.2);
+          const rot = 0.35 - 1.95 * k;                                      // 後拉預備 → 前刺過水平
+          if (e.punchArm) aR = rot; else aL = rot;
+        }
+        if (e.stunned) wob = Math.sin(game.time * 9) * 0.14;                // 暈眩:左右搖晃
+      }
+      if (L) { L.armL.rotation.x = aL; L.armR.rotation.x = aR; L.legL.rotation.x = lL; L.legR.rotation.x = lR; }
+      g.rotation.z = wob;
+    }
+    else if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
     else g.rotation.y = Math.atan2((game.player ? game.player.x - e.x : 0), (game.player ? game.player.y - e.y : 1));
     const tintHex = e.hurt > 0 ? 0xffffff : (e.slowTimer > 0 ? 0xd8fbff : null);
     for (const t of g.userData.tints) t.mesh.material.color.setHex(tintHex != null ? tintHex : t.base);
