@@ -496,9 +496,9 @@
     <div class="section">
       <p class="section-label">02 · 檢視模式</p>
       <div class="toggle-row" id="modeToggle">
-        <button data-mode="orbit" class="active">🖐 旋轉</button>
-        <button data-mode="lasso">✏️ 套索</button>
-        <button data-mode="wand">🪄 魔術棒</button>
+        <button data-mode="orbit" class="active" title="左鍵旋轉・中/右鍵平移・滾輪縮放">🖐 旋轉</button>
+        <button data-mode="lasso" title="左鍵圈選(Shift 加選/Alt 減選)・中/右鍵拖曳平移視角">✏️ 套索</button>
+        <button data-mode="wand" title="左鍵點選相連區域・中/右鍵拖曳平移視角">🪄 魔術棒</button>
       </div>
     </div>
 
@@ -1229,6 +1229,8 @@ function init() {
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.target.set(0, 1, 0);
+  controls.screenSpacePanning = true; // 平移沿螢幕平面(直覺)
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN }; // 中/右鍵=平移
 
   scene.add(new THREE.HemisphereLight(0xdfe8ea, 0x14171a, 1.1));
   const key = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -2410,8 +2412,28 @@ function bindUI() {
     }
   });
 
+  // 圈選模式下的視角平移:中鍵/右鍵拖曳(OrbitControls 此時停用,手動同步 camera+target,
+  // 回到旋轉模式時軌道中心跟著走)。左鍵完全不受影響。
+  let panDrag = false, panLastX = 0, panLastY = 0;
+  const panCamera = (dxPx, dyPx) => {
+    const el = renderer.domElement;
+    const dist = camera.position.distanceTo(controls.target);
+    const wpp = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / el.clientHeight; // 世界單位/像素
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+    const move = right.multiplyScalar(-dxPx * wpp).add(up.multiplyScalar(dyPx * wpp));
+    camera.position.add(move); controls.target.add(move);
+  };
+  overlayCanvas.addEventListener('contextmenu', (e) => e.preventDefault()); // 右鍵拖曳平移,不彈選單
   overlayCanvas.addEventListener('pointerdown', (e) => {
     if (!master || previewActive) return;
+    if (e.button === 1 || e.button === 2) {           // 中鍵/右鍵 → 平移
+      e.preventDefault();
+      panDrag = true; panLastX = e.clientX; panLastY = e.clientY;
+      overlayCanvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    if (e.button !== 0) return;                        // 其他按鍵不觸發圈選
     const modifier = e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace';
     if (mode === 'wand') {
       const p = getCanvasPoint(e);
@@ -2425,10 +2447,12 @@ function bindUI() {
     overlayCanvas.setPointerCapture(e.pointerId);
   });
   overlayCanvas.addEventListener('pointermove', (e) => {
+    if (panDrag) { panCamera(e.clientX - panLastX, e.clientY - panLastY); panLastX = e.clientX; panLastY = e.clientY; return; }
     if (!isDragging) return;
     lassoPoints.push(getCanvasPoint(e));
   });
   overlayCanvas.addEventListener('pointerup', (e) => {
+    if (panDrag) { panDrag = false; try { overlayCanvas.releasePointerCapture(e.pointerId); } catch (err) {} return; }
     if (!isDragging) return;
     isDragging = false;
     try { overlayCanvas.releasePointerCapture(e.pointerId); } catch (err) {}
