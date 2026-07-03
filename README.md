@@ -41,7 +41,7 @@ WASD 移動、滑鼠瞄準、左鍵主法術、Space/Shift 衝刺。
 - `camera-sandbox.html` / `training.html` — 攝影機沙盒/法術測試場(開發用)
 - `js/` — 全部遊戲程式(模組邊界見 `docs/module-boundaries.md`、`docs/v2-module-boundaries.md`、`docs/render-module-boundaries.md`)
 - `vendor/three.min.js` — 內建 Three.js(同源載入)
-- `tools/punch-studio.html` — 動作編排器(開發工具):v2 小人的招式在這裡編,JSON 匯出貼進 `js/brawler-clips.js`(流程見 [`docs/animation-workflow.md`](docs/animation-workflow.md))
+- `tools/` — 開發工具:`punch-studio.html` 動作編排器(招式在這裡編,JSON 匯出貼進 `js/brawler-clips.js`)、`mesh-part-extractor.html` 部位抽取器(第三方整塊模型 → 圈選拆部位 → 規範 GLB)。管線見 [`docs/animation-workflow.md`](docs/animation-workflow.md)
 
 ## 文件
 

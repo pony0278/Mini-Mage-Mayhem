@@ -1,5 +1,12 @@
 # 動作工作流(PUNCH STUDIO → 遊戲)
 
+> 上游還有一站:第三方工具產的**整塊模型**先用 [`tools/mesh-part-extractor.html`](../tools/mesh-part-extractor.html)
+> 圈選拆部位 → **「匯出規範 GLB」**(原點=接縫圓心/+Y=遠端/+Z=正面/命名=slot,對規格自動檢查)→
+> PUNCH STUDIO 掛載。完整管線:**Extractor(切+規範化)→ PUNCH STUDIO(掛+編動作)→ 遊戲(JSON 接入)**。
+> 部位建模約定與規格表見 [part-authoring.md](part-authoring.md)。
+> 注意:給 PUNCH STUDIO 的部位一律走「匯出規範 GLB」,**不要**用「分檔匯出」(那會保留世界位置);
+> 抽取前確認來源模型面向 +Z;規格檢查全面同比例偏離=尺度問題(縮放係數=規格半徑÷實測半徑)。
+
 > v2 小人的招式動作**不寫程式**:在動作編排器裡編 → JSON 匯出 → 貼進 `js/brawler-clips.js` 的
 > `CLIPS`。骨架與播放器已移植為同構(`js/actor-brawler.js`),編排器裡看到的姿勢=遊戲裡的姿勢。
 > 唯一的耦合點是 **impact 影格 ↔ 傷害判定時刻**(§4)。

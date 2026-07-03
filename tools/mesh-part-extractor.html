@@ -1,0 +1,2346 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesh Part Extractor — 3D 部位擷取工具</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #101215;
+    --panel: #16191d;
+    --panel-2: #1c2025;
+    --border: #2a2f36;
+    --border-soft: #23272d;
+    --text: #e6e9ec;
+    --text-dim: #8b929c;
+    --text-faint: #565d66;
+    --accent: #4fd1c5;
+    --accent-dim: #2f6f6a;
+    --accent-soft: rgba(79,209,197,0.12);
+    --select: #f5a524;
+    --select-soft: rgba(245,165,36,0.14);
+    --danger: #ef6f6f;
+    --font-ui: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-ui);
+    overflow:hidden;
+  }
+  .app{
+    display:grid;
+    grid-template-columns: 272px 1fr 300px;
+    height:100vh;
+  }
+  .panel{
+    background:var(--panel);
+    border-right:1px solid var(--border);
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+  }
+  .panel.right{
+    border-right:none;
+    border-left:1px solid var(--border);
+  }
+  .panel-head{
+    padding:18px 18px 14px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .brand{
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+  }
+  .brand-mark{
+    width:9px;height:9px;border-radius:1px;
+    background:var(--accent);
+    box-shadow:0 0 8px var(--accent);
+    flex-shrink:0;
+    margin-bottom:2px;
+  }
+  .brand h1{
+    font-size:14px;
+    font-weight:600;
+    letter-spacing:0.02em;
+    margin:0;
+  }
+  .brand-sub{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    color:var(--text-faint);
+    margin-top:4px;
+    letter-spacing:0.03em;
+  }
+  .section{
+    padding:16px 18px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .section:last-child{border-bottom:none;}
+  .section-label{
+    font-family:var(--font-mono);
+    font-size:10px;
+    letter-spacing:0.12em;
+    color:var(--text-faint);
+    text-transform:uppercase;
+    margin:0 0 10px;
+  }
+  .btn{
+    appearance:none;
+    border:1px solid var(--border);
+    background:var(--panel-2);
+    color:var(--text);
+    font-family:var(--font-ui);
+    font-size:12.5px;
+    font-weight:500;
+    padding:9px 12px;
+    border-radius:6px;
+    cursor:pointer;
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    transition:border-color .12s ease, background .12s ease;
+  }
+  .btn:hover{border-color:#3a4048; background:#1f242a;}
+  .btn:active{transform:translateY(1px);}
+  .btn:disabled{opacity:0.35; cursor:not-allowed;}
+  .btn.primary{
+    background:var(--accent);
+    color:#0a1615;
+    border-color:var(--accent);
+    font-weight:600;
+  }
+  .btn.primary:hover{background:#69dbd0;}
+  .btn.primary:disabled{background:var(--accent-dim); border-color:var(--accent-dim); color:#0a1615;}
+  .btn.danger-outline{
+    border-color:transparent;
+    background:transparent;
+    color:var(--text-faint);
+    width:auto;
+    padding:4px 6px;
+  }
+  .btn.danger-outline:hover{color:var(--danger); background:rgba(239,111,111,0.08); border-color:transparent;}
+  .icon-btn{
+    appearance:none;
+    border:1px solid transparent;
+    background:transparent;
+    color:var(--text-faint);
+    width:22px; height:22px;
+    border-radius:5px;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px;
+    flex-shrink:0;
+    padding:0;
+  }
+  .icon-btn:hover{color:var(--text); background:var(--panel-2);}
+  .icon-btn.previewing{color:var(--accent); background:var(--accent-soft);}
+  .icon-btn.del-btn:hover{color:var(--danger); background:rgba(239,111,111,0.08);}
+  .toggle-row{
+    display:flex;
+    border:1px solid var(--border);
+    border-radius:6px;
+    overflow:hidden;
+  }
+  .toggle-row button{
+    flex:1;
+    border:none;
+    background:var(--panel-2);
+    color:var(--text-dim);
+    font-family:var(--font-ui);
+    font-size:12px;
+    font-weight:500;
+    padding:9px 6px;
+    cursor:pointer;
+  }
+  .toggle-row button + button{border-left:1px solid var(--border);}
+  .toggle-row button.active{
+    background:var(--accent-soft);
+    color:var(--accent);
+  }
+  .field{margin-bottom:10px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{
+    display:block;
+    font-size:11.5px;
+    color:var(--text-dim);
+    margin-bottom:6px;
+  }
+  .field input[type="text"]{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:var(--font-ui);
+    font-size:12.5px;
+    padding:8px 10px;
+    border-radius:6px;
+    outline:none;
+  }
+  .field input[type="text"]:focus{border-color:var(--accent);}
+  .checkline{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12px;
+    color:var(--text-dim);
+    cursor:pointer;
+    user-select:none;
+  }
+  .checkline input{accent-color:var(--accent);}
+  .help{
+    font-size:11.5px;
+    line-height:1.7;
+    color:var(--text-faint);
+  }
+  .help b{color:var(--text-dim); font-weight:500;}
+  .help kbd{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:3px;
+    padding:1px 5px;
+    color:var(--text-dim);
+  }
+  .file-drop{
+    border:1px dashed var(--border);
+    border-radius:8px;
+    padding:16px 12px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .12s ease, background .12s ease;
+  }
+  .file-drop:hover{border-color:var(--accent-dim); background:var(--accent-soft);}
+  .file-drop.drag{border-color:var(--accent); background:var(--accent-soft);}
+  .file-drop-icon{font-size:20px; margin-bottom:6px; opacity:.7;}
+  .file-drop-text{font-size:12px; color:var(--text-dim);}
+  .file-drop-sub{font-family:var(--font-mono); font-size:10px; color:var(--text-faint); margin-top:4px;}
+
+  /* viewport */
+  .viewport{
+    position:relative;
+    background:
+      radial-gradient(ellipse at 50% 30%, #171b1f 0%, var(--bg) 70%);
+    overflow:hidden;
+  }
+  .grid-fade{
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(79,209,197,0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79,209,197,0.045) 1px, transparent 1px);
+    background-size: 34px 34px;
+    mask-image: radial-gradient(ellipse at 50% 45%, black 0%, transparent 72%);
+    pointer-events:none;
+  }
+  #webgl, #overlay{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    display:block;
+  }
+  #overlay{pointer-events:none;}
+  #overlay.active{pointer-events:auto; cursor:crosshair;}
+
+  .status-bar{
+    position:absolute;
+    left:16px; bottom:16px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--text-dim);
+    background:rgba(16,18,21,0.82);
+    border:1px solid var(--border);
+    padding:8px 12px;
+    border-radius:6px;
+    max-width:60%;
+    backdrop-filter:blur(4px);
+    pointer-events:none;
+  }
+  .stats-bar{
+    position:absolute;
+    right:16px; bottom:16px;
+    display:flex;
+    gap:14px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    background:rgba(16,18,21,0.82);
+    border:1px solid var(--border);
+    padding:8px 12px;
+    border-radius:6px;
+    backdrop-filter:blur(4px);
+    pointer-events:none;
+  }
+  .stat b{color:var(--text); font-weight:600;}
+  .stat.select b{color:var(--select);}
+  .stat span{color:var(--text-faint); margin-right:4px;}
+
+  .mode-badge{
+    position:absolute; top:16px; left:16px;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:0.06em;
+    padding:6px 10px;
+    border-radius:5px;
+    border:1px solid var(--border);
+    background:rgba(16,18,21,0.82);
+    color:var(--text-dim);
+    backdrop-filter:blur(4px);
+    pointer-events:none;
+    text-transform:uppercase;
+  }
+  .mode-badge.lasso{color:var(--select); border-color:rgba(245,165,36,0.4);}
+  .mode-badge.orbit{color:var(--accent); border-color:rgba(79,209,197,0.35);}
+  .mode-badge.wand{color:#c792ea; border-color:rgba(199,146,234,0.4);}
+
+  .btn-row{display:flex; gap:6px;}
+  .btn.small{padding:8px 6px; font-size:11.5px;}
+  .rename-input{
+    flex:1;
+    min-width:0;
+    background:var(--panel-2);
+    border:1px solid var(--accent);
+    color:var(--text);
+    font-family:var(--font-ui);
+    font-size:12.5px;
+    padding:3px 6px;
+    border-radius:4px;
+    outline:none;
+  }
+
+  .modal-backdrop{
+    position:fixed; inset:0;
+    display:none;
+    pointer-events:none; /* 穿透:規範匯出時仍可旋轉 3D 檢視確認接縫 */
+    z-index:50;
+  }
+  .modal-backdrop.show{display:block;}
+  .modal-card{
+    position:absolute;
+    right:316px; top:50%;
+    transform:translateY(-50%);
+    pointer-events:auto;
+    width:380px;
+    max-width:calc(100vw - 40px);
+    background:var(--panel);
+    border:1px solid var(--accent-dim);
+    border-radius:10px;
+    padding:18px;
+    box-shadow:0 16px 48px rgba(0,0,0,0.55), 0 0 0 1px rgba(79,209,197,0.08);
+  }
+  .modal-card select{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:var(--font-ui);
+    font-size:12.5px;
+    padding:8px 10px;
+    border-radius:6px;
+    outline:none;
+  }
+  .modal-card select:focus{border-color:var(--accent);}
+  .spec-report{
+    margin-top:12px;
+    padding:10px 12px;
+    background:var(--panel-2);
+    border:1px solid var(--border-soft);
+    border-radius:6px;
+  }
+  .spec-line{
+    font-size:11.5px;
+    line-height:1.8;
+    color:var(--text-dim);
+  }
+  .spec-line b{color:var(--text);}
+  .spec-ok{color:var(--accent);}
+  .spec-warn{color:var(--select);}
+
+  .preview-banner{
+    position:absolute;
+    top:16px; left:50%;
+    transform:translateX(-50%);
+    display:none;
+    align-items:center;
+    gap:10px;
+    padding:8px 8px 8px 14px;
+    background:rgba(16,18,21,0.9);
+    border:1px solid var(--accent-dim);
+    border-radius:7px;
+    backdrop-filter:blur(4px);
+    box-shadow:0 0 0 1px rgba(79,209,197,0.08), 0 8px 24px rgba(0,0,0,0.35);
+    z-index:5;
+  }
+  .preview-banner.show{display:flex;}
+  .preview-banner .dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 6px var(--accent);
+    flex-shrink:0;
+  }
+  .preview-banner .txt{
+    font-family:var(--font-mono);
+    font-size:11.5px;
+    color:var(--text);
+    letter-spacing:0.02em;
+  }
+  .preview-banner .txt b{color:var(--accent); font-weight:600;}
+  .preview-banner button{
+    appearance:none;
+    border:1px solid var(--border);
+    background:var(--panel-2);
+    color:var(--text-dim);
+    font-family:var(--font-ui);
+    font-size:11.5px;
+    font-weight:500;
+    padding:5px 10px;
+    border-radius:5px;
+    cursor:pointer;
+  }
+  .preview-banner button:hover{color:var(--text); border-color:#3a4048;}
+
+  .btn.preview-active{
+    border-color:var(--accent);
+    color:var(--accent);
+    background:var(--accent-soft);
+  }
+
+  .empty-hint{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column;
+    gap:10px;
+    color:var(--text-faint);
+    pointer-events:none;
+  }
+  .empty-hint .glyph{font-size:26px; opacity:.5;}
+  .empty-hint p{font-size:12.5px; margin:0;}
+
+  /* parts panel */
+  .parts-list{
+    flex:1;
+    overflow-y:auto;
+    min-height:0;
+    margin:0 -6px;
+    padding:0 6px;
+  }
+  .part-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:9px 8px;
+    border-radius:6px;
+    border:1px solid transparent;
+  }
+  .part-row:hover{background:var(--panel-2); border-color:var(--border-soft);}
+  .part-color{
+    width:8px;height:8px;border-radius:2px;flex-shrink:0;
+  }
+  .part-name{
+    flex:1;
+    font-size:12.5px;
+    color:var(--text);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .part-tris{
+    font-family:var(--font-mono);
+    font-size:10px;
+    color:var(--text-faint);
+  }
+  .parts-empty{
+    padding:24px 14px;
+    text-align:center;
+    color:var(--text-faint);
+    font-size:12px;
+    line-height:1.7;
+  }
+  .scrollpad{ padding-bottom:6px; }
+
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#2a2f36; border-radius:8px;}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4048;}
+
+  input[type="file"]{display:none;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- LEFT: import + tools -->
+  <div class="panel left">
+    <div class="panel-head">
+      <div class="brand"><span class="brand-mark"></span><h1>MESH PART EXTRACTOR</h1></div>
+      <div class="brand-sub">套索分割 / 破面免修復擷取</div>
+    </div>
+
+    <div class="section">
+      <p class="section-label">01 · 匯入模型</p>
+      <label class="file-drop" id="fileDrop" for="fileInput">
+        <div class="file-drop-icon">⤓</div>
+        <div class="file-drop-text">點擊或拖曳 .glb 檔案</div>
+        <div class="file-drop-sub">支援 Draco / Meshopt 壓縮 · 自動合併子網格</div>
+      </label>
+      <input type="file" id="fileInput" accept=".glb,.gltf">
+    </div>
+
+    <div class="section">
+      <p class="section-label">02 · 檢視模式</p>
+      <div class="toggle-row" id="modeToggle">
+        <button data-mode="orbit" class="active">🖐 旋轉</button>
+        <button data-mode="lasso">✏️ 套索</button>
+        <button data-mode="wand">🪄 魔術棒</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <p class="section-label">03 · 選取方式</p>
+      <label class="checkline">
+        <input type="checkbox" id="xrayToggle">
+        穿透選取（X-ray，忽略遮擋）
+      </label>
+      <div class="help" style="margin-top:8px;">
+        未勾選時只選取<b>畫面上實際看得見</b>的面（像素級 GPU 拾取）。魔術棒為點擊一下選取整個相連島嶼，可跨越破面裂縫。
+      </div>
+    </div>
+
+    <div class="section">
+      <p class="section-label">04 · 選取調整</p>
+      <div class="btn-row">
+        <button class="btn small" id="growSelBtn" disabled title="沿鄰接面向外擴張一圈">⊕ 擴張</button>
+        <button class="btn small" id="shrinkSelBtn" disabled title="從邊界向內收縮一圈">⊖ 收縮</button>
+        <button class="btn small" id="mirrorSelBtn" disabled title="沿 X 軸加選對稱面（適合左右對稱角色）">⇋ 鏡像</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <p class="section-label">05 · 進度存檔</p>
+      <div class="btn-row">
+        <button class="btn small" id="saveSessionBtn" disabled>💾 儲存進度</button>
+        <label class="btn small" style="cursor:pointer;">📂 載入進度<input type="file" id="sessionInput" accept=".json"></label>
+      </div>
+      <div class="help" style="margin-top:8px;">
+        進度存為小型 JSON。之後匯入<b>同一個 GLB</b> 再載入即可接續切割。
+      </div>
+    </div>
+
+    <div class="section">
+      <p class="section-label">操作方式</p>
+      <div class="help">
+        <b>套索</b> 拖曳圈選；<b>魔術棒</b> 點擊選整塊<br>
+        <kbd>Shift</kbd> 加選　<kbd>Alt</kbd> 減選<br>
+        <kbd>Ctrl</kbd>+<kbd>Z</kbd> 復原（選取 / 擷取 / 刪除 / 改名）<br>
+        雙擊部位名稱可改名；擷取前可先預覽
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: viewport -->
+  <div class="viewport" id="viewport">
+    <div class="grid-fade"></div>
+    <canvas id="webgl"></canvas>
+    <canvas id="overlay"></canvas>
+    <div class="empty-hint" id="emptyHint">
+      <div class="glyph">◌</div>
+      <p>尚未匯入模型 — 從左側匯入 .glb 檔案開始</p>
+    </div>
+    <div class="mode-badge orbit" id="modeBadge">旋轉檢視中</div>
+    <div class="preview-banner" id="previewBanner">
+      <span class="dot"></span>
+      <span class="txt">預覽模式 — <b id="previewBannerName">部位</b></span>
+      <button id="previewExitBtn">結束預覽 ✕</button>
+    </div>
+    <div class="status-bar" id="statusBar">等待匯入模型…</div>
+    <div class="stats-bar">
+      <div class="stat"><span>總面數</span><b id="statTotal">0</b></div>
+      <div class="stat"><span>剩餘</span><b id="statRemaining">0</b></div>
+      <div class="stat select"><span>已選取</span><b id="statSelected">0</b></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: extraction -->
+  <div class="panel right">
+    <div class="panel-head">
+      <p class="section-label" style="margin:0;">04 · 擷取部位</p>
+    </div>
+    <div class="section">
+      <div class="field">
+        <label for="partName">部位名稱</label>
+        <input type="text" id="partName" placeholder="例如：頭部 / 右手 / 軀幹 / 左腿">
+      </div>
+      <button class="btn" id="previewSelBtn" disabled>👁 預覽選取範圍</button>
+      <button class="btn primary" id="extractBtn" disabled style="margin-top:8px;">擷取此選取範圍</button>
+      <button class="btn" id="clearSelBtn" style="margin-top:8px;">清除目前選取</button>
+    </div>
+
+    <div class="section" style="flex:1; display:flex; flex-direction:column; min-height:0; padding-bottom:8px;">
+      <p class="section-label">已擷取部位</p>
+      <div class="parts-list" id="partsList">
+        <div class="parts-empty">尚未擷取任何部位。<br>圈選後於上方輸入名稱並擷取。</div>
+      </div>
+    </div>
+
+    <div class="section" style="border-top:1px solid var(--border-soft); border-bottom:none;">
+      <button class="btn" id="exportPartsBtn" disabled>分檔匯出各部位（每部位一個 .glb）</button>
+      <button class="btn primary" id="exportBtn" disabled style="margin-top:8px;">匯出全部為單一 GLB</button>
+      <div class="help" style="margin-top:8px;">
+        分檔匯出以<b>部位名稱</b>作為檔名，也可用清單中每列的 ⬇ 單獨匯出。單一 GLB 則會把所有部位與剩餘（未分類）網格以命名節點打包在一起，確保不遺漏任何幾何。
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="modal-backdrop" id="specModal">
+  <div class="modal-card">
+    <p class="section-label" style="margin-top:0;">🔌 規範匯出(掛載用)</p>
+    <div class="help" style="margin-bottom:12px;">
+      依部位建模規範重定位:<b>原點 = 接縫圓心、+Y = 遠端方向、+Z = 角色正面</b>,節點以掛載關鍵字命名。<br>3D 檢視中已標示<b style="color:var(--select)">橘色接縫環</b>與軸向箭頭 — 匯出前請旋轉檢視,確認橘環就是「靠身體那端」的切口。
+    </div>
+    <div class="field">
+      <label for="slotSelect">掛載部位(slot)</label>
+      <select id="slotSelect"></select>
+    </div>
+    <div class="field" id="seamField">
+      <label for="seamSelect">近端接縫(靠身體那端的切面)</label>
+      <select id="seamSelect"></select>
+    </div>
+    <div id="specReport" class="spec-report"></div>
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn primary" id="specExportBtn">匯出規範 GLB</button>
+      <button class="btn" id="specCancelBtn">取消</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+// ---------- DOM ----------
+const webglCanvas = document.getElementById('webgl');
+const overlayCanvas = document.getElementById('overlay');
+const overlayCtx = overlayCanvas.getContext('2d');
+const viewportEl = document.getElementById('viewport');
+const emptyHint = document.getElementById('emptyHint');
+const statusBar = document.getElementById('statusBar');
+const modeBadge = document.getElementById('modeBadge');
+const statTotal = document.getElementById('statTotal');
+const statRemaining = document.getElementById('statRemaining');
+const statSelected = document.getElementById('statSelected');
+const fileInput = document.getElementById('fileInput');
+const fileDrop = document.getElementById('fileDrop');
+const modeToggle = document.getElementById('modeToggle');
+const xrayToggle = document.getElementById('xrayToggle');
+const partNameInput = document.getElementById('partName');
+const extractBtn = document.getElementById('extractBtn');
+const previewSelBtn = document.getElementById('previewSelBtn');
+const clearSelBtn = document.getElementById('clearSelBtn');
+const partsListEl = document.getElementById('partsList');
+const exportBtn = document.getElementById('exportBtn');
+const exportPartsBtn = document.getElementById('exportPartsBtn');
+const previewBanner = document.getElementById('previewBanner');
+const previewBannerName = document.getElementById('previewBannerName');
+const previewExitBtn = document.getElementById('previewExitBtn');
+const growSelBtn = document.getElementById('growSelBtn');
+const shrinkSelBtn = document.getElementById('shrinkSelBtn');
+const mirrorSelBtn = document.getElementById('mirrorSelBtn');
+const saveSessionBtn = document.getElementById('saveSessionBtn');
+const sessionInput = document.getElementById('sessionInput');
+
+// ---------- three.js core ----------
+let scene, camera, renderer, controls, highlightMesh, mainMesh;
+let currentTexture = null;
+
+// 架構核心:master 為匯入後不可變的三角湯;assign 記錄每個三角面的歸屬(0 = 剩餘,>0 = 部位 id)。
+// 三角面 ID 永遠指 master 索引,不因擷取而位移,讓復原 / 存檔 / GPU 拾取全部穩定。
+let master = null;         // {positions, normals, uvs, triCount}
+let assign = null;         // Uint32Array(triCount)
+let remainingCount = 0;
+let parts = [];            // {id(>0), name, color, mesh, indices:Uint32Array}
+let nextPartId = 1;
+let selected = new Set();  // master 三角面索引,僅限 assign==0
+
+let adjacency = null;      // 延遲建立:{offsets, items, vertWeld}(頂點近似焊接後的面鄰接)
+let history = [];          // 復原堆疊
+const HISTORY_MAX = 40;
+
+let pickScene = null, pickMesh = null, pickTarget = null;
+
+let mode = 'orbit';        // 'orbit' | 'lasso' | 'wand'
+let xrayMode = false;
+let isDragging = false;
+let lassoPoints = [];
+let lassoModifierMode = 'replace';
+let dashOffset = 0;
+let selectionBusy = false;
+
+let previewActive = false;
+let previewPrevMode = 'orbit';
+let activePreview = null;
+let previewTempMesh = null;
+let previewPartsVisSnapshot = null;
+
+// ===================================================================
+// PURE-BEGIN 純邏輯區(不依賴 THREE / DOM,可於 Node 直接單元測試)
+// ===================================================================
+
+function pointInPolygon(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = (yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// 以位置近似焊接建立面鄰接表(CSR 結構)。掃描破面模型的頂點多半沒有真正共用,
+// 因此以 eps 網格量化位置,落在同一格即視為同一個焊接點,讓洪水填充能跨過裂縫。
+function buildAdjacencyData(positions, triCount, eps) {
+  const vertCount = triCount * 3;
+  const inv = 1 / eps;
+  const weldMap = new Map();
+  const vertWeld = new Uint32Array(vertCount);
+  let weldCount = 0;
+  for (let v = 0; v < vertCount; v++) {
+    const key = Math.round(positions[v * 3] * inv) + ',' + Math.round(positions[v * 3 + 1] * inv) + ',' + Math.round(positions[v * 3 + 2] * inv);
+    let id = weldMap.get(key);
+    if (id === undefined) { id = weldCount++; weldMap.set(key, id); }
+    vertWeld[v] = id;
+  }
+  // CSR:每個焊接點 → 使用它的三角面清單
+  const counts = new Uint32Array(weldCount);
+  for (let v = 0; v < vertCount; v++) counts[vertWeld[v]]++;
+  const offsets = new Uint32Array(weldCount + 1);
+  for (let w = 0; w < weldCount; w++) offsets[w + 1] = offsets[w] + counts[w];
+  const items = new Uint32Array(vertCount);
+  const cursor = offsets.slice(0, weldCount);
+  for (let v = 0; v < vertCount; v++) {
+    const w = vertWeld[v];
+    items[cursor[w]++] = (v / 3) | 0;
+  }
+  return { vertWeld, offsets, items, weldCount };
+}
+
+// 從種子三角面洪水填充整個相連島嶼(僅走 selectable 標記為 1 的面)
+function floodFillIsland(adj, triCount, seedTri, selectable) {
+  const result = new Set();
+  if (!selectable[seedTri]) return result;
+  const visited = new Uint8Array(triCount);
+  const stack = [seedTri];
+  visited[seedTri] = 1;
+  while (stack.length) {
+    const t = stack.pop();
+    result.add(t);
+    for (let v = t * 3; v < t * 3 + 3; v++) {
+      const w = adj.vertWeld[v];
+      for (let i = adj.offsets[w]; i < adj.offsets[w + 1]; i++) {
+        const n = adj.items[i];
+        if (!visited[n] && selectable[n]) { visited[n] = 1; stack.push(n); }
+      }
+    }
+  }
+  return result;
+}
+
+// 沿鄰接面向外擴張一圈
+function growSelection(adj, sel, selectable) {
+  const out = new Set(sel);
+  for (const t of sel) {
+    for (let v = t * 3; v < t * 3 + 3; v++) {
+      const w = adj.vertWeld[v];
+      for (let i = adj.offsets[w]; i < adj.offsets[w + 1]; i++) {
+        const n = adj.items[i];
+        if (selectable[n]) out.add(n);
+      }
+    }
+  }
+  return out;
+}
+
+// 邊界侵蝕:凡有「可選但未被選」鄰居的面即為邊界,移除一圈
+function shrinkSelection(adj, sel, selectable) {
+  const out = new Set();
+  for (const t of sel) {
+    let boundary = false;
+    for (let v = t * 3; v < t * 3 + 3 && !boundary; v++) {
+      const w = adj.vertWeld[v];
+      for (let i = adj.offsets[w]; i < adj.offsets[w + 1]; i++) {
+        const n = adj.items[i];
+        if (selectable[n] && !sel.has(n)) { boundary = true; break; }
+      }
+    }
+    if (!boundary) out.add(t);
+  }
+  return out;
+}
+
+// 鏡像選取:把已選面的重心沿 x = centerX 反射,尋找 eps 內的對應面
+function mirrorSelection(positions, triCount, sel, selectable, centerX, eps) {
+  const inv = 1 / (eps * 2);
+  const grid = new Map();
+  const cx = new Float64Array(triCount), cy = new Float64Array(triCount), cz = new Float64Array(triCount);
+  for (let t = 0; t < triCount; t++) {
+    if (!selectable[t]) continue;
+    const o = t * 9;
+    cx[t] = (positions[o] + positions[o + 3] + positions[o + 6]) / 3;
+    cy[t] = (positions[o + 1] + positions[o + 4] + positions[o + 7]) / 3;
+    cz[t] = (positions[o + 2] + positions[o + 5] + positions[o + 8]) / 3;
+    const key = Math.round(cx[t] * inv) + ',' + Math.round(cy[t] * inv) + ',' + Math.round(cz[t] * inv);
+    let arr = grid.get(key);
+    if (!arr) { arr = []; grid.set(key, arr); }
+    arr.push(t);
+  }
+  const out = new Set(sel);
+  const eps2 = eps * eps;
+  for (const t of sel) {
+    const mx = 2 * centerX - cx[t], my = cy[t], mz = cz[t];
+    const gx = Math.round(mx * inv), gy = Math.round(my * inv), gz = Math.round(mz * inv);
+    let best = -1, bestD = eps2;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const arr = grid.get((gx + dx) + ',' + (gy + dy) + ',' + (gz + dz));
+      if (!arr) continue;
+      for (const n of arr) {
+        const d = (cx[n] - mx) ** 2 + (cy[n] - my) ** 2 + (cz[n] - mz) ** 2;
+        if (d < bestD) { bestD = d; best = n; }
+      }
+    }
+    if (best >= 0) out.add(best);
+  }
+  return out;
+}
+
+// 頂點焊接(位元級精確比對 位置+法線+UV),把三角湯還原成索引幾何 —— 匯出瘦身核心
+function weldTriangles(data, triIndices) {
+  const hasN = !!data.normals, hasUV = !!data.uvs;
+  const posU = new Uint32Array(data.positions.buffer, data.positions.byteOffset, data.positions.length);
+  const nU = hasN ? new Uint32Array(data.normals.buffer, data.normals.byteOffset, data.normals.length) : null;
+  const uvU = hasUV ? new Uint32Array(data.uvs.buffer, data.uvs.byteOffset, data.uvs.length) : null;
+  const map = new Map();
+  const pos = [], norm = [], uv = [];
+  const index = new Uint32Array(triIndices.length * 3);
+  let next = 0, ii = 0;
+  for (const t of triIndices) {
+    for (let k = 0; k < 3; k++) {
+      const v = t * 3 + k;
+      let key = posU[v * 3] + ',' + posU[v * 3 + 1] + ',' + posU[v * 3 + 2];
+      if (hasN) key += ',' + nU[v * 3] + ',' + nU[v * 3 + 1] + ',' + nU[v * 3 + 2];
+      if (hasUV) key += ',' + uvU[v * 2] + ',' + uvU[v * 2 + 1];
+      let id = map.get(key);
+      if (id === undefined) {
+        id = next++;
+        map.set(key, id);
+        pos.push(data.positions[v * 3], data.positions[v * 3 + 1], data.positions[v * 3 + 2]);
+        if (hasN) norm.push(data.normals[v * 3], data.normals[v * 3 + 1], data.normals[v * 3 + 2]);
+        if (hasUV) uv.push(data.uvs[v * 2], data.uvs[v * 2 + 1]);
+      }
+      index[ii++] = id;
+    }
+  }
+  return {
+    positions: new Float32Array(pos),
+    normals: hasN ? new Float32Array(norm) : null,
+    uvs: hasUV ? new Float32Array(uv) : null,
+    index,
+    vertexCount: next,
+  };
+}
+
+// 偵測開放邊界環(只屬於一個三角面的邊)。擷取部位的「切割接縫」就是最大的邊界環。
+// 頂點以 eps 近似焊接,破面裂縫不會把接縫環打斷成碎段。
+function findBoundaryLoops(positions, triIndices, eps) {
+  const inv = 1 / eps;
+  const weldMap = new Map();
+  const weldPos = [];
+  const weldOf = (x, y, z) => {
+    const key = Math.round(x * inv) + ',' + Math.round(y * inv) + ',' + Math.round(z * inv);
+    let id = weldMap.get(key);
+    if (id === undefined) { id = weldPos.length; weldPos.push([x, y, z]); weldMap.set(key, id); }
+    return id;
+  };
+  const edgeCount = new Map();
+  const edgeKey = (a, b) => a < b ? a + '_' + b : b + '_' + a;
+  for (const t of triIndices) {
+    const o = t * 9;
+    const w = [
+      weldOf(positions[o], positions[o + 1], positions[o + 2]),
+      weldOf(positions[o + 3], positions[o + 4], positions[o + 5]),
+      weldOf(positions[o + 6], positions[o + 7], positions[o + 8]),
+    ];
+    for (let k = 0; k < 3; k++) {
+      if (w[k] === w[(k + 1) % 3]) continue; // 退化邊
+      const key = edgeKey(w[k], w[(k + 1) % 3]);
+      edgeCount.set(key, (edgeCount.get(key) || 0) + 1);
+    }
+  }
+  // 邊界鄰接:weld → 相鄰 weld 清單(只含出現一次的邊)
+  const nbr = new Map();
+  for (const [key, c] of edgeCount) {
+    if (c !== 1) continue;
+    const [a, b] = key.split('_').map(Number);
+    if (!nbr.has(a)) nbr.set(a, []);
+    if (!nbr.has(b)) nbr.set(b, []);
+    nbr.get(a).push(b);
+    nbr.get(b).push(a);
+  }
+  // 沿邊界串成環(掃描網格頂點可能有 >2 條邊界邊,任取未走過的邊續走)
+  const usedEdge = new Set();
+  const loops = [];
+  for (const start of nbr.keys()) {
+    for (const first of nbr.get(start)) {
+      if (usedEdge.has(edgeKey(start, first))) continue;
+      const loop = [start];
+      let prev = start, cur = first;
+      usedEdge.add(edgeKey(start, first));
+      while (cur !== start) {
+        loop.push(cur);
+        const nexts = nbr.get(cur) || [];
+        let nxt = -1;
+        for (const n of nexts) {
+          if (n !== prev && !usedEdge.has(edgeKey(cur, n))) { nxt = n; break; }
+        }
+        if (nxt === -1) {
+          for (const n of nexts) { if (!usedEdge.has(edgeKey(cur, n))) { nxt = n; break; } }
+        }
+        if (nxt === -1) break; // 開放鏈(非閉環),仍保留
+        usedEdge.add(edgeKey(cur, nxt));
+        prev = cur; cur = nxt;
+      }
+      const pts = loop.map((w) => weldPos[w]);
+      let circumference = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        circumference += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      }
+      loops.push({ points: pts, circumference });
+    }
+  }
+  loops.sort((a, b) => b.circumference - a.circumference);
+  return loops;
+}
+
+// 由接縫環建立部位本地座標系:原點=環心,+Y=環平面法線(指向部位重心側),+Z=保留原模型正面
+function computeSeamFrame(loopPts, partCentroid, front = [0, 0, 1]) {
+  const n = loopPts.length;
+  const center = [0, 0, 0];
+  for (const p of loopPts) { center[0] += p[0]; center[1] += p[1]; center[2] += p[2]; }
+  center[0] /= n; center[1] /= n; center[2] /= n;
+
+  // Newell's method 求環平面法線(對非完美平面環穩健)
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < n; i++) {
+    const a = loopPts[i], b = loopPts[(i + 1) % n];
+    nx += (a[1] - b[1]) * (a[2] + b[2]);
+    ny += (a[2] - b[2]) * (a[0] + b[0]);
+    nz += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  let len = Math.hypot(nx, ny, nz);
+  if (len < 1e-12) { nx = 0; ny = 1; nz = 0; len = 1; }
+  let y = [nx / len, ny / len, nz / len];
+  const toCent = [partCentroid[0] - center[0], partCentroid[1] - center[1], partCentroid[2] - center[2]];
+  if (y[0] * toCent[0] + y[1] * toCent[1] + y[2] * toCent[2] < 0) y = [-y[0], -y[1], -y[2]];
+
+  let radius = 0;
+  for (const p of loopPts) radius += Math.hypot(p[0] - center[0], p[1] - center[1], p[2] - center[2]);
+  radius /= n;
+
+  // 平整度:環點沿法線方向偏離平面的 RMS,除以半徑正規化。0 = 完美平面切口,越大代表切口越歪斜
+  let planaritySum = 0;
+  for (const p of loopPts) {
+    const d = (p[0] - center[0]) * y[0] + (p[1] - center[1]) * y[1] + (p[2] - center[2]) * y[2];
+    planaritySum += d * d;
+  }
+  const planarity = radius > 1e-12 ? Math.sqrt(planaritySum / n) / radius : 0;
+
+  // +Z:把指定的正面向量投影到與 +Y 垂直的平面;退化時(接縫面朝正面)退回世界 +Y 當參考
+  const dotFY = front[0] * y[0] + front[1] * y[1] + front[2] * y[2];
+  let z = [front[0] - y[0] * dotFY, front[1] - y[1] * dotFY, front[2] - y[2] * dotFY];
+  let zlen = Math.hypot(z[0], z[1], z[2]);
+  if (zlen < 1e-6) {
+    const up = [0, 1, 0];
+    const dotUY = up[1] * y[1] + up[0] * y[0] + up[2] * y[2];
+    z = [up[0] - y[0] * dotUY, up[1] - y[1] * dotUY, up[2] - y[2] * dotUY];
+    zlen = Math.hypot(z[0], z[1], z[2]) || 1;
+  }
+  z = [z[0] / zlen, z[1] / zlen, z[2] / zlen];
+  const x = [
+    y[1] * z[2] - y[2] * z[1],
+    y[2] * z[0] - y[0] * z[2],
+    y[0] * z[1] - y[1] * z[0],
+  ];
+  return { center, x, y, z, radius, planarity };
+}
+
+// 把三角湯重定位到接縫座標系:p' = R^T (p - center),法線同旋轉
+function retargetToFrame(data, frame) {
+  const { center, x, y, z } = frame;
+  const positions = new Float32Array(data.positions.length);
+  const normals = data.normals ? new Float32Array(data.normals.length) : null;
+  const vcount = data.positions.length / 3;
+  let maxY = -Infinity;
+  for (let v = 0; v < vcount; v++) {
+    const px = data.positions[v * 3] - center[0];
+    const py = data.positions[v * 3 + 1] - center[1];
+    const pz = data.positions[v * 3 + 2] - center[2];
+    positions[v * 3] = px * x[0] + py * x[1] + pz * x[2];
+    positions[v * 3 + 1] = px * y[0] + py * y[1] + pz * y[2];
+    positions[v * 3 + 2] = px * z[0] + py * z[1] + pz * z[2];
+    if (positions[v * 3 + 1] > maxY) maxY = positions[v * 3 + 1];
+    if (normals) {
+      const a = data.normals[v * 3], b = data.normals[v * 3 + 1], c = data.normals[v * 3 + 2];
+      normals[v * 3] = a * x[0] + b * x[1] + c * x[2];
+      normals[v * 3 + 1] = a * y[0] + b * y[1] + c * y[2];
+      normals[v * 3 + 2] = a * z[0] + b * z[1] + c * z[2];
+    }
+  }
+  return {
+    data: { positions, normals, uvs: data.uvs ? data.uvs.slice() : null, triCount: data.triCount },
+    lengthY: maxY,
+  };
+}
+
+// ===================================================================
+// PURE-END
+// ===================================================================
+
+// ---------- Web Worker:穿透模式的 CPU 選取移出主執行緒 ----------
+const WORKER_SRC = `
+let positions = null, triCount = 0;
+function pip(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+onmessage = (e) => {
+  const d = e.data;
+  if (d.type === 'init') { positions = d.positions; triCount = d.triCount; postMessage({ type: 'ready' }); return; }
+  if (d.type !== 'select') return;
+  const { vi, vp, polygon, width, height, mask, reqId } = d;
+  const ids = [];
+  for (let t = 0; t < triCount; t++) {
+    if (!mask[t]) continue;
+    const o = t * 9;
+    const cx = (positions[o] + positions[o+3] + positions[o+6]) / 3;
+    const cy = (positions[o+1] + positions[o+4] + positions[o+7]) / 3;
+    const cz = (positions[o+2] + positions[o+5] + positions[o+8]) / 3;
+    // 視空間 z(matrixWorldInverse,column-major)—— 相機後方剔除
+    const vz = vi[2]*cx + vi[6]*cy + vi[10]*cz + vi[14];
+    if (vz >= 0) continue;
+    // 裁剪空間投影(vp = projection * matrixWorldInverse)含透視除法
+    const w = vp[3]*cx + vp[7]*cy + vp[11]*cz + vp[15];
+    const sx = ((vp[0]*cx + vp[4]*cy + vp[8]*cz + vp[12]) / w * 0.5 + 0.5) * width;
+    const sy = (1 - ((vp[1]*cx + vp[5]*cy + vp[9]*cz + vp[13]) / w * 0.5 + 0.5)) * height;
+    if (pip(sx, sy, polygon)) ids.push(t);
+  }
+  const out = new Uint32Array(ids);
+  postMessage({ type: 'result', reqId, ids: out }, [out.buffer]);
+};
+`;
+let selWorker = null;
+let workerReady = false;
+let workerReqId = 0;
+const workerPending = new Map();
+
+function initWorker() {
+  try {
+    if (selWorker) selWorker.terminate();
+    workerReady = false;
+    selWorker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' })));
+    selWorker.onmessage = (e) => {
+      const d = e.data;
+      if (d.type === 'ready') { workerReady = true; return; }
+      if (d.type === 'result') {
+        const resolve = workerPending.get(d.reqId);
+        if (resolve) { workerPending.delete(d.reqId); resolve(d.ids); }
+      }
+    };
+    const copy = new Float32Array(master.positions); // worker 持有自己的副本,master 保持可用
+    selWorker.postMessage({ type: 'init', positions: copy, triCount: master.triCount }, [copy.buffer]);
+  } catch (err) {
+    console.warn('Worker 建立失敗,穿透選取將在主執行緒運算:', err);
+    selWorker = null;
+  }
+}
+
+function workerSelect(polygon) {
+  return new Promise((resolve) => {
+    const reqId = ++workerReqId;
+    workerPending.set(reqId, resolve);
+    selWorker.postMessage({
+      type: 'select',
+      vi: Array.from(camera.matrixWorldInverse.elements),
+      vp: Array.from(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements),
+      polygon,
+      width: viewportEl.clientWidth,
+      height: viewportEl.clientHeight,
+      mask: buildSelectableMask(),
+      reqId,
+    });
+  });
+}
+
+// 主執行緒 fallback(Worker 不可用時)
+function cpuSelectSync(polygon) {
+  const vi = camera.matrixWorldInverse.elements;
+  const vpM = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
+  const width = viewportEl.clientWidth, height = viewportEl.clientHeight;
+  const pos = master.positions;
+  const ids = [];
+  for (let t = 0; t < master.triCount; t++) {
+    if (assign[t] !== 0) continue;
+    const o = t * 9;
+    const cx = (pos[o] + pos[o + 3] + pos[o + 6]) / 3;
+    const cy = (pos[o + 1] + pos[o + 4] + pos[o + 7]) / 3;
+    const cz = (pos[o + 2] + pos[o + 5] + pos[o + 8]) / 3;
+    const vz = vi[2] * cx + vi[6] * cy + vi[10] * cz + vi[14];
+    if (vz >= 0) continue;
+    const w = vpM[3] * cx + vpM[7] * cy + vpM[11] * cz + vpM[15];
+    const sx = ((vpM[0] * cx + vpM[4] * cy + vpM[8] * cz + vpM[12]) / w * 0.5 + 0.5) * width;
+    const sy = (1 - ((vpM[1] * cx + vpM[5] * cy + vpM[9] * cz + vpM[13]) / w * 0.5 + 0.5)) * height;
+    if (pointInPolygon(sx, sy, polygon)) ids.push(t);
+  }
+  return new Uint32Array(ids);
+}
+
+function buildSelectableMask() {
+  const mask = new Uint8Array(master.triCount);
+  for (let t = 0; t < master.triCount; t++) mask[t] = assign[t] === 0 ? 1 : 0;
+  return mask;
+}
+
+// ---------- init / render loop ----------
+init();
+animate();
+bindUI();
+
+function init() {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, viewportEl.clientWidth / viewportEl.clientHeight, 0.01, 1000);
+  camera.position.set(1.6, 1.2, 2.2);
+
+  renderer = new THREE.WebGLRenderer({ canvas: webglCanvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  resizeRenderer();
+
+  controls = new OrbitControls(camera, webglCanvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.target.set(0, 1, 0);
+
+  scene.add(new THREE.HemisphereLight(0xdfe8ea, 0x14171a, 1.1));
+  const key = new THREE.DirectionalLight(0xffffff, 1.4);
+  key.position.set(3, 5, 4);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x4fd1c5, 0.35);
+  rim.position.set(-4, 2, -3);
+  scene.add(rim);
+
+  highlightMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+    color: 0xf5a524, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+    depthTest: true, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  }));
+  highlightMesh.visible = false;
+  highlightMesh.renderOrder = 2;
+  scene.add(highlightMesh);
+
+  pickScene = new THREE.Scene();
+  pickScene.background = new THREE.Color(0xffffff);
+
+  window.addEventListener('resize', () => {
+    resizeRenderer();
+    if (pickTarget) { pickTarget.dispose(); pickTarget = null; }
+  });
+}
+
+function resizeRenderer() {
+  const w = viewportEl.clientWidth, h = viewportEl.clientHeight;
+  renderer.setSize(w, h, false);
+  overlayCanvas.width = w;
+  overlayCanvas.height = h;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  if (isDragging) {
+    dashOffset = (dashOffset + 0.6) % 1000;
+    drawLassoPath();
+  }
+  renderer.render(scene, camera);
+}
+
+// ---------- geometry & scene builders ----------
+function makeMaterial(color) {
+  return new THREE.MeshStandardMaterial({
+    map: currentTexture || null,
+    color: currentTexture ? 0xffffff : color,
+    roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide,
+  });
+}
+
+function copyTrianglesToArrays(indices) {
+  const n = indices.length;
+  const positions = new Float32Array(n * 9);
+  const normals = master.normals ? new Float32Array(n * 9) : null;
+  const uvs = master.uvs ? new Float32Array(n * 6) : null;
+  for (let i = 0; i < n; i++) {
+    const t = indices[i];
+    positions.set(master.positions.subarray(t * 9, t * 9 + 9), i * 9);
+    if (normals) normals.set(master.normals.subarray(t * 9, t * 9 + 9), i * 9);
+    if (uvs) uvs.set(master.uvs.subarray(t * 6, t * 6 + 6), i * 6);
+  }
+  return { positions, normals, uvs };
+}
+
+function buildSoupGeometry(indices) {
+  const { positions, normals, uvs } = copyTrianglesToArrays(indices);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  if (normals) geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  else geo.computeVertexNormals();
+  if (uvs) geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  return geo;
+}
+
+function remainingIndices() {
+  const out = new Uint32Array(remainingCount);
+  let i = 0;
+  for (let t = 0; t < master.triCount; t++) if (assign[t] === 0) out[i++] = t;
+  return out;
+}
+
+function rebuildRemainingMesh() {
+  const idx = remainingIndices();
+  const geo = buildSoupGeometry(idx);
+  if (!mainMesh) {
+    mainMesh = new THREE.Mesh(geo, makeMaterial(0xcfd3d8));
+    scene.add(mainMesh);
+  } else {
+    mainMesh.geometry.dispose();
+    mainMesh.geometry = geo;
+  }
+  mainMesh.visible = remainingCount > 0 && !previewActive;
+  rebuildPickMesh(idx);
+}
+
+function rebuildPickMesh(idx) {
+  if (pickMesh) {
+    pickScene.remove(pickMesh);
+    pickMesh.geometry.dispose();
+    pickMesh.material.dispose();
+    pickMesh = null;
+  }
+  if (!master || idx.length === 0) return;
+  const positions = new Float32Array(idx.length * 9);
+  const colors = new Uint8Array(idx.length * 9);
+  for (let i = 0; i < idx.length; i++) {
+    const t = idx[i];
+    positions.set(master.positions.subarray(t * 9, t * 9 + 9), i * 9);
+    const r = (t >> 16) & 0xff, g = (t >> 8) & 0xff, b = t & 0xff; // 顏色 = master 三角面 ID(擷取後不位移)
+    for (let v = 0; v < 3; v++) {
+      const o = i * 9 + v * 3;
+      colors[o] = r; colors[o + 1] = g; colors[o + 2] = b;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3, true));
+  pickMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false }));
+  pickScene.add(pickMesh);
+}
+
+function buildPartMesh(part) {
+  const mesh = new THREE.Mesh(buildSoupGeometry(part.indices), makeMaterial(part.color));
+  mesh.name = part.name;
+  return mesh;
+}
+
+function fitCameraToObject(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const fov = camera.fov * (Math.PI / 180);
+  const camDist = Math.abs(maxDim / Math.sin(fov / 2)) * 0.65;
+  camera.near = Math.max(maxDim / 1000, 0.001);
+  camera.far = maxDim * 100;
+  camera.updateProjectionMatrix();
+  camera.position.set(center.x + camDist * 0.55, center.y + camDist * 0.35, center.z + camDist * 0.9);
+  controls.target.copy(center);
+  controls.update();
+}
+
+function modelBounds() {
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  for (let t = 0; t < master.triCount; t++) {
+    const o = t * 9;
+    box.expandByPoint(v.set(master.positions[o], master.positions[o + 1], master.positions[o + 2]));
+  }
+  return box;
+}
+
+// ---------- import ----------
+function mergeSceneToMaster(root) {
+  root.updateMatrixWorld(true);
+  const entries = [];
+  let tex = null, totalVerts = 0, hasNormals = true, hasUVs = true;
+  root.traverse((obj) => {
+    if (!obj.isMesh || !obj.geometry) return;
+    const g = obj.geometry.clone();
+    g.applyMatrix4(obj.matrixWorld);
+    const ng = g.index ? g.toNonIndexed() : g;
+    const posAttr = ng.getAttribute('position');
+    if (!posAttr) return;
+    const normAttr = ng.getAttribute('normal');
+    const uvAttr = ng.getAttribute('uv');
+    if (!normAttr) hasNormals = false;
+    if (!uvAttr) hasUVs = false;
+    if (!tex && obj.material) {
+      const mat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      if (mat && mat.map) tex = mat.map;
+    }
+    entries.push({ posAttr, normAttr, uvAttr, count: posAttr.count });
+    totalVerts += posAttr.count;
+  });
+  if (entries.length === 0) throw new Error('模型中沒有可用的網格 (mesh)');
+
+  const positions = new Float32Array(totalVerts * 3);
+  const normals = hasNormals ? new Float32Array(totalVerts * 3) : null;
+  const uvs = hasUVs ? new Float32Array(totalVerts * 2) : null;
+  let vOffset = 0;
+  for (const e of entries) {
+    positions.set(e.posAttr.array.subarray(0, e.count * 3), vOffset * 3);
+    if (normals) normals.set(e.normAttr.array.subarray(0, e.count * 3), vOffset * 3);
+    if (uvs) uvs.set(e.uvAttr.array.subarray(0, e.count * 2), vOffset * 2);
+    vOffset += e.count;
+  }
+  currentTexture = tex;
+  return { positions, normals, uvs, triCount: totalVerts / 3 };
+}
+
+function clearModel() {
+  if (previewActive) exitPreview({ keepMode: true });
+  if (mainMesh) { scene.remove(mainMesh); mainMesh.geometry.dispose(); mainMesh = null; }
+  if (pickMesh) { pickScene.remove(pickMesh); pickMesh.geometry.dispose(); pickMesh.material.dispose(); pickMesh = null; }
+  parts.forEach((p) => { scene.remove(p.mesh); p.mesh.geometry.dispose(); });
+  parts = [];
+  master = null; assign = null; remainingCount = 0;
+  selected = new Set();
+  adjacency = null;
+  history = [];
+  nextPartId = 1;
+  currentTexture = null;
+  updateHighlight();
+  refreshPartsPanel();
+}
+
+function makeLoader() {
+  const loader = new GLTFLoader();
+  const draco = new DRACOLoader();
+  draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/gltf/');
+  loader.setDRACOLoader(draco);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  return loader;
+}
+
+function handleFile(file) {
+  if (!file) return;
+  if (file.name.toLowerCase().endsWith('.json')) { loadSessionFile(file); return; }
+  statusBar.textContent = `讀取中… ${file.name}`;
+  const reader = new FileReader();
+  reader.onload = () => {
+    makeLoader().parse(
+      reader.result, '',
+      (gltf) => {
+        try {
+          clearModel();
+          master = mergeSceneToMaster(gltf.scene);
+          assign = new Uint32Array(master.triCount);
+          remainingCount = master.triCount;
+          rebuildRemainingMesh();
+          fitCameraToObject(mainMesh);
+          initWorker();
+          emptyHint.style.display = 'none';
+          updateStats();
+          statusBar.textContent = `已匯入:${file.name} — ${master.triCount.toLocaleString()} 個三角面`;
+        } catch (err) {
+          console.error(err);
+          statusBar.textContent = '匯入失敗,請查看主控台';
+          alert('匯入失敗:' + err.message);
+        }
+      },
+      (err) => {
+        console.error(err);
+        statusBar.textContent = '解析失敗';
+        alert('GLB 解析失敗,請確認檔案格式正確');
+      }
+    );
+  };
+  reader.onerror = () => alert('讀取檔案失敗');
+  reader.readAsArrayBuffer(file);
+}
+
+// ---------- adjacency (lazy) ----------
+function ensureAdjacency(then) {
+  if (adjacency) { then(); return; }
+  statusBar.textContent = '首次使用:建立網格鄰接結構中(大模型可能需要數秒)…';
+  setTimeout(() => {
+    const box = modelBounds();
+    const diag = box.getSize(new THREE.Vector3()).length() || 1;
+    adjacency = buildAdjacencyData(master.positions, master.triCount, diag * 2e-5);
+    statusBar.textContent = '鄰接結構建立完成';
+    then();
+  }, 30);
+}
+
+// ---------- selection ----------
+function updateHighlight() {
+  if (!master || selected.size === 0) { highlightMesh.visible = false; return; }
+  const idx = Uint32Array.from(selected);
+  const positions = new Float32Array(idx.length * 9);
+  for (let i = 0; i < idx.length; i++) {
+    positions.set(master.positions.subarray(idx[i] * 9, idx[i] * 9 + 9), i * 9);
+  }
+  highlightMesh.geometry.dispose();
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  highlightMesh.geometry = geo;
+  highlightMesh.visible = !previewActive;
+}
+
+function applySelectionResult(ids, modifier, pushUndo = true) {
+  if (pushUndo) pushHistory({ type: 'select', prev: Uint32Array.from(selected) });
+  if (modifier === 'add') { for (const t of ids) selected.add(t); }
+  else if (modifier === 'subtract') { for (const t of ids) selected.delete(t); }
+  else { selected = new Set(ids); }
+  updateHighlight();
+  updateStats();
+  statusBar.textContent = selected.size === 0
+    ? '此範圍內沒有選到任何面 — 請確認套索有覆蓋到模型,或勾選「穿透選取」再試'
+    : `已選取 ${selected.size.toLocaleString()} 個三角面 — 可預覽、調整或擷取`;
+}
+
+function ensurePickTarget() {
+  const width = viewportEl.clientWidth, height = viewportEl.clientHeight;
+  if (!pickTarget || pickTarget.width !== width || pickTarget.height !== height) {
+    if (pickTarget) pickTarget.dispose();
+    pickTarget = new THREE.WebGLRenderTarget(width, height, {
+      minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+      format: THREE.RGBAFormat, type: THREE.UnsignedByteType,
+    });
+  }
+}
+
+function renderPick() {
+  ensurePickTarget();
+  const prevTarget = renderer.getRenderTarget();
+  const prevColorSpace = renderer.outputColorSpace;
+  const prevToneMapping = renderer.toneMapping;
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.setRenderTarget(pickTarget);
+  renderer.render(pickScene, camera);
+  renderer.setRenderTarget(prevTarget);
+  renderer.outputColorSpace = prevColorSpace;
+  renderer.toneMapping = prevToneMapping;
+}
+
+function gpuLassoSelection(polygon) {
+  const result = [];
+  if (!pickMesh) return new Uint32Array(0);
+  const width = viewportEl.clientWidth, height = viewportEl.clientHeight;
+  renderPick();
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of polygon) {
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+  }
+  const x0 = Math.max(0, Math.floor(minX)), x1 = Math.min(width - 1, Math.ceil(maxX));
+  const y0 = Math.max(0, Math.floor(minY)), y1 = Math.min(height - 1, Math.ceil(maxY));
+  if (x1 < x0 || y1 < y0) return new Uint32Array(0);
+
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+  const buf = new Uint8Array(bw * bh * 4);
+  renderer.readRenderTargetPixels(pickTarget, x0, height - 1 - y1, bw, bh, buf);
+  const seen = new Set();
+  for (let cy = y0; cy <= y1; cy++) {
+    const row = y1 - cy;
+    for (let cx = x0; cx <= x1; cx++) {
+      if (!pointInPolygon(cx + 0.5, cy + 0.5, polygon)) continue;
+      const i = (row * bw + cx - x0) * 4;
+      const id = (buf[i] << 16) | (buf[i + 1] << 8) | buf[i + 2];
+      if (id !== 0xffffff && id < master.triCount && !seen.has(id)) { seen.add(id); result.push(id); }
+    }
+  }
+  return Uint32Array.from(result);
+}
+
+function gpuPickPoint(x, y) {
+  if (!pickMesh) return -1;
+  const height = viewportEl.clientHeight;
+  renderPick();
+  const buf = new Uint8Array(4);
+  renderer.readRenderTargetPixels(pickTarget, Math.floor(x), height - 1 - Math.floor(y), 1, 1, buf);
+  const id = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  return id === 0xffffff || id >= master.triCount ? -1 : id;
+}
+
+async function finishLassoSelection(polygon, modifier) {
+  if (selectionBusy) return;
+  selectionBusy = true;
+  try {
+    let ids;
+    if (!xrayMode) {
+      ids = gpuLassoSelection(polygon);
+    } else if (selWorker && workerReady) {
+      statusBar.textContent = '穿透選取運算中…';
+      ids = await workerSelect(polygon);
+    } else {
+      ids = cpuSelectSync(polygon);
+    }
+    applySelectionResult(ids, modifier);
+  } catch (err) {
+    console.error(err);
+    statusBar.textContent = '選取運算失敗,請查看主控台';
+  } finally {
+    selectionBusy = false;
+  }
+}
+
+function wandSelect(x, y, modifier) {
+  const seed = gpuPickPoint(x, y);
+  if (seed < 0) { statusBar.textContent = '魔術棒:此處沒有點到模型'; return; }
+  ensureAdjacency(() => {
+    const island = floodFillIsland(adjacency, master.triCount, seed, buildSelectableMask());
+    applySelectionResult(island, modifier);
+    statusBar.textContent = `魔術棒:選取相連島嶼,共 ${island.size.toLocaleString()} 個三角面(Shift 加選 / Alt 減選)`;
+  });
+}
+
+// ---------- selection adjustment ----------
+function doGrow() {
+  if (selected.size === 0 || !master) return;
+  ensureAdjacency(() => {
+    applySelectionResult(growSelection(adjacency, selected, buildSelectableMask()), 'replace');
+  });
+}
+function doShrink() {
+  if (selected.size === 0 || !master) return;
+  ensureAdjacency(() => {
+    applySelectionResult(shrinkSelection(adjacency, selected, buildSelectableMask()), 'replace');
+  });
+}
+function doMirror() {
+  if (selected.size === 0 || !master) return;
+  const box = modelBounds();
+  const diag = box.getSize(new THREE.Vector3()).length() || 1;
+  const centerX = (box.min.x + box.max.x) / 2;
+  const out = mirrorSelection(master.positions, master.triCount, selected, buildSelectableMask(), centerX, diag * 5e-3);
+  const added = out.size - selected.size;
+  applySelectionResult(out, 'replace');
+  statusBar.textContent = added > 0
+    ? `鏡像選取:沿 X 軸新增 ${added.toLocaleString()} 個對應面`
+    : '鏡像選取:找不到對稱面(掃描模型若不完全對稱屬正常,可調整後手動補選)';
+}
+
+// ---------- history / undo ----------
+function pushHistory(entry) {
+  history.push(entry);
+  if (history.length > HISTORY_MAX) history.shift();
+}
+
+function undo() {
+  const entry = history.pop();
+  if (!entry) { statusBar.textContent = '沒有可復原的操作'; return; }
+  if (previewActive) exitPreview({ keepMode: true });
+  if (entry.type === 'select') {
+    selected = new Set(entry.prev);
+    updateHighlight(); updateStats();
+    statusBar.textContent = '已復原:選取變更';
+  } else if (entry.type === 'extract') {
+    const i = parts.findIndex((p) => p.id === entry.partId);
+    if (i >= 0) {
+      const part = parts[i];
+      for (const t of part.indices) assign[t] = 0;
+      remainingCount += part.indices.length;
+      scene.remove(part.mesh); part.mesh.geometry.dispose();
+      parts.splice(i, 1);
+      selected = new Set(part.indices);
+      rebuildRemainingMesh(); updateHighlight(); refreshPartsPanel(); updateStats();
+      statusBar.textContent = `已復原:擷取「${part.name}」(選取範圍已還原)`;
+    }
+  } else if (entry.type === 'delete') {
+    const s = entry.snapshot;
+    for (const t of s.indices) assign[t] = s.id;
+    remainingCount -= s.indices.length;
+    const part = { id: s.id, name: s.name, color: new THREE.Color(s.colorHex), indices: s.indices };
+    part.mesh = buildPartMesh(part);
+    scene.add(part.mesh);
+    parts.push(part);
+    rebuildRemainingMesh(); refreshPartsPanel(); updateStats();
+    statusBar.textContent = `已復原:刪除「${s.name}」`;
+  } else if (entry.type === 'rename') {
+    const part = parts.find((p) => p.id === entry.partId);
+    if (part) { part.name = entry.from; part.mesh.name = entry.from; refreshPartsPanel(); }
+    statusBar.textContent = '已復原:改名';
+  }
+}
+
+// ---------- extraction ----------
+function partColor(i) {
+  return new THREE.Color(`hsl(${(i * 63) % 360}, 55%, 62%)`);
+}
+
+function extractPart() {
+  if (!master || selected.size === 0 || previewActive) return;
+  const name = partNameInput.value.trim() || `部位 ${parts.length + 1}`;
+  const indices = Uint32Array.from(selected).sort((a, b) => a - b);
+  const id = nextPartId++;
+  for (const t of indices) assign[t] = id;
+  remainingCount -= indices.length;
+
+  const part = { id, name, color: partColor(parts.length), indices };
+  part.mesh = buildPartMesh(part);
+  scene.add(part.mesh);
+  parts.push(part);
+
+  pushHistory({ type: 'extract', partId: id });
+  selected = new Set();
+  rebuildRemainingMesh();
+  updateHighlight();
+  refreshPartsPanel();
+  updateStats();
+  partNameInput.value = '';
+  statusBar.textContent = `已擷取「${name}」(${indices.length.toLocaleString()} 面)— Ctrl+Z 可復原`;
+}
+
+function deletePart(id) {
+  const i = parts.findIndex((p) => p.id === id);
+  if (i < 0) return;
+  const part = parts[i];
+  pushHistory({ type: 'delete', snapshot: { id: part.id, name: part.name, colorHex: '#' + part.color.getHexString(), indices: part.indices } });
+  for (const t of part.indices) assign[t] = 0;
+  remainingCount += part.indices.length;
+  scene.remove(part.mesh);
+  part.mesh.geometry.dispose();
+  parts.splice(i, 1);
+  rebuildRemainingMesh();
+  refreshPartsPanel();
+  updateStats();
+}
+
+function renamePart(id, newName) {
+  const part = parts.find((p) => p.id === id);
+  if (!part) return;
+  const clean = newName.trim();
+  if (!clean || clean === part.name) { refreshPartsPanel(); return; }
+  pushHistory({ type: 'rename', partId: id, from: part.name, to: clean });
+  part.name = clean;
+  part.mesh.name = clean;
+  refreshPartsPanel();
+}
+
+function togglePartVisibility(id, visible) {
+  const part = parts.find((p) => p.id === id);
+  if (part) part.mesh.visible = visible;
+}
+
+// ---------- preview ----------
+function setControlsLocked(locked) {
+  [...modeToggle.querySelectorAll('button')].forEach((b) => (b.disabled = locked));
+  xrayToggle.disabled = locked;
+  clearSelBtn.disabled = locked;
+  partNameInput.disabled = locked;
+  growSelBtn.disabled = locked;
+  shrinkSelBtn.disabled = locked;
+  mirrorSelBtn.disabled = locked;
+  fileDrop.style.pointerEvents = locked ? 'none' : '';
+  fileDrop.style.opacity = locked ? '0.5' : '';
+  partsListEl.querySelectorAll('.del-btn, .vis-toggle, .export-one-btn, .spec-export-btn').forEach((el) => (el.disabled = locked));
+}
+
+function enterPreview(target) {
+  if (target.type === 'selection' && selected.size === 0) return;
+  if (target.type === 'part' && !parts.find((p) => p.id === target.id)) return;
+  if (previewActive) exitPreview({ keepMode: true });
+
+  previewPrevMode = mode;
+  setMode('orbit');
+  setControlsLocked(true);
+  previewActive = true;
+  activePreview = target;
+
+  if (mainMesh) mainMesh.visible = false;
+  highlightMesh.visible = false;
+  previewPartsVisSnapshot = new Map();
+  parts.forEach((p) => { previewPartsVisSnapshot.set(p.id, p.mesh.visible); p.mesh.visible = false; });
+
+  let focusObject, label;
+  if (target.type === 'selection') {
+    previewTempMesh = new THREE.Mesh(buildSoupGeometry(Uint32Array.from(selected)), makeMaterial(0xe8eaed));
+    scene.add(previewTempMesh);
+    focusObject = previewTempMesh;
+    label = `目前選取(${selected.size.toLocaleString()} 面)`;
+  } else {
+    const part = parts.find((p) => p.id === target.id);
+    part.mesh.visible = true;
+    focusObject = part.mesh;
+    label = part.name;
+  }
+  fitCameraToObject(focusObject);
+  previewBannerName.textContent = label;
+  previewBanner.classList.add('show');
+  refreshPreviewControls();
+  refreshPartsPanel();
+}
+
+function exitPreview(opts = {}) {
+  if (!previewActive) return;
+  previewActive = false;
+  activePreview = null;
+  if (previewTempMesh) { scene.remove(previewTempMesh); previewTempMesh.geometry.dispose(); previewTempMesh = null; }
+  if (mainMesh) mainMesh.visible = remainingCount > 0;
+  if (previewPartsVisSnapshot) {
+    parts.forEach((p) => {
+      const prev = previewPartsVisSnapshot.get(p.id);
+      p.mesh.visible = prev === undefined ? true : prev;
+    });
+  }
+  previewPartsVisSnapshot = null;
+  updateHighlight();
+  setControlsLocked(false);
+  if (!opts.keepMode) setMode(previewPrevMode);
+  previewBanner.classList.remove('show');
+  refreshPreviewControls();
+  refreshPartsPanel();
+  updateStats();
+}
+
+function refreshPreviewControls() {
+  const previewingSelection = previewActive && activePreview?.type === 'selection';
+  previewSelBtn.textContent = previewingSelection ? '↩ 結束預覽' : '👁 預覽選取範圍';
+  previewSelBtn.classList.toggle('preview-active', previewingSelection);
+  if (previewActive && !previewingSelection) previewSelBtn.disabled = true;
+  else previewSelBtn.disabled = selected.size === 0 && !previewingSelection;
+  extractBtn.disabled = previewActive || selected.size === 0;
+}
+
+// ---------- overlay ----------
+function clearOverlay() { overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); }
+
+function drawLassoPath() {
+  clearOverlay();
+  if (lassoPoints.length < 2) return;
+  overlayCtx.save();
+  overlayCtx.lineWidth = 1.5;
+  overlayCtx.strokeStyle = lassoModifierMode === 'subtract' ? '#ef6f6f' : '#f5a524';
+  overlayCtx.fillStyle = lassoModifierMode === 'subtract' ? 'rgba(239,111,111,0.10)' : 'rgba(245,165,36,0.12)';
+  overlayCtx.setLineDash([6, 4]);
+  overlayCtx.lineDashOffset = -dashOffset;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+  for (let i = 1; i < lassoPoints.length; i++) overlayCtx.lineTo(lassoPoints[i].x, lassoPoints[i].y);
+  overlayCtx.closePath();
+  overlayCtx.fill();
+  overlayCtx.stroke();
+  overlayCtx.restore();
+}
+
+function getCanvasPoint(e) {
+  const rect = overlayCanvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+// ---------- export(全路徑均先焊接為索引幾何,消除三角湯的 3 倍膨脹)----------
+function buildExportGeometry(indices) {
+  const w = weldTriangles(master, indices);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(w.positions, 3));
+  if (w.normals) geo.setAttribute('normal', new THREE.BufferAttribute(w.normals, 3));
+  else geo.computeVertexNormals();
+  if (w.uvs) geo.setAttribute('uv', new THREE.BufferAttribute(w.uvs, 2));
+  geo.setIndex(new THREE.BufferAttribute(w.index, 1));
+  return geo;
+}
+
+function exportGLB(object, filename, done) {
+  new GLTFExporter().parse(
+    object,
+    (result) => {
+      const blob = new Blob([result], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      if (done) done(true);
+    },
+    (err) => { console.error(err); if (done) done(false); },
+    { binary: true }
+  );
+}
+
+function sanitizeName(n) { return (n || 'part').replace(/\s+/g, '_'); }
+function sanitizeFileName(n) {
+  const cleaned = (n || '').replace(/[\\/:*?"<>|]/g, '_').trim();
+  return cleaned || 'part';
+}
+
+function exportPart(part, done) {
+  const mesh = new THREE.Mesh(buildExportGeometry(part.indices), makeMaterial(part.color));
+  mesh.name = sanitizeName(part.name);
+  exportGLB(mesh, `${sanitizeFileName(part.name)}.glb`, done);
+}
+
+function exportAllPartsSeparately() {
+  if (parts.length === 0) return;
+  exportPartsBtn.disabled = true;
+  const total = parts.length;
+  const usedNames = new Map();
+  let i = 0;
+  const next = () => {
+    if (i >= total) {
+      exportPartsBtn.disabled = false;
+      exportPartsBtn.textContent = '分檔匯出各部位(每部位一個 .glb)';
+      statusBar.textContent = `分檔匯出完成,共 ${total} 個檔案(已焊接為索引幾何)`;
+      updateStats();
+      return;
+    }
+    const part = parts[i];
+    let base = sanitizeFileName(part.name);
+    const count = usedNames.get(base) || 0;
+    usedNames.set(base, count + 1);
+    if (count > 0) base = `${base}_${count + 1}`;
+    exportPartsBtn.textContent = `匯出中… ${i + 1}/${total}`;
+    const mesh = new THREE.Mesh(buildExportGeometry(part.indices), makeMaterial(part.color));
+    mesh.name = sanitizeName(part.name);
+    exportGLB(mesh, `${base}.glb`, () => { i++; setTimeout(next, 400); });
+  };
+  statusBar.textContent = '開始分檔匯出 — 若瀏覽器詢問「允許下載多個檔案」請選擇允許';
+  next();
+}
+
+function exportAll() {
+  if (!master) return;
+  const group = new THREE.Group();
+  if (remainingCount > 0) {
+    const m = new THREE.Mesh(buildExportGeometry(remainingIndices()), makeMaterial(0xcfd3d8));
+    m.name = 'Remaining';
+    group.add(m);
+  }
+  parts.forEach((p) => {
+    const m = new THREE.Mesh(buildExportGeometry(p.indices), makeMaterial(p.color));
+    m.name = sanitizeName(p.name);
+    group.add(m);
+  });
+  exportBtn.disabled = true;
+  exportBtn.textContent = '匯出中…';
+  exportGLB(group, 'mesh_parts.glb', (ok) => {
+    if (!ok) alert('匯出失敗,請查看主控台錯誤訊息');
+    exportBtn.disabled = false;
+    exportBtn.textContent = '匯出全部為單一 GLB';
+    updateStats();
+  });
+}
+
+// ---------- 部位規範匯出(依 part-authoring.md:原點=接縫圓心、+Y=遠端、+Z=正面)----------
+const PART_SPECS = {
+  head:        { label: 'head(頭)',        radius: 0.047, length: 0.230, freeLength: true },
+  neck:        { label: 'neck(頸)',        radius: 0.035, length: 0.056, freeLength: false },
+  upper_arm_l: { label: 'upper_arm_l(左上臂)', radius: 0.050, length: 0.246, freeLength: false },
+  upper_arm_r: { label: 'upper_arm_r(右上臂)', radius: 0.050, length: 0.246, freeLength: false },
+  forearm_l:   { label: 'forearm_l(左前臂)',   radius: 0.022, length: 0.205, freeLength: false },
+  forearm_r:   { label: 'forearm_r(右前臂)',   radius: 0.022, length: 0.205, freeLength: false },
+  hand_l:      { label: 'hand_l(左手)',    radius: 0.037, length: 0.099, freeLength: true },
+  hand_r:      { label: 'hand_r(右手)',    radius: 0.037, length: 0.099, freeLength: true },
+  thigh_l:     { label: 'thigh_l(左大腿)', radius: 0.030, length: 0.233, freeLength: false },
+  thigh_r:     { label: 'thigh_r(右大腿)', radius: 0.030, length: 0.233, freeLength: false },
+  calf_l:      { label: 'calf_l(左小腿)',  radius: 0.025, length: 0.209, freeLength: false },
+  calf_r:      { label: 'calf_r(右小腿)',  radius: 0.025, length: 0.209, freeLength: false },
+  foot_l:      { label: 'foot_l(左腳)',    radius: 0.042, length: 0.139, freeLength: true },
+  foot_r:      { label: 'foot_r(右腳)',    radius: 0.042, length: 0.139, freeLength: true },
+  torso:       { label: 'torso(軀幹,根件)', radius: null, length: null, freeLength: true, root: true },
+};
+
+function guessSlot(partName, seamCenterX, modelCenterX) {
+  const n = (partName || '').toLowerCase();
+  let base = null;
+  if (/hand|手(?!臂)/.test(n)) base = 'hand';
+  else if (/forearm|前臂|小臂/.test(n)) base = 'forearm';
+  else if (/upper.?arm|上臂|大臂/.test(n)) base = 'upper_arm';
+  else if (/thigh|大腿/.test(n)) base = 'thigh';
+  else if (/calf|shin|小腿/.test(n)) base = 'calf';
+  else if (/foot|脚|腳/.test(n)) base = 'foot';
+  else if (/head|頭|头/.test(n)) return 'head';
+  else if (/neck|頸|颈|脖/.test(n)) return 'neck';
+  else if (/torso|body|軀幹|身/.test(n)) return 'torso';
+  if (!base) return null;
+  let side = null;
+  if (/(^|[^a-z])l([^a-z]|$)|left|左/.test(n)) side = 'l';
+  else if (/(^|[^a-z])r([^a-z]|$)|right|右/.test(n)) side = 'r';
+  // 名稱看不出左右時,以接縫位置推測:角色面向 +Z,其左側在 +X
+  if (!side) side = seamCenterX >= modelCenterX ? 'l' : 'r';
+  return `${base}_${side}`;
+}
+
+// ---------- 接縫 3D 視覺化(規範匯出時眼見為憑)----------
+let seamGizmo = null;
+let specPrevMode = 'orbit';
+
+function showSeamGizmo(seam) {
+  clearSeamGizmo();
+  const g = new THREE.Group();
+  const pts = seam.points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+  const loop = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: 0xf5a524, depthTest: false, linewidth: 2 })
+  );
+  loop.renderOrder = 10;
+  g.add(loop);
+
+  const c = new THREE.Vector3(...seam.frame.center);
+  const len = Math.max(seam.frame.radius * 2.4, 1e-6);
+  const yArrow = new THREE.ArrowHelper(new THREE.Vector3(...seam.frame.y), c, len, 0x4fd1c5, len * 0.22, len * 0.1);
+  const zArrow = new THREE.ArrowHelper(new THREE.Vector3(...seam.frame.z), c, len * 0.75, 0xc792ea, len * 0.18, len * 0.09);
+  [yArrow, zArrow].forEach((a) => {
+    a.line.material.depthTest = false;
+    a.cone.material.depthTest = false;
+    a.line.renderOrder = 10;
+    a.cone.renderOrder = 10;
+  });
+  g.add(yArrow, zArrow);
+  scene.add(g);
+  seamGizmo = g;
+}
+
+function clearSeamGizmo() {
+  if (!seamGizmo) return;
+  scene.remove(seamGizmo);
+  seamGizmo.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) o.material.dispose();
+  });
+  seamGizmo = null;
+}
+
+let specModalState = null; // {part, raw, centroid, candidates:[{points,circumference,frame}]}
+
+
+function openSpecExport(part) {
+  const box = modelBounds();
+  const diag = box.getSize(new THREE.Vector3()).length() || 1;
+  const raw = copyTrianglesToArrays(part.indices);
+  raw.triCount = part.indices.length;
+
+  const loops = findBoundaryLoops(raw.positions, Uint32Array.from({ length: part.indices.length }, (_, i) => i), diag * 2e-5);
+  if (loops.length === 0) {
+    alert('找不到切割接縫(此部位沒有開放邊界)。封閉網格無法自動定位原點,請改用單純分檔匯出。');
+    return;
+  }
+  const centroid = [0, 0, 0];
+  const vcount = raw.positions.length / 3;
+  for (let v = 0; v < vcount; v++) {
+    centroid[0] += raw.positions[v * 3]; centroid[1] += raw.positions[v * 3 + 1]; centroid[2] += raw.positions[v * 3 + 2];
+  }
+  centroid[0] /= vcount; centroid[1] /= vcount; centroid[2] /= vcount;
+
+  // 候選接縫:周長達最大環 20% 以上者(其餘視為破面小孔),最多 4 圈,各自預算好座標系
+  const threshold = loops[0].circumference * 0.2;
+  const candidates = loops.filter((l) => l.circumference >= threshold).slice(0, 4)
+    .map((l) => ({ ...l, frame: computeSeamFrame(l.points, centroid, [0, 0, 1]) }));
+
+  specModalState = { part, raw, centroid, candidates, holeCount: loops.length - candidates.length };
+  specPrevMode = mode;
+  setMode('orbit'); // 讓使用者能旋轉檢視接縫標示
+
+  const slotSelect = document.getElementById('slotSelect');
+  slotSelect.innerHTML = Object.entries(PART_SPECS)
+    .map(([k, s]) => `<option value="${k}">${s.label}</option>`).join('');
+  const guessed = guessSlot(part.name, candidates[0].frame.center[0], (box.min.x + box.max.x) / 2);
+  if (guessed && PART_SPECS[guessed]) slotSelect.value = guessed;
+
+  autoPickSeam();
+  document.getElementById('specModal').classList.add('show');
+}
+
+// 依目前 slot 的規格半徑,自動預選最接近的接縫環(中段件有兩圈,靠這個分辨近端)
+function autoPickSeam() {
+  const { candidates } = specModalState;
+  const spec = PART_SPECS[document.getElementById('slotSelect').value];
+  let best = 0;
+  if (spec.radius != null && candidates.length > 1) {
+    let bestDiff = Infinity;
+    candidates.forEach((c, i) => {
+      const d = Math.abs(c.frame.radius - spec.radius);
+      if (d < bestDiff) { bestDiff = d; best = i; }
+    });
+  }
+  const seamSelect = document.getElementById('seamSelect');
+  seamSelect.innerHTML = candidates
+    .map((c, i) => `<option value="${i}">環 ${i + 1} — 半徑 ${c.frame.radius.toFixed(4)}(周長 ${c.circumference.toFixed(3)})</option>`).join('');
+  seamSelect.value = String(best);
+  document.getElementById('seamField').style.display = candidates.length > 1 ? '' : 'none';
+  renderSpecReport();
+}
+
+function currentSeam() {
+  const i = parseInt(document.getElementById('seamSelect').value, 10) || 0;
+  return specModalState.candidates[Math.min(i, specModalState.candidates.length - 1)];
+}
+
+function renderSpecReport() {
+  if (!specModalState) return;
+  const { part, raw, candidates, holeCount } = specModalState;
+  const slot = document.getElementById('slotSelect').value;
+  const spec = PART_SPECS[slot];
+  const seam = currentSeam();
+  showSeamGizmo(seam);
+  const { lengthY } = retargetToFrame(raw, seam.frame);
+  const lines = [];
+  lines.push(`部位「${part.name}」→ 掛載名稱 <b>${slot}</b>`);
+  lines.push(`<span class="spec-ok">●</span> 橘環 = 接縫　<span style="color:#4fd1c5">→</span> +Y 遠端　<span style="color:#c792ea">→</span> +Z 正面(可旋轉 3D 檢視確認)`);
+  lines.push(`接縫候選 ${candidates.length} 圈${holeCount > 0 ? `(另有 ${holeCount} 個破面小孔已忽略)` : ''}${candidates.length > 1 ? ' — 中段件請確認選的是「靠身體那端」' : ''}`);
+  lines.push(`接縫半徑:<b>${seam.frame.radius.toFixed(4)}</b>${spec.radius != null ? specCheck(seam.frame.radius, spec.radius, 0.10, `規格 ${spec.radius}±10%`) : '(根件,無接縫規格)'}`);
+  const pl = seam.frame.planarity;
+  lines.push(`切口平整度:<b>${(pl * 100).toFixed(1)}%</b>${pl <= 0.15
+    ? ' <span class="spec-ok">✓ 切面近似平面,+Y 可信</span>'
+    : ' <span class="spec-warn">⚠ 切口歪斜,+Y 軸向可能偏 — 建議重切(套索路徑畫直)或收縮/擴張整理邊界後重擷取</span>'}`);
+  if (spec.root) {
+    lines.push(`⚠ torso 為根件,規範原點為「脊柱基部」,自動偵測僅供參考 — 請務必到 PUNCH STUDIO 用對位滑桿確認`);
+  } else if (spec.freeLength) {
+    lines.push(`沿 +Y 長度:<b>${lengthY.toFixed(4)}</b>(末端件,長度自由 — 標準參考 ${spec.length})`);
+  } else {
+    lines.push(`沿 +Y 長度:<b>${lengthY.toFixed(4)}</b>${specCheck(lengthY, spec.length, 0.10, `標準 ${spec.length},中段件需照表`)}`);
+  }
+  document.getElementById('specReport').innerHTML = lines.map((l) => `<div class="spec-line">${l}</div>`).join('');
+}
+
+function specCheck(value, target, tol, label) {
+  const ok = Math.abs(value - target) <= target * tol;
+  return ok
+    ? ` <span class="spec-ok">✓ ${label}</span>`
+    : ` <span class="spec-warn">⚠ 偏離 ${((value / target - 1) * 100).toFixed(0)}%(${label})</span>`;
+}
+
+function doSpecExport() {
+  if (!specModalState) return;
+  const { part, raw } = specModalState;
+  const slot = document.getElementById('slotSelect').value;
+  const { data } = retargetToFrame(raw, currentSeam().frame);
+  const w = weldTriangles(data, Uint32Array.from({ length: data.triCount }, (_, i) => i));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(w.positions, 3));
+  if (w.normals) geo.setAttribute('normal', new THREE.BufferAttribute(w.normals, 3));
+  else geo.computeVertexNormals();
+  if (w.uvs) geo.setAttribute('uv', new THREE.BufferAttribute(w.uvs, 2));
+  geo.setIndex(new THREE.BufferAttribute(w.index, 1));
+  const mesh = new THREE.Mesh(geo, makeMaterial(part.color));
+  mesh.name = slot; // 節點名 = slot 關鍵字,確保掛載端能判斷
+  closeSpecModal();
+  statusBar.textContent = `規範匯出「${slot}.glb」中…(原點已移至接縫圓心)`;
+  exportGLB(mesh, `${slot}.glb`, (ok) => {
+    statusBar.textContent = ok
+      ? `已規範匯出「${slot}.glb」— 原點=接縫圓心、+Y=遠端、+Z=正面,可直接掛載`
+      : '匯出失敗,請查看主控台';
+  });
+}
+
+function closeSpecModal() {
+  document.getElementById('specModal').classList.remove('show');
+  specModalState = null;
+  clearSeamGizmo();
+  setMode(specPrevMode);
+}
+
+
+function u32ToB64(arr) {
+  const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  return btoa(bin);
+}
+function b64ToU32(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Uint32Array(bytes.buffer);
+}
+
+function saveSession() {
+  if (!master) return;
+  const payload = {
+    tool: 'mesh-part-extractor',
+    version: 2,
+    triCount: master.triCount,
+    parts: parts.map((p) => ({ name: p.name, colorHex: '#' + p.color.getHexString(), indices: u32ToB64(p.indices) })),
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'mesh_parts_session.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  statusBar.textContent = `進度已存檔(${parts.length} 個部位)— 之後匯入同一個 GLB 再載入此 JSON 即可接續`;
+}
+
+function loadSessionFile(file) {
+  if (!master) { alert('請先匯入原始 GLB 模型,再載入進度檔'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.tool !== 'mesh-part-extractor') throw new Error('不是本工具的進度檔');
+      if (data.triCount !== master.triCount) {
+        throw new Error(`三角面數不符:進度檔為 ${data.triCount.toLocaleString()},目前模型為 ${master.triCount.toLocaleString()}。請匯入存檔當時的同一個 GLB`);
+      }
+      // 重置歸屬後套用
+      parts.forEach((p) => { scene.remove(p.mesh); p.mesh.geometry.dispose(); });
+      parts = [];
+      assign.fill(0);
+      remainingCount = master.triCount;
+      nextPartId = 1;
+      selected = new Set();
+      history = [];
+      for (const sp of data.parts) {
+        const indices = b64ToU32(sp.indices);
+        const id = nextPartId++;
+        let applied = 0;
+        for (const t of indices) {
+          if (t < master.triCount && assign[t] === 0) { assign[t] = id; applied++; }
+        }
+        const part = { id, name: sp.name, color: new THREE.Color(sp.colorHex), indices };
+        part.mesh = buildPartMesh(part);
+        scene.add(part.mesh);
+        parts.push(part);
+        remainingCount -= applied;
+      }
+      rebuildRemainingMesh();
+      updateHighlight();
+      refreshPartsPanel();
+      updateStats();
+      statusBar.textContent = `進度已載入:${parts.length} 個部位`;
+    } catch (err) {
+      console.error(err);
+      alert('載入進度失敗:' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ---------- UI ----------
+function updateStats() {
+  statTotal.textContent = master ? master.triCount.toLocaleString() : '0';
+  statRemaining.textContent = remainingCount.toLocaleString();
+  statSelected.textContent = selected.size.toLocaleString();
+  exportBtn.disabled = !master || master.triCount === 0;
+  exportPartsBtn.disabled = parts.length === 0;
+  saveSessionBtn.disabled = !master;
+  const hasSel = selected.size > 0 && !previewActive;
+  growSelBtn.disabled = !hasSel;
+  shrinkSelBtn.disabled = !hasSel;
+  mirrorSelBtn.disabled = !hasSel;
+  refreshPreviewControls();
+}
+
+function refreshPartsPanel() {
+  if (parts.length === 0) {
+    partsListEl.innerHTML = '<div class="parts-empty">尚未擷取任何部位。<br>圈選或魔術棒點選後,輸入名稱並擷取。<br>雙擊部位名稱可改名。</div>';
+    return;
+  }
+  partsListEl.innerHTML = '';
+  parts.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'part-row';
+    const hex = '#' + p.color.getHexString();
+    const isPreviewing = previewActive && activePreview?.type === 'part' && activePreview.id === p.id;
+    row.innerHTML = `
+      <span class="part-color" style="background:${hex}"></span>
+      <span class="part-name" title="${p.name}(雙擊改名)">${p.name}</span>
+      <span class="part-tris">${p.indices.length.toLocaleString()}</span>
+      <button class="icon-btn spec-export-btn" title="規範匯出(原點=接縫、+Y=遠端,供掛載系統使用)">🔌</button>
+      <button class="icon-btn export-one-btn" title="以「${p.name}.glb」匯出此部位">⬇</button>
+      <button class="icon-btn preview-btn${isPreviewing ? ' previewing' : ''}" title="單獨預覽此部位">${isPreviewing ? '↩' : '👁'}</button>
+      <input type="checkbox" class="vis-toggle" ${p.mesh.visible ? 'checked' : ''} title="顯示/隱藏">
+      <button class="icon-btn del-btn" title="刪除並歸還至剩餘網格">✕</button>
+    `;
+    const nameEl = row.querySelector('.part-name');
+    nameEl.addEventListener('dblclick', () => {
+      if (previewActive) return;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = p.name;
+      input.className = 'rename-input';
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => renamePart(p.id, input.value);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commit();
+        else if (e.key === 'Escape') refreshPartsPanel();
+      });
+      input.addEventListener('blur', commit);
+    });
+    row.querySelector('.spec-export-btn').addEventListener('click', () => {
+      if (previewActive) return;
+      openSpecExport(p);
+    });
+    row.querySelector('.export-one-btn').addEventListener('click', () => {
+      statusBar.textContent = `匯出「${p.name}.glb」中…`;
+      exportPart(p, (ok) => {
+        statusBar.textContent = ok ? `已匯出「${sanitizeFileName(p.name)}.glb」(已焊接)` : '匯出失敗,請查看主控台';
+      });
+    });
+    row.querySelector('.preview-btn').addEventListener('click', () => {
+      if (isPreviewing) exitPreview();
+      else enterPreview({ type: 'part', id: p.id });
+    });
+    row.querySelector('.vis-toggle').addEventListener('change', (e) => togglePartVisibility(p.id, e.target.checked));
+    row.querySelector('.del-btn').addEventListener('click', () => deletePart(p.id));
+    partsListEl.appendChild(row);
+  });
+}
+
+function setMode(next) {
+  mode = next;
+  controls.enabled = mode === 'orbit';
+  overlayCanvas.classList.toggle('active', mode !== 'orbit');
+  const labels = { orbit: '旋轉檢視中', lasso: '套索選取中', wand: '魔術棒選取中' };
+  modeBadge.textContent = labels[mode];
+  modeBadge.className = 'mode-badge ' + mode;
+  [...modeToggle.children].forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+}
+
+function bindUI() {
+  // 註:fileDrop 是 <label for="fileInput">,點擊時瀏覽器會原生開啟檔案對話框,
+  // 不可再用 JS 呼叫 fileInput.click(),否則對話框會開兩次(需選兩次檔案)。
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) handleFile(f);
+    fileInput.value = ''; // 清空讓同一檔案可重複匯入
+  });
+
+  ['dragover', 'dragenter'].forEach((ev) =>
+    fileDrop.addEventListener(ev, (e) => { e.preventDefault(); fileDrop.classList.add('drag'); })
+  );
+  ['dragleave', 'drop'].forEach((ev) =>
+    fileDrop.addEventListener(ev, (e) => { e.preventDefault(); fileDrop.classList.remove('drag'); })
+  );
+  fileDrop.addEventListener('drop', (e) => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+
+  modeToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mode]');
+    if (btn) setMode(btn.dataset.mode);
+  });
+
+  xrayToggle.addEventListener('change', (e) => { xrayMode = e.target.checked; });
+
+  extractBtn.addEventListener('click', extractPart);
+  exportPartsBtn.addEventListener('click', exportAllPartsSeparately);
+  previewSelBtn.addEventListener('click', () => {
+    const previewingSelection = previewActive && activePreview?.type === 'selection';
+    if (previewingSelection) exitPreview();
+    else enterPreview({ type: 'selection' });
+  });
+  previewExitBtn.addEventListener('click', () => exitPreview());
+  clearSelBtn.addEventListener('click', () => {
+    if (selected.size > 0) pushHistory({ type: 'select', prev: Uint32Array.from(selected) });
+    selected = new Set();
+    updateHighlight();
+    updateStats();
+  });
+  exportBtn.addEventListener('click', exportAll);
+  growSelBtn.addEventListener('click', doGrow);
+  shrinkSelBtn.addEventListener('click', doShrink);
+  mirrorSelBtn.addEventListener('click', doMirror);
+  saveSessionBtn.addEventListener('click', saveSession);
+  document.getElementById('slotSelect').addEventListener('change', autoPickSeam);
+  document.getElementById('seamSelect').addEventListener('change', renderSpecReport);
+  document.getElementById('specExportBtn').addEventListener('click', doSpecExport);
+  document.getElementById('specCancelBtn').addEventListener('click', closeSpecModal);
+  sessionInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) loadSessionFile(f);
+    sessionInput.value = '';
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return; // 不攔截文字欄位的原生復原
+      e.preventDefault();
+      undo();
+    }
+  });
+
+  overlayCanvas.addEventListener('pointerdown', (e) => {
+    if (!master || previewActive) return;
+    const modifier = e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace';
+    if (mode === 'wand') {
+      const p = getCanvasPoint(e);
+      wandSelect(p.x, p.y, modifier);
+      return;
+    }
+    if (mode !== 'lasso') return;
+    isDragging = true;
+    lassoModifierMode = modifier;
+    lassoPoints = [getCanvasPoint(e)];
+    overlayCanvas.setPointerCapture(e.pointerId);
+  });
+  overlayCanvas.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    lassoPoints.push(getCanvasPoint(e));
+  });
+  overlayCanvas.addEventListener('pointerup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    try { overlayCanvas.releasePointerCapture(e.pointerId); } catch (err) {}
+    if (lassoPoints.length >= 3) finishLassoSelection(lassoPoints.slice(), lassoModifierMode);
+    lassoPoints = [];
+    clearOverlay();
+  });
+
+  partNameInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (!extractBtn.disabled) extractPart();
+    else if (selected.size === 0) statusBar.textContent = '尚未選取任何面 — 請先用套索或魔術棒選取部位,再輸入名稱擷取';
+  });
+}
+
+</script>
+</body>
+</html>

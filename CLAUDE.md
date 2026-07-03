@@ -21,7 +21,7 @@ The game JS now lives in **`js/` ES modules** (build-free); the three HTML files
 - `camera-sandbox.html` — game + camera panel. Loads `main.js` + `camera-panel.js`.
 - `training.html` — repo-only test arena (spawn enemies/props, switch builds; `window.__game` debug hook). Loads `main.js` + `training-panel.js`.
 - `vendor/three.min.js` — vendored Three.js. CDNs are blocked by the egress proxy; the npm registry is allowed, so re-vendor via `npm i three@0.149.0` and copy `build/three.min.js`.
-- `tools/punch-studio.html` — the user's PUNCH STUDIO pose/keyframe editor (dev tool, repo-only; loads three r128 + fonts from CDN so open it in a normal browser). Its JSON exports are the source format for `js/brawler-clips.js` CLIPS — workflow: `docs/animation-workflow.md`.
+- `tools/` â the user's dev tools (repo-only, CDN deps, open in a normal browser): `punch-studio.html` pose/keyframe editor (JSON exports are the source format for `js/brawler-clips.js` CLIPS) and `mesh-part-extractor.html` (splits a whole third-party model into parts; its 「匯出規範 GLB」 re-bases each part to the socket convention so punch-studio can mount it). Pipeline + rules: `docs/animation-workflow.md`, `docs/part-authoring.md`.
 - `docs/` — design + roadmap docs (repo-only, not deployed). Start at `docs/README.md`; `docs/roadmap.md` holds the A/B/C direction decision; `docs/module-boundaries.md` documents the module split.
 
 > **Module DAG (acyclic):** `constants` → `utils`/`data` → `state` → `sim` → `render` → `main`/panels. Invariant: **`sim.js` must not import render/input/main** (keeps the sim headless-extractable for the BR path).
