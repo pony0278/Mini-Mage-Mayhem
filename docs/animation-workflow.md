@@ -7,9 +7,15 @@
 ## 1. 工具
 
 - **編排器本體**:[`tools/punch-studio.html`](../tools/punch-studio.html)(repo 內收藏版;開發工具,不隨遊戲部署)。
-  用一般瀏覽器直接開(它從 CDN 載 three r128 + Google Fonts,需要網路;與遊戲 vendored r149 無關、互不影響)。
+  **線上即開**:<https://pony0278.github.io/Mini-Mage-Mayhem/tools/punch-studio.html>
+  (它從 CDN 載 three r128 + Google Fonts,需要網路;與遊戲 vendored r149 無關、互不影響)。
 - 內建:47 軸姿勢 slider、自由時間軸(拖 key 調 timing)、per-limb LAG、打擊感試打台(hitstop/震動/沙包)、
-  JSON 匯出/匯入、CANCEL 點 combo 串接。
+  JSON 匯出/匯入、CANCEL 點 combo 串接、GLB 部位替換(整包 bundle 或分檔,按節點/檔名對應 15 slot)。
+- **「遊戲整合」面板**(repo 版加掛):
+  - **招式庫**——具名槽存/載/刪(localStorage),編一整套招式不互相覆蓋;「全部匯出」產生
+    `{clips:{招式名:snapshot}}` 一份 JSON,整份交給遊戲端接入。
+  - **🎮 遊戲視角**——一鍵切到遊戲取景(fov32/俯角44°/看角色背面)驗動作在實戰鏡頭下的可讀性。
+  - **impact 秒數讀出**——`frame÷60` 即時顯示,就是遊戲 `STRIKE_DELAY` 要填的值。
 
 ## 2. 工作流(五步)
 

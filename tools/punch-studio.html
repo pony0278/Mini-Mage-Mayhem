@@ -895,6 +895,23 @@
       <div id="partsStatus" class="parts-status">尚未載入。最快：用「📦 上傳整包 GLB」一次匯入含全部部位的 bundle(如 tactics5x5_body_parts.glb),自動對應 15 個部位。或用「＋ 逐一載入部位」分檔載入。</div>
     </div>
 
+    <div class="group">
+      <h3>遊戲整合(Mini Mage Mayhem)</h3>
+      <div style="display:flex;gap:6px;margin:6px 0">
+        <button id="gameViewBtn" style="flex:1">🎮 遊戲視角(44° 後上)</button>
+      </div>
+      <div id="impactInfo" style="font-size:10.5px;color:var(--cy);margin:2px 0 8px">impact: —</div>
+      <div style="display:flex;gap:6px;margin:4px 0">
+        <input id="clipName" placeholder="招式名(如 throw / hookl)" style="flex:1;background:#101322;border:1px solid var(--line);border-radius:7px;color:inherit;padding:5px 8px;font-size:11px">
+        <button id="clipSaveBtn">存入</button>
+      </div>
+      <div id="clipList" class="timeline-list" style="max-height:130px"></div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button id="clipExportAllBtn" style="flex:1">全部匯出 JSON</button>
+      </div>
+      <div class="timeline-help">招式庫存在瀏覽器 localStorage(具名槽,一招一槽)。「全部匯出」產生 {clips:{招式名:snapshot}} 一份 JSON,整份交給遊戲端接入 brawler-clips.js。impact 秒數 = 遊戲 STRIKE_DELAY 要填的值。</div>
+    </div>
+
     <div id="poseGroups"></div>
     <div id="propGroups"></div>
 
@@ -3657,6 +3674,72 @@ updatePartsStatus();
 
 
 requestAnimationFrame(tick);
+
+// ===== 遊戲端整合小工具(Mini Mage Mayhem)=====
+// A. 招式庫:具名槽存/載/刪 + 全部匯出(localStorage;編一整套招式不再互相覆蓋)
+// B. 🎮 遊戲視角:一鍵切到遊戲取景(fov32/俯角44°/看角色背面)驗動作可讀性,再按一次還原
+// C. impact 秒數讀出:frame÷60 = 遊戲 v2-state.js STRIKE_DELAY 要填的值
+(function(){
+  const gvBtn = document.getElementById('gameViewBtn');
+  let gvPrev = null;
+  gvBtn?.addEventListener('click', ()=>{
+    if(!gvPrev){
+      gvPrev = { theta, phi, radius, fov: camera.fov };
+      theta = Math.PI; phi = 0.80; radius = 5.4; camera.fov = 32;   // 46°極角=俯角44°;背面=遊戲鏡頭常態
+      gvBtn.textContent = '↩ 還原自由視角'; gvBtn.style.borderColor = 'var(--lime)';
+    } else {
+      theta = gvPrev.theta; phi = gvPrev.phi; radius = gvPrev.radius; camera.fov = gvPrev.fov;
+      gvPrev = null; gvBtn.textContent = '🎮 遊戲視角(44° 後上)'; gvBtn.style.borderColor = '';
+    }
+    camera.updateProjectionMatrix(); placeCam();
+  });
+
+  const impEl = document.getElementById('impactInfo');
+  setInterval(()=>{                                       // 500ms 輪詢,避免掛勾內部重繪函式
+    if(!impEl) return;
+    const imps = (typeof SEQ !== 'undefined' ? SEQ : []).filter(k=>k.impact);
+    impEl.textContent = imps.length
+      ? 'impact: ' + imps.map(k=>`${k.name} @${k.frame||0}f = ${((k.frame||0)/60).toFixed(3)}s → STRIKE_DELAY`).join('　')
+      : 'impact: (未設定 impact key)';
+  }, 500);
+
+  const LIB_KEY = 'PUNCH_STUDIO_CLIP_LIB_V1';
+  const readLib = ()=>{ try{ return JSON.parse(localStorage.getItem(LIB_KEY)||'{}'); }catch(e){ return {}; } };
+  const writeLib = (lib)=>{ try{ localStorage.setItem(LIB_KEY, JSON.stringify(lib)); }catch(e){} };
+  const listEl = document.getElementById('clipList');
+  function renderLib(){
+    if(!listEl) return;
+    const lib = readLib(); const names = Object.keys(lib).sort();
+    listEl.innerHTML = '';
+    if(!names.length){ listEl.innerHTML = '<div style="color:var(--dim);font-size:10px;padding:4px">(空)把目前動作取名存入,即可編下一招不怕蓋掉</div>'; return; }
+    names.forEach(n=>{
+      const row = document.createElement('div'); row.className = 'tkey';
+      const imp = (lib[n].seq||[]).find(k=>k.impact);
+      row.innerHTML = `<span>${n}</span><span class="tag">${imp?('imp@'+(imp.frame||0)+'f'):''}</span><span class="ease"></span>`;
+      const box = row.querySelector('.ease');
+      const mk = (t,fn,col)=>{ const b=document.createElement('button'); b.textContent=t;
+        b.style.cssText='font-size:9px;padding:1px 6px;margin-left:4px'+(col?';color:'+col:'');
+        b.addEventListener('click',fn); box.appendChild(b); };
+      mk('載入', ()=>{ try{ pushHistory(); applyStateData(lib[n]); scheduleAutosave();
+        const inp=document.getElementById('clipName'); if(inp) inp.value=n; }catch(e){ alert('載入失敗: '+e.message); } });
+      mk('刪', ()=>{ if(!confirm('刪除招式「'+n+'」?')) return; const l=readLib(); delete l[n]; writeLib(l); renderLib(); }, 'var(--hot)');
+      listEl.appendChild(row);
+    });
+  }
+  document.getElementById('clipSaveBtn')?.addEventListener('click', ()=>{
+    const inp = document.getElementById('clipName');
+    const name = (inp && inp.value.trim()) || '';
+    if(!name){ alert('先取個招式名(如 throw / hookl)'); return; }
+    const lib = readLib(); lib[name] = snapshotObject(); writeLib(lib); renderLib();
+  });
+  document.getElementById('clipExportAllBtn')?.addEventListener('click', ()=>{
+    const lib = readLib();
+    if(!Object.keys(lib).length){ alert('招式庫是空的'); return; }
+    showExport(JSON.stringify({ format:'punch-studio-clip-lib', clips: lib }, null, 2),
+      'Export · 招式庫(全部)', '{clips:{招式名:snapshot}} — 整份交給遊戲端接入 brawler-clips.js。');
+  });
+  renderLib();
+})();
 </script>
 
 <!-- AI 姿勢偵測(MediaPipe Tasks Vision)。獨立 module:lazy-load,首次「AI 偵測」才下載模型;
