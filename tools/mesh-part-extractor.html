@@ -614,6 +614,12 @@
       <label for="seamSelect">近端接縫(靠身體那端的切面)</label>
       <select id="seamSelect"></select>
     </div>
+    <div class="field" id="mirrorField" style="display:none;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="mirrorPairChk" checked>
+        同時匯出鏡像側(左右成對;接縫數學上完全一致。貼圖會左右翻轉——有文字/徽章的部位請取消勾選改手動雙側)
+      </label>
+    </div>
     <div id="specReport" class="spec-report"></div>
     <div class="btn-row" style="margin-top:14px;">
       <button class="btn primary" id="specExportBtn">匯出規範 GLB</button>
@@ -2027,6 +2033,7 @@ function renderSpecReport() {
   const spec = PART_SPECS[slot];
   const seam = currentSeam();
   showSeamGizmo(seam);
+  document.getElementById('mirrorField').style.display = /_[lr]$/.test(slot) ? '' : 'none';
   const { lengthY } = retargetToFrame(raw, seam.frame);
   const lines = [];
   lines.push(`部位「${part.name}」→ 掛載名稱 <b>${slot}</b>`);
@@ -2054,26 +2061,52 @@ function specCheck(value, target, tol, label) {
     : ` <span class="spec-warn">⚠ 偏離 ${((value / target - 1) * 100).toFixed(0)}%(${label})</span>`;
 }
 
-function doSpecExport() {
-  if (!specModalState) return;
-  const { part, raw } = specModalState;
-  const slot = document.getElementById('slotSelect').value;
-  const { data } = retargetToFrame(raw, currentSeam().frame);
-  const w = weldTriangles(data, Uint32Array.from({ length: data.triCount }, (_, i) => i));
+// 作者空間 x→−x 鏡射:負 x 座標與法線 x、翻三角形繞序 → 右件變成「真的左件」(拇指在正確側)。
+// 因為部位已在作者空間(原點=接縫、+Y=遠端、+Z=正面),鏡射後接縫半徑/長度/原點與原件數學上完全一致。
+function mirrorWeldedX(w) {
+  const positions = new Float32Array(w.positions);
+  for (let i = 0; i < positions.length; i += 3) positions[i] = -positions[i];
+  let normals = null;
+  if (w.normals) { normals = new Float32Array(w.normals); for (let i = 0; i < normals.length; i += 3) normals[i] = -normals[i]; }
+  const index = w.index.slice();
+  for (let i = 0; i < index.length; i += 3) { const t = index[i + 1]; index[i + 1] = index[i + 2]; index[i + 2] = t; }
+  return { positions, normals, uvs: w.uvs ? w.uvs.slice() : null, index };
+}
+function buildSpecMesh(w, name, color) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(w.positions, 3));
   if (w.normals) geo.setAttribute('normal', new THREE.BufferAttribute(w.normals, 3));
   else geo.computeVertexNormals();
   if (w.uvs) geo.setAttribute('uv', new THREE.BufferAttribute(w.uvs, 2));
   geo.setIndex(new THREE.BufferAttribute(w.index, 1));
-  const mesh = new THREE.Mesh(geo, makeMaterial(part.color));
-  mesh.name = slot; // 節點名 = slot 關鍵字,確保掛載端能判斷
+  const mesh = new THREE.Mesh(geo, makeMaterial(color));
+  mesh.name = name; // 節點名 = slot 關鍵字,確保掛載端能判斷
+  return mesh;
+}
+function doSpecExport() {
+  if (!specModalState) return;
+  const { part, raw } = specModalState;
+  const slot = document.getElementById('slotSelect').value;
+  const { data } = retargetToFrame(raw, currentSeam().frame);
+  const w = weldTriangles(data, Uint32Array.from({ length: data.triCount }, (_, i) => i));
+  const wantMirror = /_[lr]$/.test(slot) && document.getElementById('mirrorPairChk').checked;
+  const mesh = buildSpecMesh(w, slot, part.color);
   closeSpecModal();
   statusBar.textContent = `規範匯出「${slot}.glb」中…(原點已移至接縫圓心)`;
   exportGLB(mesh, `${slot}.glb`, (ok) => {
-    statusBar.textContent = ok
-      ? `已規範匯出「${slot}.glb」— 原點=接縫圓心、+Y=遠端、+Z=正面,可直接掛載`
-      : '匯出失敗,請查看主控台';
+    if (!ok) { statusBar.textContent = '匯出失敗,請查看主控台'; return; }
+    if (!wantMirror) {
+      statusBar.textContent = `已規範匯出「${slot}.glb」— 原點=接縫圓心、+Y=遠端、+Z=正面,可直接掛載`;
+      return;
+    }
+    const other = slot.endsWith('_l') ? slot.slice(0, -2) + '_r' : slot.slice(0, -2) + '_l';
+    const mirrored = buildSpecMesh(mirrorWeldedX(w), other, part.color);
+    statusBar.textContent = `鏡像匯出「${other}.glb」中…`;
+    setTimeout(() => exportGLB(mirrored, `${other}.glb`, (ok2) => {
+      statusBar.textContent = ok2
+        ? `已成對匯出「${slot}.glb」+「${other}.glb」(鏡像)— 接縫完全一致,可直接掛載`
+        : `「${slot}.glb」已匯出,但鏡像側失敗,請查看主控台`;
+    }), 400);
   });
 }
 
