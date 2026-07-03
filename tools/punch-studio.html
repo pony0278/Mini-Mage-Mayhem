@@ -3436,6 +3436,12 @@ function inferPartSlot(filename){
   // exported files may be like Ranger_HEAD.glb or 01_REGION_ARM_L.glb; prefer longest aliases.
   const keys = Object.keys(PART_ALIASES).sort((a,b)=>b.length-a.length);
   for(const k of keys){ if(n.includes(k)) return PART_ALIASES[k]; }
+  // 第三輪:分隔符不敏感(left_hand / left-hand / Left Hand 1 → lefthand1 ⊇ lefthand)。
+  // 修掉別名縫隙:表裡是 lefthand(無底線)和 hand_l,底線寫法 left_hand 曾兩邊都對不到。
+  const ns = n.replace(/[_.]/g,'');
+  const stripped = keys.map(k=>({k, ks:k.replace(/[_.]/g,'')})).filter(e=>e.ks)
+    .sort((a,b)=>b.ks.length-a.ks.length);
+  for(const e of stripped){ if(ns.includes(e.ks)) return PART_ALIASES[e.k]; }
   return null;
 }
 function partCfg(slot){
@@ -3598,7 +3604,7 @@ async function loadPartFile(file){
       return okCount > 0;
     }
     if(!slot){
-      updatePartsStatus(`無法判斷 ${file.name} 要掛到哪個 slot（檔名對不到、內容也不是合併部件包）；請使用 HEAD/TORSO/UPPER_ARM_L 這類檔名，或載入含具名子節點的合併 GLB。`);
+      updatePartsStatus(`無法判斷 ${file.name} 要掛到哪個 slot（檔名對不到、內部節點名也對不到）；檔名或節點名需含部位關鍵字，如 hand_l / left_hand / HAND_L / torso / upper_arm_r（大小寫與 _ - 空格皆可）。`);
       return false;
     }
     obj.name = 'PUNCH_PART_'+slot;
