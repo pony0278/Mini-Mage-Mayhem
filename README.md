@@ -50,10 +50,13 @@ WASD 移動、滑鼠瞄準、左鍵主法術、Space/Shift 衝刺。
 
 ## 部署
 
-**Vercel**(私密 repo,靜態站):推送到 `main` 自動部署。純靜態、無 build step;
-`vercel.json` 只做兩件事——`cleanUrls`(乾淨網址 `/v2`、`/tools/punch-studio`)與快取控制
-(`js/` no-cache 避免更新後拿到舊碼、`vendor/` 長快取)。所有引用皆相對路徑,根路徑服務即可。
-畫面右下角的 build tag 可確認拿到新版(必要時硬重新整理)。
+**Vercel**(私密 repo,靜態站):推送到 `main` 自動部署。純靜態、無 build step。
+`vercel.json`:
+- **根路徑 `/` = v2 收容測試**(旗艦;rewrite 到 `v2.html`,裸網域即遊戲)、單機 v1 移到 **`/v1`**
+- `cleanUrls`:乾淨網址 `/v2`、`/tools/punch-studio`
+- 快取:`js/` no-cache(避免更新後拿到舊碼)、`vendor/` 長快取
+
+所有引用皆相對路徑,根路徑服務零修改。畫面右下角的 build tag 可確認拿到新版(必要時硬重新整理)。
 
 > 歷史:曾用 GitHub Pages 服務 `main` 根目錄(需 `.nojekyll` 避免 Jekyll 排除 `js/`/`vendor/`);
 > repo 轉私密後改用 Vercel(Pages 免費版不支援私密 repo)。
