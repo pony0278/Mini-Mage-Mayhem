@@ -52,7 +52,7 @@ WASD 移動、滑鼠瞄準、左鍵主法術、Space/Shift 衝刺。
 
 **Vercel**(私密 repo,靜態站):推送到 `main` 自動部署。純靜態、無 build step。
 `vercel.json`:
-- **根路徑 `/` = v2 收容測試**(旗艦;rewrite 到 `v2.html`,裸網域即遊戲)、單機 v1 移到 **`/v1`**
+- **根路徑 `/` → `/v2` 收容測試**(旗艦;redirect,因 index.html 佔用 `/`,rewrite 蓋不過檔案)、單機 v1 移到 **`/v1`**
 - `cleanUrls`:乾淨網址 `/v2`、`/tools/punch-studio`
 - 快取:`js/` no-cache(避免更新後拿到舊碼)、`vendor/` 長快取
 
