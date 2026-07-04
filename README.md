@@ -50,6 +50,10 @@ WASD 移動、滑鼠瞄準、左鍵主法術、Space/Shift 衝刺。
 
 ## 部署
 
-GitHub Pages 直接服務 `main` 分支根目錄——推送到 `main` 即更新線上版本。
-`.nojekyll` 必須存在(否則 `js/`、`vendor/` 會被 Jekyll 排除導致 404)。
+**Vercel**(私密 repo,靜態站):推送到 `main` 自動部署。純靜態、無 build step;
+`vercel.json` 只做兩件事——`cleanUrls`(乾淨網址 `/v2`、`/tools/punch-studio`)與快取控制
+(`js/` no-cache 避免更新後拿到舊碼、`vendor/` 長快取)。所有引用皆相對路徑,根路徑服務即可。
 畫面右下角的 build tag 可確認拿到新版(必要時硬重新整理)。
+
+> 歷史:曾用 GitHub Pages 服務 `main` 根目錄(需 `.nojekyll` 避免 Jekyll 排除 `js/`/`vendor/`);
+> repo 轉私密後改用 Vercel(Pages 免費版不支援私密 repo)。
