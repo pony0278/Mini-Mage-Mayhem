@@ -109,6 +109,41 @@ export function punch(f) {
   f._strikeAt = game.time + STRIKE_DELAY[stage]; f._strikeKind = stage; f._strikeDir = f.facing; // 方向在按下瞬間鎖定(出拳有承諾)
   // 點擊就接段(空揮也演完整套);超過接段窗口才重置
   f.comboN = (stage + 1) % 3; f.comboT = COMBO_WINDOW;
+  // 精準格擋黃金窗口:這拳預測會命中對手(距離+角度,留些微餘裕)且對手格擋可用(不在冷卻)
+  // → 對手獲得「起手期」長度的反擊窗口(本機玩家另在 frame() 吃緩速+灰屏)
+  const o = fighters[1 - f.pid];
+  if (o.state === 'alive' && !o.stunned && !o.carriedBy && !o.carrying && o.invuln <= 0 && o.fumbleT <= 0 && o.pushCd <= 0) {
+    const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
+    let da = Math.atan2(dy, dx) - f.facing; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (d <= PUNCH_RANGE + o.r + 14 && Math.abs(da) <= PUNCH_CONE * 1.2) {
+      o.parryWinT = o.parryWin0 = STRIKE_DELAY[stage]; o.parryFrom = f;
+    }
+  }
+}
+// 格擋鍵的三層分派(同一顆鍵,時機決定結果):
+// 黃金窗口內=精準格擋(反暈) → 挨打後短窗=普通推開 → 都不是=空按進冷卻(防無腦連打)
+export function doGuard(f) {
+  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0) return;
+  if (f.pushCd > 0) return;                    // 冷卻中:無事發生(不重複懲罰)
+  if (f.parryWinT > 0) { doPerfectParry(f); return; }
+  if (f.pushWinT > 0) { doPushOff(f); return; }
+  f.pushCd = PUSH_CDT;                         // 空按:格擋資源被自己按掉
+  addText(f.x, f.y - 34, '格擋落空…', '#8fa8b8'); game.sfx.push('whiff');
+}
+export function doPerfectParry(d) { // 黃金窗口內按下:取消對方那拳+反暈(進入抓取回合的入場券)
+  const a = d.parryFrom;
+  d.parryWinT = 0; d.parryFrom = null; d.pushCd = PUSH_CDT;
+  if (!a || a.state !== 'alive' || a.carriedBy) return;
+  a._strikeAt = 0;                             // 那拳被你讀掉了,不存在
+  a.comboN = 0; a.comboT = 0;
+  d.facing = Math.atan2(a.y - d.y, a.x - d.x);
+  stunFighter(a);                              // 反暈!
+  inc.parries++; inc.types.add('parry');
+  const ca = Math.atan2(a.y - d.y, a.x - d.x), cpx = (d.x + a.x) / 2, cpy = (d.y + a.y) / 2;
+  hitSpark(cpx, cpy, '#fff6c9', 2.4); addRing(cpx, cpy, 42, '#ffe97a', 0.42, 6);
+  addText(d.x, d.y - 40, '完美格擋！', '#ffe97a');
+  addHitstop(0.2); addShake(8); camKick(ca, 8); game.sfx.push('smash');
+  dlog('PARRY', NAMES[d.pid], '→', NAMES[a.pid]);
 }
 export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打擊回饋
   const stage = f._strikeKind, fin = stage === 2;

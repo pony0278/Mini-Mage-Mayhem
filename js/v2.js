@@ -12,14 +12,14 @@ import { updateDeathTheater, addText, updateParticles, updateRings, updateFloati
 import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
-  v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
+  v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
   resetFighter, resetBarrels, resetPads, resetStage,
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron } from './v2-combat.js';
 import { updatePads, updateIce, updateBarrels, useItem, castWind, castTeleport, castIce, explodeBarrel } from './v2-items.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -73,10 +73,10 @@ function pollItem() {
   const pressed = [keys.has('k'), keys.has('.')];
   for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
 }
-const guardPrev = [false, false]; // 格擋鍵:藍=空白鍵, 紅(熱座)=Enter
+const guardPrev = [false, false]; // 格擋鍵:藍=空白鍵, 紅(熱座)=Enter。doGuard 三層分派:黃金窗口=反暈/挨打後=推開/空按=進冷卻
 function pollGuard() {
   const pressed = [keys.has(' '), keys.has('enter')];
-  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !guardPrev[i]) doPushOff(fighters[i]); guardPrev[i] = pressed[i]; }
+  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !guardPrev[i]) doGuard(fighters[i]); guardPrev[i] = pressed[i]; }
 }
 
 function step(dt) {
@@ -105,6 +105,7 @@ function step(dt) {
       if (f.comboT > 0) f.comboT -= dt;
       if (f.pushCd > 0) f.pushCd -= dt;
       if (f.pushWinT > 0) { f.pushWinT -= dt; if (f.pushWinT <= 0) f._aiPushAt = 0; }
+      if (f.parryWinT > 0) { f.parryWinT -= dt; if (f.parryWinT <= 0) f.parryFrom = null; } // 黃金窗口過期
       if (f.ai && f._aiPushAt && game.time >= f._aiPushAt) { f._aiPushAt = 0; doPushOff(f); } // AI 的格擋反應
       if (f._strikeAt && game.time >= f._strikeAt) resolveStrike(f); // impact 影格到 → 判定命中(起手被打斷則取消)
       // stability regen (paused right after a hit; frozen while stunned/carried)
@@ -175,9 +176,14 @@ function step(dt) {
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
 }
 
+let grayOn = false;
 function frame(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
+  let dt = Math.min(0.033, (now - last) / 1000);
   last = now;
+  // 精準格擋黃金時間:本機玩家被瞄準的起手期 → 時間放慢+畫面去彩(HUD 保持彩色,提示跳出來)
+  const parryActive = !v2s.matchOver && fighters[LOCAL].parryWinT > 0 && !fighters[LOCAL].ai;
+  if (parryActive) dt *= PARRY_SLOW;
+  if (parryActive !== grayOn) { grayOn = parryActive; gameCanvas.style.filter = parryActive ? 'saturate(0.12) brightness(0.9)' : ''; }
   updateMouseWorld(); // 滑鼠螢幕座標 → 地面世界座標(供本地玩家瞄準)
   step(dt);
   render3D();
@@ -205,7 +211,9 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
     itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses,
     throws: [inc.throws[0], inc.throws[1]], throwContains: inc.throwContains,
     fumble: [+fighters[0].fumbleT.toFixed(2), +fighters[1].fumbleT.toFixed(2)],
-    strikePending: [fighters[0]._strikeAt > 0, fighters[1]._strikeAt > 0] }) };
+    strikePending: [fighters[0]._strikeAt > 0, fighters[1]._strikeAt > 0],
+    parries: inc.parries, parryWin: [+fighters[0].parryWinT.toFixed(3), +fighters[1].parryWinT.toFixed(3)],
+    pushCd: [+fighters[0].pushCd.toFixed(2), +fighters[1].pushCd.toFixed(2)] }) };
 // 練習模式:B 鍵切換 AI 開關。關掉後紅方不動(不追、不打),當成手感練習的假人。
 // 讀 fighters[1].ai 為唯一真相(tune 面板的勾選也吃這條),HUD 據此顯示狀態。
 function toggleAI() {

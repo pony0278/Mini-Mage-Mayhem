@@ -11,6 +11,7 @@ export function mostUsedItem() {
 export function pickComment() {
   if (inc.reverseContains >= 1) return '技術上來說，有人被成功收容了。只是收錯人。';
   if (inc.throwContains >= 2) return '收容規範沒有規定受測體必須用走的進艙。委員會正在補這一條。';
+  if (inc.parries >= 3) return '受測體的反應快過收容員的拳頭。建議收容員回爐重修。';
   if (inc.itemBackfires >= 2) return '受測體最大的敵人，始終是自己手上的道具。';
   if (inc.accidentContains.ice >= 1) return '冰面很滑，收容艙很近。剩下的是物理問題。';
   if (inc.accidentContains.wind >= 1) return '風的方向，有時比法術更難預測。';
@@ -37,6 +38,7 @@ export function generateReport(winner) {
   else { name = '標準收容測試'; summary = '收容程序大致完成，僅輕微失控。'; }
   const title = inc.reverseContains >= 1 ? '換位藝術家'
     : inc.throwContains >= 2 ? '人體投籃選手'
+    : inc.parries >= 3 ? '見切大師'
     : inc.itemBackfires >= 2 ? '自助受測體'
     : inc.barrelBooms >= 3 ? '爆破藝術家'
     : ac.ice >= 1 ? '滑冰收容大師'
