@@ -503,6 +503,26 @@
     </div>
 
     <div class="section">
+      <p class="section-label">模型方向（擺正）</p>
+      <div class="btn-row">
+        <button class="btn small" id="upYBtn" title="模型已是 Y 軸朝上（glTF 標準）">Y 朝上</button>
+        <button class="btn small" id="upZBtn" title="Z 軸朝上（Blender 常見）→ 轉成 Y 朝上">Z 朝上→轉正</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px;">
+        <button class="btn small" id="yawLBtn" title="繞上軸左轉 90°">↺ 90°</button>
+        <button class="btn small" id="yawRBtn" title="繞上軸右轉 90°">↻ 90°</button>
+        <button class="btn small" id="recenterBtn" title="置中 + 落到地面（不影響匯出，僅方便檢視）">置中落地</button>
+      </div>
+      <div style="margin-top:8px;">
+        <label class="help" for="yawSlider">微調朝向（度）</label>
+        <input type="range" id="yawSlider" min="-180" max="180" step="1" value="0" style="width:100%;">
+      </div>
+      <div class="help" style="margin-top:6px;">
+        把模型轉到<b>面向 +Z（正對你）、頭朝上</b>再開始圈選。規範匯出的「正面」寫死為世界 +Z——模型朝向不對，匯出的部位會全部朝錯方向。旋轉不影響已圈選/已擷取的部位。
+      </div>
+    </div>
+
+    <div class="section">
       <p class="section-label">03 · 選取方式</p>
       <label class="checkline">
         <input type="checkbox" id="xrayToggle">
@@ -1356,6 +1376,52 @@ function rebuildPickMesh(idx) {
   pickScene.add(pickMesh);
 }
 
+// ---- 模型方向(擺正):第三方模型常見 Z-up / 面向 -Z;規範匯出的「正面」=世界 +Z,
+// 故匯入後先擺正,讓模型真實正面對齊世界 +Z。旋轉是索引保序,已圈選/已擷取的部位不受影響
+// (只需重建視覺網格)。每次都從未變換的 masterOrig 重算,避免累積誤差。 ----
+let masterOrig = null;
+const orient = { rx: 0, yaw: 0 };   // rx: 上軸修正(0 或 -90);yaw: 繞上軸旋轉(度)
+function captureMasterOrig() {
+  masterOrig = { positions: master.positions.slice(), normals: master.normals ? master.normals.slice() : null };
+  orient.rx = 0; orient.yaw = 0;
+  const ys = document.getElementById('yawSlider'); if (ys) ys.value = 0;
+}
+function applyOrient(recenter) {
+  if (!masterOrig) return;
+  const rx = orient.rx * Math.PI / 180, ry = orient.yaw * Math.PI / 180;
+  const cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry);
+  const src = masterOrig.positions, sn = masterOrig.normals;
+  const dst = master.positions, dn = master.normals, N = src.length;
+  const tf = (x, y, z, out, o) => {           // R = Ry(yaw) · Rx(上軸修正)
+    const y1 = y * cx - z * sx, z1 = y * sx + z * cx, x1 = x;
+    out[o] = x1 * cy + z1 * sy; out[o + 1] = y1; out[o + 2] = -x1 * sy + z1 * cy;
+  };
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (let i = 0; i < N; i += 3) {
+    tf(src[i], src[i + 1], src[i + 2], dst, i);
+    if (dst[i] < minX) minX = dst[i]; if (dst[i] > maxX) maxX = dst[i];
+    if (dst[i + 1] < minY) minY = dst[i + 1];
+    if (dst[i + 2] < minZ) minZ = dst[i + 2]; if (dst[i + 2] > maxZ) maxZ = dst[i + 2];
+    if (sn) tf(sn[i], sn[i + 1], sn[i + 2], dn, i); // 純旋轉:法線同轉(正交)
+  }
+  if (recenter) {
+    const ox = (minX + maxX) / 2, oz = (minZ + maxZ) / 2, oy = minY; // 置中 XZ、落地 min-Y
+    for (let i = 0; i < N; i += 3) { dst[i] -= ox; dst[i + 1] -= oy; dst[i + 2] -= oz; }
+  }
+  adjacency = null;                 // 位置變了 → 鄰接快取作廢(下次用時重建)
+  rebuildRemainingMesh();
+  for (const part of parts) {       // 重建已擷取部位的視覺網格(資料是索引,方向已跟著更新)
+    scene.remove(part.mesh); part.mesh.geometry.dispose();
+    part.mesh = buildPartMesh(part); scene.add(part.mesh);
+  }
+  updateHighlight();
+  initWorker();                     // 重送新頂點給選取 worker
+}
+function syncYaw() {
+  orient.yaw = ((orient.yaw + 180) % 360 + 360) % 360 - 180;
+  const ys = document.getElementById('yawSlider'); if (ys) ys.value = orient.yaw;
+}
+
 function buildPartMesh(part) {
   const mesh = new THREE.Mesh(buildSoupGeometry(part.indices), makeMaterial(part.color));
   mesh.name = part.name;
@@ -1432,7 +1498,7 @@ function clearModel() {
   if (pickMesh) { pickScene.remove(pickMesh); pickMesh.geometry.dispose(); pickMesh.material.dispose(); pickMesh = null; }
   parts.forEach((p) => { scene.remove(p.mesh); p.mesh.geometry.dispose(); });
   parts = [];
-  master = null; assign = null; remainingCount = 0;
+  master = null; masterOrig = null; assign = null; remainingCount = 0;
   selected = new Set();
   adjacency = null;
   history = [];
@@ -1463,6 +1529,7 @@ function handleFile(file) {
         try {
           clearModel();
           master = mergeSceneToMaster(gltf.scene);
+          captureMasterOrig();
           assign = new Uint32Array(master.triCount);
           remainingCount = master.triCount;
           rebuildRemainingMesh();
@@ -2392,6 +2459,13 @@ function bindUI() {
   growSelBtn.addEventListener('click', doGrow);
   shrinkSelBtn.addEventListener('click', doShrink);
   mirrorSelBtn.addEventListener('click', doMirror);
+  // 模型方向(擺正):上軸切換/90° 快轉/微調滑桿/置中落地
+  document.getElementById('upYBtn').addEventListener('click', () => { orient.rx = 0; applyOrient(false); if (mainMesh) fitCameraToObject(mainMesh); });
+  document.getElementById('upZBtn').addEventListener('click', () => { orient.rx = -90; applyOrient(false); if (mainMesh) fitCameraToObject(mainMesh); });
+  document.getElementById('yawLBtn').addEventListener('click', () => { orient.yaw -= 90; syncYaw(); applyOrient(false); });
+  document.getElementById('yawRBtn').addEventListener('click', () => { orient.yaw += 90; syncYaw(); applyOrient(false); });
+  document.getElementById('recenterBtn').addEventListener('click', () => { applyOrient(true); if (mainMesh) fitCameraToObject(mainMesh); });
+  document.getElementById('yawSlider').addEventListener('input', (e) => { orient.yaw = Number(e.target.value); applyOrient(false); });
   saveSessionBtn.addEventListener('click', saveSession);
   document.getElementById('slotSelect').addEventListener('change', autoPickSeam);
   document.getElementById('seamSelect').addEventListener('change', renderSpecReport);
