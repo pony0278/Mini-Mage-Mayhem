@@ -45,6 +45,9 @@
     display:flex;
     flex-direction:column;
     min-width:0;
+    overflow-y:auto;   /* 小螢幕:面板內容超出時自身捲動,底部按鈕才點得到 */
+    min-height:0;
+    overscroll-behavior:contain;
   }
   .panel.right{
     border-right:none;
@@ -53,6 +56,11 @@
   .panel-head{
     padding:18px 18px 14px;
     border-bottom:1px solid var(--border-soft);
+    position:sticky;   /* 捲動時標題釘在頂端,永遠看得到工具名 */
+    top:0;
+    z-index:5;
+    background:var(--panel);
+    flex-shrink:0;
   }
   .brand{
     display:flex;
