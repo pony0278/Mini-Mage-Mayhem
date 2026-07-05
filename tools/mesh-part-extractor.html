@@ -831,6 +831,7 @@ function mirrorSelection(positions, triCount, sel, selectable, centerX, eps) {
   const cx = new Float64Array(triCount), cy = new Float64Array(triCount), cz = new Float64Array(triCount);
   const rad = new Float64Array(triCount);   // 每面自適應半徑 = 最長邊長(至少 eps)
   const d3 = (a, b) => Math.hypot(positions[a] - positions[b], positions[a+1] - positions[b+1], positions[a+2] - positions[b+2]);
+  let sumRad = 0, radN = 0;
   for (let t = 0; t < triCount; t++) {
     if (!selectable[t]) continue;
     const o = t * 9;
@@ -838,9 +839,11 @@ function mirrorSelection(positions, triCount, sel, selectable, centerX, eps) {
     cy[t] = (positions[o+1] + positions[o+4] + positions[o+7]) / 3;
     cz[t] = (positions[o+2] + positions[o+5] + positions[o+8]) / 3;
     rad[t] = Math.max(d3(o, o+3), d3(o+3, o+6), d3(o+6, o), eps);
+    sumRad += rad[t]; radN++;
   }
-  // 空間網格(cell = 2×eps 起,查詢時按半徑擴圈)
-  const cell = eps * 2, inv = 1 / cell;
+  // 空間網格:格子=典型三角形尺寸(平均最長邊),而非細小的 eps —— 否則低模(大三角形)
+  // 的查詢半徑遠大於格子,三層迴圈 n³ 爆炸拖垮瀏覽器(舊 bug:數百面 = 卡死)。
+  const cell = Math.max(eps * 2, radN ? sumRad / radN : eps * 2), inv = 1 / cell;
   const grid = new Map();
   for (let t = 0; t < triCount; t++) {
     if (!selectable[t]) continue;
@@ -848,7 +851,7 @@ function mirrorSelection(positions, triCount, sel, selectable, centerX, eps) {
     let arr = grid.get(key); if (!arr) { arr = []; grid.set(key, arr); } arr.push(t);
   }
   const nearest = (x, y, z, R) => {
-    const n = Math.max(1, Math.ceil(R * inv));
+    const n = Math.min(6, Math.max(1, Math.ceil(R * inv)));
     const gx = Math.round(x * inv), gy = Math.round(y * inv), gz = Math.round(z * inv);
     let best = -1, bestD = R * R;
     for (let dx = -n; dx <= n; dx++) for (let dy = -n; dy <= n; dy++) for (let dz = -n; dz <= n; dz++) {
@@ -903,7 +906,7 @@ function mirrorSelection(positions, triCount, sel, selectable, centerX, eps) {
     let arr = srcGrid.get(key); if (!arr) { arr = []; srcGrid.set(key, arr); } arr.push(t);
   }
   const nearSrc = (x, y, z, R) => {
-    const n = Math.max(1, Math.ceil(R * inv));
+    const n = Math.min(6, Math.max(1, Math.ceil(R * inv)));
     const gx = Math.round(x * inv), gy = Math.round(y * inv), gz = Math.round(z * inv);
     const R2 = R * R;
     for (let dx = -n; dx <= n; dx++) for (let dy = -n; dy <= n; dy++) for (let dz = -n; dz <= n; dz++) {
