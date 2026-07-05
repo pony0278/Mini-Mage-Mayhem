@@ -503,10 +503,16 @@
 
     <div class="section">
       <p class="section-label">02 · 檢視模式</p>
-      <div class="toggle-row" id="modeToggle">
+      <div class="toggle-row" id="modeToggle" style="flex-wrap:wrap;">
         <button data-mode="orbit" class="active" title="左鍵旋轉・中/右鍵平移・滾輪縮放">🖐 旋轉</button>
         <button data-mode="lasso" title="左鍵圈選(Shift 加選/Alt 減選)・中/右鍵拖曳平移視角">✏️ 套索</button>
         <button data-mode="wand" title="左鍵點選相連區域・中/右鍵拖曳平移視角">🪄 魔術棒</button>
+        <button data-mode="cut" title="美工刀:每一刀套索都是「從選取刪除」,不用按 Alt——連體雜邊連續切到乾淨">🔪 修邊</button>
+        <button data-mode="brush" title="橡皮擦:按住拖曳,塗過的面從選取移除;大小用下方滑桿">🧽 擦除</button>
+      </div>
+      <div id="brushRow" style="display:none; margin-top:8px;">
+        <label class="help" for="brushSize">筆刷大小(px)</label>
+        <input type="range" id="brushSize" min="6" max="48" step="1" value="16" style="width:100%;">
       </div>
     </div>
 
@@ -737,6 +743,8 @@ let xrayMode = false;
 let isDragging = false;
 let lassoPoints = [];
 let lassoModifierMode = 'replace';
+let brushPts = [];            // 🧽 擦除筆畫(螢幕座標)
+let brushHover = null;        // 擦除模式的游標圓提示
 let dashOffset = 0;
 let selectionBusy = false;
 
@@ -1310,7 +1318,9 @@ function resizeRenderer() {
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
-  if (isDragging) {
+  if (mode === 'brush') {
+    drawBrushOverlay();
+  } else if (isDragging) {
     dashOffset = (dashOffset + 0.6) % 1000;
     drawLassoPath();
   }
@@ -2037,6 +2047,50 @@ function refreshPreviewControls() {
 // ---------- overlay ----------
 function clearOverlay() { overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); }
 
+// 🧽 筆畫 → 封閉外框多邊形(左右各偏移 r;端點先沿切線外推 r 當圓帽近似),
+// 之後丟進與套索完全相同的選取管線(可視/X-ray 全繼承)。自交叉的筆畫外框會有
+// even-odd 空洞,直線塗抹無感;真要來回塗就分多刀。
+function brushOutline(pts, r) {
+  if (!pts.length) return [];
+  if (pts.length === 1) {
+    const c = pts[0], poly = [];
+    for (let i = 0; i < 12; i++) poly.push({ x: c.x + Math.cos(i / 6 * Math.PI) * r, y: c.y + Math.sin(i / 6 * Math.PI) * r });
+    return poly;
+  }
+  const p = pts.slice();
+  const d0 = { x: p[0].x - p[1].x, y: p[0].y - p[1].y }, l0 = Math.hypot(d0.x, d0.y) || 1;
+  p.unshift({ x: p[0].x + d0.x / l0 * r, y: p[0].y + d0.y / l0 * r });               // 起點圓帽外推
+  const n = p.length, dE = { x: p[n - 1].x - p[n - 2].x, y: p[n - 1].y - p[n - 2].y }, lE = Math.hypot(dE.x, dE.y) || 1;
+  p.push({ x: p[n - 1].x + dE.x / lE * r, y: p[n - 1].y + dE.y / lE * r });          // 終點圓帽外推
+  const left = [], right = [];
+  for (let i = 0; i < p.length; i++) {
+    const a = p[Math.max(0, i - 1)], b = p[Math.min(p.length - 1, i + 1)];
+    let dx = b.x - a.x, dy = b.y - a.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+    left.push({ x: p[i].x - dy * r, y: p[i].y + dx * r });
+    right.push({ x: p[i].x + dy * r, y: p[i].y - dx * r });
+  }
+  return left.concat(right.reverse());
+}
+function drawBrushOverlay() { // 每幀:筆畫軌跡(紅色半透明粗線)+ 游標圓
+  clearOverlay();
+  const r = Number(document.getElementById('brushSize')?.value) || 16;
+  overlayCtx.save();
+  if (brushPts.length) {
+    overlayCtx.lineWidth = r * 2; overlayCtx.lineCap = 'round'; overlayCtx.lineJoin = 'round';
+    overlayCtx.strokeStyle = 'rgba(239,111,111,0.35)';
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(brushPts[0].x, brushPts[0].y);
+    for (let i = 1; i < brushPts.length; i++) overlayCtx.lineTo(brushPts[i].x, brushPts[i].y);
+    if (brushPts.length === 1) overlayCtx.lineTo(brushPts[0].x + 0.01, brushPts[0].y);
+    overlayCtx.stroke();
+  }
+  if (brushHover) {
+    overlayCtx.lineWidth = 1.5; overlayCtx.strokeStyle = '#ef6f6f'; overlayCtx.setLineDash([4, 3]);
+    overlayCtx.beginPath(); overlayCtx.arc(brushHover.x, brushHover.y, r, 0, Math.PI * 2); overlayCtx.stroke();
+  }
+  overlayCtx.restore();
+}
+
 function drawLassoPath() {
   clearOverlay();
   if (lassoPoints.length < 2) return;
@@ -2541,10 +2595,12 @@ function setMode(next) {
   mode = next;
   controls.enabled = mode === 'orbit';
   overlayCanvas.classList.toggle('active', mode !== 'orbit');
-  const labels = { orbit: '旋轉檢視中', lasso: '套索選取中', wand: '魔術棒選取中' };
+  const labels = { orbit: '旋轉檢視中', lasso: '套索選取中', wand: '魔術棒選取中', cut: '修邊中(每一刀=刪除)', wand2: '', brush: '擦除中(塗過=刪除)' };
   modeBadge.textContent = labels[mode];
   modeBadge.className = 'mode-badge ' + mode;
-  [...modeToggle.children].forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  [...modeToggle.querySelectorAll('button')].forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  const br = document.getElementById('brushRow'); if (br) br.style.display = mode === 'brush' ? '' : 'none';
+  brushPts = []; brushHover = null; clearOverlay();
 }
 
 function bindUI() {
@@ -2649,13 +2705,19 @@ function bindUI() {
       return;
     }
     if (e.button !== 0) return;                        // 其他按鍵不觸發圈選
-    const modifier = e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace';
+    if (mode === 'brush') {                             // 🧽 擦除:開始筆畫
+      isDragging = true; lassoModifierMode = 'subtract';
+      brushPts = [getCanvasPoint(e)];
+      overlayCanvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    const modifier = mode === 'cut' ? 'subtract' : (e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace'); // 🔪 修邊:每刀都是刪
     if (mode === 'wand') {
       const p = getCanvasPoint(e);
       wandSelect(p.x, p.y, modifier);
       return;
     }
-    if (mode !== 'lasso') return;
+    if (mode !== 'lasso' && mode !== 'cut') return;
     isDragging = true;
     lassoModifierMode = modifier;
     lassoPoints = [getCanvasPoint(e)];
@@ -2663,6 +2725,14 @@ function bindUI() {
   });
   overlayCanvas.addEventListener('pointermove', (e) => {
     if (panDrag) { panCamera(e.clientX - panLastX, e.clientY - panLastY); panLastX = e.clientX; panLastY = e.clientY; return; }
+    if (mode === 'brush') {
+      brushHover = getCanvasPoint(e);                   // 游標圓提示(未按下也畫)
+      if (isDragging) {
+        const p = brushHover, last = brushPts[brushPts.length - 1];
+        if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= 3) brushPts.push(p); // 去抖:相鄰點 ≥3px
+      }
+      return;
+    }
     if (!isDragging) return;
     lassoPoints.push(getCanvasPoint(e));
   });
@@ -2671,6 +2741,14 @@ function bindUI() {
     if (!isDragging) return;
     isDragging = false;
     try { overlayCanvas.releasePointerCapture(e.pointerId); } catch (err) {}
+    if (mode === 'brush') {                             // 🧽 筆畫 → 外框多邊形 → 走既有減選管線
+      const r = Number(document.getElementById('brushSize')?.value) || 16;
+      const poly = brushOutline(brushPts, r);
+      if (poly.length >= 3) finishLassoSelection(poly, 'subtract');
+      brushPts = [];
+      clearOverlay();
+      return;
+    }
     if (lassoPoints.length >= 3) finishLassoSelection(lassoPoints.slice(), lassoModifierMode);
     lassoPoints = [];
     clearOverlay();
@@ -2692,6 +2770,9 @@ window.__mpe = {
   openSpecExport, get specState() { return specModalState; },
   setPartName(n) { partNameInput.value = n; },
   autoAlignYaw, toggleAxes, frontView, doDeburr,
+  project(x, y, z) { const v = new THREE.Vector3(x, y, z).project(camera);   // 世界→視窗座標(健檢腳本瞄準用)
+    const r = renderer.domElement.getBoundingClientRect();
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - (v.y + 1) / 2) * r.height }; },
   bounds() { if (!master) return null; const b = modelBounds(); return { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] }; },
 };
 </script>
