@@ -18,8 +18,10 @@
 ## 1. 工具
 
 - **編排器本體**:[`tools/punch-studio.html`](../tools/punch-studio.html)(repo 內收藏版;開發工具,不隨遊戲部署)。
-  **線上即開**:<https://pony0278.github.io/Mini-Mage-Mayhem/tools/punch-studio.html>
+  **線上即開**:Vercel 正式網址的 `/tools/punch-studio`
   (它從 CDN 載 three r128 + Google Fonts,需要網路;與遊戲 vendored r149 無關、互不影響)。
+  JS 主體拆檔在 [`tools/ps/`](../tools/ps/)——古典 script 共享全域、依 HTML 順序載入;
+  改碼唯一規則(每檔 hoisting:載入期程式不得前向呼叫後面的檔案)見 `tools/ps/README.md`。
 - 內建:47 軸姿勢 slider、自由時間軸(拖 key 調 timing)、per-limb LAG、打擊感試打台(hitstop/震動/沙包)、
   JSON 匯出/匯入、CANCEL 點 combo 串接、GLB 部位替換(整包 bundle 或分檔,按節點/檔名對應 15 slot)。
 - **預設人偶**:punch-studio 開機自動掛載同目錄的 `meshy-mannequin.glb`(玩家的 Meshy 角色,
