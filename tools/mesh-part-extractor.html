@@ -513,6 +513,14 @@
         <button class="btn small" id="yawRBtn" title="繞上軸右轉 90°">↻ 90°</button>
         <button class="btn small" id="recenterBtn" title="置中 + 落到地面（不影響匯出，僅方便檢視）">置中落地</button>
       </div>
+      <div class="btn-row" style="margin-top:6px;">
+        <button class="btn small" id="autoAlignBtn" title="對稱分析(PCA):自動把 T-pose 的手臂軸對齊 X 軸——正面就會對準 ±Z,不用手調">✨ 自動對正</button>
+        <button class="btn small" id="flip180Btn" title="轉 180°(自動對正分不出前後時按這個翻面)">↔ 180°</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px;">
+        <button class="btn small" id="axesBtn" title="顯示世界軸與地面網格:藍=正面 +Z(匯出基準)、紅=右 +X、綠=上 +Y">⊞ 軸線</button>
+        <button class="btn small" id="frontViewBtn" title="鏡頭切到正對 +Z 直視:任何歪斜會顯示成左右不對稱,一眼可校">⊙ 正視圖</button>
+      </div>
       <div style="margin-top:8px;">
         <label class="help" for="yawSlider">微調朝向（度）</label>
         <input type="range" id="yawSlider" min="-180" max="180" step="1" value="0" style="width:100%;">
@@ -1430,6 +1438,69 @@ function applyOrient() {
 function syncYaw() {
   orient.yaw = ((orient.yaw + 180) % 360 + 360) % 360 - 180;
   const ys = document.getElementById('yawSlider'); if (ys) ys.value = orient.yaw;
+}
+
+// ── 自動對正(PCA):三角形重心在 XZ 平面的主軸=T-pose 手臂線,轉回 +X → 正面對齊 ±Z。
+// θ = 0.5·atan2(2Sxz, Sxx−Szz);前後 180° 歧義由「↔ 180°」鈕解(對稱模型左右翻面無感)。
+function autoAlignYaw() {
+  if (!master) return;
+  const pos = master.positions, tc = master.triCount, stride = Math.max(1, Math.floor(tc / 30000));
+  let mx = 0, mz = 0, n = 0;
+  for (let t = 0; t < tc; t += stride) {
+    const o = t * 9;
+    mx += (pos[o] + pos[o+3] + pos[o+6]) / 3; mz += (pos[o+2] + pos[o+5] + pos[o+8]) / 3; n++;
+  }
+  mx /= n; mz /= n;
+  let sxx = 0, szz = 0, sxz = 0;
+  for (let t = 0; t < tc; t += stride) {
+    const o = t * 9;
+    const x = (pos[o] + pos[o+3] + pos[o+6]) / 3 - mx, z = (pos[o+2] + pos[o+5] + pos[o+8]) / 3 - mz;
+    sxx += x * x; szz += z * z; sxz += x * z;
+  }
+  const theta = 0.5 * Math.atan2(2 * sxz, sxx - szz) * 180 / Math.PI;
+  orient.yaw += theta; syncYaw(); applyOrient();
+  statusBar.textContent = `自動對正:主軸偏角 ${theta.toFixed(1)}° 已修正。按「⊙ 正視圖」確認;臉朝後就按「↔ 180°」。`;
+}
+
+// ── 世界軸線/網格(匯出基準的可視化;藍箭頭=正面 +Z) ──
+let axesGroup = null;
+function axisLabel(text, color) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  g.font = '900 42px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 8; g.strokeStyle = 'rgba(10,12,16,0.9)'; g.strokeText(text, 128, 32);
+  g.fillStyle = color; g.fillText(text, 128, 32);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
+  return sp;
+}
+function toggleAxes() {
+  if (axesGroup) {
+    scene.remove(axesGroup);
+    axesGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+    axesGroup = null;
+    document.getElementById('axesBtn').style.color = '';
+    return;
+  }
+  const box = master ? modelBounds() : new THREE.Box3(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 2, 1));
+  const size = Math.max(box.getSize(new THREE.Vector3()).length() * 0.8, 0.5);
+  axesGroup = new THREE.Group();
+  const grid = new THREE.GridHelper(size * 2, 20, 0x3a4048, 0x23272e);
+  grid.position.y = 0; axesGroup.add(grid);
+  const mkArrow = (dir, color) => axesGroup.add(new THREE.ArrowHelper(dir, new THREE.Vector3(0, 0.001, 0), size, color, size * 0.08, size * 0.04));
+  mkArrow(new THREE.Vector3(1, 0, 0), 0xff5c5c);   // +X 右
+  mkArrow(new THREE.Vector3(0, 1, 0), 0x6dff9e);   // +Y 上
+  mkArrow(new THREE.Vector3(0, 0, 1), 0x53a8ff);   // +Z 正面(匯出基準)
+  const lz = axisLabel('正面 +Z', '#53a8ff'); lz.position.set(0, size * 0.08, size * 1.12); lz.scale.set(size * 0.5, size * 0.125, 1); axesGroup.add(lz);
+  const lx = axisLabel('右 +X', '#ff5c5c'); lx.position.set(size * 1.12, size * 0.08, 0); lx.scale.set(size * 0.4, size * 0.1, 1); axesGroup.add(lx);
+  scene.add(axesGroup);
+  document.getElementById('axesBtn').style.color = 'var(--accent, #4fd1c5)';
+}
+function frontView() { // 正對 +Z 直視:歪斜=可見的左右不對稱
+  const box = master ? modelBounds() : null; if (!box) return;
+  const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+  const dist = Math.max(sz.x, sz.y) * 1.4 + sz.z;
+  camera.position.set(c.x, c.y, c.z + dist);
+  controls.target.copy(c); controls.update();
 }
 
 function buildPartMesh(part) {
@@ -2476,6 +2547,10 @@ function bindUI() {
   document.getElementById('yawRBtn').addEventListener('click', () => { orient.yaw += 90; syncYaw(); applyOrient(); });
   document.getElementById('recenterBtn').addEventListener('click', () => { orient.recenter = !orient.recenter; syncRecenterBtn(); applyOrient(); if (mainMesh) fitCameraToObject(mainMesh); }); // 切換式:之後任何旋轉都保持置中落地
   document.getElementById('yawSlider').addEventListener('input', (e) => { orient.yaw = Number(e.target.value); applyOrient(); });
+  document.getElementById('autoAlignBtn').addEventListener('click', autoAlignYaw);
+  document.getElementById('flip180Btn').addEventListener('click', () => { orient.yaw += 180; syncYaw(); applyOrient(); });
+  document.getElementById('axesBtn').addEventListener('click', toggleAxes);
+  document.getElementById('frontViewBtn').addEventListener('click', frontView);
   saveSessionBtn.addEventListener('click', saveSession);
   document.getElementById('slotSelect').addEventListener('change', autoPickSeam);
   document.getElementById('seamSelect').addEventListener('change', renderSpecReport);
@@ -2560,6 +2635,7 @@ window.__mpe = {
   orient, applyOrient, doMirror, applySelectionResult, extractPart,
   openSpecExport, get specState() { return specModalState; },
   setPartName(n) { partNameInput.value = n; },
+  autoAlignYaw, toggleAxes, frontView,
   bounds() { if (!master) return null; const b = modelBounds(); return { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] }; },
 };
 </script>
