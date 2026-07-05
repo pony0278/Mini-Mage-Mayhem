@@ -547,6 +547,7 @@
         <button class="btn small" id="growSelBtn" disabled title="沿鄰接面向外擴張一圈">⊕ 擴張</button>
         <button class="btn small" id="shrinkSelBtn" disabled title="從邊界向內收縮一圈">⊖ 收縮</button>
         <button class="btn small" id="mirrorSelBtn" disabled title="沿 X 軸加選對稱面（適合左右對稱角色）">⇋ 鏡像</button>
+        <button class="btn small" id="deburrSelBtn" disabled title="刪掉與主體不相連的零碎小島（<最大島 25%）；鏡像成對的雙島會保留。快捷鍵 Delete">🧹 去雜邊</button>
       </div>
     </div>
 
@@ -700,6 +701,7 @@ const previewExitBtn = document.getElementById('previewExitBtn');
 const growSelBtn = document.getElementById('growSelBtn');
 const shrinkSelBtn = document.getElementById('shrinkSelBtn');
 const mirrorSelBtn = document.getElementById('mirrorSelBtn');
+const deburrSelBtn = document.getElementById('deburrSelBtn');
 const saveSessionBtn = document.getElementById('saveSessionBtn');
 const sessionInput = document.getElementById('sessionInput');
 
@@ -1788,6 +1790,46 @@ function doShrink() {
     applySelectionResult(shrinkSelection(adjacency, selected, buildSelectableMask()), 'replace');
   });
 }
+// 去雜邊:對「目前選取」做連通分量分析,刪掉遠小於最大島(<25%)的碎片。
+// 門檻設 25% 而非「只留最大」:鏡像成對的雙島尺寸相近,兩邊都會保留;雜邊通常只有幾面,穩刪。
+function deburrSelection(adj, sel) {
+  const { vertWeld, offsets, items } = adj;
+  const inSel = sel instanceof Set ? sel : new Set(sel);
+  const visited = new Set();
+  const comps = [];
+  for (const seed of inSel) {
+    if (visited.has(seed)) continue;
+    const comp = []; const stack = [seed]; visited.add(seed);
+    while (stack.length) {
+      const t = stack.pop(); comp.push(t);
+      for (let c = 0; c < 3; c++) {
+        const w = vertWeld[t * 3 + c];
+        for (let i = offsets[w]; i < offsets[w + 1]; i++) {
+          const u = items[i];
+          if (inSel.has(u) && !visited.has(u)) { visited.add(u); stack.push(u); }
+        }
+      }
+    }
+    comps.push(comp);
+  }
+  if (comps.length <= 1) return { out: inSel, removed: 0, islands: comps.length, kept: comps.length };
+  const maxLen = Math.max(...comps.map(c => c.length));
+  const keep = new Set(); let removed = 0, kept = 0;
+  for (const c of comps) {
+    if (c.length >= maxLen * 0.25) { for (const t of c) keep.add(t); kept++; }
+    else removed += c.length;
+  }
+  return { out: keep, removed, islands: comps.length, kept };
+}
+function doDeburr() {
+  if (selected.size === 0 || !master) return;
+  ensureAdjacency(() => {
+    const r = deburrSelection(adjacency, selected);
+    if (!r.removed) { statusBar.textContent = `去雜邊:選取只有 ${r.islands} 個相連區塊,沒有可刪的碎片`; return; }
+    applySelectionResult(r.out, 'replace');
+    statusBar.textContent = `去雜邊:刪掉 ${r.islands - r.kept} 個碎島(共 ${r.removed.toLocaleString()} 面),保留 ${r.kept} 個主體 — Ctrl+Z 可復原`;
+  });
+}
 function doMirror() {
   if (selected.size === 0 || !master) return;
   const box = modelBounds();
@@ -1912,6 +1954,7 @@ function setControlsLocked(locked) {
   growSelBtn.disabled = locked;
   shrinkSelBtn.disabled = locked;
   mirrorSelBtn.disabled = locked;
+  deburrSelBtn.disabled = locked;
   fileDrop.style.pointerEvents = locked ? 'none' : '';
   fileDrop.style.opacity = locked ? '0.5' : '';
   partsListEl.querySelectorAll('.del-btn, .vis-toggle, .export-one-btn, .spec-export-btn').forEach((el) => (el.disabled = locked));
@@ -2424,6 +2467,7 @@ function updateStats() {
   growSelBtn.disabled = !hasSel;
   shrinkSelBtn.disabled = !hasSel;
   mirrorSelBtn.disabled = !hasSel;
+  deburrSelBtn.disabled = !hasSel;
   refreshPreviewControls();
 }
 
@@ -2540,6 +2584,7 @@ function bindUI() {
   growSelBtn.addEventListener('click', doGrow);
   shrinkSelBtn.addEventListener('click', doShrink);
   mirrorSelBtn.addEventListener('click', doMirror);
+  deburrSelBtn.addEventListener('click', doDeburr);
   // 模型方向(擺正):上軸切換/90° 快轉/微調滑桿/置中落地
   document.getElementById('upYBtn').addEventListener('click', () => { orient.rx = 0; applyOrient(); if (mainMesh) fitCameraToObject(mainMesh); });
   document.getElementById('upZBtn').addEventListener('click', () => { orient.rx = -90; applyOrient(); if (mainMesh) fitCameraToObject(mainMesh); });
@@ -2563,11 +2608,14 @@ function bindUI() {
   });
 
   window.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-      const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return; // 不攔截文字欄位的原生復原
       e.preventDefault();
       undo();
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+      if (selected.size > 0) { e.preventDefault(); doDeburr(); } // Delete=去雜邊(玩家反饋:套索多圈的碎片一鍵清)
     }
   });
 
@@ -2635,7 +2683,7 @@ window.__mpe = {
   orient, applyOrient, doMirror, applySelectionResult, extractPart,
   openSpecExport, get specState() { return specModalState; },
   setPartName(n) { partNameInput.value = n; },
-  autoAlignYaw, toggleAxes, frontView,
+  autoAlignYaw, toggleAxes, frontView, doDeburr,
   bounds() { if (!master) return null; const b = modelBounds(); return { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] }; },
 };
 </script>
