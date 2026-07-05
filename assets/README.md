@@ -19,6 +19,7 @@
 | 檔案 | 狀態 |
 |---|---|
 | `raw/model.glb` | 整塊來源模型(Blender 匯出) |
+| `raw/meshy-figure-source.glb` | Meshy AI 產的分件角色(13 部位,KHR 量化)——`tools/meshy-mannequin.glb` 的來源;重產跑 `tools/meshy-convert.mjs` |
 | `parts/head.glb` | 已切出,待規範匯出 |
 | `parts/hand_l.glb` / `parts/hand_r.glb` | 已切出,待規範匯出 |
 | `parts/front_arm.glb` | 已切出,**待規範匯出時需確認**:命名沒有 `_l`/`_r`,PUNCH STUDIO 的 slot 自動判斷認不出左右——規範匯出面板手動選對 `upper_arm_l`/`upper_arm_r`(或 `forearm_l/r`,依實際是上臂還是前臂)即可,不影響幾何本身。

@@ -3681,6 +3681,25 @@ updatePartsStatus();
 
 requestAnimationFrame(tick);
 
+// 預設人偶:同目錄的 meshy-mannequin.glb 存在就自動掛載(Meshy 轉換管線產物;
+// 404/離線靜默略過,維持內建素體)。tools/meshy-convert.mjs 可重產。
+(async () => {
+  try {
+    const resp = await fetch('meshy-mannequin.glb');
+    if (!resp.ok) return;
+    const ab = await resp.arrayBuffer();
+    const ok = await loadPartFile(new File([ab], 'meshy-mannequin.glb'));
+    if (ok) updatePartsStatus(`預設人偶已自動掛載:meshy-mannequin.glb(${Object.keys(PART_MODELS).length} 部位)。要回素體按「清空部位」。`);
+  } catch (e) { /* 保持素體 */ }
+})();
+
+// headless 健檢 hook(比照抽取器 __mpe)
+window.__ps = {
+  get parts() { return Object.keys(PART_MODELS); },
+  get dummyHidden() { return PARTS_HIDE_DUMMY; },
+  applyPose, get PHASES() { return PHASES; }, get SEQ() { return SEQ; },
+};
+
 // ===== 遊戲端整合小工具(Mini Mage Mayhem)=====
 // A. 招式庫:具名槽存/載/刪 + 全部匯出(localStorage;編一整套招式不再互相覆蓋)
 // B. 🎮 遊戲視角:一鍵切到遊戲取景(fov32/俯角44°/看角色背面)驗動作可讀性,再按一次還原
