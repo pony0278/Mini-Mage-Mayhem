@@ -1383,13 +1383,20 @@ function rebuildPickMesh(idx) {
 // 故匯入後先擺正,讓模型真實正面對齊世界 +Z。旋轉是索引保序,已圈選/已擷取的部位不受影響
 // (只需重建視覺網格)。每次都從未變換的 masterOrig 重算,避免累積誤差。 ----
 let masterOrig = null;
-const orient = { rx: 0, yaw: 0 };   // rx: 上軸修正(0 或 -90);yaw: 繞上軸旋轉(度)
+const orient = { rx: 0, yaw: 0, recenter: false };   // rx: 上軸修正(0/-90);yaw: 繞上軸旋轉(度);recenter: 置中落地(持續狀態,每次重算都套用)
 function captureMasterOrig() {
   masterOrig = { positions: master.positions.slice(), normals: master.normals ? master.normals.slice() : null };
-  orient.rx = 0; orient.yaw = 0;
+  orient.rx = 0; orient.yaw = 0; orient.recenter = false;
   const ys = document.getElementById('yawSlider'); if (ys) ys.value = 0;
+  syncRecenterBtn();
 }
-function applyOrient(recenter) {
+function syncRecenterBtn() {
+  const b = document.getElementById('recenterBtn'); if (!b) return;
+  b.style.borderColor = orient.recenter ? 'var(--accent, #4fd1c5)' : '';
+  b.style.color = orient.recenter ? 'var(--accent, #4fd1c5)' : '';
+  b.textContent = orient.recenter ? '✓ 置中落地' : '置中落地';
+}
+function applyOrient() {
   if (!masterOrig) return;
   const rx = orient.rx * Math.PI / 180, ry = orient.yaw * Math.PI / 180;
   const cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry);
@@ -1407,7 +1414,7 @@ function applyOrient(recenter) {
     if (dst[i + 2] < minZ) minZ = dst[i + 2]; if (dst[i + 2] > maxZ) maxZ = dst[i + 2];
     if (sn) tf(sn[i], sn[i + 1], sn[i + 2], dn, i); // 純旋轉:法線同轉(正交)
   }
-  if (recenter) {
+  if (orient.recenter) {
     const ox = (minX + maxX) / 2, oz = (minZ + maxZ) / 2, oy = minY; // 置中 XZ、落地 min-Y
     for (let i = 0; i < N; i += 3) { dst[i] -= ox; dst[i + 1] -= oy; dst[i + 2] -= oz; }
   }
@@ -2463,12 +2470,12 @@ function bindUI() {
   shrinkSelBtn.addEventListener('click', doShrink);
   mirrorSelBtn.addEventListener('click', doMirror);
   // 模型方向(擺正):上軸切換/90° 快轉/微調滑桿/置中落地
-  document.getElementById('upYBtn').addEventListener('click', () => { orient.rx = 0; applyOrient(false); if (mainMesh) fitCameraToObject(mainMesh); });
-  document.getElementById('upZBtn').addEventListener('click', () => { orient.rx = -90; applyOrient(false); if (mainMesh) fitCameraToObject(mainMesh); });
-  document.getElementById('yawLBtn').addEventListener('click', () => { orient.yaw -= 90; syncYaw(); applyOrient(false); });
-  document.getElementById('yawRBtn').addEventListener('click', () => { orient.yaw += 90; syncYaw(); applyOrient(false); });
-  document.getElementById('recenterBtn').addEventListener('click', () => { applyOrient(true); if (mainMesh) fitCameraToObject(mainMesh); });
-  document.getElementById('yawSlider').addEventListener('input', (e) => { orient.yaw = Number(e.target.value); applyOrient(false); });
+  document.getElementById('upYBtn').addEventListener('click', () => { orient.rx = 0; applyOrient(); if (mainMesh) fitCameraToObject(mainMesh); });
+  document.getElementById('upZBtn').addEventListener('click', () => { orient.rx = -90; applyOrient(); if (mainMesh) fitCameraToObject(mainMesh); });
+  document.getElementById('yawLBtn').addEventListener('click', () => { orient.yaw -= 90; syncYaw(); applyOrient(); });
+  document.getElementById('yawRBtn').addEventListener('click', () => { orient.yaw += 90; syncYaw(); applyOrient(); });
+  document.getElementById('recenterBtn').addEventListener('click', () => { orient.recenter = !orient.recenter; syncRecenterBtn(); applyOrient(); if (mainMesh) fitCameraToObject(mainMesh); }); // 切換式:之後任何旋轉都保持置中落地
+  document.getElementById('yawSlider').addEventListener('input', (e) => { orient.yaw = Number(e.target.value); applyOrient(); });
   saveSessionBtn.addEventListener('click', saveSession);
   document.getElementById('slotSelect').addEventListener('change', autoPickSeam);
   document.getElementById('seamSelect').addEventListener('change', renderSpecReport);
@@ -2545,6 +2552,16 @@ function bindUI() {
   });
 }
 
+// headless 健檢 hook(比照遊戲的 window.__v2 慣例;修 A 壞 B 迴圈的終結者)
+window.__mpe = {
+  get master() { return master; }, get masterOrig() { return masterOrig; },
+  get parts() { return parts; }, get selected() { return selected; },
+  get triCount() { return master ? master.triCount : 0; },
+  orient, applyOrient, doMirror, applySelectionResult, extractPart,
+  openSpecExport, get specState() { return specModalState; },
+  setPartName(n) { partNameInput.value = n; },
+  bounds() { if (!master) return null; const b = modelBounds(); return { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] }; },
+};
 </script>
 </body>
 </html>

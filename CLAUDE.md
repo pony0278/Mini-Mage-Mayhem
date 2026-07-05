@@ -40,6 +40,8 @@ To actually *see* a change, render it headlessly with Puppeteer. **WebGL needs S
 --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --no-sandbox
 ```
 
+**`tools/` 也能 headless 測**(它們吃 CDN,而 egress 擋 CDN):puppeteer `setRequestInterception` 把 `unpkg.com/three@0.160.0/...` 改餵本地 `npm i three-160@npm:three@0.160.0` 的檔案(**記得帶 `access-control-allow-origin: *`,跨源模組必需**);抽取器有 `window.__mpe` 健檢 hook(比照 `__v2`),測試模型可在頁內用 GLTFExporter 產生(開口圓柱=有接縫環,可測規範匯出)。範本:scratchpad 的 `mpe_health.mjs`。
+
 **ES modules do not load over `file://`** (browser CORS) — serve locally first: `python3 -m http.server 8099` then point Puppeteer at `http://localhost:8099/index.html`. The egress proxy blocks `github.io` and CDNs, so you cannot load the live Pages URL headlessly — test the local server instead.
 
 ## Editing the files
