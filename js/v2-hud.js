@@ -66,13 +66,13 @@ function drawContainHud() {
       const ep = clamp(f.escape / CARRY_ESCAPE_NEED, 0, 1);
       hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw, 5);
       hctx.fillStyle = '#9affd0'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw * ep, 5);
-      if (!f.ai) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
+      if (f.pid === LOCAL) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
     }
-    // 格擋推開提示:被打中的短窗內亮起(像掙脫指示),按對=把攻擊方推開
-    if (!f.ai && f.pushWinT > 0 && f.pushCd <= 0 && !f.stunned && !f.carriedBy) {
+    // 格擋推開提示:被打中的短窗內亮起(像掙脫指示),按對=把攻擊方推開(只對本機玩家顯示)
+    if (f.pid === LOCAL && f.pushWinT > 0 && f.pushCd <= 0 && !f.stunned && !f.carriedBy) {
       const pk = v2s.lowFlicker ? 0.95 : 0.75 + 0.25 * Math.sin(game.time * 18);
       hctx.fillStyle = `rgba(154,255,208,${pk})`; hctx.font = '900 14px system-ui, sans-serif';
-      hctx.fillText((f.pid === 0 ? '空白鍵' : 'Enter') + ' 推開！', s.x, s.y - 18);
+      hctx.fillText('空白鍵 推開！', s.x, s.y - 18);
     }
   }
 }
@@ -223,5 +223,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: parry-1', VW - 10, VH - 4);
+  hctx.fillText('build: parry-2', VW - 10, VH - 4);
 }

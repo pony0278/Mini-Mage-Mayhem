@@ -63,7 +63,7 @@ export function hitsFighter(f, nx, ny) {
 }
 export function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
-  const m = f.ai ? aiMove(f) : readMove(f.pid);
+  const m = f.ai ? aiMove(f) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 被動假人(非 AI 非本機)不吃方向鍵,原地站
   if (f.pid === LOCAL && !f.ai) f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x); // 本地玩家:面向滑鼠(移動與瞄準解耦)
   else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                              // AI／熱座紅方:面向移動方向
   const sp = SPEED * (f.carrying ? CARRY_SLOW : 1); // 搬運時變慢

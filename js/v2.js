@@ -63,20 +63,22 @@ function mouseRight(f) {                                                        
   }
   useItem(f); // 否則放技能(useItem 自帶守衛:無道具直接略過;被抓/暈時只有傳送可用)
 }
+// 單機版:只有本機玩家(藍=LOCAL)吃鍵盤輸入。紅方永遠是 AI 或被動練習假人 ——
+// 一律不吃輸入(舊 bug:假人 ai=false 但仍監聽 Enter/方向鍵,玩家一按 Enter 反而操控假人推開自己)。
 const actionPrev = [false, false];
 function pollAction() {
   const pressed = [keys.has('j'), keys.has('/')];
-  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !actionPrev[i]) doAction(fighters[i]); actionPrev[i] = pressed[i]; }
+  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !actionPrev[i]) doAction(fighters[i]); actionPrev[i] = pressed[i]; }
 }
 const itemPrev = [false, false];
 function pollItem() {
   const pressed = [keys.has('k'), keys.has('.')];
-  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
+  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
 }
-const guardPrev = [false, false]; // 格擋鍵:藍=空白鍵, 紅(熱座)=Enter。doGuard 三層分派:黃金窗口=反暈/挨打後=推開/空按=進冷卻
+const guardPrev = [false, false]; // 格擋鍵=空白鍵(本機玩家)。doGuard 三層分派:黃金窗口=反暈/挨打後=推開/空按=進冷卻
 function pollGuard() {
   const pressed = [keys.has(' '), keys.has('enter')];
-  for (let i = 0; i < 2; i++) { if (fighters[i].ai) continue; if (pressed[i] && !guardPrev[i]) doGuard(fighters[i]); guardPrev[i] = pressed[i]; }
+  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !guardPrev[i]) doGuard(fighters[i]); guardPrev[i] = pressed[i]; }
 }
 
 function step(dt) {
@@ -132,8 +134,8 @@ function step(dt) {
       if (o.state !== 'alive' || f.state !== 'alive' || f.stunned) { dropCarry(f); continue; }
       o.x = f.x + Math.cos(f.facing) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(f.facing) * (f.r + o.r * 0.7); o.vx = 0; o.vy = 0;
       if (inPod(o.x, o.y)) { containByCarry(f, o); continue; }                 // 失控入艙 → 收容
-      if (o.ai) o.escape += CARRY_MASH_AI * dt;                                // AI 固定填速
-      else {                                                                    // 人類: 左右交替點按(按指示)
+      if (o.ai || o.pid !== LOCAL) o.escape += CARRY_MASH_AI * dt;              // AI / 被動假人:固定填速(不吃玩家的 A/D 移動鍵)
+      else {                                                                    // 本機玩家被扛: 左右交替點按 A/D 掙脫(按指示)
         const aDown = keys.has('a'), dDown = keys.has('d');
         const aEdge = aDown && !o._aPrev, dEdge = dDown && !o._dPrev;
         if (o.mashSide === 0 && aEdge) { o.escape += CARRY_MASH_TAP; o.mashSide = 1; }
