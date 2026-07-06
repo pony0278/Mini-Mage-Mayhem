@@ -149,7 +149,7 @@ function bindPoseSliders(){
     r.addEventListener('input',e=>{
       const v = parseFloat(e.target.value);
       PHASES[activePhase][k]=v; scheduleAutosave();
-      const isFloat = (k==='root_py'||k==='root_pz'||k==='sq'||k.endsWith('_idle')||k.endsWith('_scale'));
+      const isFloat = (k==='root_py'||k==='root_pz'||k==='sq'||k.endsWith('_idle')||k.endsWith('_scale')||k.endsWith('_stretch'));
       document.getElementById('v_'+k).innerHTML=(isFloat?v.toFixed(2):Math.round(v))+'<span class="unit">'+(r.parentElement.querySelector('.unit').textContent)+'</span>';
     });
   });
@@ -162,7 +162,7 @@ function refreshSliders(){
     if(!r) return;
     const pv = (p[k] !== undefined) ? p[k] : defaultPoseValue(k);
     r.value = pv;
-    const isFloat = (k==='root_py'||k==='root_pz'||k==='sq'||k.endsWith('_idle')||k.endsWith('_scale'));
+    const isFloat = (k==='root_py'||k==='root_pz'||k==='sq'||k.endsWith('_idle')||k.endsWith('_scale')||k.endsWith('_stretch'));
     const unit = r.parentElement.querySelector('.unit').textContent;
     document.getElementById('v_'+k).innerHTML=(isFloat?pv.toFixed(2):Math.round(pv))+'<span class="unit">'+unit+'</span>';
   });
