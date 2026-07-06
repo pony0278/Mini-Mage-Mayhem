@@ -93,6 +93,7 @@ async function loadAvatarBuffer(ab, label){
   AVATAR = { wrap, S, label, by, order, fillers: [] };
   buildJointFillers();
   setSyntheticDummyVisible(false);
+  if(typeof buildPropPanel === 'function') buildPropPanel();   // 刷新 PROPORTIONS 面板 → 進入角色模式鎖定態
   applyInspectOrPhase();                        // 回到目前 phase,hook 立即驅動角色
   updatePartsStatus(`基底角色已掛載:${label}(${order.length} 骨,×${S.toFixed(2)})。素體隱藏中;「清除角色」回素體/部位模式。`);
   return true;
@@ -236,6 +237,7 @@ function clearAvatar(){
   });
   AVATAR = null;
   setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+  if(typeof buildPropPanel === 'function') buildPropPanel();   // 刷新 PROPORTIONS 面板 → 解除鎖定
   updatePartsStatus('角色已清除,回到素體/部位模式。');
 }
 

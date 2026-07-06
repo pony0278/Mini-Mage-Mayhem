@@ -360,6 +360,9 @@ function rebuildCharacter(){
   if(whiteModel) applyWhiteModel(true);   // 重建後若在白模,重新套白
   applyPose(PHASES[activePhase] || PHASES.idle || ZERO_POSE);
   if(typeof reattachPunchPartsAfterRebuild === 'function') reattachPunchPartsAfterRebuild();
+  // 角色模式:重建會生出全新的可見素體網格 → 強制再隱藏,否則調 PROPORTIONS 時假人會冒出來蓋住角色
+  // (關節填充球掛在角色骨頭上,不受素體重建影響,不用動)
+  if(typeof AVATAR !== 'undefined' && AVATAR && typeof setSyntheticDummyVisible==='function') setSyntheticDummyVisible(false);
 }
 buildCharacter();
 placeCam();

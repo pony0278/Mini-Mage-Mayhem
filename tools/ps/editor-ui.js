@@ -448,6 +448,17 @@ function buildPropPanel(){
     r.addEventListener('input',()=>{ DIM[k]=parseFloat(r.value); document.getElementById('vp_'+k).textContent=DIM[k].toFixed(2); scheduleRebuild(); });
   });
   document.getElementById('propReset').addEventListener('click',()=>{ pushHistory(); Object.assign(DIM,DIM_DEFAULTS); buildPropPanel(); rebuildCharacter(); scheduleAutosave(); });
+  // 角色模式:PROPORTIONS 控制的是隱藏的「素體驅動骨架」,對已載入的角色無效(角色比例由模型 GLB 決定)。
+  // 停用整面板並導向正確工具,避免使用者誤調到假人。
+  if(typeof AVATAR !== 'undefined' && AVATAR){
+    div.querySelectorAll('input,button').forEach(el=>{ el.disabled=true; });
+    div.style.opacity='0.45'; div.style.pointerEvents='none';
+    const note=document.createElement('div');
+    note.style.cssText='font-size:10px;color:var(--cy,#13e0d4);line-height:1.6;padding:8px 4px;pointer-events:auto';
+    note.innerHTML='🔒 <b>角色模式</b>:此面板調的是隱藏的<b>素體驅動骨架</b>,不影響你的模型。<br>'
+      +'角色比例由模型 GLB 決定。<b>放大拳頭</b>請用姿勢軸「<b>aL_scale / aR_scale(命中放大)</b>」(可做每個 key 的動態放大);<br>要永久改體型請在建模端改模型再重載。';
+    host.insertBefore(note, div);
+  }
 }
 
 // phase tab 由 buildPhaseTabs() 動態產生並綁定
