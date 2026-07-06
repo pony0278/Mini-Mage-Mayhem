@@ -93,6 +93,7 @@ export const CLIPS = {
     seq: [
       { name: 'idle', frame: 0, frames: 10, ease: 'out' },
       { name: 'windup', frame: 6, ease: 'out' },
+      { name: 'hold', frame: 10, ease: 'out' },   // 預備停頓(移動式定格):蓄力側身多擰一點再爆發=浮誇感的來源
       { name: 'swing', frame: 13, ease: 'in' },
       { name: 'strike', frame: 15, ease: 'in' },
       { name: 'impact', frame: 17, ease: 'lin', impact: true },
@@ -101,6 +102,7 @@ export const CLIPS = {
     ],
     phases: {
       windup: { root_y: -4, spine_x: -30, spine_y: 60, pelvis_y: 60, aL_sz: 34, aL_ex: 79, aR_sx: -73, aR_sy: 16, aR_sz: 99, aR_ex: 22, aR_scale: 1.65, aR_stretch: 1.4, lL_hx: 14, lL_hy: 18, lL_kx: 44, lR_hx: -15, lR_hy: -1, lR_hz: 11, lR_kx: 29 },
+      hold: { root_y: -5, spine_x: -34, spine_y: 66, pelvis_y: 64, aL_sz: 34, aL_ex: 79, aR_sx: -78, aR_sy: 16, aR_sz: 99, aR_ex: 20, aR_scale: 1.65, aR_stretch: 1.4, lL_hx: 14, lL_hy: 18, lL_kx: 48, lR_hx: -15, lR_hy: -1, lR_hz: 11, lR_kx: 29 },
       swing: { spine_y: -12, pelvis_y: -8, aL_sz: 34, aL_ex: 79, aR_sx: -22, aR_sy: -12, aR_sz: 88, aR_ex: 40, aR_scale: 1.35, aR_stretch: 1.4, lL_hy: 12, lL_hz: 13, lL_kx: 18, lR_hy: 18, lR_hz: 20 },
       strike: { spine_x: 21, spine_y: -31, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: 2, aR_sy: 3, aR_sz: 96, aR_ex: 67, aR_idle: 0.07, aR_scale: 1.6, aR_stretch: 1.91, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
       impact: { sq: 0.05, spine_x: 53, spine_y: -42, pelvis_y: -33, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -81, aR_sy: -90, aR_sz: 115, aR_ex: 11, aR_idle: 0.36, aR_scale: 1.9, aR_stretch: 1.77, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -2, lR_hy: 24, lR_hz: 16, lR_kx: 73 },
