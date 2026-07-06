@@ -533,6 +533,16 @@ document.getElementById('goofyBtn').addEventListener('click',()=>{
   refreshSliders(); scheduleAutosave();
 });
 
+// T-pose 填入:把目前 key 的參數整組設為 T-pose(雙臂水平 sz=90、其餘歸零),可 undo。
+// 與部位面板「檢視 T-pose」不同——那是唯讀檢視;這是真的寫入 key(校對位/當編輯起點用)。
+// 快捷鍵:T(inspectTposePose 定義在 parts.js,僅使用者操作時呼叫,符合跨檔規則)
+function applyTposeToKey(){
+  pushHistory();
+  Object.assign(PHASES[activePhase], inspectTposePose());
+  refreshSliders(); scheduleAutosave();
+}
+document.getElementById('tposeBtn').addEventListener('click', applyTposeToKey);
+
 // ===== Contact sheet 擷取 =====
 // 給 AI 診斷用:沿 anti→recovery 等距取樣「插值後」的姿勢(看得到動作路徑,不只 key pose),
 // 每格同時 front + 左側兩個角度(讀得出繞垂直軸的扭轉/景深),並標上 phase / 進度。
@@ -776,6 +786,7 @@ window.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey) && e.code==='KeyY'){ e.preventDefault(); redo(); return; }
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
   if(e.code==='Space'){e.preventDefault(); document.getElementById('playBtn').click();}
+  else if(e.code==='KeyT' && !e.ctrlKey && !e.metaKey && !e.altKey){ applyTposeToKey(); }
   else if(e.code.startsWith('Digit')){ const n=parseInt(e.code.slice(5)); if(n>=1 && n<=SEQ.length){ setActiveKey(n-1); } }
 });
 
