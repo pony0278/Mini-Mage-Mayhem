@@ -427,6 +427,8 @@ function applyPose(p){
   if(cR!==2){ _footBox.expandByObject(legR.foot); grounded=true; }
   if(!grounded){ _footBox.expandByObject(legL.foot); _footBox.expandByObject(legR.foot); }   // 雙腳皆抬:仍用雙腳防止飄走
   root.position.y = isFinite(_footBox.min.y) ? (baseY - _footBox.min.y + (p.root_py||0)) : (baseY + (p.root_py||0));
+  // 基底角色(rigged avatar):素體 pose 完成後,把世界差量轉寫到角色骨頭(avatar.js;載入前守衛)
+  if (typeof updateAvatarPose === 'function') updateAvatarPose(p);
 }
 
 function ease(p,m){p=Math.max(0,Math.min(1,p)); if(m==='in')return p*p; if(m==='out')return 1-(1-p)*(1-p); return p;}

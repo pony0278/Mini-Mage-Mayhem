@@ -472,14 +472,4 @@ updatePartsStatus();
 
 requestAnimationFrame(tick);
 
-// 預設人偶:同目錄的 meshy-mannequin.glb 存在就自動掛載(Meshy 轉換管線產物;
-// 404/離線靜默略過,維持內建素體)。tools/meshy-convert.mjs 可重產。
-(async () => {
-  try {
-    const resp = await fetch('meshy-mannequin.glb');
-    if (!resp.ok) return;
-    const ab = await resp.arrayBuffer();
-    const ok = await loadPartFile(new File([ab], 'meshy-mannequin.glb'));
-    if (ok) updatePartsStatus(`預設人偶已自動掛載:meshy-mannequin.glb(${Object.keys(PART_MODELS).length} 部位)。要回素體按「清空部位」。`);
-  } catch (e) { /* 保持素體 */ }
-})();
+// 開機自動載入(基底角色優先 → Meshy 部位人偶退路)移到 avatar.js 統一調度。

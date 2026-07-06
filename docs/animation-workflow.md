@@ -24,9 +24,14 @@
   改碼唯一規則(每檔 hoisting:載入期程式不得前向呼叫後面的檔案)見 `tools/ps/README.md`。
 - 內建:47 軸姿勢 slider、自由時間軸(拖 key 調 timing)、per-limb LAG、打擊感試打台(hitstop/震動/沙包)、
   JSON 匯出/匯入、CANCEL 點 combo 串接、GLB 部位替換(整包 bundle 或分檔,按節點/檔名對應 15 slot)。
-- **預設人偶**:punch-studio 開機自動掛載同目錄的 `meshy-mannequin.glb`(玩家的 Meshy 角色,
-  13 部位已重定位到作者空間;404/離線靜默回退內建素體)。拿到新的 Meshy 分件模型時用
-  `tools/meshy-convert.mjs` 重產(幾何自動分類部位/接觸面法找接縫/重定位/縮放到骨架身高)。
+- **基底角色(rigged avatar,預設)**:punch-studio 開機自動掛載 `assets/rigs/base-avatar.glb`
+  ——**未來所有角色的基座**。原理:素體照常被 47 軸驅動(隱藏),每幀把各關節「相對 T-pose
+  的世界旋轉差量」轉寫到角色骨頭(`tools/ps/avatar.js`),蹲下/踩地/接觸鎖全部自動繼承。
+  **角色基座慣例**(照做即可丟進「👤 載入角色 GLB」直接用):16 骨、命名含
+  Root/Torso/Neck/Head/UpperArm/Forearm/Hand/Thigh/Shin(Calf)/Foot+L/R 字樣、rest=T-pose、
+  面向 +Z、網格=骨頭的剛體子節點(不蒙皮)、比例任意(自動縮放;左右以世界 X 判定,不信名字)。
+- **退路人偶**:基底角色缺席時自動退回 `meshy-mannequin.glb`(13 部位掛載),再缺退內建素體。
+  拿到新的 Meshy 分件模型時用 `tools/meshy-convert.mjs` 重產。
 - **「遊戲整合」面板**(repo 版加掛):
   - **招式庫**——具名槽存/載/刪(localStorage),編一整套招式不互相覆蓋;「全部匯出」產生
     `{clips:{招式名:snapshot}}` 一份 JSON,整份交給遊戲端接入。

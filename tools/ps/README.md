@@ -11,8 +11,9 @@
 3. `hitfeel.js` — 打擊感試打台 + 主渲染迴圈 `tick()`
 4. `editor-ui.js` — 滑桿/時間軸/phase tabs UI、按鍵綁定、白模/鏡像、contact sheet、匯出匯入
 5. `ref-solve.js` — 參考疊圖、關節對位 SOLVER(單視角/multi-view/AI 偵測)、scrub、FK 拖動
-6. `parts.js` — 部位掛載系統(sockets.json→slot、GLB 掛載、預設人偶自動載入)
-7. `game-bridge.js` — `window.__ps` 健檢 hook + 遊戲整合面板(招式庫/遊戲視角/impact 讀出)
+6. `parts.js` — 部位掛載系統(sockets.json→slot、GLB 掛載)
+7. `avatar.js` — 基底角色(rigged avatar)模式:16 骨角色 GLB 世界差量重定向 + 開機自動載入調度(角色優先→Meshy 部位人偶退路)
+8. `game-bridge.js` — `window.__ps` 健檢 hook + 遊戲整合面板(招式庫/遊戲視角/impact 讀出)
 
 SOCKETS_JSON(接縫規格)與 MediaPipe AI 偵測的 module script 仍留在 HTML 裡。
 

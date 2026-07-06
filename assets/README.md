@@ -7,6 +7,9 @@
 
 ## 資料夾
 
+- **`rigs/`** — **基座角色**(骨架版 GLB):16 骨、rest=T-pose、網格為骨頭的剛體子節點。
+  `base-avatar.glb` 是 punch-studio 開機自動掛載的預設角色(**未來所有角色的基底**);
+  慣例與原理見 `docs/animation-workflow.md` §1。
 - **`raw/`** — 第三方工具產的**整塊模型**,還沒切過。丟進
   `tools/mesh-part-extractor.html` 圈選拆部位的起點。
 - **`parts/`** — 已切出的**單一部位**。⚠ 目前這裡的檔案是**分檔匯出**
@@ -18,6 +21,7 @@
 
 | 檔案 | 狀態 |
 |---|---|
+| `rigs/base-avatar.glb` | **基座角色**(16 骨+剛體部位,使用者精修版)——punch-studio 預設掛載 |
 | `raw/model.glb` | 整塊來源模型(Blender 匯出) |
 | `raw/meshy-figure-source.glb` | Meshy AI 產的分件角色(13 部位,KHR 量化)——`tools/meshy-mannequin.glb` 的來源;重產跑 `tools/meshy-convert.mjs` |
 | `parts/head.glb` | 已切出,待規範匯出 |
