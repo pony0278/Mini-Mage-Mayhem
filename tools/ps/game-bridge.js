@@ -5,7 +5,8 @@ window.__ps = {
   get parts() { return Object.keys(PART_MODELS); },
   get dummyHidden() { return PARTS_HIDE_DUMMY; },
   applyPose, get PHASES() { return PHASES; }, get SEQ() { return SEQ; },
-  get avatar() { return AVATAR ? { label: AVATAR.label, bones: AVATAR.order.length, scale: +AVATAR.S.toFixed(3) } : null; },
+  get avatar() { return AVATAR ? { label: AVATAR.label, bones: AVATAR.order.length, scale: +AVATAR.S.toFixed(3), fillers: AVATAR.fillers.length } : null; },
+  setJointFill(on){ if(typeof setJointFill==='function') setJointFill(on); },
   avatarBoneWorld(key) {                       // 測試用:取角色骨頭世界座標
     if (!AVATAR || !AVATAR.by[key]) return null;
     const v = new THREE.Vector3(); AVATAR.by[key].bone.getWorldPosition(v);
