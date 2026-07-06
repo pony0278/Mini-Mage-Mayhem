@@ -111,12 +111,32 @@ window.__ps = {
     });
     return { seq: outSeq, phases: outPhases, dim: {...DIM}, lags: norm[0] ? norm[0].lags : undefined };
   }
+  // 把「多個 JSON 物件直接相接」切成陣列(追蹤大括號深度,忽略字串內的括號)
+  function splitConcatJson(text){
+    const out=[]; let depth=0, start=-1, inStr=false, esc=false;
+    for(let i=0;i<text.length;i++){ const c=text[i];
+      if(inStr){ if(esc) esc=false; else if(c==='\\') esc=true; else if(c==='"') inStr=false; continue; }
+      if(c==='"'){ inStr=true; continue; }
+      if(c==='{'){ if(depth===0) start=i; depth++; }
+      else if(c==='}'){ depth--; if(depth===0 && start>=0){ out.push(text.slice(start,i+1)); start=-1; } }
+    }
+    return out;
+  }
   function parseComboInput(text){
-    const data = JSON.parse(text);
-    if(Array.isArray(data)) return data;
-    if(data && data.clips && typeof data.clips==='object') return Object.values(data.clips);
-    if(data && data.seq && data.phases) return [data];
-    throw new Error('格式需為 [snap,…] 或 {clips:{…}}');
+    text = text.trim();
+    let data;
+    try{ data = JSON.parse(text); }
+    catch(e){
+      // 使用者最自然的貼法:三份 JSON export 直接相接 → 逐個切開
+      const chunks = splitConcatJson(text);
+      const snaps = chunks.map(c=>JSON.parse(c));
+      if(snaps.length) return snaps;
+      throw e;
+    }
+    if(Array.isArray(data)) return data;                                         // [snap, snap, …]
+    if(data && data.clips && typeof data.clips==='object') return Object.values(data.clips);  // {clips:{…}}
+    if(data && data.seq && data.phases) return [data];                           // 單一 snapshot
+    throw new Error('格式需為 [snap,…]、{clips:{…}} 或多份 snapshot 直接相接');
   }
 
   let comboPrev = null;   // {state, cam} 預覽中才非 null
@@ -155,7 +175,7 @@ window.__ps = {
     const box = document.createElement('div'); box.style.cssText='margin-top:8px;border-top:1px solid var(--line);padding-top:6px';
     box.innerHTML =
       '<div style="font-size:10.5px;color:var(--cy);margin-bottom:4px">連招預覽(串起多招看整套)</div>'
-      + '<textarea id="comboInput" placeholder="貼上 {clips:{…}} 或 [snap,…];留空=用上面招式庫(存入順序)" '
+      + '<textarea id="comboInput" placeholder="貼上多份動作 JSON(直接相接即可,不用逗號)/{clips:{…}}/[snap,…];留空=用招式庫" '
       + 'style="width:100%;height:44px;box-sizing:border-box;background:#101322;border:1px solid var(--line);border-radius:7px;color:inherit;padding:5px 8px;font-size:10px;resize:vertical"></textarea>'
       + '<div style="display:flex;gap:6px;align-items:center;margin-top:5px">'
       + '<button id="comboPrevBtn" style="flex:1">▶ 連招預覽</button>'
