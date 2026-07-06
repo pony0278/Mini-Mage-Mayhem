@@ -120,6 +120,13 @@ function buildTimingControls(){
     ic.innerHTML='<input type="checkbox" id="rt_imp" '+(s.impact?'checked':'')+'> <span class="name">impact(命中:無 lag · 紅框 · 放大段)</span>';
     host.appendChild(ic);
     document.getElementById('rt_imp').addEventListener('change',e=>{ pushHistory(); const k=liveKey(); if(!k) return; k.impact=e.target.checked; if(e.target.checked) k.tag='impact'; buildPhaseTabs(); buildTimingControls(); scheduleAutosave(); });
+    // 命中秒數讀出:勾了 impact 就在此處直接顯示 frame÷60 = 遊戲 STRIKE_DELAY 要填的值(免去翻到「遊戲整合」面板)
+    if(s.impact){
+      const sec=document.createElement('div'); sec.className='ctrl';
+      sec.style.cssText='font-size:11px;color:var(--cy);padding:2px 2px 0';
+      sec.innerHTML='⏱ 命中時刻:@'+s.frame+'f = <b>'+(s.frame/REF_FPS).toFixed(3)+'s</b> <span style="color:var(--dim)">→ 這格就是遊戲 STRIKE_DELAY 要填的值</span>';
+      host.appendChild(sec);
+    }
   }
 
   const lagHost=document.getElementById('lagControls'); lagHost.innerHTML='';
