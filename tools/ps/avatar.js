@@ -59,8 +59,11 @@ async function loadAvatarBuffer(ab, label){
     const key = AVATAR_PAIRED.includes(f.type) ? `${f.type}${sx < 0 ? '_l' : '_r'}` : f.type;
     if(by[key]) continue;                       // 重複命名取第一個
     const nodeFor = AVATAR_NODE_OF[f.type];
-    by[key] = { bone: f.bone, node: () => nodeFor(sx),
-                meshes: f.bone.children.filter(c => c.isMesh),
+    const meshes = f.bone.children.filter(c => c.isMesh);
+    // 記每塊網格的靜止局部位置:命中放大要「繞骨頭原點(關節)」縮放而非網格自身原點——
+    // 這模型幾何烤在骨架空間、網格節點帶補償位移,直接 mesh.scale 會把幾何甩離關節。
+    meshes.forEach(m => { m.userData.restPos = m.position.clone(); });
+    by[key] = { bone: f.bone, node: () => nodeFor(sx), meshes,
                 qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
   }
   const missing = AVATAR_REQUIRED.filter(k => !by[k]);
@@ -131,8 +134,10 @@ function updateAvatarPose(p){
     e.bone.quaternion.copy(_aq2).premultiply(_aqp);     // local = qParent⁻¹ · 目標世界
     e.bone.updateMatrixWorld(true);
   }
-  // 命中放大/身體縮放:縮「骨頭上的網格」不縮骨頭(避免縮放傳染子骨)
-  const setS = (k, v) => { const e = A.by[k]; if(e) e.meshes.forEach(m => m.scale.setScalar(v || 1)); };
+  // 命中放大/身體縮放:縮「骨頭上的網格」不縮骨頭(避免縮放傳染子骨)。
+  // 繞骨頭原點(關節)縮放:renders s·(restPos + v) → 近端黏在關節,肢段往外脹大(power punch 觀感)。
+  const setS = (k, v) => { const e = A.by[k]; if(!e) return; const s = v || 1;
+    e.meshes.forEach(m => { m.scale.setScalar(s); m.position.copy(m.userData.restPos).multiplyScalar(s); }); };
   setS('forearm_l', p.aL_scale); setS('hand_l', p.aL_scale);
   setS('forearm_r', p.aR_scale); setS('hand_r', p.aR_scale);
   setS('shin_l', p.lL_scale);    setS('foot_l', p.lL_scale);
