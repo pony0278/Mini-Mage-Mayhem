@@ -178,10 +178,31 @@ function step(dt) {
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
 }
 
+// 慢動作觀察:對照 punch-studio 與 v2 的動作(studio 有 0.3× 慢放)。?slowmo=0.25 設初值;按 K 循環。
+const SLOWMO_STEPS = [1, 0.5, 0.25, 0.1];
+let slowmo = (() => { const v = parseFloat(new URLSearchParams(location.search).get('slowmo')); return Number.isFinite(v) && v > 0 ? Math.min(1, Math.max(0.05, v)) : 1; })();
+let slowmoEl = null;
+function showSlowmo() {
+  if (!slowmoEl) {
+    slowmoEl = document.createElement('div');
+    slowmoEl.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:50;font:bold 13px system-ui;color:#9fe7ff;background:rgba(10,12,20,.72);padding:3px 12px;border-radius:12px;pointer-events:none;letter-spacing:1px';
+    document.body.appendChild(slowmoEl);
+  }
+  slowmoEl.textContent = `🐢 慢動作 ${slowmo}×(K 切換)`;
+  slowmoEl.style.display = slowmo < 1 ? '' : 'none';
+}
+function cycleSlowmo() {
+  const i = SLOWMO_STEPS.indexOf(slowmo);
+  slowmo = SLOWMO_STEPS[(i + 1) % SLOWMO_STEPS.length];
+  showSlowmo();
+}
+showSlowmo();
+
 let grayOn = false;
 function frame(now) {
   let dt = Math.min(0.033, (now - last) / 1000);
   last = now;
+  if (slowmo < 1) dt *= slowmo;   // 慢動作觀察:整場模擬按倍率放慢(動畫/判定同步慢,可看清出拳過程)
   // 精準格擋黃金時間:本機玩家被瞄準的起手期 → 時間放慢+畫面去彩(HUD 保持彩色,提示跳出來)
   const parryActive = !v2s.matchOver && fighters[LOCAL].parryWinT > 0 && !fighters[LOCAL].ai;
   if (parryActive) dt *= PARRY_SLOW;
@@ -242,6 +263,7 @@ window.addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(k)) e.preventDefault();
   if (k === 'b') toggleAI(); // 切換 AI / 練習模式
   if (k === 'l') toggleFlicker(); // 減閃爍開關
+  if (k === 'k') cycleSlowmo(); // 慢動作觀察:1→0.5→0.25→0.1× 循環
   if (v2s.matchOver) { // incident report screen: R = rematch, C = copy share text
     if (k === 'r') restartMatch();
     else if (k === 'c' && v2s.report && navigator.clipboard) { navigator.clipboard.writeText(v2s.report.share); dlog('copied share text'); }
