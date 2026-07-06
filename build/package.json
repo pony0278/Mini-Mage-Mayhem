@@ -1,0 +1,14 @@
+{
+  "name": "mmm-build",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Portal 投稿發佈工具(唯一使用 npm 的地方;遊戲本體維持零 build)。見 build/README.md。",
+  "scripts": {
+    "build": "node build-portal.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "javascript-obfuscator": "^4.1.1"
+  }
+}

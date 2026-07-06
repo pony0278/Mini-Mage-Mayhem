@@ -1,0 +1,5 @@
+# 發佈工具的 npm 依賴(遊戲本體維持零 build;只有 build/ 用 npm)
+build/node_modules/
+
+# Portal 投稿發佈產物(拋棄式,隨時用 build/ 重產)
+dist/
