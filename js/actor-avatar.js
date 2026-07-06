@@ -11,7 +11,7 @@ import { game } from './state.js';
 const AVATAR_URL = 'assets/rigs/base-avatar.glb';
 // 角色整體放大倍率(相對「對齊 box rig 身高」的基準)。v2 遠鏡頭下大一點更好看。
 // 可用 URL ?avscale=1.5 即時試不同大小;預設 1.3。
-const AVATAR_SCALE = (() => { const v = parseFloat(new URLSearchParams(location.search).get('avscale')); return Number.isFinite(v) ? Math.max(0.5, Math.min(3, v)) : 1.5; })();
+const AVATAR_SCALE = (() => { const v = parseFloat(new URLSearchParams(location.search).get('avscale')); return Number.isFinite(v) ? Math.max(0.5, Math.min(3, v)) : 1.3; })();
 let TEMPLATE = null;          // 載入一次的 GLB 場景(每個 fighter clone 一份)
 let loadState = 0;            // 0 未載 / 1 載入中 / 2 成功 / 3 失敗
 export function avatarEnabled() { return new URLSearchParams(location.search).get('avatar') === '1'; }
