@@ -247,6 +247,10 @@ function updateAvatarPose(p){
   setS('shin_l', p.lL_scale);    setS('foot_l', p.lL_scale);
   setS('shin_r', p.lR_scale);    setS('foot_r', p.lR_scale);
   setS('torso', p.body_scale);
+  // 整肢伸展:縮近端骨頭(upperarm/thigh)→ 整條肢從肩/髖等比放大(子骨/網格一起帶,uniform 不歪)
+  const setStretch = (k, v) => { const e = A.by[k]; if(e) e.bone.scale.setScalar(v || 1); };
+  setStretch('upperarm_l', p.aL_stretch); setStretch('upperarm_r', p.aR_stretch);
+  setStretch('thigh_l', p.lL_stretch);    setStretch('thigh_r', p.lR_stretch);
   // 自動踩地:用角色自己的腳(沿用素體的接觸鎖規則:2=抬起不當錨點)
   w.updateMatrixWorld(true);
   _abox.makeEmpty();

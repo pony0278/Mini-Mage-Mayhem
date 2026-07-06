@@ -114,13 +114,17 @@ export function applyBrawlerPose(rig, p) {
   R.legR.kn.rotation.x = kxR * lRw * D2R;
   R.armL.lm.scale.setScalar(p.aL_scale || 1);
   R.armR.lm.scale.setScalar(p.aR_scale || 1);
-  // 自動踩地:支撐腿(contact≠2)的垂直高度 = Lu·cos(髖)+Ll·cos(髖+膝) → root 下沉差值
-  const legH = (hx, kx) => Lu * Math.max(0.25, Math.cos(hx * D2R)) + Ll * Math.max(0.25, Math.cos((hx + kx) * D2R));
+  // 整肢伸展:肩/髖節點等比放大 → 整條手臂/腿從近端關節變長變大(遠鏡頭下伸手更明顯)
+  const asL = p.aL_stretch || 1, asR = p.aR_stretch || 1, lsL = p.lL_stretch || 1, lsR = p.lR_stretch || 1;
+  R.armL.sh.scale.setScalar(asL); R.armR.sh.scale.setScalar(asR);
+  R.legL.hp.scale.setScalar(lsL); R.legR.hp.scale.setScalar(lsR);
+  // 自動踩地:支撐腿(contact≠2)的垂直高度 = 伸展×(Lu·cos(髖)+Ll·cos(髖+膝)) → root 下沉差值
+  const legH = (hx, kx, st) => st * (Lu * Math.max(0.25, Math.cos(hx * D2R)) + Ll * Math.max(0.25, Math.cos((hx + kx) * D2R)));
   const cL = Math.round(p.lL_contact || 0), cR = Math.round(p.lR_contact || 0);
   let hMax = 0, any = false;
-  if (cL !== 2) { hMax = Math.max(hMax, legH(hxL * lLw, kxL * lLw)); any = true; }
-  if (cR !== 2) { hMax = Math.max(hMax, legH(hxR * lRw, kxR * lRw)); any = true; }
-  if (!any) hMax = Math.max(legH(hxL * lLw, kxL * lLw), legH(hxR * lRw, kxR * lRw));
+  if (cL !== 2) { hMax = Math.max(hMax, legH(hxL * lLw, kxL * lLw, lsL)); any = true; }
+  if (cR !== 2) { hMax = Math.max(hMax, legH(hxR * lRw, kxR * lRw, lsR)); any = true; }
+  if (!any) hMax = Math.max(legH(hxL * lLw, kxL * lLw, lsL), legH(hxR * lRw, kxR * lRw, lsR));
   R.P.position.set(0, (hMax - (Lu + Ll)) * sy + (p.root_py || 0) * S.PX, (p.root_pz || 0) * S.PX);
 }
 
@@ -182,7 +186,7 @@ export function updateBrawler(e, g) {
   // 用完再把姿勢套回(下一幀 updateBrawler 自然覆蓋,這裡不用還原)。
   if (avatarEnabled() && avatarReady()) {
     if (!u.avatarTried) { u.avatarTried = true; buildAvatar(g, R, applyBrawlerPose); applyBrawlerPose(R, u.pose); }
-    if (g.userData.avatar) retargetAvatar(g, R);
+    if (g.userData.avatar) retargetAvatar(g, R, u.pose);
   }
 
   // --- 世界層:面向 + 暈眩搖晃 + flinch + 擠壓 ---

@@ -98,8 +98,9 @@ STRIKE_DELAY[段] ≈ clip impact key 的 frame ÷ 60
 |---|---|
 | `root_x/y`(根旋轉)、`root_py/pz`(升降/前移)、`sq`(擠壓)、`body_scale`、`squat` | ✅ 全支援(位移軸 ×25px/編排器單位) |
 | `spine_x/y`、`pelvis_y`、`head_x/y/pz` | ✅ |
-| 肩 `sx/sy/sz`、肘 `ex`、腕 `wx/wy`、`aX_idle`、`aX_scale`(命中放大:前臂+拳) | ✅ |
-| 髖 `hx/hy/hz`、膝 `kx`、`lX_idle`、`lX_scale` | ✅(lX_scale 目前僅預留) |
+| 肩 `sx/sy/sz`、肘 `ex`、腕 `wx/wy`、`aX_idle`、`aX_scale`(命中放大:前臂+拳,繞肘) | ✅ box+avatar 皆生效 |
+| 髖 `hx/hy/hz`、膝 `kx`、`lX_idle`、`lX_scale`(命中放大:小腿+腳,繞膝) | ✅ box+avatar 皆生效 |
+| `aX_stretch`/`lX_stretch`(整肢從肩/髖等比伸展;遠鏡頭伸手更明顯,1=原長) | ✅ box+avatar 皆生效(踩地自動補償腿長) |
 | `lX_contact`(接觸鎖) | ✅ 吃進自動踩地(2=該腿不當地面錨點) |
 | 踝 `ax`、腳尖 `ty` | ❌ 忽略(遊戲小人沒有腳掌;編動作時不用調) |
 

@@ -70,7 +70,9 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
     if (by[key]) continue;
     const nodeFor = NODE_OF[f.type];
     if (!nodeFor) continue;                       // foot 無對應 driver → 跳過(跟隨父骨)
-    by[key] = { bone: f.bone, node: () => nodeFor(boxRig, s), qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
+    const meshes = f.bone.children.filter(c => c.isMesh);
+    meshes.forEach(m => { m.userData.restPos = m.position.clone(); });   // 命中放大需繞關節縮放(restPos×s)
+    by[key] = { bone: f.bone, node: () => nodeFor(boxRig, s), meshes, qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
   }
 
   // 縮放角色到 box rig 身高。box brawler 世界高 ≈ hipY + torso 頂 + head ≈ 用包圍盒估。
@@ -94,15 +96,17 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap)) { av.hidden.push(o); o.visible = false; } });
 
   g.userData.avatar = av;
+  if (typeof window !== 'undefined') (window.__avatars || (window.__avatars = [])).push(av);   // headless 健檢用
   return av;
 }
 
 // 每幀:box rig 已被 applyBrawlerPose 擺好姿勢 → 把世界差量轉寫到角色骨頭。
 const _q1 = new THREE.Quaternion(), _qd = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _qp = new THREE.Quaternion();
 const _fbox = new THREE.Box3();
-export function retargetAvatar(g, boxRig) {
+export function retargetAvatar(g, boxRig, pose) {
   const av = g.userData.avatar; if (!av) return;
   const w = av.wrap;
+  const p = pose || {};
   // 位置/縮放:box rig 的 root(P)已含 squat/踩地,取其世界 y 讓角色一起沉;x/z 由 g 提供(fighter 位置)
   boxRig.P.updateMatrixWorld(true);
   w.position.set(0, 0, 0);
@@ -118,6 +122,18 @@ export function retargetAvatar(g, boxRig) {
     e.bone.quaternion.copy(_q2).premultiply(_qp);     // local = qParent⁻¹ · 目標世界
     e.bone.updateMatrixWorld(true);
   }
+  // 命中放大/身體縮放(Phase 1 遺漏 → 補上;繞關節縮放,近端黏住不飛走)
+  const setS = (k, v) => { const e = av.by[k]; if (!e || !e.meshes) return; const s = v || 1;
+    e.meshes.forEach(m => { m.scale.setScalar(s); if (m.userData.restPos) m.position.copy(m.userData.restPos).multiplyScalar(s); }); };
+  setS('forearm_l', p.aL_scale); setS('hand_l', p.aL_scale);
+  setS('forearm_r', p.aR_scale); setS('hand_r', p.aR_scale);
+  setS('shin_l', p.lL_scale);    setS('foot_l', p.lL_scale);
+  setS('shin_r', p.lR_scale);    setS('foot_r', p.lR_scale);
+  setS('torso', p.body_scale);
+  // 整肢伸展:縮近端骨頭(upperarm/thigh)→ 整條肢等比放大(uniform,子骨/網格一起帶)
+  const setStretch = (k, v) => { const e = av.by[k]; if (e) e.bone.scale.setScalar(v || 1); };
+  setStretch('upperarm_l', p.aL_stretch); setStretch('upperarm_r', p.aR_stretch);
+  setStretch('thigh_l', p.lL_stretch);    setStretch('thigh_r', p.lR_stretch);
   // 踩地:角色最低頂點對齊 box rig 的腳底(box P 世界 y 已含踩地)。簡化:角色 wrap y = box 腳底世界 y。
   w.updateMatrixWorld(true);
   _fbox.setFromObject(w);

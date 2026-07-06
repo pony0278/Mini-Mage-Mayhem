@@ -393,6 +393,9 @@ function applyPose(p){
   armL.el.rotation.set(-p.aL_ex*aLw*D2R, 0, 0);   // 負號:正值 = 手肘往前彎(解剖正確)
   armR.sh.rotation.set(p.aR_sx*aRw*D2R, p.aR_sy*aRw*D2R, (p.aR_sz||0)*aRw*armR.side*D2R);
   armR.el.rotation.set(-p.aR_ex*aRw*D2R, 0, 0);
+  // 整肢伸展:肩節點等比放大 → 整條手臂從肩膀變長變大(遠鏡頭下伸手更明顯)
+  armL.sh.scale.setScalar(p.aL_stretch||1);
+  armR.sh.scale.setScalar(p.aR_stretch||1);
   // 腕關節:wx 屈伸 · wy 沿前臂軸扭轉(旋前旋後)
   armL.wr.rotation.set((p.aL_wx||0)*aLw*D2R, (p.aL_wy||0)*aLw*D2R, 0);
   armR.wr.rotation.set((p.aR_wx||0)*aRw*D2R, (p.aR_wy||0)*aRw*D2R, 0);
@@ -403,6 +406,9 @@ function applyPose(p){
   const hxR=p.lR_hx - sqd*0.7, kxR=p.lR_kx + sqd;
   legL.hp.rotation.set(hxL*lLw*D2R, (p.lL_hy||0)*lLw*legL.side*D2R, (p.lL_hz||0)*lLw*legL.side*D2R); legL.kn.rotation.set(kxL*lLw*D2R, 0, 0);
   legR.hp.rotation.set(hxR*lRw*D2R, (p.lR_hy||0)*lRw*legR.side*D2R, (p.lR_hz||0)*lRw*legR.side*D2R); legR.kn.rotation.set(kxR*lRw*D2R, 0, 0);
+  // 整肢伸展:髖節點等比放大(整條腿變長;自動踩地用 foot bbox → 會自然把身體撐高)
+  legL.hp.scale.setScalar(p.lL_stretch||1);
+  legR.hp.scale.setScalar(p.lR_stretch||1);
   // 腳踝:自動把腳掌壓平(用蹲下後的有效角度),ax 為額外手動微調
   // 腳踝:X=自動壓平+ax 微調;Y=腳尖朝向(ty,×side)可獨立於髖瞄準腳尖
   legL.ankle.rotation.set((-(hxL + kxL) + (p.lL_ax||0)) * lLw * D2R, (p.lL_ty||0)*lLw*legL.side*D2R, 0);

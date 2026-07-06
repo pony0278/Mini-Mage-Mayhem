@@ -20,8 +20,9 @@ export const POSE_KEYS = [
   'lL_contact', 'lR_contact',
   'aL_wx', 'aL_wy', 'aR_wx', 'aR_wy',
   'lL_ty', 'lR_ty',
+  'aL_stretch', 'aR_stretch', 'lL_stretch', 'lR_stretch',   // 整肢從近端關節等比伸展(1=原長;遠鏡頭下伸手更明顯)
 ];
-export function defaultPoseValue(k) { return (k === 'body_scale' || k.endsWith('_scale')) ? 1 : 0; }
+export function defaultPoseValue(k) { return (k === 'body_scale' || k.endsWith('_scale') || k.endsWith('_stretch')) ? 1 : 0; }
 export function normalizePose(p = {}) {
   const out = {};
   for (const k of POSE_KEYS) out[k] = (p[k] !== undefined && isFinite(p[k])) ? Number(p[k]) : defaultPoseValue(k);
