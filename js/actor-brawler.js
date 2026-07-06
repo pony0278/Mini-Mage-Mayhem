@@ -6,6 +6,7 @@
 import { game } from './state.js';
 import { makeBox } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
+import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 
 // ===== 建模規格表:尺寸/位置(世界 px)/配色。關節鏈長 Lu/Ll(腿)、Au/Al(臂)給自動踩地/組裝用 =====
 export const BRAWLER_SPEC = {
@@ -175,6 +176,14 @@ export function updateBrawler(e, g) {
   if (!u.pose) u.pose = { ...pose };
   else for (const key of POSE_KEYS) u.pose[key] += ((pose[key] ?? 0) - u.pose[key]) * k;
   applyBrawlerPose(R, u.pose);
+
+  // Phase 1:?avatar=1 且 GLB 就緒 → box rig 當隱形 driver,把世界差量轉寫到 GLB 角色。
+  // 首次就緒時 lazy 建立(GLB 非同步載入);建立會 T-pose 校正,故放在 applyBrawlerPose 之後、
+  // 用完再把姿勢套回(下一幀 updateBrawler 自然覆蓋,這裡不用還原)。
+  if (avatarEnabled() && avatarReady()) {
+    if (!u.avatarTried) { u.avatarTried = true; buildAvatar(g, R, applyBrawlerPose); applyBrawlerPose(R, u.pose); }
+    if (g.userData.avatar) retargetAvatar(g, R);
+  }
 
   // --- 世界層:面向 + 暈眩搖晃 + flinch + 擠壓 ---
   g.position.y = 0; // root_py 已進姿勢層

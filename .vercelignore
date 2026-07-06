@@ -1,0 +1,3 @@
+# 排除笨重的建模來源檔(不進遊戲部署),保留 assets/rigs/(遊戲載入的角色 GLB)
+assets/raw
+assets/parts

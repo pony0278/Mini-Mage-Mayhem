@@ -300,5 +300,8 @@ game.enemies = fighters.slice();
 let last = performance.now();
 requestAnimationFrame(frame);
 
+// Phase 1:?avatar=1 → 預載使用者的 GLB 角色(render 層;非同步,就緒後 updateBrawler 自動換裝)
+import('./actor-avatar.js').then(m => m.preloadAvatar()).catch(e => console.warn('[v2] avatar preload failed', e));
+
 // opt-in live tuning panel (角色大小 / 格線 / 地板顏色·搶眼度 / 攝影機): open v2.html?tune=1
 if (new URLSearchParams(location.search).has('tune')) import('./v2-tuning.js').catch(e => console.warn('[v2] tuning panel failed', e));
