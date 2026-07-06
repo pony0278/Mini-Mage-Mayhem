@@ -97,8 +97,9 @@ export const CLIPS = {
       { name: 'swing', frame: 13, ease: 'in' },
       { name: 'strike', frame: 15, ease: 'in' },
       { name: 'impact', frame: 17, ease: 'lin', impact: true },
-      { name: 'recovery_1', frame: 20, ease: 'lin' },
-      { name: 'recovery_2', frame: 23, ease: 'lin' },
+      { name: 'impact_hold', frame: 19, ease: 'out' },   // 命中定格 2 影格:正常速度下讓撞擊讀得到(hold 在傷害幀之後 → STRIKE_DELAY 不變)
+      { name: 'recovery_1', frame: 22, ease: 'lin' },
+      { name: 'recovery_2', frame: 25, ease: 'lin' },
     ],
     phases: {
       windup: { root_y: -4, spine_x: -30, spine_y: 60, pelvis_y: 60, aL_sz: 34, aL_ex: 79, aR_sx: -73, aR_sy: 16, aR_sz: 99, aR_ex: 22, aR_scale: 1.65, aR_stretch: 1.4, lL_hx: 14, lL_hy: 18, lL_kx: 44, lR_hx: -15, lR_hy: -1, lR_hz: 11, lR_kx: 29 },
@@ -106,6 +107,7 @@ export const CLIPS = {
       swing: { spine_y: -12, pelvis_y: -8, aL_sz: 34, aL_ex: 79, aR_sx: -22, aR_sy: -12, aR_sz: 88, aR_ex: 40, aR_scale: 1.35, aR_stretch: 1.4, lL_hy: 12, lL_hz: 13, lL_kx: 18, lR_hy: 18, lR_hz: 20 },
       strike: { spine_x: 21, spine_y: -31, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: 2, aR_sy: 3, aR_sz: 96, aR_ex: 67, aR_idle: 0.07, aR_scale: 1.6, aR_stretch: 1.91, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
       impact: { sq: 0.05, spine_x: 53, spine_y: -42, pelvis_y: -33, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -81, aR_sy: -90, aR_sz: 115, aR_ex: 11, aR_idle: 0.36, aR_scale: 1.9, aR_stretch: 1.77, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -2, lR_hy: 24, lR_hz: 16, lR_kx: 73 },
+      impact_hold: { sq: 0.05, spine_x: 53, spine_y: -42, pelvis_y: -33, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -81, aR_sy: -90, aR_sz: 115, aR_ex: 11, aR_idle: 0.36, aR_scale: 1.9, aR_stretch: 1.77, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -2, lR_hy: 24, lR_hz: 16, lR_kx: 73 },
       recovery_1: { sq: 0.05, spine_x: 24, spine_y: -60, pelvis_y: -33, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.65, aR_stretch: 1.58, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -43, lR_hy: 15, lR_hz: 16, lR_kx: 73 },
       recovery_2: { sq: 0.05, spine_x: 9, spine_y: -60, pelvis_y: -60, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.65, aR_stretch: 1.58, lL_hx: -14, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -43, lR_hy: 15, lR_hz: 16, lR_kx: 73 },
     },
@@ -118,8 +120,8 @@ export const CLIPS = {
       { name: 'windup_hold', frame: 8, ease: 'out' },   // 蓄力移動式定格(大甩腰讀得出來)
       { name: 'strike', frame: 11, ease: 'in' },        // 解腰:加速
       { name: 'impact', frame: 14, ease: 'in', impact: true },
-      { name: 'impact_hold', frame: 16, ease: 'out' },  // 命中定格(賣撞擊)
-      { name: 'recovery', frame: 21, ease: 'out' },
+      { name: 'impact_hold', frame: 17, ease: 'out' },  // 命中定格 3 影格:正常速度下讀得到撞擊(hold 在傷害幀之後 → STRIKE_DELAY 不變)
+      { name: 'recovery', frame: 22, ease: 'out' },
     ],
     phases: {
       windup: { sq: 0.05, spine_x: 28, spine_y: -90, pelvis_y: -42, head_y: -6, aL_sx: 27, aL_sy: -32, aL_sz: 62, aL_ex: 94, aL_idle: 0.05, aL_scale: 1.63, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.77, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -43, lR_hy: 15, lR_hz: 16, lR_kx: 73, aL_stretch: 1.4, aR_stretch: 1.32 },
