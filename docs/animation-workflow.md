@@ -78,7 +78,7 @@
 ```
 STRIKE_DELAY[段] ≈ clip impact key 的 frame ÷ 60
 ```
-- 現值:鉤拳 0.15(impact @9f 附近)、終結直拳 0.22(@13f 附近)。
+- 現值(使用者自編三連擊):`rhook` 0.283(@17f)、`lhook` 0.333(@20f)、`overhand` 0.383(@23f)。
 - 你把 impact key 拖到別的 frame → `js/v2-state.js` 的 `STRIKE_DELAY` 跟著改,否則「看到打中」和「實際掉血」會脫節。
 - 起手中被打暈/被抓/被推開踉蹌 → 打擊取消(格擋推開=真反制),這由模擬層守衛,動作資料不用管。
 
@@ -86,9 +86,9 @@ STRIKE_DELAY[段] ≈ clip impact key 的 frame ÷ 60
 
 | CLIPS key | 遊戲觸發 | 狀態 |
 |---|---|---|
-| `hookl` | 三連擊第 1 段(左鉤) | 引導自編排器 preset,待重編 |
-| `hookr` | 三連擊第 2 段(右鉤) | 同上 |
-| `cross` | 三連擊第 3 段(終結直拳);**投擲暫借用** | 同上;投擲需要專屬過肩摔 clip(最優先缺口) |
+| `rhook` | 三連擊第 1 段(右鉤拳) | ✅ 使用者 PUNCH STUDIO 定稿(impact @17f=0.283s) |
+| `lhook` | 三連擊第 2 段(左鉤拳) | ✅ 使用者定稿(impact @20f=0.333s) |
+| `overhand` | 三連擊第 3 段(過頂重擊=終結技);**投擲暫借用** | ✅ 使用者定稿(impact @23f=0.383s);投擲仍待專屬過肩摔 clip |
 
 新招式=新 entry + 在 `actor-brawler.js` 的 `PUNCH_CLIPS` / 狀態機掛上觸發。
 

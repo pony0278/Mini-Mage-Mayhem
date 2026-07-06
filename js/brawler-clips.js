@@ -83,73 +83,78 @@ export function evalClip(clip, tSec) { // t 秒 → 47 軸姿勢;超出長度回
   return null;
 }
 
-/* ===== CLIPS:動作庫。姿勢值引導自編排器內建 presets(hookl/hookr/cross),
-   時間軸對齊遊戲節奏(鉤拳 impact @9f≈0.15s、直拳 @13f≈0.22s —— 與 v2-state 的
-   STRIKE_DELAY 對齊:動作的 impact 影格 = 傷害判定時刻,兩邊要一起改)。
-   之後在編排器重編 → JSON 匯出 → 整份取代對應 entry 即可。 ===== */
+/* ===== CLIPS:動作庫。三連擊由使用者在 PUNCH STUDIO 編排 → JSON 匯出接入。
+   idle 幀已剝除,prepClip 自動用 COMBAT_IDLE(遊戲中性戰鬥站姿)補上,避免起手/收招爆閃。
+   ⚠ impact 影格 = 傷害判定時刻:impact key 的 frame÷60 必須等於 v2-state.js 的 STRIKE_DELAY[段],
+   重編動作若移動 impact 位置,兩邊要一起改。目前 rhook@17f/lhook@20f/overhand@23f。 ===== */
 export const CLIPS = {
-  hookl: prepClip({ // 左鉤拳(combo 第 1 段)
+  rhook: prepClip({ // 右鉤拳(combo 第 1 段;impact @17f≈0.283s = STRIKE_DELAY[0])
     seq: [
-      { name: 'idle', frame: 0, frames: 8 },
-      { name: 'anti', frame: 5, ease: 'out' },
-      { name: 'strike', frame: 8, ease: 'in' },
-      { name: 'impact', frame: 11, ease: 'lin', impact: true },
-      { name: 'recovery', frame: 19, ease: 'out' },
+      { name: 'idle', frame: 0, frames: 10, ease: 'out' },
+      { name: 'windup', frame: 6, ease: 'out' },
+      { name: 'hold', frame: 10, ease: 'out' },
+      { name: 'swing', frame: 13, ease: 'in' },
+      { name: 'strike', frame: 15, ease: 'in' },
+      { name: 'impact', frame: 17, ease: 'lin', impact: true },
+      { name: 'recovery_1', frame: 22, ease: 'out' },
+      { name: 'recovery_2', frame: 29, ease: 'out' },
     ],
     phases: {
-      anti: { root_y: -20, root_x: -2, root_pz: -0.03, sq: 0.12,
-        aL_sx: -95, aL_sy: -40, aL_ex: 90, aR_sx: -95, aR_sy: 25, aR_ex: 90,
-        lL_hx: -14, lL_kx: 38, lR_hx: 12, lR_kx: 22 },
-      strike: { root_y: 35, root_x: 3, root_pz: 0.18, sq: -0.18,
-        aL_sx: -95, aL_sy: 35, aL_ex: 75, aR_sx: -90, aR_sy: 15, aR_ex: 90,
-        lL_hx: -8, lL_kx: 10, lR_hx: 14, lR_kx: 30 },
-      impact: { root_y: 42, root_x: 3, root_pz: 0.20, sq: -0.22,
-        aL_sx: -100, aL_sy: 45, aL_ex: 70, aL_scale: 1.25, aR_sx: -90, aR_sy: 15, aR_ex: 90,
-        lL_hx: -8, lL_kx: 8, lR_hx: 14, lR_kx: 30 },
-      recovery: { ...COMBAT_IDLE },
+      windup: { spine_y: 59, pelvis_y: 39, aL_sz: 34, aL_ex: 79, aR_sx: -73, aR_sy: 16, aR_sz: 99, aR_ex: 22, aR_scale: 1.15, lR_hy: 37, lR_hz: 41 },
+      hold: { spine_y: 55, pelvis_y: 36, aL_sz: 34, aL_ex: 79, aR_sx: -76, aR_sy: 16, aR_sz: 99, aR_ex: 22, aR_scale: 1.15, lR_hy: 37, lR_hz: 41 },
+      swing: { spine_y: -12, pelvis_y: -8, aL_sz: 34, aL_ex: 79, aR_sx: -50, aR_sy: -12, aR_sz: 88, aR_ex: 40, aR_scale: 1.35, lL_hy: 12, lL_hz: 13, lL_kx: 18, lR_hy: 18, lR_hz: 20 },
+      strike: { spine_y: -36, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: -18, aR_sy: -39, aR_sz: 72, aR_ex: 73, aR_scale: 1.6, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      impact: { spine_y: -42, pelvis_y: -33, head_y: -6, sq: 0.05, aL_sz: 34, aL_ex: 79, aR_sx: -12, aR_sy: -44, aR_sz: 70, aR_ex: 76, aR_scale: 1.8, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      recovery_1: { spine_y: -36, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: 29, aR_sy: -17, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      recovery_2: { aL_sz: 12, aL_ex: 42, aR_sz: 12, aR_ex: 42 },
     },
+    lags: { aL: 0, aR: 0.1, lL: 0, lR: 0.1 },
   }),
-  hookr: prepClip({ // 右鉤拳(combo 第 2 段)
+  lhook: prepClip({ // 左鉤拳(combo 第 2 段;impact @20f≈0.333s = STRIKE_DELAY[1])
     seq: [
-      { name: 'idle', frame: 0, frames: 8 },
-      { name: 'anti', frame: 5, ease: 'out' },
-      { name: 'strike', frame: 8, ease: 'in' },
-      { name: 'impact', frame: 11, ease: 'lin', impact: true },
-      { name: 'recovery', frame: 19, ease: 'out' },
+      { name: 'idle', frame: 0, frames: 10, ease: 'out' },
+      { name: 'windup', frame: 6, ease: 'out' },
+      { name: 'hold', frame: 10, ease: 'out' },
+      { name: 'swing', frame: 14, ease: 'in' },
+      { name: 'strike', frame: 17, ease: 'in' },
+      { name: 'impact', frame: 20, ease: 'lin', impact: true },
+      { name: 'recovery', frame: 26, ease: 'out' },
     ],
     phases: {
-      anti: { root_y: 20, root_x: -2, root_pz: -0.03, sq: 0.12,
-        aL_sx: -95, aL_sy: -15, aL_ex: 90, aR_sx: -95, aR_sy: 40, aR_ex: 90,
-        lL_hx: -12, lL_kx: 22, lR_hx: 14, lR_kx: 38 },
-      strike: { root_y: -35, root_x: 3, root_pz: 0.20, sq: -0.18,
-        aL_sx: -90, aL_sy: -15, aL_ex: 90, aR_sx: -95, aR_sy: -35, aR_ex: 75,
-        lL_hx: -12, lL_kx: 30, lR_hx: 18, lR_kx: 8 },
-      impact: { root_y: -42, root_x: 3, root_pz: 0.22, sq: -0.22,
-        aL_sx: -90, aL_sy: -15, aL_ex: 90, aR_sx: -100, aR_sy: -45, aR_ex: 70, aR_scale: 1.25,
-        lL_hx: -12, lL_kx: 30, lR_hx: 18, lR_kx: 6 },
-      recovery: { ...COMBAT_IDLE },
+      windup: { spine_x: 11, spine_y: -36, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: 29, aR_sy: -17, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      hold: { spine_x: 6, spine_y: -8, pelvis_y: -12, aL_sz: 42, aL_ex: 92, aR_sx: 40, aR_sy: -5, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      swing: { spine_x: -6, spine_y: 12, pelvis_y: -2, aL_sx: -28, aL_sy: 3, aL_sz: 24, aL_ex: 58, aL_scale: 1.3, aR_sx: 52, aR_sy: 20, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      strike: { spine_x: -13, spine_y: 26, pelvis_y: 3, aL_sx: -55, aL_sy: 3, aL_sz: 14, aL_ex: 33, aL_scale: 1.55, aR_sx: 60, aR_sy: 41, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      impact: { spine_x: -19, spine_y: 30, pelvis_y: 6, head_y: -6, sq: 0.05, aL_sx: -76, aL_sy: 3, aL_sz: 8, aL_ex: 19, aL_scale: 1.92, aL_wx: 4, aR_sx: 60, aR_sy: 41, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      recovery: { spine_x: -10, spine_y: 20, pelvis_y: 2, aL_sx: -40, aL_sz: 20, aL_ex: 45, aL_scale: 1, aR_sx: 30, aR_sz: 72, aR_ex: 60, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
     },
+    lags: { aL: 0.08, aR: 0.1, lL: 0, lR: 0.1 },
   }),
-  cross: prepClip({ // 後手直拳(combo 第 3 段=終結技;投擲動作暫借用)
+  overhand: prepClip({ // 過頂重擊(combo 第 3 段=終結技;impact @23f≈0.383s = STRIKE_DELAY[2])
     seq: [
-      { name: 'idle', frame: 0, frames: 10 },
-      { name: 'anti', frame: 8, ease: 'out' },
-      { name: 'strike', frame: 11, ease: 'in' },
-      { name: 'impact', frame: 14, ease: 'lin', impact: true },
-      { name: 'recovery', frame: 27, ease: 'out' },
+      { name: 'idle', frame: 0, frames: 10, ease: 'out' },
+      { name: 'windup', frame: 5, ease: 'out' },
+      { name: 'windup_1', frame: 8, ease: 'out' },
+      { name: 'hold', frame: 11, ease: 'out' },
+      { name: 'swing_1', frame: 14, ease: 'in' },
+      { name: 'swing_2', frame: 17, ease: 'in' },
+      { name: 'strike', frame: 20, ease: 'in' },
+      { name: 'impact', frame: 23, ease: 'lin', impact: true },
+      { name: 'recovery', frame: 28, ease: 'out' },
+      { name: 'recovery_1', frame: 34, ease: 'out' },
     ],
     phases: {
-      anti: { root_y: -18, root_x: -2, root_pz: -0.04, sq: 0.10,
-        aL_sx: -90, aL_sy: -15, aL_ex: 80, aR_sx: -60, aR_sy: 25, aR_ex: 120,
-        lL_hx: -12, lL_kx: 18, lR_hx: 14, lR_kx: 38 },
-      strike: { root_y: 30, root_x: 4, root_pz: 0.22, sq: -0.18,
-        aL_sx: -70, aL_sy: -10, aL_ex: 85, aR_sx: -100, aR_sy: 5, aR_ex: 5,
-        lL_hx: -8, lL_kx: 8, lR_hx: 18, lR_kx: 6 },
-      impact: { root_y: 34, root_x: 5, root_pz: 0.24, sq: -0.20,
-        aL_sx: -70, aL_sy: -10, aL_ex: 85, aR_sx: -108, aR_sy: 5, aR_ex: 0, aR_scale: 1.35,
-        lL_hx: -8, lL_kx: 8, lR_hx: 18, lR_kx: 4 },
-      recovery: { ...COMBAT_IDLE },
+      windup: { spine_x: -12, spine_y: 24, pelvis_y: 4, aL_sx: -40, aL_sz: 20, aL_ex: 45, aR_sx: 32, aR_sz: 70, aR_ex: 58, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      windup_1: { spine_x: -14, spine_y: 30, pelvis_y: 6, aL_sx: 9, aL_sy: 55, aL_sz: 20, aL_ex: 88, aR_sx: 10, aR_sy: 30, aR_sz: 95, aR_ex: 70, lL_hx: -30, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      hold: { spine_x: -12, spine_y: 40, pelvis_y: 14, head_y: -8, aL_sx: 9, aL_sy: 59, aL_sz: 20, aL_ex: 91, aR_sx: -20, aR_sy: 44, aR_sz: 105, aR_ex: 78, lL_hx: -50, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      swing_1: { spine_x: 0, spine_y: 20, pelvis_y: 22, head_y: -16, aL_sx: 9, aL_sy: 59, aL_sz: 20, aL_ex: 91, aR_sx: -22, aR_sy: 20, aR_sz: 98, aR_ex: 95, lL_hx: -56, lL_hy: 25, lL_hz: 26, lL_kx: 36, lR_hy: 4, lR_kx: 20 },
+      swing_2: { spine_x: 12, spine_y: 2, pelvis_y: 23, head_y: -20, aL_sx: 9, aL_sy: 59, aL_sz: 20, aL_ex: 91, aR_sx: -55, aR_sy: -30, aR_sz: 65, aR_ex: 80, aR_scale: 1.3, lL_hx: -56, lL_hy: 25, lL_hz: 26, lL_kx: 36, lR_hx: 20, lR_hy: 4, lR_kx: 20 },
+      strike: { spine_x: 22, spine_y: -13, pelvis_y: 23, head_y: -20, aL_sx: 9, aL_sy: 59, aL_sz: 20, aL_ex: 91, aR_sx: -85, aR_sy: -70, aR_sz: 35, aR_ex: 30, aR_scale: 1.55, lL_hx: -56, lL_hy: 25, lL_hz: 26, lL_kx: 36, lR_hx: 35, lR_hy: 4, lR_kx: 20 },
+      impact: { spine_x: 24, spine_y: -16, pelvis_y: 24, head_y: -22, sq: 0.06, aL_sx: 9, aL_sy: 59, aL_sz: 20, aL_ex: 91, aR_sx: -103, aR_sy: -89, aR_sz: 15, aR_ex: 6, aR_scale: 1.85, aR_wx: 8, aR_idle: 0.04, lL_hx: -56, lL_hy: 25, lL_hz: 26, lL_kx: 36, lR_hx: 43, lR_hy: 4, lR_kx: 20 },
+      recovery: { spine_x: 18, spine_y: -8, pelvis_y: 26, head_y: -18, aL_sx: 0, aL_sy: 40, aL_sz: 20, aL_ex: 70, aR_sx: -110, aR_sy: -80, aR_sz: 8, aR_ex: 12, aR_scale: 1.05, aR_idle: 0.04, lL_hx: -46, lL_hy: 25, lL_hz: 26, lL_kx: 36, lR_hx: 14, lR_hy: -37, lR_hz: 6, lR_kx: 24 },
+      recovery_1: { pelvis_y: 30, head_y: -10, aL_sx: -24, aL_sy: -18, aL_sz: 20, aL_ex: 31, aR_sx: -8, aR_sy: 12, aR_sz: 40, aR_ex: 48, aR_scale: 1, lL_hx: -20, lL_hy: 21, lL_hz: 12, lL_kx: 39, lL_idle: 0.3, lR_hx: -12, lR_hy: -20, lR_kx: 24 },
     },
+    lags: { aL: 0.06, aR: 0.14, lL: 0, lR: 0.1 },
   }),
 };
-export const PUNCH_CLIPS = ['hookl', 'hookr', 'cross']; // punchKind 0/1/2 → clip
+export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand']; // punchKind 0/1/2 → clip(使用者自編三連擊)
