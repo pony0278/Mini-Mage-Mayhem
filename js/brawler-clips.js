@@ -89,25 +89,23 @@ export function evalClip(clip, tSec) { // t 秒 → 47 軸姿勢;超出長度回
    ⚠ impact 影格 = 傷害判定時刻:impact key 的 frame÷60 必須等於 v2-state.js 的 STRIKE_DELAY[段],
    重編動作若移動 impact 位置,兩邊要一起改。目前 rhook@17f/lhook@20f/overhand@23f。 ===== */
 export const CLIPS = {
-  rhook: prepClip({ // 右鉤拳(combo 第 1 段;impact @17f≈0.283s = STRIKE_DELAY[0];整肢伸展 1.4~1.58×)
+  rhook: prepClip({ // 右鉤拳(combo 第 1 段;impact @17f≈0.283s = STRIKE_DELAY[0];整肢伸展 1.4~1.91×)
     seq: [
       { name: 'idle', frame: 0, frames: 10, ease: 'out' },
       { name: 'windup', frame: 6, ease: 'out' },
-      { name: 'hold', frame: 10, ease: 'out' },
       { name: 'swing', frame: 13, ease: 'in' },
       { name: 'strike', frame: 15, ease: 'in' },
       { name: 'impact', frame: 17, ease: 'lin', impact: true },
-      { name: 'recovery_1', frame: 22, ease: 'out' },
-      { name: 'recovery_2', frame: 29, ease: 'out' },
+      { name: 'recovery_1', frame: 20, ease: 'lin' },
+      { name: 'recovery_2', frame: 23, ease: 'lin' },
     ],
     phases: {
-      windup: { spine_y: 59, pelvis_y: 39, aL_sz: 34, aL_ex: 79, aR_sx: -73, aR_sy: 16, aR_sz: 99, aR_ex: 22, aR_scale: 1.65, aR_stretch: 1.4, lR_hy: 37, lR_hz: 41 },
-      hold: { spine_y: 55, pelvis_y: 36, aL_sz: 34, aL_ex: 79, aR_sx: -76, aR_sy: 16, aR_sz: 99, aR_ex: 22, aR_scale: 1.65, aR_stretch: 1.4, lR_hy: 37, lR_hz: 41 },
-      swing: { spine_y: -12, pelvis_y: -8, aL_sz: 34, aL_ex: 79, aR_sx: -50, aR_sy: -12, aR_sz: 88, aR_ex: 40, aR_scale: 1.35, aR_stretch: 1.4, lL_hy: 12, lL_hz: 13, lL_kx: 18, lR_hy: 18, lR_hz: 20 },
-      strike: { spine_y: -36, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: -18, aR_sy: -39, aR_sz: 72, aR_ex: 73, aR_scale: 1.6, aR_stretch: 1.4, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      impact: { sq: 0.05, spine_y: -42, pelvis_y: -33, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -12, aR_sy: -44, aR_sz: 70, aR_ex: 76, aR_scale: 1.9, aR_stretch: 1.58, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      recovery_1: { spine_y: -36, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: 29, aR_sy: -17, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      recovery_2: { aL_sz: 12, aL_ex: 42, aR_sz: 12, aR_ex: 42 },
+      windup: { root_y: -4, spine_x: -30, spine_y: 60, pelvis_y: 60, aL_sz: 34, aL_ex: 79, aR_sx: -73, aR_sy: 16, aR_sz: 99, aR_ex: 22, aR_scale: 1.65, aR_stretch: 1.4, lL_hx: 14, lL_hy: 18, lL_kx: 44, lR_hx: -15, lR_hy: -1, lR_hz: 11, lR_kx: 29 },
+      swing: { spine_y: -12, pelvis_y: -8, aL_sz: 34, aL_ex: 79, aR_sx: -22, aR_sy: -12, aR_sz: 88, aR_ex: 40, aR_scale: 1.35, aR_stretch: 1.4, lL_hy: 12, lL_hz: 13, lL_kx: 18, lR_hy: 18, lR_hz: 20 },
+      strike: { spine_x: 21, spine_y: -31, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: 2, aR_sy: 3, aR_sz: 96, aR_ex: 67, aR_idle: 0.07, aR_scale: 1.6, aR_stretch: 1.91, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      impact: { sq: 0.05, spine_x: 53, spine_y: -42, pelvis_y: -33, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -81, aR_sy: -90, aR_sz: 115, aR_ex: 11, aR_idle: 0.36, aR_scale: 1.9, aR_stretch: 1.77, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -2, lR_hy: 24, lR_hz: 16, lR_kx: 73 },
+      recovery_1: { sq: 0.05, spine_x: 24, spine_y: -60, pelvis_y: -33, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.65, aR_stretch: 1.58, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -43, lR_hy: 15, lR_hz: 16, lR_kx: 73 },
+      recovery_2: { sq: 0.05, spine_x: 9, spine_y: -60, pelvis_y: -60, head_y: -6, aL_sz: 34, aL_ex: 79, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.65, aR_stretch: 1.58, lL_hx: -14, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -43, lR_hy: 15, lR_hz: 16, lR_kx: 73 },
     },
     lags: { aL: 0, aR: 0.1, lL: 0, lR: 0.1 },
   }),
