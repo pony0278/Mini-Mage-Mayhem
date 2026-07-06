@@ -9,6 +9,9 @@
 import { game } from './state.js';
 
 const AVATAR_URL = 'assets/rigs/base-avatar.glb';
+// 角色整體放大倍率(相對「對齊 box rig 身高」的基準)。v2 遠鏡頭下大一點更好看。
+// 可用 URL ?avscale=1.5 即時試不同大小;預設 1.3。
+const AVATAR_SCALE = (() => { const v = parseFloat(new URLSearchParams(location.search).get('avscale')); return Number.isFinite(v) ? Math.max(0.5, Math.min(3, v)) : 1.5; })();
 let TEMPLATE = null;          // 載入一次的 GLB 場景(每個 fighter clone 一份)
 let loadState = 0;            // 0 未載 / 1 載入中 / 2 成功 / 3 失敗
 export function avatarEnabled() { return new URLSearchParams(location.search).get('avatar') === '1'; }
@@ -78,7 +81,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   // 縮放角色到 box rig 身高。box brawler 世界高 ≈ hipY + torso 頂 + head ≈ 用包圍盒估。
   const bb = new THREE.Box3().setFromObject(sc), size = new THREE.Vector3(); bb.getSize(size);
   const boxH = boxRigHeight(boxRig);
-  const S = size.y > 1e-6 ? boxH / size.y : 1;
+  const S = (size.y > 1e-6 ? boxH / size.y : 1) * AVATAR_SCALE;   // ×整體放大倍率
   const wrap = new THREE.Group(); wrap.name = 'AVATAR'; wrap.scale.setScalar(S); wrap.add(sc);
   g.add(wrap);
 
