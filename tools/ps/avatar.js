@@ -85,6 +85,8 @@ async function loadAvatarBuffer(ab, label){
   root.updateMatrixWorld(true);
   scene.add(wrap); wrap.updateMatrixWorld(true);
   Object.values(by).forEach(e => { e.node().getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); });
+  // 關節填充半徑/顏色只在此刻(rest=T-pose)量一次並快取 → 之後 pose 彎曲不影響量測、拉滑桿不重掃幾何
+  JOINT_FILL_KEYS.forEach(k => { const e = by[k]; if(e) e._fill = jointFillRadiusColor(e); });
 
   // ⑤ 父先子後的處理順序(依骨頭深度)
   const depth = e => { let d = 0, p = e.bone; while(p.parent){ d++; p = p.parent; } return d; };
@@ -110,8 +112,12 @@ try{ if(localStorage.getItem('PS_JOINT_FILL')==='0') JOINT_FILL_ON = false; }cat
 
 const _jp = new THREE.Vector3(), _jv = new THREE.Vector3(), _js = new THREE.Vector3(), _jjq = new THREE.Quaternion(),
       _jax = new THREE.Vector3(), _jtip = new THREE.Vector3(), _jrel = new THREE.Vector3();
-let JOINT_FILL_SCALE = 0.82;   // 球半徑相對肢體橫截半徑:<1 收在表面內,不凸成腫瘤
+let JOINT_FILL_SCALE = 0.82;   // 球半徑相對肢體橫截半徑:<1 收在表面內,不凸成腫瘤(全域基準)
 try{ const v = parseFloat(localStorage.getItem('PS_JOINT_FILL_SIZE')); if(Number.isFinite(v)) JOINT_FILL_SCALE = Math.max(0.4, Math.min(1.3, v)); }catch(e){}
+// 逐關節倍率(疊在全域基準上;預設 1.0=不變、0=關掉該關節填充)。key=骨頭 key,左右可不同。
+let JOINT_FILL_MULT = {};
+try{ const j = JSON.parse(localStorage.getItem('PS_JOINT_FILL_MULT')||'{}'); if(j && typeof j==='object') JOINT_FILL_MULT = j; }catch(e){}
+const jfMult = k => (JOINT_FILL_MULT[k] != null ? JOINT_FILL_MULT[k] : 1);
 function jointFillRadiusColor(e){
   // 量該部件近端的「對軸線橫截半徑」(不是到樞紐的距離——那含軸向偏移會偏大),世界量測。
   const mesh = e.meshes[0]; if(!mesh) return null;
@@ -120,11 +126,18 @@ function jointFillRadiusColor(e){
   const gp = mesh.geometry.getAttribute('position');
   const gc = mesh.geometry.getAttribute('color');
   if(!gp.count) return null;
-  // 軸線:樞紐 → 離樞紐最遠的頂點(肢體延伸方向)
-  let far=-1;
-  for(let i=0;i<gp.count;i++){ _jv.set(gp.getX(i),gp.getY(i),gp.getZ(i)).applyMatrix4(mesh.matrixWorld);
-    const d=_jv.distanceToSquared(_jp); if(d>far){ far=d; _jtip.copy(_jv); } }
-  _jax.copy(_jtip).sub(_jp); const len=_jax.length()||1; _jax.multiplyScalar(1/len);
+  // 軸線:優先用骨頭階層方向(樞紐 → 子骨頭,確定、pose 無關、不靠頂點 tiebreak);
+  //       末端骨(手/腳/頭無子骨)退回「樞紐 → 最遠頂點」。
+  const childBone = e.bone.children.find(c => c.isBone || (!c.isMesh && /arm|hand|forearm|thigh|shin|calf|foot|head|neck/i.test(c.name||'')));
+  let len;
+  if(childBone){ childBone.getWorldPosition(_jtip); _jax.copy(_jtip).sub(_jp); len=_jax.length()||1; }
+  else {
+    let far=-1;
+    for(let i=0;i<gp.count;i++){ _jv.set(gp.getX(i),gp.getY(i),gp.getZ(i)).applyMatrix4(mesh.matrixWorld);
+      const d=_jv.distanceToSquared(_jp); if(d>far){ far=d; _jtip.copy(_jv); } }
+    _jax.copy(_jtip).sub(_jp); len=_jax.length()||1;
+  }
+  _jax.multiplyScalar(1/len);
   // 近端環帶(沿軸 0~30% 的頂點),量各自對軸線的垂直距離 = 橫截半徑
   const rads=[]; let cr=0,cg=0,cb=0,cn=0;
   for(let i=0;i<gp.count;i++){ _jv.set(gp.getX(i),gp.getY(i),gp.getZ(i)).applyMatrix4(mesh.matrixWorld);
@@ -137,7 +150,9 @@ function jointFillRadiusColor(e){
   rads.sort((a,b)=>a-b);
   const r = rads[Math.floor(rads.length*0.5)];                          // 橫截半徑中位數
   const col = cn ? new THREE.Color(cr/cn, cg/cn, cb/cn) : new THREE.Color(0.7,0.7,0.7);
-  return { r, color: col };
+  // 骨頭世界縮放也在此刻(rest)一起量:decompose 出的 scale 會隨姿勢旋轉漂移,必須用 rest 值換算
+  e.bone.matrixWorld.decompose(_jp, _jjq, _js);
+  return { r, color: col, scale: _js.x };
 }
 function buildJointFillers(){
   const A = AVATAR; if(!A) return;
@@ -146,10 +161,11 @@ function buildJointFillers(){
   if(!JOINT_FILL_ON) return;
   for(const k of JOINT_FILL_KEYS){
     const e = A.by[k]; if(!e) continue;
-    const rc = jointFillRadiusColor(e); if(!rc) continue;
-    // 世界半徑 → 骨頭 local 尺度(骨頭世界縮放≈wrap S;用 decompose 保險)
-    e.bone.matrixWorld.decompose(_jp, _jjq, _js);
-    const localR = rc.r / (_js.x || A.S || 1) * JOINT_FILL_SCALE;        // 收在肢體橫截內,填縫不凸
+    const rc = e._fill || (e._fill = jointFillRadiusColor(e));   // 用 rest 快取(見載入時預量);缺才即時量
+    if(!rc) continue;
+    // 世界半徑 → 骨頭 local 尺度:用 rest 時量的 scale(live decompose 會隨姿勢漂移)
+    const localR = rc.r / (rc.scale || A.S || 1) * JOINT_FILL_SCALE * jfMult(k);   // 全域基準 × 逐關節倍率
+    if(localR < 1e-4) continue;                                          // 倍率 0=關掉該關節填充
     const geo = new THREE.IcosahedronGeometry(localR, 1);               // 低模球(42 面)貼合 faceted 風格
     const mat = new THREE.MeshStandardMaterial({ color: rc.color, roughness:0.6, metalness:0.04, flatShading:true });
     const ball = new THREE.Mesh(geo, mat);
@@ -168,6 +184,22 @@ function setJointFillSize(v){
   try{ localStorage.setItem('PS_JOINT_FILL_SIZE', String(JOINT_FILL_SCALE)); }catch(e){}
   if(AVATAR && JOINT_FILL_ON) buildJointFillers();
 }
+function setJointFillMult(k, v){
+  JOINT_FILL_MULT[k] = Math.max(0, Math.min(2, v));
+  try{ localStorage.setItem('PS_JOINT_FILL_MULT', JSON.stringify(JOINT_FILL_MULT)); }catch(e){}
+  if(AVATAR && JOINT_FILL_ON) buildJointFillers();
+}
+function resetJointFillMult(){
+  JOINT_FILL_MULT = {};
+  try{ localStorage.removeItem('PS_JOINT_FILL_MULT'); }catch(e){}
+  if(AVATAR && JOINT_FILL_ON) buildJointFillers();
+}
+// 逐關節微調 UI 的關節清單(左右分開,可不對稱)
+const JOINT_FILL_PARTS = [
+  ['upperarm_l','左肩'],['upperarm_r','右肩'],['forearm_l','左肘'],['forearm_r','右肘'],
+  ['hand_l','左腕'],['hand_r','右腕'],['thigh_l','左髖'],['thigh_r','右髖'],
+  ['shin_l','左膝'],['shin_r','右膝'],['foot_l','左踝'],['foot_r','右踝'],['neck','頸'],
+];
 
 // 腳踝跟隨度(0=腳鎖死跟小腿=高筒硬靴;1=完全吃編排器腳踝壓平)。
 // 高筒靴角色的鞋頭/靴身接縫重疊很小,腳踝轉太多會開口——調低此值讓整隻靴子近乎一體。
@@ -258,6 +290,31 @@ function clearAvatar(){
   const jfs = document.getElementById('jointFillSize'), jfsv = document.getElementById('jointFillSizeV');
   jfs.value = JOINT_FILL_SCALE; jfsv.textContent = JOINT_FILL_SCALE.toFixed(2);
   jfs.addEventListener('input', e => { const v = parseFloat(e.target.value); jfsv.textContent = v.toFixed(2); setJointFillSize(v); });
+
+  // 逐關節微調(可折疊):13 個倍率滑桿,疊在全域「球大小」上;左右可不同。0=關掉該關節。
+  const jp = document.createElement('details');
+  jp.style.cssText = 'margin-top:4px;font-size:10px;background:rgba(255,255,255,.03);border-radius:4px;padding:3px 6px';
+  let html = '<summary style="cursor:pointer;color:var(--dim)">逐關節微調(填充球大小)<button id="jfmReset" style="float:right;font-size:9px;padding:1px 6px">全部歸 1</button></summary>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;margin-top:5px">';
+  JOINT_FILL_PARTS.forEach(([k,label])=>{
+    const v = jfMult(k);
+    html += `<label style="display:flex;align-items:center;gap:4px" title="${label} 填充球倍率(疊在全域球大小上;0=關掉)">`
+      + `<span style="width:26px;color:var(--dim)">${label}</span>`
+      + `<input type="range" id="jfm_${k}" min="0" max="2" step="0.05" value="${v}" style="flex:1;min-width:0">`
+      + `<span id="jfmv_${k}" style="width:26px;text-align:right">${v.toFixed(2)}</span></label>`;
+  });
+  html += '</div>';
+  jp.innerHTML = html;
+  st.parentElement.insertBefore(jp, st);
+  JOINT_FILL_PARTS.forEach(([k])=>{
+    const s = document.getElementById('jfm_'+k), sv = document.getElementById('jfmv_'+k);
+    s.addEventListener('input', e => { const v = parseFloat(e.target.value); sv.textContent = v.toFixed(2); setJointFillMult(k, v); });
+  });
+  document.getElementById('jfmReset').addEventListener('click', e => {
+    e.preventDefault();
+    resetJointFillMult();
+    JOINT_FILL_PARTS.forEach(([k])=>{ const s=document.getElementById('jfm_'+k), sv=document.getElementById('jfmv_'+k); if(s){ s.value=1; sv.textContent='1.00'; } });
+  });
   const af = document.getElementById('ankleFollow'), afv = document.getElementById('ankleFollowV');
   af.value = ANKLE_FOLLOW; afv.textContent = ANKLE_FOLLOW.toFixed(2);
   af.addEventListener('input', e => {
