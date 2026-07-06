@@ -35,22 +35,43 @@ function buildTimingControls(){
   normalizeTimelineInPlace();
   const host=document.getElementById('timingControls'); host.innerHTML='';
   const s=SEQ[activeIdx]; const isIdle=(activeIdx===0);
+  // ⚠ 處理器裡不可沿用 s(pushHistory→normalize 會整組換新 SEQ 物件,s 變孤兒)——
+  //   互動當下一律用名字重查:const k=liveKey(); 查不到就放棄
+  const keyName = s.name;
+  const liveKey = () => SEQ.find(x=>x.name===keyName);
 
   const meta=document.createElement('div'); meta.className='ctrl';
   meta.innerHTML='<div class="lab"><span class="name">目前 key</span><span class="val">#'+activeIdx+' · '+s.name+'</span></div>'
+    +(isIdle ? '' :
+      '<div class="keyrow" style="margin-bottom:4px"><input id="rt_name" type="text" value="'+s.name+'" spellcheck="false" '
+      +'title="改名此 key(英數/底線;Enter 或離開輸入框套用)" style="flex:1;min-width:0">'
+      +'<button id="rt_nameGo" title="套用改名">✎ 改名</button></div>'
+      +'<div id="rt_nameMsg" style="font-size:9px;color:var(--dim);min-height:11px"></div>')
     +'<div class="keyrow"><select id="rt_tag"></select><select id="rt_ease"></select></div>';
   host.appendChild(meta);
+  if(!isIdle){
+    const nameInp=document.getElementById('rt_name'), nameMsg=document.getElementById('rt_nameMsg');
+    const doRename=()=>{ if(nameInp.value===keyName) return;
+      const r=renameKeyTo(nameInp.value);
+      if(!r.ok){ nameMsg.textContent=r.msg; nameMsg.style.color='var(--red, #ff2e6e)'; nameInp.focus(); }
+      // 成功時 setActiveKey 已重建整個面板(訊息由重建後的程式碼顯示)
+    };
+    nameInp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doRename(); } });   // 不 stopPropagation:Ctrl+Z 要能到全域;單鍵快捷鍵由全域的 INPUT 守衛擋
+    nameInp.addEventListener('blur',doRename);
+    document.getElementById('rt_nameGo').addEventListener('click',doRename);
+    if(window.__renameMsg){ nameMsg.textContent=window.__renameMsg; nameMsg.style.color='var(--lime, #9dff43)'; window.__renameMsg=null; }
+  }
   const tagSel=document.getElementById('rt_tag');
   KEY_TAGS.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent='tag: '+t; if(t===s.tag)o.selected=true; tagSel.appendChild(o); });
-  tagSel.addEventListener('change',e=>{ pushHistory(); s.tag=e.target.value; buildPhaseTabs(); scheduleAutosave(); });
+  tagSel.addEventListener('change',e=>{ pushHistory(); const k=liveKey(); if(!k) return; k.tag=e.target.value; buildPhaseTabs(); scheduleAutosave(); });
   const easeSel=document.getElementById('rt_ease');
   EASES.forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent='ease: '+m; if(m===s.ease)o.selected=true; easeSel.appendChild(o); });
-  easeSel.addEventListener('change',e=>{ pushHistory(); s.ease=e.target.value; buildPhaseTabs(); scheduleAutosave(); });
+  easeSel.addEventListener('change',e=>{ pushHistory(); const k=liveKey(); if(!k) return; k.ease=e.target.value; buildPhaseTabs(); scheduleAutosave(); });
   if(!isIdle){
     const cBtn=document.createElement('button'); cBtn.style.width='100%'; cBtn.style.marginTop='4px';
-    const paintC=()=>{ cBtn.textContent=s.cancel?'✂ CANCEL 點:此 key 起可取消接招':'設為 CANCEL 點'; cBtn.style.borderColor=s.cancel?'var(--lime)':''; cBtn.style.color=s.cancel?'var(--lime)':''; };
+    const paintC=()=>{ const k=liveKey()||s; cBtn.textContent=k.cancel?'✂ CANCEL 點:此 key 起可取消接招':'設為 CANCEL 點'; cBtn.style.borderColor=k.cancel?'var(--lime)':''; cBtn.style.color=k.cancel?'var(--lime)':''; };
     paintC();
-    cBtn.addEventListener('click',()=>{ pushHistory(); s.cancel=!s.cancel; paintC(); scheduleAutosave(); });
+    cBtn.addEventListener('click',()=>{ pushHistory(); const k=liveKey(); if(!k) return; k.cancel=!k.cancel; paintC(); scheduleAutosave(); });
     meta.appendChild(cBtn);
   }
 
@@ -60,14 +81,31 @@ function buildTimingControls(){
     fc.innerHTML='<div class="lab"><span class="name">Loop 收尾 → IDLE</span><span class="val" id="vt_f">'+rf+'<span class="unit">f</span></span></div>'
       +'<input type="range" id="rt_f" min="1" max="60" step="1" value="'+rf+'">';
     host.appendChild(fc);
-    document.getElementById('rt_f').addEventListener('input',e=>{ s.returnFrames=s.frames=parseInt(e.target.value); document.getElementById('vt_f').innerHTML=s.frames+'<span class="unit">f</span>'; updateHeaderMeta(); buildTimelineUI(); scheduleAutosave(); });
+    document.getElementById('rt_f').addEventListener('input',e=>{ const k=SEQ[0]; k.returnFrames=k.frames=parseInt(e.target.value); document.getElementById('vt_f').innerHTML=k.frames+'<span class="unit">f</span>'; updateHeaderMeta(); buildTimelineUI(); scheduleAutosave(); });
   } else {
     const prev=SEQ[activeIdx-1];
+    const segLen=Math.max(1, s.frame-prev.frame);
     const maxF=Math.max(240, totalTimelineFrames()+60);
-    fc.innerHTML='<div class="lab"><span class="name">絕對 frame 位置</span><span class="val" id="vt_f">'+s.frame+'<span class="unit">f</span></span></div>'
+    fc.innerHTML='<div class="lab"><span class="name">上一段長度('+prev.name+' → '+s.name+')</span>'
+      +'<span class="val"><input type="number" id="rt_seg" min="1" max="120" step="1" value="'+segLen+'" '
+      +'title="這段過渡的格數。改了會整段推移:此 key 與後面所有 key 一起平移,不會打亂順序" '
+      +'style="width:52px;text-align:right"><span class="unit">f</span></span></div>'
+      +'<div class="lab" style="margin-top:6px"><span class="name">絕對 frame 位置</span><span class="val" id="vt_f">'+s.frame+'<span class="unit">f</span></span></div>'
       +'<input type="range" id="rt_f" min="1" max="'+maxF+'" step="1" value="'+s.frame+'">'
-      +'<div class="timeline-help">上一段長度：'+Math.max(1,s.frame-prev.frame)+'f。可把 key 放到任意 frame，系統會自動排序。</div>';
+      +'<div class="timeline-help">段長=改長度並推移後面的 key(編動作鏈用);絕對位置=只搬這一個 key,系統自動排序(可能穿越其他 key)。也可直接拖時間軸上的 marker。</div>';
     host.appendChild(fc);
+    // 段長(ripple):此 key 與其後所有 key 一起平移 delta
+    document.getElementById('rt_seg').addEventListener('change',e=>{
+      const nv=Math.max(1, Math.min(120, parseInt(e.target.value)||1));
+      pushHistory();
+      const i0=SEQ.findIndex(x=>x.name===keyName); if(i0<1) return;
+      const delta=nv-Math.max(1, SEQ[i0].frame-SEQ[i0-1].frame);
+      if(!delta){ e.target.value=nv; return; }
+      for(let i=i0;i<SEQ.length;i++) SEQ[i].frame+=delta;
+      normalizeTimelineInPlace();
+      buildPhaseTabs(); buildTimingControls(); scheduleAutosave();
+    });
+    document.getElementById('rt_seg').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } });
     document.getElementById('rt_f').addEventListener('input',e=>{
       const name=s.name;
       setKeyFrameByName(name, parseInt(e.target.value));
@@ -81,7 +119,7 @@ function buildTimingControls(){
     ic.style.cssText='cursor:pointer;display:flex;gap:8px;align-items:center';
     ic.innerHTML='<input type="checkbox" id="rt_imp" '+(s.impact?'checked':'')+'> <span class="name">impact(命中:無 lag · 紅框 · 放大段)</span>';
     host.appendChild(ic);
-    document.getElementById('rt_imp').addEventListener('change',e=>{ pushHistory(); s.impact=e.target.checked; if(e.target.checked) s.tag='impact'; buildPhaseTabs(); buildTimingControls(); scheduleAutosave(); });
+    document.getElementById('rt_imp').addEventListener('change',e=>{ pushHistory(); const k=liveKey(); if(!k) return; k.impact=e.target.checked; if(e.target.checked) k.tag='impact'; buildPhaseTabs(); buildTimingControls(); scheduleAutosave(); });
   }
 
   const lagHost=document.getElementById('lagControls'); lagHost.innerHTML='';
@@ -305,13 +343,29 @@ function delKey(){
   normalizeTimelineInPlace();
   setActiveKey(Math.min(activeIdx, SEQ.length-1)); scheduleAutosave();
 }
-function renameKey(){
-  const cur=SEQ[activeIdx]; const nn=cleanKeyName(prompt('key 名稱(英數/底線):', cur.name)||'', '');
-  if(!nn || nn===cur.name) return;
-  if(SEQ.some(s=>s.name===nn)){ alert('名稱已存在'); return; }
+// 改名核心(給面板內嵌輸入框用;不再用 prompt() 對話框——瀏覽器封鎖對話框時會靜默失敗)
+function renameKeyTo(raw){
+  if(activeIdx===0) return {ok:false, msg:'idle 不可改名'};
+  const cur=SEQ[activeIdx];
+  const nn=cleanKeyName(raw||'', '');
+  if(!nn) return {ok:false, msg:'名稱需含英數(a-z / 0-9 / _;中文會被轉掉)'};
+  if(nn===cur.name) return {ok:true, msg:''};
+  if(SEQ.some(s=>s.name===nn)) return {ok:false, msg:`「${nn}」已存在`};
+  const oldName = cur.name;
+  // ⚠ pushHistory→snapshotObject→normalizeTimelineInPlace 會整組換新 SEQ 物件,
+  //   push 之後必須「重新查」key,絕不能沿用 push 前抓的參照(舊版 rename 從沒生效就是這顆雷)
   pushHistory();
-  PHASES[nn]=PHASES[cur.name]; delete PHASES[cur.name];
-  cur.name=nn; activePhase=nn; setActiveKey(activeIdx); scheduleAutosave();
+  const live = SEQ.find(x=>x.name===oldName);
+  if(!live) return {ok:false, msg:'key 已不存在?'};
+  PHASES[nn]=PHASES[oldName]; delete PHASES[oldName];
+  live.name=nn; activePhase=nn;
+  window.__renameMsg = (nn!==String(raw||'').trim() ? `已轉為英數名:${nn}` : `已改名:${nn}`);   // setActiveKey 會重建面板,訊息由重建後顯示
+  setActiveKey(SEQ.indexOf(live)); scheduleAutosave();
+  return {ok:true, msg:''};
+}
+function renameKey(){   // ✎ rename 鈕/舊入口 → 聚焦面板輸入框
+  const inp=document.getElementById('rt_name');
+  if(inp){ inp.focus(); inp.select(); }
 }
 function moveKey(d){
   if(activeIdx===0) return;
