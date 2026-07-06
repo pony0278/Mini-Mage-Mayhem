@@ -78,4 +78,103 @@ window.__ps = {
       'Export · 招式庫(全部)', '{clips:{招式名:snapshot}} — 整份交給遊戲端接入 brawler-clips.js。');
   });
   renderLib();
+
+  // ===== D. 連招預覽:把多個 combo 串成一條臨時時間軸循環播放(非破壞式;看整套連招的實戰表現)=====
+  // 來源:貼上的 {clips:{...}} / [snap,...],留空則用招式庫(存入順序)。接招兩模式:取消接招(遊戲式)/ 完整播放。
+  function normClip(s){ return (typeof normalizeState === 'function') ? normalizeState(s) : s; }
+  function buildComboTimeline(snaps, cancelMode){
+    const norm = snaps.map(normClip);
+    const outSeq = [], outPhases = {}; const BLEND = 4;
+    norm.forEach((clip, ci)=>{
+      const pre = 'c'+ci+'_';
+      if(ci === 0){
+        clip.seq.forEach((k,i)=>{ const nm = i===0 ? 'idle' : pre+k.name;
+          outSeq.push({ name:nm, frame:k.frame, ease:k.ease, impact:!!k.impact, cancel:!!k.cancel, tag:k.tag||'custom' });
+          outPhases[nm] = clip.phases[k.name]; });
+        return;
+      }
+      // 找接點:取消接招=最後一個 cancel→impact;完整播放=最後一個 key
+      let cut = -1;
+      if(cancelMode){
+        for(let i=outSeq.length-1;i>=0;i--){ if(outSeq[i].cancel){cut=i;break;} }
+        if(cut<0) for(let i=outSeq.length-1;i>=0;i--){ if(outSeq[i].impact){cut=i;break;} }
+      }
+      if(cut<0) cut = outSeq.length-1;
+      for(let i=outSeq.length-1;i>cut;i--){ const rm=outSeq.pop(); if(rm.name!=='idle') delete outPhases[rm.name]; }
+      const baseF = outSeq[outSeq.length-1].frame || 0;
+      const inc = clip.seq.filter((k,i)=>i>0);
+      const f0 = inc.length ? (inc[0].frame||0) : 0;
+      inc.forEach((k,j)=>{ const nm = pre+k.name;
+        outSeq.push({ name:nm, frame: baseF + BLEND + Math.max(0,(k.frame||0)-f0),
+          ease:(j===0?'out':k.ease), impact:!!k.impact, cancel:!!k.cancel, tag:k.tag||'custom' });
+        outPhases[nm] = clip.phases[k.name]; });
+    });
+    return { seq: outSeq, phases: outPhases, dim: {...DIM}, lags: norm[0] ? norm[0].lags : undefined };
+  }
+  function parseComboInput(text){
+    const data = JSON.parse(text);
+    if(Array.isArray(data)) return data;
+    if(data && data.clips && typeof data.clips==='object') return Object.values(data.clips);
+    if(data && data.seq && data.phases) return [data];
+    throw new Error('格式需為 [snap,…] 或 {clips:{…}}');
+  }
+
+  let comboPrev = null;   // {state, cam} 預覽中才非 null
+  function startComboPreview(snaps, cancelMode){
+    if(!snaps || snaps.length < 1){ alert('沒有可預覽的招式:先把 combo 存進招式庫,或在框裡貼上 {clips:{…}}'); return; }
+    const combo = buildComboTimeline(snaps, cancelMode);
+    if(!comboPrev) comboPrev = { state: snapshotObject(), cam:{theta,phi,radius,fov:camera.fov} };
+    applyStateData(combo, {rebuild:true});
+    theta=Math.PI; phi=0.80; radius=5.4; camera.fov=32; camera.updateProjectionMatrix(); placeCam();   // 遊戲視角
+    loop = true; playing = true; playT = 0; scrubActive = false; if(typeof updateUI==='function') updateUI();
+    setPrevUI(true, snaps.length, cancelMode);
+  }
+  function stopComboPreview(){
+    if(!comboPrev) return;
+    playing = false; loop = false;
+    applyStateData(comboPrev.state, {rebuild:true});
+    const c = comboPrev.cam; theta=c.theta; phi=c.phi; radius=c.radius; camera.fov=c.fov; camera.updateProjectionMatrix(); placeCam();
+    comboPrev = null; if(typeof updateUI==='function') updateUI();
+    setPrevUI(false);
+    try{ scheduleAutosave(); }catch(e){}
+  }
+
+  // UI:插進「遊戲整合」面板
+  const grp = listEl ? listEl.closest('.group') : null;
+  let prevBadge = null;
+  function setPrevUI(on, n, cancelMode){
+    const btn = document.getElementById('comboPrevBtn');
+    if(btn){ btn.textContent = on ? '■ 停止連招預覽' : '▶ 連招預覽'; btn.style.borderColor = on ? 'var(--lime)' : ''; }
+    if(!prevBadge){ prevBadge = document.createElement('div');
+      prevBadge.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;font:bold 12px system-ui;color:#9dff43;background:rgba(10,12,20,.75);padding:3px 12px;border-radius:12px;pointer-events:none';
+      document.body.appendChild(prevBadge); }
+    prevBadge.textContent = on ? `▶ 連招預覽中 · ${n} 招 · ${cancelMode?'取消接招':'完整播放'}(Esc/按鈕停止)` : '';
+    prevBadge.style.display = on ? '' : 'none';
+  }
+  if(grp){
+    const box = document.createElement('div'); box.style.cssText='margin-top:8px;border-top:1px solid var(--line);padding-top:6px';
+    box.innerHTML =
+      '<div style="font-size:10.5px;color:var(--cy);margin-bottom:4px">連招預覽(串起多招看整套)</div>'
+      + '<textarea id="comboInput" placeholder="貼上 {clips:{…}} 或 [snap,…];留空=用上面招式庫(存入順序)" '
+      + 'style="width:100%;height:44px;box-sizing:border-box;background:#101322;border:1px solid var(--line);border-radius:7px;color:inherit;padding:5px 8px;font-size:10px;resize:vertical"></textarea>'
+      + '<div style="display:flex;gap:6px;align-items:center;margin-top:5px">'
+      + '<button id="comboPrevBtn" style="flex:1">▶ 連招預覽</button>'
+      + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer" title="勾=每招完整播放到收招再接下一招;不勾=下一招從上一招的 CANCEL/impact 點切入(遊戲式連打手感)">'
+      + '<input type="checkbox" id="comboFull"> 完整播放</label></div>'
+      + '<div class="timeline-help">看整套連招在遊戲鏡頭下的表現。預覽為唯讀:停止後回到你原本編輯的動作,招式庫不受影響。</div>';
+    grp.appendChild(box);
+    document.getElementById('comboPrevBtn').addEventListener('click', ()=>{
+      if(comboPrev){ stopComboPreview(); return; }
+      const cancelMode = !document.getElementById('comboFull').checked;
+      const txt = (document.getElementById('comboInput').value||'').trim();
+      let snaps;
+      try{ snaps = txt ? parseComboInput(txt) : Object.values(readLib()); }
+      catch(e){ alert('連招輸入解析失敗:'+e.message); return; }
+      startComboPreview(snaps, cancelMode);
+    });
+  }
+  window.addEventListener('keydown', e=>{ if(e.key==='Escape' && comboPrev) stopComboPreview(); });
+  // headless 測試口
+  window.__ps.comboPreview = { start:startComboPreview, stop:stopComboPreview, build:buildComboTimeline,
+    get active(){ return !!comboPrev; } };
 })();
