@@ -39,10 +39,12 @@ async function loadAvatarBuffer(ab, label){
   const sc = gltf.scene; sc.updateMatrixWorld(true);
 
   // ① 收骨頭:字樣分型別(calf=shin 同義;字樣測試順序避免 'forearm' 撞 'arm')
+  // 接受 Bone「或任何非網格節點」:重匯出的 GLB 沒有 skin 宣告時 isBone 會是 false,
+  // 但空節點階層同樣能當骨架用(網格名 geo_* 是 Mesh,被排除,不會誤認)。
   const TOKENS = ['upperarm','forearm','hand','thigh','shin','calf','foot','torso','neck','head','root'];
   const found = [];
   sc.traverse(o => {
-    if(!o.isBone) return;
+    if(o.isMesh) return;
     const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
     const t = TOKENS.find(k => n.includes(k));
     if(t) found.push({ bone: o, type: t === 'calf' ? 'shin' : t });
@@ -92,9 +94,15 @@ async function loadAvatarBuffer(ab, label){
   return true;
 }
 
+// 腳踝跟隨度(0=腳鎖死跟小腿=高筒硬靴;1=完全吃編排器腳踝壓平)。
+// 高筒靴角色的鞋頭/靴身接縫重疊很小,腳踝轉太多會開口——調低此值讓整隻靴子近乎一體。
+let ANKLE_FOLLOW = 0.35;
+try{ const v = parseFloat(localStorage.getItem('PS_ANKLE_FOLLOW')); if(Number.isFinite(v)) ANKLE_FOLLOW = Math.max(0, Math.min(1, v)); }catch(e){}
+
 // 每幀由 rig.js applyPose 尾端呼叫(typeof 守衛)。素體剛 pose 完+updateMatrixWorld 完。
 const _aq1 = new THREE.Quaternion(), _aqd = new THREE.Quaternion(),
-      _aq2 = new THREE.Quaternion(), _aqp = new THREE.Quaternion();
+      _aq2 = new THREE.Quaternion(), _aqp = new THREE.Quaternion(),
+      _aq3 = new THREE.Quaternion(), _aqs = new THREE.Quaternion();
 const _abox = new THREE.Box3();
 function updateAvatarPose(p){
   if(!AVATAR) return;
@@ -109,6 +117,15 @@ function updateAvatarPose(p){
     const e = A.by[k], node = e.node(); if(!node) continue;
     node.getWorldQuaternion(_aq1);
     _aqd.copy(e.qT).invert().premultiply(_aq1);         // Δ = q_now · qT⁻¹
+    // 腳:差量 = slerp(小腿差量, 腳踝差量, ANKLE_FOLLOW) → 靴子接近一體,壓平只吃一部分
+    if((k === 'foot_l' || k === 'foot_r') && ANKLE_FOLLOW < 1){
+      const se = A.by[k === 'foot_l' ? 'shin_l' : 'shin_r'];
+      if(se && se.node()){
+        se.node().getWorldQuaternion(_aq3);
+        _aqs.copy(se.qT).invert().premultiply(_aq3);    // Δ小腿
+        _aqd.copy(_aqs.slerp(_aqd, ANKLE_FOLLOW));
+      }
+    }
     _aq2.copy(e.bQT).premultiply(_aqd);                 // 目標世界 = Δ · bQT
     e.bone.parent.getWorldQuaternion(_aqp).invert();
     e.bone.quaternion.copy(_aq2).premultiply(_aqp);     // local = qParent⁻¹ · 目標世界
@@ -152,8 +169,16 @@ function clearAvatar(){
   const row = document.createElement('div'); row.className = 'util'; row.style.marginTop = '6px';
   row.innerHTML =
     `<label class="filebtn" title="載入 16 骨基座角色 GLB(rest=T-pose、剛體部位掛骨頭、面向 +Z;比例任意,左右自動以世界 X 判定)">👤 載入角色 GLB(基座骨架)<input type="file" id="avatarFile" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>` +
-    `<button id="avatarClear" title="移除角色,回到素體/部位模式">清除角色</button>`;
+    `<button id="avatarClear" title="移除角色,回到素體/部位模式">清除角色</button>` +
+    `<label style="display:flex;align-items:center;gap:6px" title="0=腳鎖死跟小腿(高筒硬靴,靴子一體不裂);1=完全吃編排器腳踝壓平。高筒靴角色建議 0.2~0.4">腳踝跟隨 <input type="range" id="ankleFollow" min="0" max="1" step="0.05" style="width:90px"><span id="ankleFollowV" style="min-width:24px"></span></label>`;
   st.parentElement.insertBefore(row, st);
+  const af = document.getElementById('ankleFollow'), afv = document.getElementById('ankleFollowV');
+  af.value = ANKLE_FOLLOW; afv.textContent = ANKLE_FOLLOW.toFixed(2);
+  af.addEventListener('input', e => {
+    ANKLE_FOLLOW = parseFloat(e.target.value); afv.textContent = ANKLE_FOLLOW.toFixed(2);
+    try{ localStorage.setItem('PS_ANKLE_FOLLOW', String(ANKLE_FOLLOW)); }catch(err){}
+    applyInspectOrPhase();                                  // 立即反映到目前姿勢
+  });
   document.getElementById('avatarFile').addEventListener('change', async e => {
     const f = e.target.files && e.target.files[0]; if(!f) return;
     try{ await loadAvatarBuffer(await f.arrayBuffer(), f.name); }
