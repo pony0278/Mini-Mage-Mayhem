@@ -414,7 +414,19 @@ function applyWhiteModel(on){
   });
 }
 document.getElementById('whiteToggle').addEventListener('change',e=>applyWhiteModel(e.target.checked));
-document.getElementById('axesToggle').addEventListener('change',e=>{ axes.visible=e.target.checked; });
+// 軸向標示(XYZ 基準線+腳下 FRONT/BACK/L/R)與地面格線:可關閉,偏好記進 localStorage
+function setAxesVisible(on){ axes.visible = frontGroup.visible = !!on; }
+function setGridVisible(on){ grid.visible = !!on; }
+(function initSceneryToggles(){
+  const ax=document.getElementById('axesToggle'), gr=document.getElementById('gridToggle');
+  try{
+    if(localStorage.getItem('PS_SHOW_AXES')==='0') ax.checked=false;
+    if(localStorage.getItem('PS_SHOW_GRID')==='0') gr.checked=false;
+  }catch(e){}
+  setAxesVisible(ax.checked); setGridVisible(gr.checked);
+  ax.addEventListener('change',e=>{ setAxesVisible(e.target.checked); try{ localStorage.setItem('PS_SHOW_AXES', e.target.checked?'1':'0'); }catch(err){} });
+  gr.addEventListener('change',e=>{ setGridVisible(e.target.checked); try{ localStorage.setItem('PS_SHOW_GRID', e.target.checked?'1':'0'); }catch(err){} });
+})();
 document.getElementById('markerToggle').addEventListener('change',e=>{ markersOn=e.target.checked; MARKERS.forEach(m=>m.visible=markersOn); });
 
 document.getElementById('playBtn').addEventListener('click',()=>{

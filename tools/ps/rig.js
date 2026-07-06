@@ -18,8 +18,8 @@ canvas.addEventListener('wheel',e=>{if(solveMode){e.preventDefault();return;}e.p
 scene.add(new THREE.HemisphereLight(0x9fb6ff,0x10121a,0.85));
 const key=new THREE.DirectionalLight(0xffffff,1.1); key.position.set(4,7,5); scene.add(key);
 scene.add(new THREE.DirectionalLight(0x13e0d4,0.3));
-scene.add(new THREE.GridHelper(20,20,0x2e2e44,0x1c1c2a));
-const axes=new THREE.AxesHelper(1.3); scene.add(axes);   // 原點基準線:X 紅(左右)/ Y 綠(上下=垂直)/ Z 藍(前後)
+const grid=new THREE.GridHelper(20,20,0x2e2e44,0x1c1c2a); scene.add(grid);   // 地面格線(gridToggle)
+const axes=new THREE.AxesHelper(1.3); scene.add(axes);   // 原點基準線:X 紅(左右)/ Y 綠(上下=垂直)/ Z 藍(前後)(axesToggle,與 frontGroup 同組)
 
 // === 正面方向指示(世界 +Z,固定不隨角色或鏡頭旋轉) ===
 const frontGroup = new THREE.Group();
@@ -54,11 +54,12 @@ function makeTextSprite(text, hex){
   sp.scale.set(0.8, 0.2, 1);
   return sp;
 }
-const lblFront = makeTextSprite('FRONT →', '#13e0d4'); lblFront.position.set(0, 0.35, 2.2); scene.add(lblFront);
+// 文字標籤一律掛進 frontGroup → 「軸向標示」開關一次控制箭頭+標籤(frontGroup 在原點無變換,位置即世界座標)
+const lblFront = makeTextSprite('FRONT →', '#13e0d4'); lblFront.position.set(0, 0.35, 2.2); frontGroup.add(lblFront);
 const lblBack  = makeTextSprite('BACK',     '#ff2e6e'); lblBack.position.set(0, 0.25, -0.3);
-lblBack.material.opacity = 0.55; scene.add(lblBack);
-const lblR = makeTextSprite('R (+X)', '#ffd23f'); lblR.position.set(1.45, 0.22, 0); lblR.material.opacity = 0.5; scene.add(lblR);
-const lblL = makeTextSprite('L (-X)', '#ffd23f'); lblL.position.set(-1.45, 0.22, 0); lblL.material.opacity = 0.5; scene.add(lblL);
+lblBack.material.opacity = 0.55; frontGroup.add(lblBack);
+const lblR = makeTextSprite('R (+X)', '#ffd23f'); lblR.position.set(1.45, 0.22, 0); lblR.material.opacity = 0.5; frontGroup.add(lblR);
+const lblL = makeTextSprite('L (-X)', '#ffd23f'); lblL.position.set(-1.45, 0.22, 0); lblL.material.opacity = 0.5; frontGroup.add(lblL);
 
 function box(w,h,d,color){
   const g=new THREE.Group();
