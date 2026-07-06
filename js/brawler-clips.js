@@ -111,25 +111,25 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0.1, lL: 0, lR: 0.1 },
   }),
-  lhook: prepClip({ // 左鉤拳(combo 第 2 段;impact @20f≈0.333s = STRIKE_DELAY[1])
+  lhook: prepClip({ // 甩腰迴旋左拳(combo 第 2 段;impact @14f≈0.233s = STRIKE_DELAY[1];上半身 −90→+54 大甩腰驅動)
     seq: [
       { name: 'idle', frame: 0, frames: 10, ease: 'out' },
-      { name: 'windup', frame: 6, ease: 'out' },
-      { name: 'hold', frame: 10, ease: 'out' },
-      { name: 'swing', frame: 14, ease: 'in' },
-      { name: 'strike', frame: 17, ease: 'in' },
-      { name: 'impact', frame: 20, ease: 'lin', impact: true },
-      { name: 'recovery', frame: 26, ease: 'out' },
+      { name: 'windup', frame: 4, ease: 'out' },
+      { name: 'windup_hold', frame: 8, ease: 'out' },   // 蓄力移動式定格(大甩腰讀得出來)
+      { name: 'strike', frame: 11, ease: 'in' },        // 解腰:加速
+      { name: 'impact', frame: 14, ease: 'in', impact: true },
+      { name: 'impact_hold', frame: 16, ease: 'out' },  // 命中定格(賣撞擊)
+      { name: 'recovery', frame: 21, ease: 'out' },
     ],
     phases: {
-      windup: { spine_x: 11, spine_y: -36, pelvis_y: -29, aL_sz: 34, aL_ex: 79, aR_sx: 29, aR_sy: -17, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      hold: { spine_x: 6, spine_y: -8, pelvis_y: -12, aL_sz: 42, aL_ex: 92, aR_sx: 40, aR_sy: -5, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      swing: { spine_x: -6, spine_y: 12, pelvis_y: -2, aL_sx: -28, aL_sy: 3, aL_sz: 24, aL_ex: 58, aL_scale: 1.3, aR_sx: 52, aR_sy: 20, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      strike: { spine_x: -13, spine_y: 26, pelvis_y: 3, aL_sx: -55, aL_sy: 3, aL_sz: 14, aL_ex: 33, aL_scale: 1.55, aR_sx: 60, aR_sy: 41, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      impact: { spine_x: -19, spine_y: 30, pelvis_y: 6, head_y: -6, sq: 0.05, aL_sx: -76, aL_sy: 3, aL_sz: 8, aL_ex: 19, aL_scale: 1.92, aL_wx: 4, aR_sx: 60, aR_sy: 41, aR_sz: 72, aR_ex: 73, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
-      recovery: { spine_x: -10, spine_y: 20, pelvis_y: 2, aL_sx: -40, aL_sz: 20, aL_ex: 45, aL_scale: 1, aR_sx: 30, aR_sz: 72, aR_ex: 60, lL_hy: 25, lL_hz: 26, lL_kx: 36 },
+      windup: { sq: 0.05, spine_x: 28, spine_y: -90, pelvis_y: -42, head_y: -6, aL_sx: 27, aL_sy: -32, aL_sz: 62, aL_ex: 94, aL_idle: 0.05, aL_scale: 1.63, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.77, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -43, lR_hy: 15, lR_hz: 16, lR_kx: 73, aL_stretch: 1.4, aR_stretch: 1.32 },
+      windup_hold: { sq: 0.08, spine_x: 31, spine_y: -90, pelvis_y: -55, head_y: -6, aL_sx: 27, aL_sy: -32, aL_sz: 62, aL_ex: 98, aL_idle: 0.05, aL_scale: 1.63, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.77, lL_hx: -21, lL_hy: -29, lL_hz: -12, lL_kx: 18, lL_ax: -4, lR_hx: -43, lR_hy: 15, lR_hz: 16, lR_kx: 73, aL_stretch: 1.4, aR_stretch: 1.32 },
+      strike: { sq: 0.05, spine_x: 29, spine_y: -30, pelvis_y: -42, head_y: -6, aL_sx: -14, aL_sy: -32, aL_sz: 71, aL_ex: 94, aL_idle: 0.05, aL_scale: 1.63, aR_sx: -23, aR_sy: -90, aR_sz: 118, aR_ex: 127, aR_idle: 0.36, aR_scale: 0.77, lL_hx: 53, lL_hy: -29, lL_hz: 14, lL_kx: 18, lL_ax: -4, lR_hx: -60, lR_hy: 17, lR_hz: 16, lR_kx: 73, aL_stretch: 1.4, aR_stretch: 1.32 },
+      impact: { sq: 0.05, spine_x: 29, spine_y: 54, pelvis_y: -42, head_y: -6, aL_sx: -50, aL_sy: 47, aL_sz: 90, aL_ex: 7, aL_scale: 1.63, aR_sx: -24, aR_sy: 9, aR_sz: 104, aR_ex: 120, aR_idle: 0.36, aR_scale: 0.77, lL_hx: 53, lL_hy: -29, lL_hz: 14, lL_kx: 18, lL_ax: -4, lR_hx: -60, lR_hy: 17, lR_hz: 16, lR_kx: 73, aL_stretch: 1.4, aR_stretch: 1.32 },
+      impact_hold: { sq: 0.05, spine_x: 29, spine_y: 54, pelvis_y: -42, head_y: -6, aL_sx: -50, aL_sy: 47, aL_sz: 90, aL_ex: 7, aL_scale: 1.63, aR_sx: -24, aR_sy: 9, aR_sz: 104, aR_ex: 120, aR_idle: 0.36, aR_scale: 0.77, lL_hx: 53, lL_hy: -29, lL_hz: 14, lL_kx: 18, lL_ax: -4, lR_hx: -60, lR_hy: 17, lR_hz: 16, lR_kx: 73, aL_stretch: 1.4, aR_stretch: 1.32 },
+      recovery: { sq: 0.05, spine_x: 29, spine_y: 89, pelvis_y: -42, head_y: -6, aL_sx: -46, aL_sy: 49, aL_sz: 76, aL_ex: 7, aL_idle: 0.11, aL_scale: 1.19, aR_sx: -22, aR_sy: -74, aR_sz: 118, aR_ex: 120, aR_idle: 0.36, aR_scale: 0.77, lL_hx: 11, lL_hy: -40, lL_hz: 6, lL_kx: 18, lL_ax: -4, lR_hx: -50, lR_hy: 15, lR_hz: 37, lR_kx: 48, aL_stretch: 0.95, aR_stretch: 1.32 },
     },
-    lags: { aL: 0.08, aR: 0.1, lL: 0, lR: 0.1 },
+    lags: { aL: 0, aR: 0.1, lL: 0, lR: 0.1 },
   }),
   overhand: prepClip({ // 過頂重擊(combo 第 3 段=終結技;impact @23f≈0.383s = STRIKE_DELAY[2])
     seq: [
