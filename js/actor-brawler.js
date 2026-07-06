@@ -26,7 +26,7 @@ export const BRAWLER_SPEC = {
 
 // ===== 程序動作參數表(clips 之外的狀態:走路/被扛/扛人/暈眩/受擊)=====
 export const ANIM = {
-  blend:   { rate: 14 },                                                                   // 姿勢平滑:每秒收斂速率(消除狀態切換的瞬跳)
+  blend:   { rate: 14, clipRate: 40 },                                                     // 姿勢平滑:每秒收斂速率(消除狀態切換瞬跳)。clip 播放用高檔(clip 內插已滑,低通會削掉快速關鍵幀=浮誇動作被壓扁;頭尾皆 COMBAT_IDLE 故無接縫風險)
   walk:    { minDisp: 0.25, maxDisp: 6, phaseRate: 0.18, ampEase: 0.2, legSwing: 34, armSwing: 22, kneeAdd: 18, bob: 1.6 }, // 度
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
@@ -147,6 +147,7 @@ export function updateBrawler(e, g) {
   const pt = now - (e.punchFx != null ? e.punchFx : -9);
   const clip = CLIPS[PUNCH_CLIPS[e.punchKind || 0]];
   if (!e.carriedBy && !e.carrying && pt >= 0 && clip && pt < clip.dur) pose = evalClip(clip, pt);
+  const usingClip = pose != null;    // clip 播放 → 用高 blend 檔,別把浮誇關鍵幀壓扁
   if (!pose) {
     pose = { ..._zeroIdle };
     const walking = disp > A.walk.minDisp && !e.stunned && !e.carriedBy;
@@ -176,7 +177,7 @@ export function updateBrawler(e, g) {
   }
 
   // --- 平滑混合(狀態切換不瞬跳;clip 內插本身已平滑,這層只削接縫)---
-  const k = 1 - Math.exp(-A.blend.rate * dt);
+  const k = 1 - Math.exp(-(usingClip ? A.blend.clipRate : A.blend.rate) * dt);
   if (!u.pose) u.pose = { ...pose };
   else for (const key of POSE_KEYS) u.pose[key] += ((pose[key] ?? 0) - u.pose[key]) * k;
   applyBrawlerPose(R, u.pose);
