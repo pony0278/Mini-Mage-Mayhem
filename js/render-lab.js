@@ -476,113 +476,197 @@ function groundDecal(g, color, r = 2.8) { // 站台腳下的發光環貼花(各�
   labAnimated.push({ update: t => { d.material.opacity = 0.25 + Math.sin(t * 2 + g.position.x) * 0.12; } });
 }
 
-function containmentTank(color = 0x5ff0e0, specimen = 'orb') {
+/* ========== Phase 3:v2_10 回收主題道具(取代舊實驗室道具全套;逐字移植,
+   原型 new PointLight → decoLight(…×LAB_SCALE) 兼 fx=low 剝除,animated→labAnimated) ========== */
+
+/* 回收料斗:矮工業桶身 + 半開翻蓋 + 回收箭頭 + 露出的雜物 + 狀態燈 */
+function recyclingHopper(color = 0x5ff0e0, contents = 'orb') {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.CylinderGeometry(1.15, 1.3, 0.5, 14), M.darkMetal(), 0, 0.25, 0));
-  g.add(mesh(new THREE.CylinderGeometry(1.0, 1.0, 2.8, 14), M.glass(color), 0, 2.0, 0, false));
-  g.add(mesh(new THREE.CylinderGeometry(1.15, 1.0, 0.45, 14), M.metal(), 0, 3.55, 0));
-  g.add(mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.7, 8), M.glow(color, 1.5), 0, 4.1, 0, false));
-  const core = mesh(new THREE.CylinderGeometry(0.85, 0.85, 2.5, 14),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false }), 0, 2.0, 0, false);
-  g.add(core);
-  let sp;
-  if (specimen === 'orb') sp = mesh(new THREE.SphereGeometry(0.42, 14, 14), M.glow(color, 1.2), 0, 2, 0, false);
-  if (specimen === 'cube') sp = mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), M.glow(color, 1.1), 0, 2, 0, false);
-  if (specimen === 'crystal') sp = mesh(new THREE.OctahedronGeometry(0.45), M.glow(color, 1.3), 0, 2, 0, false);
-  g.add(sp);
-  const bubbles = [];
-  for (let i = 0; i < 5; i++) {
-    const b = mesh(new THREE.SphereGeometry(0.05 + Math.random() * 0.05, 6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
-      (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 2.4, (Math.random() - 0.5) * 1.2, false);
-    bubbles.push(b); g.add(b);
+  g.add(mesh(new THREE.CylinderGeometry(1.45, 1.7, 0.5, 12), M.darkMetal(), 0, 0.25, 0));
+  g.add(mesh(new THREE.CylinderGeometry(1.28, 1.48, 1.75, 12), M.metal(0x38403e), 0, 1.28, 0));
+  const rim = mesh(new THREE.TorusGeometry(1.3, 0.18, 8, 18), M.glow(color, 0.8), 0, 2.18, 0, false);
+  rim.rotation.x = Math.PI / 2; g.add(rim);
+  const mouth = mesh(new THREE.CylinderGeometry(1.12, 1.12, 0.12, 12), M.glow(color, 0.75), 0, 2.16, 0, false);
+  g.add(mouth);
+  const lid = mesh(new THREE.CylinderGeometry(1.18, 1.18, 0.16, 12), M.metal(0x4b5350), 0, 2.65, -0.52);
+  lid.rotation.x = 0.75; g.add(lid);
+  for (let i = 0; i < 3; i++) {
+    const a = i / 3 * Math.PI * 2;
+    const mark = mesh(new THREE.BoxGeometry(0.42, 0.12, 0.12), M.glow(color, 1.15), Math.cos(a) * 1.5, 1.45, Math.sin(a) * 1.5, false);
+    mark.rotation.y = -a; mark.rotation.z = 0.35; g.add(mark);
   }
-  const light = decoLight(color, 0.9, 6 * LAB_SCALE); if (light) { light.position.y = 2.2; g.add(light); }
+  const junk = [];
+  for (let i = 0; i < 6; i++) {
+    const col = [color, 0xffc14f, 0xb58cff, 0x53c8ff][i % 4];
+    let j;
+    if (i % 3 === 0) j = mesh(new THREE.BoxGeometry(0.28, 0.22, 0.38), M.glow(col, 0.55), 0, 0, 0, false);
+    else if (i % 3 === 1) j = mesh(new THREE.OctahedronGeometry(0.18), M.glow(col, 0.75), 0, 0, 0, false);
+    else j = mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.38, 7), M.glow(col, 0.65), 0, 0, 0, false);
+    const a = i / 6 * Math.PI * 2 + 0.4;
+    j.position.set(Math.cos(a) * (0.45 + 0.25 * (i % 2)), 2.30 + 0.05 * (i % 2), Math.sin(a) * (0.45 + 0.25 * (i % 2)));
+    j.rotation.set(i * 0.3, i * 0.6, i * 0.2); junk.push(j); g.add(j);
+  }
+  const status = mesh(new THREE.BoxGeometry(0.75, 0.18, 0.12), M.glow(color, 1.4), 0, 0.85, 1.5, false); g.add(status);
+  const light = decoLight(color, 0.9, 6 * LAB_SCALE); if (light) { light.position.set(0, 2.2 * LAB_SCALE, 0); g.add(light); }
   labAnimated.push({ update: (t, dt) => {
-    sp.position.y = 2 + Math.sin(t * 1.3 + g.position.x) * 0.25;
-    sp.rotation.y += dt * 0.8;
-    bubbles.forEach(b => { b.position.y += dt * 0.7; if (b.position.y > 3.3) b.position.y = 0.8; });
-    if (light) light.intensity = 0.75 + Math.sin(t * 2.2 + g.position.z) * 0.2;
+    status.material.emissiveIntensity = 0.8 + (Math.sin(t * 3 + g.position.x) > 0 ? 0.9 : 0.15);
+    mouth.material.emissiveIntensity = 0.55 + Math.sin(t * 2.1 + g.position.z) * 0.22;
+    junk.forEach((j, i) => { j.rotation.y += dt * (0.2 + i * 0.04); });
+    if (light) light.intensity = 0.7 + Math.sin(t * 2.2 + g.position.z) * 0.18;
   } });
   return g;
 }
-function alchemyTable() {
+
+/* 分揀台:掃描拱門 + 四色待分揀樣本 + 三顆狀態燈 */
+function sortingTable() {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.BoxGeometry(3.4, 0.25, 1.5), M.wood(), 0, 1.15, 0));
+  g.add(mesh(new THREE.BoxGeometry(3.4, 0.26, 1.5), M.metal(0x454d49), 0, 1.15, 0));
   [[-1.4, -0.55], [1.4, -0.55], [-1.4, 0.55], [1.4, 0.55]].forEach(([x, z]) =>
     g.add(mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), M.darkMetal(), x, 0.55, z)));
-  const cols = [0x6dff9e, 0xff77e0, 0x53c8ff, 0xffb84f];
+  const arch = mesh(new THREE.TorusGeometry(0.56, 0.08, 8, 18, Math.PI), M.glow(0x53e0ff, 1.25), 0, 1.83, 0, false);
+  arch.rotation.z = Math.PI; g.add(arch);
+  g.add(mesh(new THREE.BoxGeometry(1.25, 0.08, 0.65), M.glow(0x53e0ff, 0.35), 0, 1.32, 0, false));
+  const cols = [0xff914d, 0x78ddff, 0xa87cff, 0x78ff9b];
   for (let i = 0; i < 4; i++) {
-    const col = cols[i];
-    const fx = -1.2 + i * 0.8, fz = (i % 2 ? 0.3 : -0.25);
-    g.add(mesh(new THREE.SphereGeometry(0.22, 10, 10), M.glass(col, 0.5), fx, 1.5, fz, false));
-    const liquid = mesh(new THREE.SphereGeometry(0.15, 8, 8), M.glow(col, 1.5), fx, 1.44, fz, false);
-    g.add(liquid);
-    g.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.25, 6), M.glass(col, 0.4), fx, 1.78, fz, false));
-    labAnimated.push({ update: t => { liquid.material.emissiveIntensity = 1.2 + Math.sin(t * 3 + i * 2) * 0.5; } });
+    const col = cols[i], fx = -1.15 + i * 0.75;
+    const item = i % 2 === 0
+      ? mesh(new THREE.BoxGeometry(0.28, 0.22, 0.34), M.glow(col, 0.8), fx, 1.48, (i % 2 ? 0.25 : -0.22), false)
+      : mesh(new THREE.OctahedronGeometry(0.19), M.glow(col, 1.0), fx, 1.52, (i % 2 ? 0.25 : -0.22), false);
+    g.add(item);
   }
-  g.add(mesh(new THREE.BoxGeometry(0.7, 0.08, 0.5), M.glow(0xc9b8ff, 0.35), 1.1, 1.32, 0.3));
-  const l2 = decoLight(0x8affc0, 0.6, 4 * LAB_SCALE); if (l2) { l2.position.set(0, 1.9, 0); g.add(l2); }
+  [0xff5c5c, 0xffc14f, 0x6dff9e].forEach((c, i) => {
+    const d = mesh(new THREE.SphereGeometry(0.09, 8, 8), M.glow(c, 1.5), -0.28 + i * 0.28, 1.43, 0.63, false); g.add(d);
+    labAnimated.push({ update: t => { d.material.emissiveIntensity = (Math.sin(t * 4 + i * 2) > 0.15) ? 1.7 : 0.25; } });
+  });
+  const l = decoLight(0x53e0ff, 0.55, 4 * LAB_SCALE); if (l) { l.position.set(0, 2 * LAB_SCALE, 0); g.add(l); }
   return g;
 }
-function bookshelf() {
+
+/* 廢料架:三層貨架塞滿分色廢件 + 危害標籤燈 */
+function scrapRack() {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.BoxGeometry(2.6, 3.4, 0.8), M.wood(), 0, 1.7, 0));
-  const cols = [0x6b4f8f, 0x3f5f8a, 0x8a3f5f, 0x4f8a6b, 0x8a7a3f];
+  g.add(mesh(new THREE.BoxGeometry(2.7, 3.4, 0.82), M.darkMetal(), 0, 1.7, 0));
+  const cols = [0xff914d, 0x78ddff, 0xa87cff, 0x78ff9b, 0xffc14f];
   for (let row = 0; row < 3; row++) {
-    g.add(mesh(new THREE.BoxGeometry(2.3, 0.08, 0.7), M.darkMetal(), 0, 0.9 + row * 0.95, 0.02));
-    let x = -1.0;
-    while (x < 1.0) {
-      const w2 = 0.14 + Math.random() * 0.12, h2b = 0.55 + Math.random() * 0.25;
-      const b = mesh(new THREE.BoxGeometry(w2, h2b, 0.5), M.stone(cols[Math.floor(Math.random() * cols.length)]), x, 0.95 + row * 0.95 + h2b / 2, 0.05);
-      if (Math.random() < 0.15) b.rotation.z = 0.12;
-      g.add(b); x += w2 + 0.05;
+    g.add(mesh(new THREE.BoxGeometry(2.4, 0.1, 0.72), M.metal(0x59615c), 0, 0.9 + row * 0.95, 0.02));
+    for (let i = 0; i < 5; i++) {
+      const x = -0.95 + i * 0.48 + (row % 2) * 0.08;
+      const col = cols[(i + row) % cols.length];
+      let part;
+      if ((i + row) % 3 === 0) part = mesh(new THREE.TorusGeometry(0.14, 0.045, 6, 10), M.glow(col, 0.45), x, 1.18 + row * 0.95, 0.1, false);
+      else if ((i + row) % 3 === 1) part = mesh(new THREE.BoxGeometry(0.26, 0.34, 0.38), M.stone(0x434944), x, 1.15 + row * 0.95, 0.08);
+      else part = mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.46, 7), M.glow(col, 0.65), x, 1.18 + row * 0.95, 0.08, false);
+      part.rotation.set(i * 0.2, row * 0.3, i * 0.12); g.add(part);
     }
   }
-  const tome = mesh(new THREE.BoxGeometry(0.2, 0.6, 0.5), M.glow(0xff6db0, 1.4), 0.6, 2.35, 0.06, false);
-  g.add(tome);
-  labAnimated.push({ update: t => { tome.material.emissiveIntensity = 1.0 + Math.sin(t * 1.8) * 0.6; } });
+  const tag = mesh(new THREE.BoxGeometry(0.7, 0.18, 0.08), M.glow(0xffc14f, 1.0), 0, 3.15, 0.43, false); g.add(tag);
+  labAnimated.push({ update: t => { tag.material.emissiveIntensity = 0.65 + Math.sin(t * 2) * 0.3; } });
   return g;
 }
-function machinery() {
+
+/* 壓實機:雙滾筒壓縮 + 發光進料槽 + 回收箭頭 + 警示燈 */
+function compactorUnit() {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.BoxGeometry(2.6, 2.2, 1.6), M.darkMetal(), 0, 1.1, 0));
-  g.add(mesh(new THREE.BoxGeometry(2.8, 0.3, 1.8), M.metal(), 0, 2.35, 0));
-  const screen = mesh(new THREE.PlaneGeometry(1.4, 0.8), M.glow(0x53e0ff, 1.1), 0, 1.5, 0.82, false);
-  g.add(screen);
+  g.add(mesh(new THREE.BoxGeometry(2.8, 2.25, 1.7), M.darkMetal(), 0, 1.12, 0));
+  g.add(mesh(new THREE.BoxGeometry(3.0, 0.34, 1.9), M.metal(0x59615c), 0, 2.38, 0));
+  const rollers = [];
+  for (let i = 0; i < 2; i++) {
+    const r = mesh(new THREE.CylinderGeometry(0.34, 0.34, 1.5, 12), M.metal(0x737b75), -0.58 + i * 1.16, 1.18, 0.83);
+    r.rotation.x = Math.PI / 2; rollers.push(r); g.add(r);
+  }
+  const slot = mesh(new THREE.BoxGeometry(1.75, 0.56, 0.1), M.glow(0xd6a12e, 0.24), 0, 1.75, 0.86, false); g.add(slot);
   for (let i = 0; i < 3; i++) {
-    const d = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), M.glow([0xff5c5c, 0xffc14f, 0x6dff9e][i], 1.6), -0.8 + i * 0.8, 0.7, 0.82, false);
-    d.rotation.x = Math.PI / 2; g.add(d);
-    labAnimated.push({ update: t => { d.material.emissiveIntensity = (Math.sin(t * 4 + i * 2.1) > 0.3) ? 1.8 : 0.35; } });
+    const a = mesh(new THREE.BoxGeometry(0.42, 0.11, 0.08), M.glow(0xd6a12e, 0.20), -0.55 + i * 0.55, 0.55, 0.88, false);
+    a.rotation.z = -0.35; g.add(a);
   }
-  const pipe = mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 16, Math.PI), M.metal(0x453a6e), 0.7, 2.5, 0);
-  pipe.rotation.z = Math.PI; g.add(pipe);
-  labAnimated.push({ update: t => { screen.material.emissiveIntensity = 0.9 + Math.sin(t * 7) * 0.15; } });
+  [0xff5c5c, 0xffc14f, 0x6dff9e].forEach((c, i) => {
+    const d = mesh(new THREE.SphereGeometry(0.1, 8, 8), M.glow(c, 1.5), -0.65 + i * 0.65, 2.58, 0.55, false); g.add(d);
+    labAnimated.push({ update: t => { d.material.emissiveIntensity = (Math.sin(t * 5 + i * 1.8) > 0.2) ? 1.8 : 0.25; } });
+  });
+  labAnimated.push({ update: (t, dt) => {
+    rollers[0].rotation.z += dt * 1.8; rollers[1].rotation.z -= dt * 1.8;
+    slot.material.emissiveIntensity = 0.65 + Math.sin(t * 4) * 0.35;
+  } });
   return g;
 }
-function displayCabinet(color, trophy) {
+
+/* UGC 展示櫃:玻璃櫃內一隻「回收的玩家」小人(驚慌姿)+ 回收標牌 */
+function ugcDisplayCabinet(color = 0xb58cff, pose = 'panic') {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.BoxGeometry(1.6, 0.9, 1.6), M.darkMetal(), 0, 0.45, 0));
-  g.add(mesh(new THREE.BoxGeometry(1.35, 1.5, 1.35), M.glass(color, 0.16), 0, 1.65, 0, false));
-  g.add(mesh(new THREE.BoxGeometry(1.6, 0.2, 1.6), M.metal(), 0, 2.5, 0));
-  let item;
-  if (trophy === 'skull') {
-    item = new THREE.Group();
-    item.add(mesh(new THREE.SphereGeometry(0.32, 10, 10), M.stone(0xcfc7e8), 0, 0.1, 0, false));
-    item.add(mesh(new THREE.BoxGeometry(0.3, 0.2, 0.25), M.stone(0xcfc7e8), 0, -0.15, 0.08, false));
-  } else if (trophy === 'sword') {
-    item = new THREE.Group();
-    item.add(mesh(new THREE.BoxGeometry(0.08, 1.0, 0.02), M.glow(color, 0.9), 0, 0.15, 0, false));
-    item.add(mesh(new THREE.BoxGeometry(0.4, 0.07, 0.07), M.metal(0x6e5a9e), 0, -0.3, 0, false));
-  } else {
-    item = mesh(new THREE.IcosahedronGeometry(0.35), M.glow(color, 1.5), 0, 0, 0, false);
-  }
-  item.position.y = 1.55; g.add(item);
-  const l2 = decoLight(color, 0.7, 4 * LAB_SCALE); if (l2) { l2.position.y = 2.1; g.add(l2); }
-  labAnimated.push({ update: (t, dt) => { item.rotation.y += dt * 0.9; item.position.y = 1.55 + Math.sin(t * 1.5) * 0.08; } });
+  g.add(mesh(new THREE.BoxGeometry(1.8, 0.65, 1.55), M.darkMetal(), 0, 0.33, 0));
+  g.add(mesh(new THREE.BoxGeometry(1.5, 1.85, 1.28), M.glass(color, 0.14), 0, 1.55, 0, false));
+  g.add(mesh(new THREE.BoxGeometry(1.8, 0.22, 1.55), M.metal(0x59615c), 0, 2.55, 0));
+  const dummy = new THREE.Group();
+  const head = mesh(new THREE.SphereGeometry(0.32, 12, 12), M.stone(0xd9c6ff), 0, 0.42, 0, false);
+  const body = mesh(new THREE.CylinderGeometry(0.27, 0.36, 0.62, 10), M.glow(color, 0.45), 0, -0.02, 0, false);
+  const hat = mesh(new THREE.ConeGeometry(0.36, 0.6, 10), M.stone(0x3d315f), 0, 0.93, 0, false);
+  dummy.add(head, body, hat);
+  const arm1 = mesh(new THREE.BoxGeometry(0.13, 0.58, 0.13), M.glow(color, 0.35), -0.37, 0.06, 0, false);
+  const arm2 = mesh(new THREE.BoxGeometry(0.13, 0.58, 0.13), M.glow(color, 0.35), 0.37, 0.06, 0, false);
+  arm1.rotation.z = pose === 'panic' ? -0.9 : -0.2; arm2.rotation.z = pose === 'panic' ? 0.9 : 0.2;
+  dummy.add(arm1, arm2); dummy.position.y = 1.38; g.add(dummy);
+  g.add(mesh(new THREE.BoxGeometry(1.05, 0.22, 0.08), M.glow(0xffc14f, 0.7), 0, 0.58, 0.81, false));
+  const l = decoLight(color, 0.65, 4 * LAB_SCALE); if (l) { l.position.set(0, 2.0 * LAB_SCALE, 0); g.add(l); }
+  labAnimated.push({ update: (t) => {
+    dummy.rotation.y = Math.sin(t * 0.65 + g.position.x) * 0.18;
+    dummy.position.y = 1.38 + Math.sin(t * 1.6) * 0.06;
+  } });
   return g;
 }
-function warningSign() {
+
+/* 輸送帶:滾筒 + 邊燈 + 移動包裹(fx=low 保留幾何、砍捲動動畫) */
+function conveyorBelt(length = 8, color = 0x78ddff) {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(length, 0.3, 1.6), M.darkMetal(), 0, 0.32, 0));
+  g.add(mesh(new THREE.BoxGeometry(length - 0.2, 0.12, 1.2), M.metal(0x444c49), 0, 0.53, 0));
+  const rollers = [];
+  for (let x = -length / 2 + 0.45; x < length / 2; x += 0.65) {
+    const r = mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.12, 8), M.metal(0x68706b), x, 0.61, 0, false);
+    r.rotation.x = Math.PI / 2; rollers.push(r); g.add(r);
+  }
+  g.add(mesh(new THREE.BoxGeometry(length, 0.08, 0.08), M.glow(color, 0.22), 0, 0.63, -0.65, false));
+  g.add(mesh(new THREE.BoxGeometry(length, 0.08, 0.08), M.glow(color, 0.22), 0, 0.63, 0.65, false));
+  const parcels = [];
+  for (let i = 0; i < 4; i++) {
+    const p = i % 2 === 0
+      ? mesh(new THREE.BoxGeometry(0.45, 0.35, 0.45), M.stone(0x454b46), -length / 2 + 1 + i * 1.7, 0.86, 0, false)
+      : mesh(new THREE.OctahedronGeometry(0.25), M.glow([0xff914d, 0xa87cff, 0x78ff9b][i % 3], 0.7), -length / 2 + 1 + i * 1.7, 0.9, 0, false);
+    p.userData.base = -length / 2 + 1 + i * 1.7; parcels.push(p); g.add(p);
+  }
+  if (!FX_LOW) labAnimated.push({ update: (t, dt) => {  // fx=low:砍輸送帶動畫(只留靜態幾何)
+    rollers.forEach(r => r.rotation.z += dt * 2.5);
+    parcels.forEach((p, i) => { p.position.x = -length / 2 + ((t * 0.7 + i * 1.9) % (length - 0.8)) + 0.4; p.rotation.y += dt * 0.55; });
+  } });
+  return g;
+}
+
+/* 中央出貨閘:分段壓縮門 + 回收環 + 箭頭 + 雙警示燈(北牆地標) */
+function centralShippingGate() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(6.4, 4.4, 1.2), M.darkMetal(), 0, 2.2, 0));
+  g.add(mesh(new THREE.BoxGeometry(5.4, 3.3, 0.22), M.metal(0x444c49), 0, 2.0, 0.68));
+  for (let i = 0; i < 5; i++) {
+    g.add(mesh(new THREE.BoxGeometry(5.0, 0.48, 0.12), M.metal(i % 2 ? 0x59615c : 0x323937), 0, 0.78 + i * 0.58, 0.84));
+  }
+  const ring = mesh(new THREE.TorusGeometry(0.72, 0.12, 8, 20), M.glow(0xd9a22f, 0.28), 0, 2.0, 0.95, false);
+  ring.rotation.x = Math.PI / 2; g.add(ring);
+  for (let i = 0; i < 3; i++) {
+    const arrow = mesh(new THREE.BoxGeometry(0.6, 0.14, 0.08), M.glow(0xd9a22f, 0.24), -0.7 + i * 0.7, 3.65, 0.82, false);
+    arrow.rotation.z = -0.45; g.add(arrow);
+  }
+  const lampL = mesh(new THREE.SphereGeometry(0.14, 8, 8), M.glow(0xff5c5c, 1.6), -2.7, 3.55, 0.75, false);
+  const lampR = mesh(new THREE.SphereGeometry(0.14, 8, 8), M.glow(0x6dff9e, 1.6), 2.7, 3.55, 0.75, false);
+  g.add(lampL, lampR);
+  labAnimated.push({ update: (t, dt) => {
+    ring.rotation.z += dt * 0.35;
+    lampL.material.emissiveIntensity = (Math.sin(t * 3) > 0) ? 1.8 : 0.25;
+    lampR.material.emissiveIntensity = (Math.sin(t * 3 + Math.PI) > 0) ? 1.8 : 0.25;
+  } });
+  return g;
+}
+
+/* 牆上警告牌(hazard 斜紋 + ⚠ + 符文;可指定色) */
+function warningSign(color = 0xffc14f) {
   const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
   const g2 = c.getContext('2d');
   g2.fillStyle = '#181228'; g2.fillRect(0, 0, S, S);
@@ -601,9 +685,11 @@ function warningSign() {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5),
     new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.25, roughness: 0.8, side: THREE.DoubleSide }));
   const g = new THREE.Group();
-  g.add(mesh(new THREE.CylinderGeometry(0.05, 0.07, 2.0, 6), M.darkMetal(), 0, 1.0, 0)); // 立牌支柱(高牆拆除後改自立)
+  g.add(mesh(new THREE.CylinderGeometry(0.05, 0.07, 2.0, 6), M.darkMetal(), 0, 1.0, 0));
   m.position.y = 2.05; g.add(m); return g;
 }
+
+/* 靠牆裂玻璃板(emissive 裂痕貼圖) */
 function crackedGlassPanel() {
   const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
   const g2 = c.getContext('2d');
@@ -623,7 +709,8 @@ function crackedGlassPanel() {
       emissiveMap: tex, emissive: 0xbfe6ff, emissiveIntensity: 0.5, side: THREE.DoubleSide }));
   const g = new THREE.Group(); m.position.y = 1.25; m.rotation.x = -0.1; g.add(m); return g;
 }
-/* --- 四座元素實驗站(火/冰/毒/雷;原型逐字) --- */
+
+/* --- 四座廢料處理站(火/冰/毒/雷;原型逐字,PointLight→decoLight) --- */
 function fireStation() {
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(1.7, 2.0, 0.5, 10), M.stone(0x33203a), 0, 0.25, 0));
@@ -647,8 +734,7 @@ function fireStation() {
   }
   g.add(mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.4, 10), M.metal(0x5a2f2a), 1.8, 0.7, 0.6));
   g.add(mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.4, 10), M.metal(0x5a2f2a), 1.8, 0.7, -0.6));
-  const light = decoLight(0xff7a2a, 2.4, 12 * LAB_SCALE); if (light) { light.position.set(0, 3, 0); g.add(light); }
-  groundDecal(g, 0xff7a2a);
+  const light = decoLight(0xff7a2a, 2.4, 12 * LAB_SCALE); if (light) { light.position.set(0, 3 * LAB_SCALE, 0); g.add(light); }
   labAnimated.push({ update: (t, dt) => {
     flames.forEach((f, i) => {
       f.scale.set(1 + Math.sin(t * 9 + i) * 0.12, 1 + Math.sin(t * 11 + i * 2) * 0.18, 1 + Math.cos(t * 9 + i) * 0.12);
@@ -682,8 +768,7 @@ function frostStation() {
     new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }),
     0, 0.35, 0, false);
   mist.rotation.x = Math.PI / 2; g.add(mist);
-  const light = decoLight(0x7fdcff, 1.8, 11 * LAB_SCALE); if (light) { light.position.set(0, 2.5, 0); g.add(light); }
-  groundDecal(g, 0x7fdcff);
+  const light = decoLight(0x7fdcff, 1.8, 11 * LAB_SCALE); if (light) { light.position.set(0, 2.5 * LAB_SCALE, 0); g.add(light); }
   labAnimated.push({ update: (t, dt) => {
     frozen.rotation.y += dt * 0.15;
     frozen.material.emissiveIntensity = 0.6 + Math.sin(t * 1.2) * 0.3;
@@ -696,8 +781,8 @@ function frostStation() {
 function poisonStation() {
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(1.7, 1.5, 2.2, 12), M.metal(0x2c3a2e), 0, 1.1, 0));
-  const rim2 = mesh(new THREE.TorusGeometry(1.7, 0.16, 8, 16), M.darkMetal(), 0, 2.2, 0);
-  rim2.rotation.x = Math.PI / 2; g.add(rim2);
+  const rim = mesh(new THREE.TorusGeometry(1.7, 0.16, 8, 16), M.darkMetal(), 0, 2.2, 0);
+  rim.rotation.x = Math.PI / 2; g.add(rim);
   const liquid = mesh(new THREE.CylinderGeometry(1.55, 1.55, 0.12, 12), M.glow(0x6dff5c, 1.8), 0, 2.18, 0, false);
   g.add(liquid);
   const bubbles = [];
@@ -713,9 +798,8 @@ function poisonStation() {
     new THREE.MeshBasicMaterial({ color: 0x4fdd3c, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }),
     0.6, 0.035, 0.6, false);
   spill.rotation.x = -Math.PI / 2; g.add(spill);
-  const light = decoLight(0x6dff5c, 1.7, 11 * LAB_SCALE); if (light) { light.position.set(0, 3.2, 0); g.add(light); }
-  groundDecal(g, 0x6dff5c);
-  labAnimated.push({ update: (t) => {
+  const light = decoLight(0x6dff5c, 1.7, 11 * LAB_SCALE); if (light) { light.position.set(0, 3.2 * LAB_SCALE, 0); g.add(light); }
+  labAnimated.push({ update: (t, dt) => {
     bubbles.forEach((b, i) => {
       const ph = (t * b.userData.s + i) % 2;
       b.position.y = 2.25 + ph * 0.35;
@@ -759,14 +843,12 @@ function lightningStation() {
     }
     return pts;
   }
-  const light = decoLight(0xb58cff, 1.8, 13 * LAB_SCALE); if (light) { light.position.set(0, 4.5, 0); g.add(light); }
-  groundDecal(g, 0xb58cff);
+  const light = decoLight(0xb58cff, 1.8, 13 * LAB_SCALE); if (light) light.position.set(0, 4.5 * LAB_SCALE, 0), g.add(light);
   let boltT = 0;
   labAnimated.push({ update: (t, dt) => {
     orb.material.emissiveIntensity = 2.0 + Math.sin(t * 6) * 0.8;
     orb.scale.setScalar(1 + Math.sin(t * 6) * 0.06);
     boltT -= dt;
-    if (LOW_FLICKER) { arcs.forEach(l => { l.visible = false; }); if (light) light.intensity = 1.6; return; } // 減閃爍:電弧全滅,燈固定
     if (boltT <= 0) {
       boltT = 0.08 + Math.random() * 0.12;
       arcs.forEach((line, i) => {
@@ -779,55 +861,66 @@ function lightningStation() {
   } });
   return g;
 }
-function crate() { // 帶區散落小木箱
-  const g = new THREE.Group();
-  const c = mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), M.stone(0x2c2450), 0, 0.35, 0);
-  c.rotation.y = Math.random() * Math.PI;
-  const band = mesh(new THREE.BoxGeometry(0.74, 0.12, 0.74), M.glow(0x7a4dff, 0.7), 0, 0, 0, false);
-  c.add(band); g.add(c); return g;
-}
 
-/* ---------- LAB_LAYOUT 編排表:改佈局=改這張表(x/z 單位=tile,原點=場地中心) ----------
-   力場矮緣在 x=±14.5 / z=±9.5;帶區:北/南 z=±10..±15,東/西 x=±15..±17。
-   南帶=鏡頭前景 → 只放矮件;元素站全在北帶(景深最佳)。 */
-const BUILDERS = { tank: containmentTank, alchemy: alchemyTable, shelf: bookshelf, machine: machinery,
-  cabinet: displayCabinet, sign: warningSign, glass: crackedGlassPanel, crate,
-  fire: fireStation, frost: frostStation, poison: poisonStation, lightning: lightningStation };
-export const LAB_LAYOUT = [
-  // 北帶:四座元素實驗站(火/冰/毒/雷)
-  { type: 'fire',      x: -11.5, z: -11.7, ry: Math.PI * 0.25 },
-  { type: 'frost',     x: -4,    z: -11.9, ry: -Math.PI * 0.25 },
-  { type: 'poison',    x: 4,     z: -11.9, ry: -Math.PI * 0.2 },
-  { type: 'lightning', x: 11.5,  z: -11.7, ry: 0 },
-  // 東/西帶:收容水槽+高傢俱
-  { type: 'tank', x: -16, z: -6,   ry: Math.PI / 2,  args: [0x5ff0e0, 'orb'] },
-  { type: 'tank', x: -16, z: 0,    ry: Math.PI / 2,  args: [0x8aff6d, 'cube'] },
-  { type: 'tank', x: -16, z: 6,    ry: Math.PI / 2,  args: [0xb58cff, 'orb'] },
-  { type: 'tank', x: 16,  z: -6,   ry: -Math.PI / 2, args: [0x53c8ff, 'crystal'] },
-  { type: 'tank', x: 16,  z: 6,    ry: -Math.PI / 2, args: [0xff8ad0, 'crystal'] },
-  { type: 'shelf',   x: 16,  z: 0,    ry: -Math.PI / 2 },
-  { type: 'machine', x: -16, z: -11,  ry: Math.PI / 2 },
-  // 南帶(前景):矮件
-  { type: 'alchemy', x: 0,    z: 11.6, ry: Math.PI },
-  { type: 'cabinet', x: -5.8, z: 11.6, ry: Math.PI, args: [0xffc14f, 'skull'] },
-  { type: 'cabinet', x: 5.4,  z: 11.6, ry: Math.PI, args: [0x53e0ff, 'sword'] },
-  { type: 'crate', x: -10.5, z: 11.2 }, { type: 'crate', x: 9.8, z: 11.5 }, { type: 'crate', x: 12.6, z: 11 },
-  { type: 'crate', x: -8, z: -11.2 }, { type: 'crate', x: 8.2, z: -11 },
-  // 警告立牌(自立支柱;高牆拆除後從掛牆改立在邊界外帶區)+裂玻璃(靠帶區傢俱)
-  { type: 'sign', x: -2,     z: -10.2, ry: 0 },
-  { type: 'sign', x: 9,      z: -10.2, ry: 0 },
-  { type: 'sign', x: 15.1,   z: 5,     ry: -Math.PI / 2 },
-  { type: 'sign', x: -15.1,  z: -5,    ry: Math.PI / 2 },
-  { type: 'glass', x: -9.8,  z: -10.1, ry: 0 },
-  { type: 'glass', x: 14.9,  z: -6.5,  ry: -Math.PI / 2 },
-];
+/* ---------- LAB_LAYOUT(v2_10 place 編排;四角站 + 邊帶物流;原點=場地中心,單位=tile) ---------- */
 function buildLabProps() {
-  for (const item of LAB_LAYOUT) {
-    const b = BUILDERS[item.type]; if (!b) continue;
-    const g = b(...(item.args || []));
-    g.position.set(item.x, 0, item.z); g.rotation.y = item.ry || 0;
-    labGroup.add(g);
+  const HX = SCENE_W / 2, HZ = SCENE_D / 2;                    // 17 / 15(總場景半寬/半深)
+  const NORTH_EDGE = -HZ + 1.65, SOUTH_EDGE = HZ - 1.65, WEST_EDGE = -HX + 1.65, EAST_EDGE = HX - 1.65;
+  const HAZARD_X = CORE_HX - 1.15, HAZARD_Z = CORE_HZ + 2.0;   // 13.85 / 12(四角站)
+  const place = (obj, x, z, ry = 0) => { obj.position.set(x, 0, z); obj.rotation.y = ry; labGroup.add(obj); return obj; };
+  // 四角廢料處理站(採新四角站位)
+  place(fireStation(), -HAZARD_X, -HAZARD_Z, Math.PI * 0.25);
+  place(frostStation(), HAZARD_X, -HAZARD_Z, -Math.PI * 0.25);
+  place(poisonStation(), -HAZARD_X, HAZARD_Z, -Math.PI * 0.2);
+  place(lightningStation(), HAZARD_X, HAZARD_Z, 0);
+  // 回收料斗(沿牆帶)
+  place(recyclingHopper(0x5ff0e0, 'orb'), -5.7, NORTH_EDGE + 0.15, 0);
+  place(recyclingHopper(0xff8ad0, 'crystal'), 5.7, NORTH_EDGE + 0.15, 0);
+  place(recyclingHopper(0x8aff6d, 'cube'), WEST_EDGE + 0.15, -4.8, Math.PI / 2);
+  place(recyclingHopper(0xb58cff, 'orb'), WEST_EDGE + 0.15, 4.8, Math.PI / 2);
+  place(recyclingHopper(0x53c8ff, 'crystal'), EAST_EDGE - 0.15, -4.8, -Math.PI / 2);
+  // 邊帶物流:分揀 / 壓實 / 廢料架 / UGC 展示
+  place(sortingTable(), 0, SOUTH_EDGE, Math.PI);
+  place(compactorUnit(), EAST_EDGE, 4.6, -Math.PI / 2);
+  place(compactorUnit(), -8.7, SOUTH_EDGE, Math.PI);
+  place(scrapRack(), 8.8, SOUTH_EDGE, Math.PI);
+  place(scrapRack(), EAST_EDGE, 0, -Math.PI / 2);
+  place(ugcDisplayCabinet(0xffc14f, 'panic'), -5.8, SOUTH_EDGE - 0.15, Math.PI);
+  place(ugcDisplayCabinet(0x53e0ff, 'panic'), 5.4, SOUTH_EDGE - 0.15, Math.PI);
+  place(ugcDisplayCabinet(0xb58cff, 'panic'), WEST_EDGE + 0.15, 0, Math.PI / 2);
+  // 輸送帶(核心外)
+  place(conveyorBelt(8.5, 0xd8a12f), -8.5, NORTH_EDGE + 0.05, 0);
+  place(conveyorBelt(8.5, 0xb76531), 8.5, NORTH_EDGE + 0.05, 0);
+  place(conveyorBelt(7.2, 0xd8a12f), WEST_EDGE + 0.12, 8.3, Math.PI / 2);
+  // 中央出貨閘(北牆地標)
+  place(centralShippingGate(), 0, -HZ + 0.82, 0);
+  // 牆上警告牌
+  [[-2, -HZ - 0.02, 0], [9, -HZ - 0.02, 0], [HX + 0.02, 8, -Math.PI / 2], [-HX - 0.02, -8, Math.PI / 2]].forEach(([x, z, ry]) => {
+    const s = warningSign(); s.position.set(x, 2.1, z); s.rotation.y = ry; labGroup.add(s);
+  });
+  // 靠牆裂玻璃
+  const cg1 = crackedGlassPanel(); cg1.position.set(-9.8, 1.25, -HZ + 0.45); cg1.rotation.x = -0.12; labGroup.add(cg1);
+  const cg2 = crackedGlassPanel(); cg2.position.set(HX - 0.45, 1.25, -8.8); cg2.rotation.y = -Math.PI / 2; cg2.rotation.x = -0.1; labGroup.add(cg2);
+  // 散落小箱(限邊帶,不污染 30×20 核心)
+  for (let i = 0; i < 8; i++) {
+    const side = Math.floor(Math.random() * 4); let x = 0, z = 0;
+    if (side === 0) { x = (Math.random() - 0.5) * (SCENE_W - 5); z = -(CORE_HZ + 1.6 + Math.random() * 2.4); }
+    if (side === 1) { x = (Math.random() - 0.5) * (SCENE_W - 5); z = (CORE_HZ + 1.6 + Math.random() * 2.4); }
+    if (side === 2) { x = -(CORE_HX + 0.65 + Math.random() * 0.9); z = (Math.random() - 0.5) * (CORE_D - 2); }
+    if (side === 3) { x = (CORE_HX + 0.65 + Math.random() * 0.9); z = (Math.random() - 0.5) * (CORE_D - 2); }
+    const crate = mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), M.stone(0x343a36), x, 0.35, z);
+    crate.rotation.y = Math.random() * Math.PI;
+    const band = mesh(new THREE.BoxGeometry(0.74, 0.12, 0.74), M.glow(0xd8a12f, 0.20), 0, 0, 0, false);
+    crate.add(band); labGroup.add(crate);
   }
+  // 站腳處理區發光地環
+  [[-HAZARD_X, -HAZARD_Z, 0xff7a2a], [HAZARD_X, -HAZARD_Z, 0x7fdcff], [-HAZARD_X, HAZARD_Z, 0x6dff5c], [HAZARD_X, HAZARD_Z, 0xb58cff]]
+    .forEach(([x, z, c]) => {
+      const d = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.0, 24),
+        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      d.rotation.x = -Math.PI / 2; d.position.set(x, 0.04, z); labGroup.add(d);
+      labAnimated.push({ update: t => { d.material.opacity = 0.16 + Math.sin(t * 2 + x) * 0.06; } });
+    });
 }
 
 /* ---------- 飄浮魔塵(原型 atmosphere;Points 便宜,低效能也開) ---------- */
