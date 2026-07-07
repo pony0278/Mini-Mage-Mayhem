@@ -48,12 +48,12 @@ const PS_SLOT_LABEL = {
   cloak:'CLOAK 披風', pouch:'POUCH 腰包', bow:'BOW 弓/武器',
 };
 
-// (3) 內嵌 sockets.json 讀取 + slot 推導
+// (3) sockets.json 讀取 + slot 推導
+// 資料來自 ps/sockets-data.js 的全域 SOCKETS_JSON_RAW(古典 script,在 parts.js 之前同步載入)。
 function readSocketsJson(){
   try{
-    const el = document.getElementById('SOCKETS_JSON');
-    if(el && el.textContent.trim()) return JSON.parse(el.textContent);
-  }catch(e){ console.warn('[B-1] sockets.json 解析失敗,改用 fallback', e); }
+    if(typeof SOCKETS_JSON_RAW !== 'undefined' && SOCKETS_JSON_RAW) return SOCKETS_JSON_RAW;
+  }catch(e){ console.warn('[B-1] sockets.json 讀取失敗,改用 fallback', e); }
   return null;
 }
 function socketsToSlotDefs(j){

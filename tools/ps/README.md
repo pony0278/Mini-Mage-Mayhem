@@ -6,6 +6,7 @@
 
 ## 載入順序(= 相依順序,由 punch-studio.html 決定)
 
+0. `sockets-data.js` — 接縫規格快照(`SOCKETS_JSON_RAW` 全域;sockets.json v0.5.5)。純資料、無相依,故最先載;`parts.js` 同步讀取
 1. `pose-data.js` — 姿勢資料模型:POSE_KEYS 51 軸、presets、時間軸(SEQ)模型、滑桿定義
 2. `rig.js` — Three.js 場景、DIM 角色比例、狀態存檔(undo/autosave/JSON IO)、素體建構、applyPose/lerp
 3. `hitfeel.js` — 打擊感試打台 + 主渲染迴圈 `tick()`
@@ -15,7 +16,8 @@
 7. `avatar.js` — 基底角色(rigged avatar)模式:16 骨角色 GLB 世界差量重定向 + 開機自動載入調度(角色優先→Meshy 部位人偶退路)
 8. `game-bridge.js` — `window.__ps` 健檢 hook + 遊戲整合面板(招式庫/遊戲視角/impact 讀出)
 
-SOCKETS_JSON(接縫規格)與 MediaPipe AI 偵測的 module script 仍留在 HTML 裡。
+接縫規格已抽成 `sockets-data.js`(古典 script,`SOCKETS_JSON_RAW` 全域,同步載入=保留 file:// 直開);
+MediaPipe AI 偵測的 module script 仍留在 HTML 裡。
 
 ## ⚠ 唯一要遵守的規則(hoisting 是「每檔」為單位)
 
