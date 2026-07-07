@@ -4,7 +4,7 @@
 // 不 import render/hud —— 模擬保持 headless 可跑。
 import { W, H } from './constants.js';
 import { clamp, norm } from './utils.js';
-import { game, keys, mouse, CAM } from './state.js';
+import { game, keys, mouse, CAM, touchInput } from './state.js';
 import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './sim.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
@@ -27,6 +27,7 @@ export function camRel(sx, sy) {
 }
 export function readMove(pid) {
   let sx = 0, sy = 0;
+  if (pid === LOCAL && touchInput.enabled && touchInput.active) return camRel(touchInput.x, touchInput.y); // 手機:類比搖桿(camera-relative)
   if (pid === 0) {
     if (keys.has('w')) sy -= 1; if (keys.has('s')) sy += 1;
     if (keys.has('a')) sx -= 1; if (keys.has('d')) sx += 1;
@@ -64,8 +65,10 @@ export function hitsFighter(f, nx, ny) {
 export function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
   const m = f.ai ? aiMove(f) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 被動假人(非 AI 非本機)不吃方向鍵,原地站
-  if (f.pid === LOCAL && !f.ai) f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x); // 本地玩家:面向滑鼠(移動與瞄準解耦)
-  else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                              // AI／熱座紅方:面向移動方向
+  if (f.pid === LOCAL && !f.ai) {
+    if (touchInput.enabled) { if (m.x || m.y) f.facing = Math.atan2(m.y, m.x); } // 手機:移動=面向;放開搖桿保留最後方向(可推向魔法陣→放開→按投擲)
+    else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
+  } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
   const sp = SPEED * (f.carrying ? CARRY_SLOW : 1); // 搬運時變慢
   if (iceAt(f.x, f.y)) { // 冰面:打滑(走路變成加速度,低摩擦保留動量 → 滑行,可滑進艙)
     f.vx += m.x * sp * ICE_ACCEL * dt; f.vy += m.y * sp * ICE_ACCEL * dt;

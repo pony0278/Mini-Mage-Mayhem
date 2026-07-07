@@ -72,6 +72,9 @@ export const game = {
 // state; render's updateMouseWorld writes mouse world-coords; sim/loop read.
 export const keys = new Set();
 export const mouse = { x: W / 2, y: H / 2, down: false, right: false };
+// 手機觸控輸入(v2-touch 寫入、v2-combat 讀取;桌機 enabled=false 完全不影響)。
+// enabled=觸控裝置;active=搖桿正被推;x/y=類比方向向量(-1..1,camera 前的螢幕軸,同 readMove 的 sx/sy)。
+export const touchInput = { enabled: false, active: false, x: 0, y: 0 };
 
 // Touch controls (client). touch.js (event wiring) writes these; main.js's buildInput
 // folds them into game.input; render draws the sticks/buttons. enabled = coarse-pointer
