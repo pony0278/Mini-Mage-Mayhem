@@ -28,7 +28,7 @@ export const BRAWLER_SPEC = {
 export const ANIM = {
   blend:   { rate: 14, clipRate: 40 },                                                     // 姿勢平滑:每秒收斂速率(消除狀態切換瞬跳)。clip 播放用高檔(clip 內插已滑,低通會削掉快速關鍵幀=浮誇動作被壓扁;頭尾皆 COMBAT_IDLE 故無接縫風險)
   walk:    { minDisp: 0.25, maxDisp: 6, phaseRate: 0.18, ampEase: 0.2, legSwing: 34, armSwing: 22, kneeAdd: 18, bob: 1.6 }, // 度
-  breath:  { rate: 1.7, knee: 6, chest: 2 },                                               // 待機呼吸:膝蓋微彎↔伸直的慢正弦(週期≈3.7s;auto 踩地讓身體隨之起伏);走路時淡出
+  breath:  { rate: 1.7, knee: 6, shoulder: 4, chest: 2 },                                  // 待機呼吸(慢單向正弦,週期≈3.7s):吸氣時肩/臂微抬+胸口上抬(站姿最讀得到)+膝蓋微給;走路時淡出
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
@@ -176,9 +176,11 @@ export function updateBrawler(e, g) {
       // 待機呼吸:站著不走(rest 大)時膝蓋微彎↔伸直的慢正弦(auto 踩地→身體隨之起伏);走路(amp 大)時淡出。
       const rest = 1 - u.amp;
       if (rest > 0.01 && !e.stunned) {
-        const br = Math.sin(now * A.breath.rate + (e.pid || 0) * 2.1);   // 兩名 fighter 錯開相位,不同步
-        pose.squat += br * A.breath.knee * rest;                         // 膝蓋微彎↔伸直
-        pose.spine_x += -br * A.breath.chest * rest;                     // 伸直時胸口微微上抬
+        const br = 0.5 - 0.5 * Math.cos(now * A.breath.rate + (e.pid || 0) * 2.1);   // 0..1 單向(直腿站姿也安全,膝不反折);兩名 fighter 相位錯開
+        pose.squat += br * A.breath.knee * rest;                                     // 膝蓋微給
+        pose.aL_sz += br * A.breath.shoulder * rest;                                 // 吸氣:肩/臂微抬(胸口擴張,站姿最讀得到的呼吸)
+        pose.aR_sz += br * A.breath.shoulder * rest;
+        pose.spine_x += -br * A.breath.chest * rest;                                 // 胸口微微上抬(後仰一點點)
       }
     }
     if (e.stunned) { wob = Math.sin(now * A.stun.wobRate) * A.stun.wobAmp; pose.spine_x = A.stun.slump; pose.head_x = -A.stun.slump * 0.6; }

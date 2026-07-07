@@ -29,12 +29,10 @@ export function normalizePose(p = {}) {
   return out;
 }
 
-// 滑稽戰鬥站姿(編排器 GOOFY_IDLE):半蹲、屈膝、手肘彎、頭微偏——所有動作的起點/終點
+// 待機站姿(使用者 PUNCH STUDIO 定稿):放鬆直立、雙臂微外展(sz30)、直腿——所有動作的起點/終點。
+// 待機呼吸(膝蓋微彎↔伸直)由 actor-brawler.js 的程序化 ANIM.breath 疊加,不寫在這個靜態姿勢裡。
 export const COMBAT_IDLE = normalizePose({
-  squat: 45, head_y: 23, head_x: 6,
-  aL_sx: -12, aL_ex: 40, aR_sx: -12, aR_sy: 6, aR_ex: 40,
-  lL_hx: -31, lL_hy: 5, lL_hz: 20, lL_kx: 40,
-  lR_hx: -31, lR_hy: 5, lR_hz: 20, lR_kx: 40,
+  aL_sz: 30, aR_sz: 30,
 });
 
 const DEFAULT_LAGS = { aL: 0.0, aR: 0.20, lL: 0.0, lR: 0.10 };
