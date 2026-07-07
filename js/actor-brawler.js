@@ -7,6 +7,7 @@ import { game } from './state.js';
 import { makeBox } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
+import { handsReady, getHandMesh } from './actor-hands.js';
 
 // ===== 建模規格表:尺寸/位置(世界 px)/配色。關節鏈長 Lu/Ll(腿)、Au/Al(臂)給自動踩地/組裝用 =====
 export const BRAWLER_SPEC = {
@@ -71,7 +72,7 @@ export function buildBrawler(g, tints, tintable, base) {
     const fa = makeBox(S.foreArm.w, S.foreArm.h, S.foreArm.d, limb); fa.position.y = -S.foreArm.h / 2; lm.add(fa);
     const wr = grp(lm, 0, -S.foreArm.h);
     const fist = makeBox(S.fist.w, S.fist.h, S.fist.d, pale); fist.position.y = S.fist.dropY; wr.add(fist);
-    return { sh, el, lm, wr, side };
+    return { sh, el, lm, wr, fist, side };
   };
   const armL = mkArm(-1), armR = mkArm(1);
   const headPivot = grp(spine, 0, S.headPivotY);
@@ -131,6 +132,43 @@ export function applyBrawlerPose(rig, p) {
 
 const _tip = new THREE.Vector3();
 const _zeroIdle = normalizePose(COMBAT_IDLE);
+
+// ===== 手部部件切換:扛人(carrying)=握拳手模、丟人放手瞬間=張開手模、其餘=方塊拳套 =====
+// GLB 未就緒 → 全程拳套(優雅降級)。HAND_CAL:socket 對齊後掛上 wr 的縮放/旋轉(度)/位移(px)。
+const HAND_CAL = { scale: 42, rx: 0, ry: 0, rz: 0, px: 0, py: -2.8, pz: 0 };
+function ensureHandMeshes(arm) {
+  if (arm._handsBuilt) return arm._handsBuilt === 2;
+  const side = arm.side < 0 ? 'L' : 'R';
+  const grip = getHandMesh('grip', side), open = getHandMesh('open', side);
+  if (!grip || !open) { arm._handsBuilt = 1; return false; }        // 尚未就緒,下幀再試
+  for (const m of [grip, open]) {
+    m.scale.setScalar(HAND_CAL.scale);
+    m.rotation.set(HAND_CAL.rx * D2R, HAND_CAL.ry * D2R, HAND_CAL.rz * D2R);
+    m.position.set(HAND_CAL.px, HAND_CAL.py, HAND_CAL.pz);
+    m.visible = false; arm.wr.add(m);
+  }
+  arm.handGrip = grip; arm.handOpen = open; arm._handsBuilt = 2;
+  return true;
+}
+function setArmHand(arm, mode) {                                    // mode: 'glove' | 'grip' | 'open'
+  if (!ensureHandMeshes(arm)) { arm.fist.visible = true; return; }  // 手模未就緒 → 拳套
+  arm.fist.visible = mode === 'glove';
+  arm.handGrip.visible = mode === 'grip';
+  arm.handOpen.visible = mode === 'open';
+}
+function updateHands(e, R, u, now) {
+  if (!handsReady()) { R.armL.fist.visible = true; R.armR.fist.visible = true; return; }
+  const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0 });
+  let mode = 'glove';
+  if (e.carrying) mode = 'grip';                                    // 扛人:握住對手
+  else {
+    // 剛結束搬運這幀:丟出(throwCarried 設 punchKind=2 且 punchFx≈now)→ 開手窗口;放下(dropCarry)→ 無
+    if (h.wasCarry && e.punchKind === 2 && e.punchFx != null && (now - e.punchFx) < 0.12) h.releaseT = now + 0.28;
+    if (now < h.releaseT) mode = 'open';                            // 丟人放手瞬間:五指張開
+  }
+  h.wasCarry = !!e.carrying;
+  setArmHand(R.armL, mode); setArmHand(R.armR, mode);
+}
 
 // 每幀:狀態 → 目標姿勢(clip 或程序)→ 平滑混合 → applyBrawlerPose;
 // 面向/暈眩搖晃/flinch/整體 squash 維持世界層(g)處理,與姿勢層(P)分離。
@@ -193,6 +231,7 @@ export function updateBrawler(e, g) {
   if (!u.pose) u.pose = { ...pose };
   else for (const key of POSE_KEYS) u.pose[key] += ((pose[key] ?? 0) - u.pose[key]) * k;
   applyBrawlerPose(R, u.pose);
+  updateHands(e, R, u, now);   // 扛人=握拳手模、丟人放手瞬間=張開手模,其餘=拳套
 
   // Phase 1:?avatar=1 且 GLB 就緒 → box rig 當隱形 driver,把世界差量轉寫到 GLB 角色。
   // 首次就緒時 lazy 建立(GLB 非同步載入);建立會 T-pose 校正,故放在 applyBrawlerPose 之後、
