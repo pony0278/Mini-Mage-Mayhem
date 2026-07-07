@@ -18,154 +18,286 @@ export const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
 export const labAnimated = [];          // { update(t, dt) } — updateLabScene 每幀跑
 let labBuilt = false;
 
-/* ---------- 原型地板:暗藍紫石磚 + 發光溝縫/焦痕/符文(map + emissive 雙貼圖) ---------- */
-function makeFloorTextures() {
-  const S = 1024, tiles = 8, t = S / tiles;
-  const c = document.createElement('canvas'); c.width = c.height = S;
-  const g = c.getContext('2d');
-  const e = document.createElement('canvas'); e.width = e.height = S;
-  const ge = e.getContext('2d');
-  ge.fillStyle = '#000'; ge.fillRect(0, 0, S, S);
+/* ---------- 地板貼圖(v2_10 工業改版:灰綠金屬石磚 + 凹陷維護縫[淡琥珀維護電流]+ 稀疏符文汙染;
+   map+emissive 雙貼圖;canvas 逐字移植自使用者原型,像素空間不吃 LAB_SCALE) ---------- */
+function makeFloorTextures(){
+  const S=1024, tiles=8, t=S/tiles;
+  const c=document.createElement('canvas'); c.width=c.height=S;
+  const g=c.getContext('2d');
+  const e=document.createElement('canvas'); e.width=e.height=S;
+  const ge=e.getContext('2d');
+  ge.fillStyle='#000'; ge.fillRect(0,0,S,S);
+
   // base tiles with variation
-  for (let y = 0; y < tiles; y++) for (let x = 0; x < tiles; x++) {
-    const v = 0.85 + Math.random() * 0.3;
-    g.fillStyle = `rgb(${Math.floor(26 * v)},${Math.floor(22 * v)},${Math.floor(48 * v)})`;
-    g.fillRect(x * t, y * t, t, t);
-    g.strokeStyle = 'rgba(255,255,255,0.04)';
-    g.lineWidth = 3; g.strokeRect(x * t + 4, y * t + 4, t - 8, t - 8);
+  for(let y=0;y<tiles;y++)for(let x=0;x<tiles;x++){
+    const v=0.85+Math.random()*0.3;
+    const r=Math.floor(34*v), gg=Math.floor(39*v), b=Math.floor(39*v);
+    g.fillStyle=`rgb(${r},${gg},${b})`;
+    g.fillRect(x*t,y*t,t,t);
+    // subtle inner bevel
+    g.strokeStyle='rgba(255,255,255,0.04)';
+    g.lineWidth=3; g.strokeRect(x*t+4,y*t+4,t-8,t-8);
   }
   // wear / soft noise
-  for (let i = 0; i < 2200; i++) {
-    g.fillStyle = `rgba(${Math.random() > 0.5 ? 255 : 0},${Math.random() > 0.5 ? 230 : 0},255,${Math.random() * 0.03})`;
-    g.fillRect(Math.random() * S, Math.random() * S, Math.random() * 8 + 1, Math.random() * 8 + 1);
+  for(let i=0;i<2200;i++){
+    g.fillStyle=`rgba(${Math.random()>0.5?220:20},${Math.random()>0.5?205:25},${Math.random()>0.5?175:25},${Math.random()*0.028})`;
+    g.fillRect(Math.random()*S, Math.random()*S, Math.random()*8+1, Math.random()*8+1);
   }
   // scratches
-  for (let i = 0; i < 90; i++) {
-    const x = Math.random() * S, y = Math.random() * S, a = Math.random() * Math.PI, L = 20 + Math.random() * 90;
-    g.strokeStyle = `rgba(200,200,230,${0.03 + Math.random() * 0.06})`;
-    g.lineWidth = 1;
-    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke();
+  for(let i=0;i<90;i++){
+    const x=Math.random()*S, y=Math.random()*S, a=Math.random()*Math.PI, L=20+Math.random()*90;
+    g.strokeStyle=`rgba(200,200,230,${0.03+Math.random()*0.06})`;
+    g.lineWidth=1;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+Math.cos(a)*L, y+Math.sin(a)*L); g.stroke();
   }
   // stains
-  for (let i = 0; i < 26; i++) {
-    const x = Math.random() * S, y = Math.random() * S, r = 18 + Math.random() * 55;
-    const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    const hue = Math.random() < 0.4 ? '20,40,25' : '12,10,26';
-    grad.addColorStop(0, `rgba(${hue},0.35)`); grad.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  for(let i=0;i<26;i++){
+    const x=Math.random()*S, y=Math.random()*S, r=18+Math.random()*55;
+    const grad=g.createRadialGradient(x,y,0,x,y,r);
+    const hue=Math.random()<0.4?'24,34,29':'18,16,13';
+    grad.addColorStop(0,`rgba(${hue},0.35)`); grad.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=grad; g.beginPath(); g.arc(x,y,r,0,7); g.fill();
   }
-  // magical scorch marks (+ faint residue ring on emissive)
-  for (let i = 0; i < 14; i++) {
-    const x = Math.random() * S, y = Math.random() * S, r = 25 + Math.random() * 45;
-    const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, 'rgba(5,3,10,0.85)');
-    grad.addColorStop(0.6, 'rgba(30,10,50,0.4)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
-    ge.strokeStyle = `rgba(${Math.random() < 0.5 ? '140,80,255' : '80,220,255'},0.25)`;
-    ge.lineWidth = 2; ge.beginPath(); ge.arc(x, y, r * 0.55, Math.random() * 3, Math.random() * 3 + 3); ge.stroke();
+  // magical scorch marks
+  for(let i=0;i<14;i++){
+    const x=Math.random()*S, y=Math.random()*S, r=25+Math.random()*45;
+    const grad=g.createRadialGradient(x,y,0,x,y,r);
+    grad.addColorStop(0,'rgba(5,3,10,0.85)');
+    grad.addColorStop(0.6,'rgba(52,24,20,0.30)');
+    grad.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=grad; g.beginPath(); g.arc(x,y,r,0,7); g.fill();
+    // faint magic residue ring on emissive
+    ge.strokeStyle=`rgba(${Math.random()<0.5?'158,92,255':'70,205,235'},0.12)`;
+    ge.lineWidth=2; ge.beginPath(); ge.arc(x,y,r*0.55,Math.random()*3,Math.random()*3+3); ge.stroke();
   }
   // cracks
-  for (let i = 0; i < 22; i++) {
-    let x = Math.random() * S, y = Math.random() * S;
-    g.strokeStyle = 'rgba(8,5,16,0.8)'; g.lineWidth = 1.6;
-    g.beginPath(); g.moveTo(x, y);
-    for (let s = 0; s < 6; s++) { x += (Math.random() - 0.5) * 46; y += (Math.random() - 0.5) * 46; g.lineTo(x, y); }
+  for(let i=0;i<22;i++){
+    let x=Math.random()*S, y=Math.random()*S;
+    g.strokeStyle='rgba(8,5,16,0.8)'; g.lineWidth=1.6;
+    g.beginPath(); g.moveTo(x,y);
+    for(let s=0;s<6;s++){ x+=(Math.random()-0.5)*46; y+=(Math.random()-0.5)*46; g.lineTo(x,y); }
     g.stroke();
   }
-  // glowing grout lines (recessed purple; 真發光在 emissive 貼圖上)
-  g.strokeStyle = 'rgba(60,30,110,0.9)'; g.lineWidth = 4;
-  ge.strokeStyle = 'rgba(130,70,255,0.9)'; ge.lineWidth = 3;
-  for (let i = 0; i <= tiles; i++) {
-    g.beginPath(); g.moveTo(i * t, 0); g.lineTo(i * t, S); g.stroke();
-    g.beginPath(); g.moveTo(0, i * t); g.lineTo(S, i * t); g.stroke();
-    ge.beginPath(); ge.moveTo(i * t, 0); ge.lineTo(i * t, S); ge.stroke();
-    ge.beginPath(); ge.moveTo(0, i * t); ge.lineTo(S, i * t); ge.stroke();
+  // recessed industrial seams; only a faint maintenance-current glow remains
+  g.strokeStyle='rgba(8,12,13,0.95)'; g.lineWidth=5;
+  ge.strokeStyle='rgba(214,151,38,0.22)'; ge.lineWidth=2;
+  for(let i=0;i<=tiles;i++){
+    g.beginPath(); g.moveTo(i*t,0); g.lineTo(i*t,S); g.stroke();
+    g.beginPath(); g.moveTo(0,i*t); g.lineTo(S,i*t); g.stroke();
+    ge.beginPath(); ge.moveTo(i*t,0); ge.lineTo(i*t,S); ge.stroke();
+    ge.beginPath(); ge.moveTo(0,i*t); ge.lineTo(S,i*t); ge.stroke();
   }
   // fade grout glow with random dark gaps (worn energy lines)
-  for (let i = 0; i < 160; i++) {
-    ge.fillStyle = 'rgba(0,0,0,0.85)';
-    const along = Math.random() < 0.5;
-    const gx = Math.floor(Math.random() * (tiles + 1)) * t;
-    if (along) ge.fillRect(gx - 4, Math.random() * S, 8, 20 + Math.random() * 60);
-    else ge.fillRect(Math.random() * S, gx - 4, 20 + Math.random() * 60, 8);
+  for(let i=0;i<160;i++){
+    ge.fillStyle='rgba(0,0,0,0.85)';
+    const along=Math.random()<0.5;
+    const gx=Math.floor(Math.random()*(tiles+1))*t;
+    if(along) ge.fillRect(gx-4, Math.random()*S, 8, 20+Math.random()*60);
+    else      ge.fillRect(Math.random()*S, gx-4, 20+Math.random()*60, 8);
   }
-  // glowing rune decals
-  const runes = 'ᚠᚢᚦᚨᚱᚲᛃᛇᛉᛋᛏᛒᛖᛗᛚᛝ';
-  for (let i = 0; i < 10; i++) {
-    const x = Math.random() * S, y = Math.random() * S;
-    const col = ['rgba(120,80,255,', 'rgba(70,220,255,', 'rgba(120,255,150,'][Math.floor(Math.random() * 3)];
-    ge.strokeStyle = col + '0.7)'; ge.lineWidth = 2;
-    ge.beginPath(); ge.arc(x, y, 16, 0, 7); ge.stroke();
-    ge.fillStyle = col + '0.8)';
-    ge.font = '20px serif'; ge.textAlign = 'center'; ge.textBaseline = 'middle';
-    ge.fillText(runes[Math.floor(Math.random() * runes.length)], x, y);
+  // sparse magical contamination decals — magic is pollution, not decoration
+  const runes='ᚠᚢᚦᚨᚱᚲᛃᛇᛉᛋᛏᛒᛖᛗᛚᛝ';
+  for(let i=0;i<4;i++){
+    const x=Math.random()*S, y=Math.random()*S;
+    const col=['rgba(120,80,255,','rgba(70,220,255,','rgba(120,255,150,'][Math.floor(Math.random()*3)];
+    ge.strokeStyle=col+'0.7)'; ge.lineWidth=2;
+    ge.beginPath(); ge.arc(x,y,16,0,7); ge.stroke();
+    ge.fillStyle=col+'0.8)';
+    ge.font='20px serif'; ge.textAlign='center'; ge.textBaseline='middle';
+    ge.fillText(runes[Math.floor(Math.random()*runes.length)],x,y);
   }
-  const map = new THREE.CanvasTexture(c); map.encoding = THREE.sRGBEncoding;
-  const emissive = new THREE.CanvasTexture(e);
-  map.wrapS = map.wrapT = emissive.wrapS = emissive.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(SCENE_W / 16, SCENE_D / 16); emissive.repeat.set(SCENE_W / 16, SCENE_D / 16);
-  return { map, emissive };
+  const map=new THREE.CanvasTexture(c); map.encoding=THREE.sRGBEncoding;
+  const emissive=new THREE.CanvasTexture(e);
+  map.wrapS=map.wrapT=emissive.wrapS=emissive.wrapT=THREE.RepeatWrapping;
+  map.repeat.set(SCENE_W/16, SCENE_D/16); emissive.repeat.set(SCENE_W/16, SCENE_D/16);
+  return {map, emissive};
 }
 
-/* ---------- 原型中央魔法陣(破損符文陣;蓋在收容艙下) ---------- */
-function makeCircleTexture() {
-  const S = 1024, c = document.createElement('canvas'); c.width = c.height = S;
-  const g = c.getContext('2d'); const cx = S / 2, cy = S / 2;
-  g.clearRect(0, 0, S, S);
-  const P = 'rgba(160,110,255,'; const C = 'rgba(110,220,255,';
-  function ring(r, w, col, alpha, gaps) {
-    g.strokeStyle = col + alpha + ')'; g.lineWidth = w;
-    let a = Math.random() * 6.28;
-    for (let s = 0; s < gaps.length; s++) {
-      g.beginPath(); g.arc(cx, cy, r, a, a + gaps[s][0]); g.stroke();
-      a += gaps[s][0] + gaps[s][1];
-    }
+/* ---------- 中央「電弧分揀陣列」(v2_10:回收三角 sigil + 四色元素導軌 + 儀式錨點 + 條碼檢測痕;
+   蓋在收容艙腳下的地面貼圖;逐字移植) ---------- */
+function makeCircleTexture(){
+  const S=1024, c=document.createElement('canvas'); c.width=c.height=S;
+  const g=c.getContext('2d'); const cx=S/2, cy=S/2;
+  g.clearRect(0,0,S,S);
+
+  const colors=['#f07635','#62c8dd','#9b72e7','#73d980'];
+  const dark='rgba(15,19,19,0.88)';
+
+  // industrial outer rings
+  g.strokeStyle='rgba(224,163,45,0.92)'; g.lineWidth=14;
+  g.setLineDash([70,28,18,28]);
+  g.beginPath(); g.arc(cx,cy,470,0,Math.PI*2); g.stroke();
+  g.setLineDash([]);
+  g.strokeStyle='rgba(205,198,165,0.52)'; g.lineWidth=5;
+  g.beginPath(); g.arc(cx,cy,420,0,Math.PI*2); g.stroke();
+  g.strokeStyle='rgba(73,84,82,0.95)'; g.lineWidth=10;
+  g.beginPath(); g.arc(cx,cy,235,0,Math.PI*2); g.stroke();
+
+  // four colored sorting lanes
+  const dirs=[
+    {a:-Math.PI/2,c:colors[1]}, // frost / north
+    {a:0,c:colors[2]},          // electric / east
+    {a:Math.PI/2,c:colors[3]},  // slime / south
+    {a:Math.PI,c:colors[0]},    // fire / west
+  ];
+  dirs.forEach((d,i)=>{
+    const x1=cx+Math.cos(d.a)*150, y1=cy+Math.sin(d.a)*150;
+    const x2=cx+Math.cos(d.a)*410, y2=cy+Math.sin(d.a)*410;
+    g.strokeStyle=d.c; g.lineWidth=20; g.globalAlpha=0.18;
+    g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+    g.globalAlpha=0.9;
+    // arrow head
+    g.save(); g.translate(x2,y2); g.rotate(d.a);
+    g.fillStyle=d.c; g.beginPath();
+    g.moveTo(26,0); g.lineTo(-20,-18); g.lineTo(-8,0); g.lineTo(-20,18); g.closePath(); g.fill();
+    g.restore();
+  });
+  g.globalAlpha=1;
+
+  // (removed the circular arc arrows — the recycle mark is now a triangular
+  //  three-arrow glyph, so a round arc layer behind it would fight the read)
+
+  // scanner center — larger recycling sigil, more fused with the magic circle
+  const grad=g.createRadialGradient(cx,cy,0,cx,cy,110);
+  grad.addColorStop(0,'rgba(255,187,58,0.58)');
+  grad.addColorStop(0.45,'rgba(158,100,230,0.18)');
+  grad.addColorStop(0.75,'rgba(110,180,174,0.14)');
+  grad.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=grad; g.beginPath(); g.arc(cx,cy,110,0,Math.PI*2); g.fill();
+
+  // inner ritual ring to blend the recycle mark into the arcane scanner
+  g.strokeStyle='rgba(236,198,94,0.95)'; g.lineWidth=5;
+  g.beginPath(); g.arc(cx,cy,88,0,Math.PI*2); g.stroke();
+  g.strokeStyle='rgba(158,100,230,0.62)'; g.lineWidth=3;
+  g.setLineDash([10,12]);
+  g.beginPath(); g.arc(cx,cy,70,0,Math.PI*2); g.stroke();
+  g.setLineDash([]);
+  g.strokeStyle='rgba(232,220,181,0.92)'; g.lineWidth=6;
+  g.beginPath(); g.arc(cx,cy,54,0,Math.PI*2); g.stroke();
+
+  // six ritual anchor nodes around the center
+  for(let i=0;i<6;i++){
+    const a=-Math.PI/2+i*Math.PI*2/6;
+    const px=cx+Math.cos(a)*88, py=cy+Math.sin(a)*88;
+    g.fillStyle=i%2===0 ? 'rgba(255,149,38,0.95)' : 'rgba(168,124,255,0.95)';
+    g.beginPath(); g.arc(px,py,7,0,Math.PI*2); g.fill();
+    g.strokeStyle='rgba(242,228,186,0.85)'; g.lineWidth=2;
+    g.beginPath(); g.arc(px,py,12,0,Math.PI*2); g.stroke();
   }
-  ring(470, 10, P, 0.95, [[2.2, 0.35], [1.4, 0.5], [1.1, 0.25]]);
-  ring(440, 3, P, 0.7, [[3.1, 0.2], [2.4, 0.5]]);
-  ring(330, 6, C, 0.85, [[1.8, 0.3], [2.6, 0.4], [0.9, 0.3]]);
-  ring(210, 8, P, 0.9, [[2.9, 0.5], [2.2, 0.7]]);
-  ring(120, 4, C, 0.8, [[5.6, 0.7]]);
-  // inner hexagram
-  g.strokeStyle = P + '0.85)'; g.lineWidth = 5;
-  for (let tri = 0; tri < 2; tri++) {
+
+  // orange triangular magic guides that echo the recycling arrows
+  g.strokeStyle='rgba(255,140,34,0.72)'; g.lineWidth=3;
+  for(let i=0;i<3;i++){
+    const a=-Math.PI/2+i*Math.PI*2/3;
+    const p1=[cx+Math.cos(a)*34, cy+Math.sin(a)*34];
+    const p2=[cx+Math.cos(a+0.58)*62, cy+Math.sin(a+0.58)*62];
+    const p3=[cx+Math.cos(a-0.58)*62, cy+Math.sin(a-0.58)*62];
     g.beginPath();
-    for (let k = 0; k <= 3; k++) {
-      const a = tri * Math.PI / 3 + k * 2 * Math.PI / 3 - Math.PI / 2;
-      const x = cx + Math.cos(a) * 300, y = cy + Math.sin(a) * 300;
-      k ? g.lineTo(x, y) : g.moveTo(x, y);
+    g.moveTo(p1[0],p1[1]); g.lineTo(p2[0],p2[1]); g.lineTo(p3[0],p3[1]); g.closePath();
+    g.stroke();
+  }
+
+  // large bright orange recycling sigil at the exact center
+  // Drawn procedurally instead of using the ♻ font glyph so it renders reliably
+  // across Windows/Chrome/CanvasTexture environments.
+  const coreGrad=g.createRadialGradient(cx,cy,0,cx,cy,118);
+  coreGrad.addColorStop(0,'rgba(255,184,72,0.52)');
+  coreGrad.addColorStop(0.42,'rgba(255,122,34,0.26)');
+  coreGrad.addColorStop(0.72,'rgba(164,96,245,0.13)');
+  coreGrad.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=coreGrad; g.beginPath(); g.arc(cx,cy,118,0,Math.PI*2); g.fill();
+
+  // universal (triangular) recycling mark: three straight arrows running along
+  // the three edges of an equilateral triangle, each turning the corner (chasing).
+  (function drawRecycleTriangle(){
+    const R=118, band=20;
+    const V=[];
+    for(let i=0;i<3;i++){ const a=-Math.PI/2+i*Math.PI*2/3; V.push([cx+Math.cos(a)*R, cy+Math.sin(a)*R]); }
+    for(let i=0;i<3;i++){
+      const A=V[i], B=V[(i+1)%3];
+      const dx=B[0]-A[0], dy=B[1]-A[1];
+      const len=Math.hypot(dx,dy), ux=dx/len, uy=dy/len;
+      const px=-uy, py=ux;                 // edge normal
+      const s=[A[0]+ux*46, A[1]+uy*46];    // inset start (leaves the fold gap)
+      const e=[B[0]-ux*58, B[1]-uy*58];    // inset end (room for the arrowhead)
+
+      g.save();
+      g.lineCap='butt'; g.lineJoin='round';
+      // magical underglow
+      g.shadowColor='rgba(255,120,20,1)'; g.shadowBlur=34;
+      g.strokeStyle='rgba(255,124,22,0.95)'; g.lineWidth=band+12;
+      g.beginPath(); g.moveTo(s[0],s[1]); g.lineTo(e[0],e[1]); g.stroke();
+      // bright core band
+      g.shadowBlur=15;
+      g.strokeStyle='rgba(255,186,74,0.98)'; g.lineWidth=band;
+      g.beginPath(); g.moveTo(s[0],s[1]); g.lineTo(e[0],e[1]); g.stroke();
+
+      // chevron arrowhead at the end, pointing around the corner
+      const hl=42, hw=24;
+      const tip=[e[0]+ux*hl, e[1]+uy*hl];
+      const b1=[e[0]+px*hw, e[1]+py*hw];
+      const b2=[e[0]-px*hw, e[1]-py*hw];
+      g.shadowColor='rgba(255,120,20,1)'; g.shadowBlur=26;
+      g.fillStyle='rgba(255,150,32,0.99)';
+      g.strokeStyle='rgba(255,224,158,0.75)'; g.lineWidth=3;
+      g.beginPath(); g.moveTo(tip[0],tip[1]); g.lineTo(b1[0],b1[1]); g.lineTo(b2[0],b2[1]); g.closePath();
+      g.fill(); g.stroke();
+
+      // small purple rune notch mid-band
+      const mx=(s[0]+e[0])/2, my=(s[1]+e[1])/2;
+      g.shadowColor='rgba(180,120,255,0.9)'; g.shadowBlur=12;
+      g.fillStyle='rgba(190,132,255,0.95)';
+      g.beginPath(); g.arc(mx,my,6,0,Math.PI*2); g.fill();
+      g.restore();
     }
+  })();
+
+  // inner arcane triangle binds the recycle mark into the magic-circle language
+  g.save();
+  g.translate(cx,cy);
+  g.shadowColor='rgba(166,105,255,0.75)';
+  g.shadowBlur=18;
+  g.strokeStyle='rgba(196,150,255,0.72)';
+  g.lineWidth=4;
+  g.beginPath();
+  for(let i=0;i<3;i++){
+    const a=-Math.PI/2+i*Math.PI*2/3;
+    const x=Math.cos(a)*53, y=Math.sin(a)*53;
+    if(i===0) g.moveTo(x,y); else g.lineTo(x,y);
+  }
+  g.closePath(); g.stroke();
+  g.restore();
+
+  // small center core so the scanner still reads as machinery + magic
+  g.shadowColor='rgba(255,145,34,0.95)'; g.shadowBlur=22;
+  g.fillStyle='rgba(255,205,116,0.99)'; g.beginPath(); g.arc(cx,cy,11,0,Math.PI*2); g.fill();
+  g.shadowBlur=0;
+  g.strokeStyle='rgba(255,145,34,0.95)'; g.lineWidth=3;
+  g.beginPath(); g.arc(cx,cy,23,0,Math.PI*2); g.stroke();
+
+  // small barcode-like inspection marks
+  g.fillStyle=dark;
+  for(let i=0;i<28;i++){
+    const a=i/28*Math.PI*2;
+    const r=330;
+    const w=(i%4===0)?12:6;
+    g.save(); g.translate(cx+Math.cos(a)*r,cy+Math.sin(a)*r); g.rotate(a);
+    g.fillRect(-w/2,-18,w,36); g.restore();
+  }
+
+  // scuffed / damaged gaps so the floor still feels used
+  // (kept out to the outer ring band so they never cut the central recycle mark)
+  g.globalCompositeOperation='destination-out';
+  for(let i=0;i<8;i++){
+    const sa=Math.random()*Math.PI*2, sr=235+Math.random()*205;
+    let x=cx+Math.cos(sa)*sr, y=cy+Math.sin(sa)*sr;
+    g.lineWidth=8+Math.random()*12; g.strokeStyle='rgba(0,0,0,0.9)';
+    g.beginPath(); g.moveTo(x,y);
+    for(let s=0;s<4;s++){ x+=(Math.random()-0.5)*90; y+=(Math.random()-0.5)*90; g.lineTo(x,y); }
     g.stroke();
   }
-  // runes around ring (missing = damage)
-  const runes = 'ᚠᚢᚦᚨᚱᚲᛃᛇᛉᛋᛏᛒᛖᛗᛚᛝᛞᛟ';
-  g.font = '42px serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  for (let i = 0; i < 26; i++) {
-    if (Math.random() < 0.2) continue;
-    const a = i / 26 * Math.PI * 2;
-    g.fillStyle = Math.random() < 0.7 ? P + '0.9)' : C + '0.9)';
-    g.save(); g.translate(cx + Math.cos(a) * 395, cy + Math.sin(a) * 395);
-    g.rotate(a + Math.PI / 2);
-    g.fillText(runes[i % runes.length], 0, 0); g.restore();
-  }
-  // small orbit nodes
-  for (let i = 0; i < 6; i++) {
-    const a = i / 6 * Math.PI * 2 + 0.5;
-    g.fillStyle = C + '0.9)';
-    g.beginPath(); g.arc(cx + Math.cos(a) * 265, cy + Math.sin(a) * 265, 14, 0, 7); g.fill();
-  }
-  // damage: dark cracks erasing glow
-  g.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 9; i++) {
-    let x = cx + (Math.random() - 0.5) * 700, y = cy + (Math.random() - 0.5) * 700;
-    g.lineWidth = 8 + Math.random() * 14; g.strokeStyle = 'rgba(0,0,0,0.95)';
-    g.beginPath(); g.moveTo(x, y);
-    for (let s = 0; s < 5; s++) { x += (Math.random() - 0.5) * 130; y += (Math.random() - 0.5) * 130; g.lineTo(x, y); }
-    g.stroke();
-  }
-  g.globalCompositeOperation = 'source-over';
-  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+  g.globalCompositeOperation='source-over';
+  const tex=new THREE.CanvasTexture(c); tex.encoding=THREE.sRGBEncoding;
   return tex;
 }
 
@@ -176,17 +308,19 @@ export function initLabScene() {
   if (renderer) {
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 1.16;         // v2_10:工業暗場 + ACES,曝光略提
     renderer.shadowMap.enabled = !FX_LOW;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
-  scene.background = new THREE.Color(0x0a0818);
-  scene.fog = new THREE.FogExp2(0x0d0a20, 0.016 / LAB_SCALE); // 原型密度按單位換算
+  scene.background = new THREE.Color(0x070a0c); // v2_10 工業黑
+  scene.fog = new THREE.FogExp2(0x080b0d, 0.017 / LAB_SCALE); // 原型密度按單位換算
 
-  // 燈光組:原型的暗實驗室配置,但整體加亮 —— 角色是 Lambert 受光,原封值會吃掉藍/紅身分色
-  scene.add(new THREE.AmbientLight(0x37306a, 1.6));
-  scene.add(new THREE.HemisphereLight(0x4a3f8e, 0x0a0818, 0.8));
-  const key = new THREE.DirectionalLight(0x9a8cd8, 0.55);
+  // 燈光組:採 v2_10 的暖 key + 冷 rim + 四角元素點光「工業陰暗實驗室」性格,
+  // 但 ambient/hemi 比原型場景值(0.30/0.28)刻意抬高 —— 角色是 Lambert 受光,
+  // 太暗會吃掉藍/紅身分色(readability > 純氛圍)。點光=裝飾,?fx=low 剝除。
+  scene.add(new THREE.AmbientLight(0x2a3230, 1.05));                 // 冷工業灰綠(原紫 0x37306a)
+  scene.add(new THREE.HemisphereLight(0x3a4550, 0x0a0c0d, 0.55));
+  const key = new THREE.DirectionalLight(0xf0d9a6, 0.7);             // 暖 key(原型 0xf0d9a6)
   key.position.set(CX + 14 * LAB_SCALE, 26 * LAB_SCALE, CZ + 10 * LAB_SCALE);
   key.target.position.set(CX, 0, CZ); scene.add(key.target);
   key.castShadow = !FX_LOW;
@@ -195,6 +329,15 @@ export function initLabScene() {
   key.shadow.camera.right = key.shadow.camera.top = 25 * LAB_SCALE;
   key.shadow.camera.far = 4000;
   scene.add(key);
+  const rim = new THREE.DirectionalLight(0x6a72ff, 0.5);             // 冷 arcane rim,刻出機械輪廓
+  rim.position.set(CX - 16 * LAB_SCALE, 12 * LAB_SCALE, CZ - 14 * LAB_SCALE); scene.add(rim);
+  // 四角元素站底光(火/冰/毒/雷,對應 Phase 3 四角站位;裝飾性 → fx=low 剝除)
+  if (!FX_LOW) for (const [c, x, z] of [
+    [0xff6a26, -13.85, -12], [0x53c8ff, 13.85, -12], [0x8dff7a, -13.85, 12], [0xa87cff, 13.85, 12],
+  ]) {
+    const pl = new THREE.PointLight(c, 0.95, 11 * LAB_SCALE, 2);
+    pl.position.set(CX + x * LAB_SCALE, 2.4 * LAB_SCALE, CZ + z * LAB_SCALE); scene.add(pl);
+  }
 
   // 地板:34×30 總場景一整片(核心+裝飾帶),map+emissive 雙貼圖
   const floorTex = makeFloorTextures();
@@ -202,33 +345,32 @@ export function initLabScene() {
     new THREE.PlaneGeometry(SCENE_W * LAB_SCALE, SCENE_D * LAB_SCALE),
     new THREE.MeshStandardMaterial({
       map: floorTex.map, emissiveMap: floorTex.emissive,
-      emissive: 0xffffff, emissiveIntensity: 0.42,
-      roughness: 0.62, metalness: 0.35,
+      emissive: 0xffffff, emissiveIntensity: 0.14, // v2_10:維護縫是淡琥珀微光,不再是紫溝發亮
+      roughness: 0.74, metalness: 0.42,
     })
   );
   floor.rotation.x = -Math.PI / 2; floor.position.set(CX, -0.5, CZ);
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // 中央魔法陣(收容艙腳下) + 紫色點光
+  // 中央分揀陣列(收容艙腳下)+ 琥珀點光。不旋轉 —— 四向元素導軌箭頭要固定指向四方,轉了就錯位。
   const circleMat = new THREE.MeshBasicMaterial({
     map: makeCircleTexture(), transparent: true, blending: THREE.AdditiveBlending,
-    depthWrite: false, side: THREE.DoubleSide,
+    depthWrite: false, side: THREE.DoubleSide, opacity: 0.95,
   });
   const magicCircle = new THREE.Mesh(new THREE.PlaneGeometry(8 * LAB_SCALE, 8 * LAB_SCALE), circleMat); // 原型 13 units;我們的鏡頭近,縮到 8 才不搶戲
   magicCircle.rotation.x = -Math.PI / 2; magicCircle.position.set(CX, 1, CZ);
   scene.add(magicCircle);
-  const circleGlow = new THREE.PointLight(0x9a5cff, 1.6, 16 * LAB_SCALE, 2);
-  circleGlow.position.set(CX, 1.2 * LAB_SCALE, CZ); scene.add(circleGlow);
+  const circleGlow = new THREE.PointLight(0xffb43a, 1.85, 15 * LAB_SCALE, 2); // v2_10 琥珀(原紫 0x9a5cff)
+  circleGlow.position.set(CX, 1.4 * LAB_SCALE, CZ); scene.add(circleGlow);
   scene.add(labGroup);
   buildLabWalls();
   buildLabEnergyTubes();
   buildLabProps();
   buildLabDust();
-  labAnimated.push({ update: (t) => {
-    magicCircle.rotation.z = t * 0.05;
-    circleMat.opacity = 0.55 + Math.sin(t * 1.4) * 0.15;
-    circleGlow.intensity = 1.3 + Math.sin(t * 1.4) * 0.5;
+  labAnimated.push({ update: (t) => {                       // 溫和呼吸,不旋轉
+    circleMat.opacity = 0.58 + Math.sin(t * 1.1) * 0.08;
+    circleGlow.intensity = 1.6 + Math.max(0, Math.sin(t * 1.1)) * 0.6;
   } });
 }
 
