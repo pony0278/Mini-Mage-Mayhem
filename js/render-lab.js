@@ -10,6 +10,7 @@ const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
 const CX = W / 2, CZ = H / 2;           // 場地中心(世界px)
 const SCENE_W = 34, SCENE_D = 30;       // 總場景(tiles) — 牆外含裝飾帶
 const CORE_W = 30, CORE_D = 20;         // 戰鬥核心區(tiles) = 現行模擬場地(=W/H)
+const CORE_HX = CORE_W / 2, CORE_HZ = CORE_D / 2; // 核心半寬/半深(15/10;戰區導引/地標用)
 export const LAB = { SCENE_W, SCENE_D, CORE_W, CORE_D, CX, CZ, S: LAB_SCALE };
 
 // 低效能模式(?fx=low):關陰影/剝裝飾性點光/關玻璃 transmission(額外整景渲染 pass)。
@@ -368,6 +369,11 @@ export function initLabScene() {
   buildLabEnergyTubes();
   buildLabProps();
   buildLabDust();
+  // Phase 2:中央結構(收容平台包住分揀陣列)+ 地面物流圖 + 淨戰區導引
+  buildCentralScannerDeck();
+  buildSortingRoutes();
+  buildIndustrialFloorMarkings();
+  buildCoreCombatGuide();
   labAnimated.push({ update: (t) => {                       // 溫和呼吸,不旋轉
     circleMat.opacity = 0.58 + Math.sin(t * 1.1) * 0.08;
     circleGlow.intensity = 1.6 + Math.max(0, Math.sin(t * 1.1)) * 0.6;
@@ -376,9 +382,10 @@ export function initLabScene() {
 
 /* ---------- 原型材質庫(牆/柱/管用;MeshStandard) ---------- */
 const M = {
-  metal: (c = 0x2b2545) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.45, metalness: 0.8 }),
-  darkMetal: () => new THREE.MeshStandardMaterial({ color: 0x1c1832, roughness: 0.5, metalness: 0.85 }),
-  stone: (c = 0x241e3e) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, metalness: 0.1 }),
+  // v2_10 工業改版:預設色由紫系改灰系(牆/舊道具傳明色不受影響,只影響 bare 呼叫)
+  metal: (c = 0x3b4342) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.48, metalness: 0.82 }),
+  darkMetal: () => new THREE.MeshStandardMaterial({ color: 0x1a2021, roughness: 0.54, metalness: 0.86 }),
+  stone: (c = 0x2b302f) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, metalness: 0.12 }),
   glow: (c, i = 1.6) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i, roughness: 0.4 }),
 };
 function mesh(geo, mat, x = 0, y = 0, z = 0, shadow = true) {
@@ -847,6 +854,121 @@ function buildLabDust() {
     }
     dust.geometry.attributes.position.needsUpdate = true;
   } });
+}
+
+/* ========== Phase 2:中央結構(v2_10 逐字移植;scene.add→labGroup.add、animated→labAnimated) ========== */
+
+/* 中央「收容平台」:開口環甲板(不埋掉分揀陣列)+ 鋼領環 + 四液壓鎖 + 周緣螺栓 + 掃描柱燈 */
+function buildCentralScannerDeck() {
+  const g = new THREE.Group();
+  const IN_R = 6.7, OUT_R = 7.28, DECK_H = 0.34, DECK_Y = DECK_H / 2;
+  const deckMat = M.metal(0x343c3a);
+  const topPlate = mesh(new THREE.RingGeometry(IN_R, OUT_R, 48), deckMat, 0, DECK_H, 0, false);
+  topPlate.rotation.x = -Math.PI / 2; g.add(topPlate);
+  const outWall = mesh(new THREE.CylinderGeometry(OUT_R, OUT_R, DECK_H, 48, 1, true), deckMat, 0, DECK_Y, 0, false);
+  g.add(outWall);
+  const inWall = mesh(new THREE.CylinderGeometry(IN_R, IN_R, DECK_H, 48, 1, true), M.darkMetal(), 0, DECK_Y, 0, false);
+  inWall.material.side = THREE.BackSide; g.add(inWall);
+  const ring1 = mesh(new THREE.TorusGeometry(6.72, 0.22, 10, 48), M.darkMetal(), 0, 0.38, 0); ring1.rotation.x = Math.PI / 2; g.add(ring1);
+  const ring2 = mesh(new THREE.TorusGeometry(5.95, 0.12, 8, 48), M.metal(0x69716b), 0, 0.40, 0); ring2.rotation.x = Math.PI / 2; g.add(ring2);
+  [[0, -6.25, 0], [6.25, 0, -Math.PI / 2], [0, 6.25, Math.PI], [-6.25, 0, Math.PI / 2]].forEach(([x, z, ry], i) => {
+    const lock = new THREE.Group();
+    lock.add(mesh(new THREE.BoxGeometry(1.45, 0.72, 0.95), M.darkMetal(), 0, 0.55, 0));
+    lock.add(mesh(new THREE.BoxGeometry(1.15, 0.16, 1.0), M.glow(i === 0 ? 0xdca52e : 0x8a5b2e, 0.18), 0, 0.98, 0, false));
+    const piston = mesh(new THREE.CylinderGeometry(0.13, 0.13, 1.25, 8), M.metal(0x818983), 0, 0.76, -0.88); piston.rotation.x = Math.PI / 2; lock.add(piston);
+    lock.position.set(x, 0, z); lock.rotation.y = ry; g.add(lock);
+  });
+  for (let i = 0; i < 24; i++) {
+    const a = i / 24 * Math.PI * 2;
+    g.add(mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.08, 8), M.metal(0x90968d), Math.cos(a) * 6.75, 0.47, Math.sin(a) * 6.75));
+  }
+  for (let i = 0; i < 4; i++) {
+    const a = i / 4 * Math.PI * 2 + Math.PI / 4;
+    const post = mesh(new THREE.BoxGeometry(0.32, 1.65, 0.32), M.darkMetal(), Math.cos(a) * 5.4, 0.98, Math.sin(a) * 5.4); g.add(post);
+    const lamp = mesh(new THREE.BoxGeometry(0.42, 0.18, 0.42), M.glow(0xdca52e, 0.38), Math.cos(a) * 5.4, 1.86, Math.sin(a) * 5.4, false); g.add(lamp);
+    labAnimated.push({ update: t => { lamp.material.emissiveIntensity = 0.14 + (Math.sin(t * 2.2 + i * 1.2) > 0.55 ? 0.55 : 0.08); } });
+  }
+  labGroup.add(g);
+}
+
+/* 四色元素分揀導軌(從中央陣連向四方向處理站的發光軌) */
+function buildSortingRoutes() {
+  const routes = [
+    { x: 0, z: -7.5, w: 0.55, d: 5.0, c: 0x78ddff },
+    { x: 11.0, z: 0, w: 5.0, d: 0.55, c: 0xa87cff },
+    { x: 0, z: 7.5, w: 0.55, d: 5.0, c: 0x78ff9b },
+    { x: -11.0, z: 0, w: 5.0, d: 0.55, c: 0xff914d },
+  ];
+  routes.forEach((r, i) => {
+    const p = mesh(new THREE.BoxGeometry(r.w, 0.028, r.d), new THREE.MeshBasicMaterial({ color: r.c, transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false }), r.x, 0.07, r.z, false);
+    labGroup.add(p);
+    labAnimated.push({ update: t => { p.material.opacity = 0.34 + Math.max(0, Math.sin(t * 1.9 + i * 1.6)) * 0.30; } });
+  });
+}
+
+/* 地面模板字(dashed 框 + 標題 + 副標;回傳一片朝上的貼圖平面) */
+function makeFloorStencil(text, sub = '', color = '#d7a12e', w = 5.2, h = 1.1) {
+  const CW = 1024, CH = 220, c = document.createElement('canvas'); c.width = CW; c.height = CH;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, CW, CH);
+  g.strokeStyle = color; g.lineWidth = 8; g.setLineDash([28, 18]); g.strokeRect(16, 16, CW - 32, CH - 32); g.setLineDash([]);
+  g.fillStyle = color; g.globalAlpha = 0.82; g.font = '900 76px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, CW / 2, 86);
+  if (sub) { g.globalAlpha = 0.58; g.font = '700 32px Consolas, monospace'; g.fillText(sub, CW / 2, 158); }
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.76, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; return m;
+}
+
+/* 工業地標:掃描台周圍安全斑馬框 + 四塊制式地面標語(WIZARD INTAKE / NO MANUAL SORTING / ZONE) */
+function buildIndustrialFloorMarkings() {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xd5a22f, transparent: true, opacity: 0.34, depthWrite: false });
+  const stripeMat = new THREE.MeshBasicMaterial({ color: 0x171b1a, transparent: true, opacity: 0.82, depthWrite: false });
+  const stripeCount = 18;
+  for (let i = 0; i < stripeCount; i++) {
+    const a = i / stripeCount * Math.PI * 2, r = 7.78;
+    const bar = mesh(new THREE.BoxGeometry(0.52, 0.025, 1.05), i % 2 ? mat : stripeMat, Math.cos(a) * r, 0.055, Math.sin(a) * r, false);
+    bar.rotation.y = -a; labGroup.add(bar);
+  }
+  const stencils = [
+    ['WIZARD INTAKE', 'CLASSIFY BEFORE DISPOSAL', 0, -8.7, 0],
+    ['NO MANUAL SORTING', 'USE APPROVED FORCE', 0, 8.65, Math.PI],
+    ['ZONE 01', 'MOLTEN', -11.2, -7.8, Math.PI / 2],
+    ['ZONE 03', 'CHARGED', 11.2, 7.8, -Math.PI / 2],
+  ];
+  stencils.forEach(([t, sub, x, z, ry]) => {
+    const d = makeFloorStencil(t, sub, '#d7a12e', 5.4, 1.18); d.position.set(x, 0.066, z); d.rotation.z = ry; labGroup.add(d);
+  });
+}
+
+/* 30×20 淨戰區導引(純視覺,無碰撞):琥珀虛線框 + 四角 L 記號 + 極淡暖色底 */
+function buildCoreCombatGuide() {
+  const g = new THREE.Group();
+  const pts = [
+    new THREE.Vector3(-CORE_HX, 0.065, -CORE_HZ), new THREE.Vector3(CORE_HX, 0.065, -CORE_HZ),
+    new THREE.Vector3(CORE_HX, 0.065, CORE_HZ), new THREE.Vector3(-CORE_HX, 0.065, CORE_HZ),
+  ];
+  const line = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: 0xd5a22f, transparent: true, opacity: 0.30, blending: THREE.NormalBlending })
+  );
+  g.add(line);
+  const cornerMat = M.glow(0xd5a22f, 0.28);
+  const lx = 1.45, thick = 0.08;
+  [[-CORE_HX, -CORE_HZ, 1, 1], [CORE_HX, -CORE_HZ, -1, 1], [CORE_HX, CORE_HZ, -1, -1], [-CORE_HX, CORE_HZ, 1, -1]].forEach(([x, z, sx, sz]) => {
+    g.add(mesh(new THREE.BoxGeometry(lx, 0.035, thick), cornerMat, x + sx * lx / 2, 0.08, z, false));
+    g.add(mesh(new THREE.BoxGeometry(thick, 0.035, lx), cornerMat, x, 0.08, z + sz * lx / 2, false));
+  });
+  const coreTint = new THREE.Mesh(
+    new THREE.PlaneGeometry(CORE_W, CORE_D),
+    new THREE.MeshBasicMaterial({ color: 0xc8952b, transparent: true, opacity: 0.018, blending: THREE.NormalBlending, depthWrite: false })
+  );
+  coreTint.rotation.x = -Math.PI / 2; coreTint.position.y = 0.045; g.add(coreTint);
+  labAnimated.push({ update: t => {
+    line.material.opacity = 0.22 + Math.max(0, Math.sin(t * 1.2)) * 0.12;
+    cornerMat.emissiveIntensity = 0.18 + Math.max(0, Math.sin(t * 1.2)) * 0.16;
+  } });
+  labGroup.add(g);
 }
 
 /* ---------- 每幀更新(facade render3D 呼叫;dt 由 t 差分) ---------- */
