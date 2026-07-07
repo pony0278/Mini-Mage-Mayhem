@@ -171,8 +171,24 @@ import { buildBrawler, updateBrawler } from './actor-brawler.js';
     if (e.type === 'brawler') updateBrawler(e, g);
     else if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
     else g.rotation.y = Math.atan2((game.player ? game.player.x - e.x : 0), (game.player ? game.player.y - e.y : 1));
+    if (e.type === 'brawler' && e.carriedBy) placeCarriedOverhead(e, g);   // 被抓 → 覆寫到抓者雙大手上方、橫舉(掙扎 pose 沿用 updateBrawler)
     const tintHex = e.hurt > 0 ? 0xffffff : (e.slowTimer > 0 ? 0xd8fbff : null);
     for (const t of g.userData.tints) t.mesh.material.color.setHex(tintHex != null ? tintHex : t.base);
+  }
+
+  // 被抓者:覆寫其 group 到抓者「雙大手中點上方」、橫躺 face-up(長軸沿抓者面向的橫向),
+  // 沿用 updateBrawler 設好的掙扎 pose。抓者 rig 這幀若還沒更新→吃上一幀(1 幀延遲,無感)。
+  const CARRY_VICTIM_UP = 12;               // 橫舉高度:雙手中點再往上
+  const _wl = new THREE.Vector3(), _wr = new THREE.Vector3();
+  function placeCarriedOverhead(e, g) {
+    const cg = actorMeshes.get(e.carriedBy); if (!cg || !cg.userData.rig) return;
+    const R = cg.userData.rig;
+    cg.updateMatrixWorld(true);
+    R.armL.wr.getWorldPosition(_wl); R.armR.wr.getWorldPosition(_wr);
+    g.position.set((_wl.x + _wr.x) / 2, (_wl.y + _wr.y) / 2 + CARRY_VICTIM_UP, (_wl.z + _wr.z) / 2);
+    const yaw = Math.atan2(Math.cos(e.carriedBy.facing), Math.sin(e.carriedBy.facing));
+    g.rotation.set(Math.PI / 2, yaw, 0);    // 躺平:角色 +Y(頭頂)倒向水平
+    g.scale.setScalar(1);
   }
 
   export function syncActors() {
