@@ -593,31 +593,6 @@ function recyclingHopper(color = 0x5ff0e0, contents = 'orb') {
   return g;
 }
 
-/* 分揀台:掃描拱門 + 四色待分揀樣本 + 三顆狀態燈 */
-function sortingTable() {
-  const g = new THREE.Group();
-  g.add(mesh(new THREE.BoxGeometry(3.4, 0.26, 1.5), M.metal(0x454d49), 0, 1.15, 0));
-  [[-1.4, -0.55], [1.4, -0.55], [-1.4, 0.55], [1.4, 0.55]].forEach(([x, z]) =>
-    g.add(mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), M.darkMetal(), x, 0.55, z)));
-  const arch = mesh(new THREE.TorusGeometry(0.56, 0.08, 8, 18, Math.PI), M.glow(0x53e0ff, 1.25), 0, 1.83, 0, false);
-  arch.rotation.z = Math.PI; g.add(arch);
-  g.add(mesh(new THREE.BoxGeometry(1.25, 0.08, 0.65), M.glow(0x53e0ff, 0.35), 0, 1.32, 0, false));
-  const cols = [0xff914d, 0x78ddff, 0xa87cff, 0x78ff9b];
-  for (let i = 0; i < 4; i++) {
-    const col = cols[i], fx = -1.15 + i * 0.75;
-    const item = i % 2 === 0
-      ? mesh(new THREE.BoxGeometry(0.28, 0.22, 0.34), M.glow(col, 0.8), fx, 1.48, (i % 2 ? 0.25 : -0.22), false)
-      : mesh(new THREE.OctahedronGeometry(0.19), M.glow(col, 1.0), fx, 1.52, (i % 2 ? 0.25 : -0.22), false);
-    g.add(item);
-  }
-  [0xff5c5c, 0xffc14f, 0x6dff9e].forEach((c, i) => {
-    const d = mesh(new THREE.SphereGeometry(0.09, 8, 8), M.glow(c, 1.5), -0.28 + i * 0.28, 1.43, 0.63, false); g.add(d);
-    labAnimated.push({ update: t => { d.material.emissiveIntensity = (Math.sin(t * 4 + i * 2) > 0.15) ? 1.7 : 0.25; } });
-  });
-  const l = decoLight(0x53e0ff, 0.55, 4 * LAB_SCALE); if (l) { l.position.set(0, 2 * LAB_SCALE, 0); g.add(l); }
-  return g;
-}
-
 /* 廢料架:三層貨架塞滿分色廢件 + 危害標籤燈 */
 function scrapRack() {
   const g = new THREE.Group();
@@ -955,8 +930,7 @@ function buildLabProps() {
   place(recyclingHopper(0x8aff6d, 'cube'), WEST_EDGE + 0.15, -4.8, Math.PI / 2);
   place(recyclingHopper(0xb58cff, 'orb'), WEST_EDGE + 0.15, 4.8, Math.PI / 2);
   place(recyclingHopper(0x53c8ff, 'crystal'), EAST_EDGE - 0.15, -4.8, -Math.PI / 2);
-  // 邊帶物流:分揀 / 壓實 / 廢料架 / UGC 展示
-  place(sortingTable(), 0, SOUTH_EDGE, Math.PI);
+  // 邊帶物流:壓實 / 廢料架 / UGC 展示(分揀台已移除——樣本水晶+瓶讀成舊魔法標本,與工業主題衝突)
   place(compactorUnit(), EAST_EDGE, 4.6, -Math.PI / 2);
   place(compactorUnit(), -8.7, SOUTH_EDGE, Math.PI);
   place(scrapRack(), 8.8, SOUTH_EDGE, Math.PI);
