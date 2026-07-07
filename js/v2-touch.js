@@ -23,11 +23,12 @@ export function initTouch() {
   touchInput.enabled = true;                // 讓 v2-combat 切到「移動=面向」的觸控輸入模式
   buildRotateGate();
   buildJoystick();                          // Phase B:左半螢幕浮動搖桿
+  buildButtons();                           // Phase C:右下 3 顆動作按鈕
   window.addEventListener('resize', syncOrientation);
   if (window.screen && screen.orientation && typeof screen.orientation.addEventListener === 'function')
     screen.orientation.addEventListener('change', syncOrientation);
   syncOrientation();
-  if (typeof window !== 'undefined') window.__touch = { isTouch, syncOrientation, gate: () => gateEl, joy: () => ({ ...touchInput }) }; // headless 健檢
+  if (typeof window !== 'undefined') window.__touch = { isTouch, syncOrientation, gate: () => gateEl, joy: () => ({ ...touchInput }), btns: () => ({ punch: btnPunch, context: btnContext, guard: btnGuard }) }; // headless 健檢
 }
 
 // ===== Phase B:浮動虛擬搖桿(左半螢幕,拇指按哪冒哪)→ 類比移動 + 面向 =====
@@ -69,6 +70,39 @@ function joyUp(e) {
   if (e.pointerId !== joyId) return;
   joyId = null; touchInput.active = false; touchInput.x = 0; touchInput.y = 0;   // 放開:停止移動(facing 已保留,v2-combat 只在有移動時更新)
   joyBase.style.display = 'none'; joyThumb.style.display = 'none';
+}
+
+// ===== Phase C:右下 3 顆動作按鈕 → 邊緣觸發現有 mouseLeft/mouseRight/doGuard =====
+// 按下只設 touchInput.press.X 閂鎖(v2.js step 消費),不 import sim/glue,避免與 v2.js 的動態 import 成環。
+// 尺寸用 vmin 響應式;揮拳最大(主要輸出),抓/技能、格擋次之。字會依情境換(扛人=投擲、可抓=抓/否則技能)。
+let btnPunch = null, btnContext = null, btnGuard = null;
+function makeBtn(label, sizeVmin, right, bottom, bg, glow, key) {
+  const b = document.createElement('div');
+  b.textContent = label;
+  b.style.cssText = `position:fixed;right:${right};bottom:${bottom};width:${sizeVmin}vmin;height:${sizeVmin}vmin;`
+    + `border-radius:50%;z-index:61;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;`
+    + `font:700 ${Math.round(sizeVmin * 0.28)}vmin system-ui,sans-serif;color:#eaf6ff;text-align:center;line-height:1.05;`
+    + `border:2px solid ${glow};background:${bg};box-shadow:0 0 14px ${glow},inset 0 0 12px rgba(255,255,255,.06);`;
+  const press = () => { b.style.transform = 'scale(0.9)'; b.style.filter = 'brightness(1.4)'; };
+  const release = () => { b.style.transform = ''; b.style.filter = ''; };
+  b.addEventListener('pointerdown', (e) => { touchInput.press[key] = true; press(); e.preventDefault(); e.stopPropagation(); });
+  b.addEventListener('pointerup', (e) => { release(); e.preventDefault(); });
+  b.addEventListener('pointercancel', release);
+  b.addEventListener('pointerleave', release);
+  document.body.appendChild(b);
+  return b;
+}
+function buildButtons() {
+  // 拇指弧:揮拳(主)最右下、格擋在其左、抓/技能在其上——都在右手拇指可及區。
+  btnPunch   = makeBtn('揮拳', 22, '5vmin',  '7vmin',  'rgba(255,92,84,.30)',  'rgba(255,120,110,.65)', 'punch');
+  btnContext = makeBtn('抓',   15, '30vmin', '11vmin', 'rgba(120,190,255,.28)','rgba(140,200,255,.6)',  'context');
+  btnGuard   = makeBtn('格擋', 15, '8vmin',  '33vmin', 'rgba(255,214,96,.26)', 'rgba(255,224,120,.6)',  'guard');
+}
+
+// v2.js 每幀依本機玩家情境呼叫:扛人→「投擲」、可抓→「抓」/否則「技能」。只在文字變動時寫 DOM。
+export function syncLabels(punchLabel, contextLabel) {
+  if (btnPunch && btnPunch.textContent !== punchLabel) btnPunch.textContent = punchLabel;
+  if (btnContext && btnContext.textContent !== contextLabel) btnContext.textContent = contextLabel;
 }
 
 // 直向提示層(全螢幕蓋住,吃掉 pointer 事件=擋住底下遊戲)

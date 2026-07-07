@@ -36,11 +36,22 @@ v2 目前是**桌機/筆電**遊戲(WASD 鍵盤移動 + 滑鼠瞄準 + 滑鼠鍵
 - **方向提示層** + 響應式尺寸(用 `vmin`,適配各種螢幕)。
 
 ## 分階段(中大型功能)
-- **A. 觸控偵測 + 橫向提示層**(直向蓋提示;偵測到觸控才顯示控制層)
-- **B. 虛擬搖桿** → 類比移動向量 + facing(小改 moveFighter/facing 分支)
-- **C. 動作按鈕**(揮拳/抓/格擋)→ 接 `mouseLeft`/`mouseRight`/`doGuard`
-- **D. 投擲瞄準微調 + 響應式 + 實機試玩**(真手機或 DevTools device emulation)
+- **A. 觸控偵測 + 橫向提示層**(直向蓋提示;偵測到觸控才顯示控制層)— ✅ 已做
+- **B. 虛擬搖桿** → 類比移動向量 + facing(小改 moveFighter/facing 分支)— ✅ 已做
+- **C. 動作按鈕**(揮拳/抓/格擋)→ 接 `mouseLeft`/`mouseRight`/`doGuard` — ✅ 已做
+- **D. 投擲瞄準微調 + 響應式 + 實機試玩**(真手機或 DevTools device emulation)— 待做
 每階段 headless 煙霧 + 真機/emulation 驗一輪。
+
+### 接線實作(A–C 定案)
+- `state.js` `touchInput{enabled,active,x,y,press{punch,context,guard}}` 是唯一的觸控↔遊戲介面
+  (v2-touch 寫、v2-combat/v2 讀;sim 層不 import UI)。
+- **搖桿**(v2-touch `buildJoystick`):左半浮動,寫 `touchInput.x/y`(類比向量);`v2-combat readMove`
+  觸控裝置優先吃它,facing 跟搖桿方向(有移動才更新→放開保留朝向)。
+- **按鈕**(v2-touch `buildButtons`):右下 3 顆,按下設 `touchInput.press.X` 閂鎖;`v2.js`
+  `pollTouchButtons/pollTouchGuard` 每幀邊緣消費 → `mouseLeft/mouseRight/doGuard`(格擋在 hitstop
+  定格中也收,同鍵鼠)。字依情境變:扛人→「投擲」/「放下」、空手有道具→「技能」否則「抓」
+  (`v2.js syncTouchLabels` 每幀,只在變動時寫 DOM)。
+- headless 驗證 hook:`window.__touch.btns()`(3 顆 DOM)/`.joy()`(touchInput 快照含 press)。
 
 ## 決策(已定案)
 - 搖桿:**浮動**(左半螢幕,拇指按哪冒哪)。

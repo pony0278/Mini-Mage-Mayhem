@@ -7,7 +7,7 @@
 // 「魔法事故報告 · 收容測試」(spec E/F)後拆分;舊系統(陣風動詞/搶獎盃 Boss loop)
 // 已移除,要考古看 git 歷史。
 import { W, H } from './constants.js';
-import { game, keys, CAM } from './state.js';
+import { game, keys, CAM, touchInput } from './state.js';
 import { updateDeathTheater, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
 import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
@@ -85,6 +85,24 @@ function pollContext() {
   const pressed = [keys.has('e'), false];
   for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !contextPrev[i]) mouseRight(fighters[i]); contextPrev[i] = pressed[i]; }
 }
+// 觸控動作按鈕(Phase C):v2-touch 按下時設 press 閂鎖,這裡消費=一次一擊(等同鍵鼠的邊緣觸發)。
+// 揮拳/情境走一般幀;格擋另抽一支,定格(hitstop)中也要收(反應常落在凍結幀)——同 pollGuard。
+function pollTouchButtons() {
+  if (touchInput.press.punch)   { touchInput.press.punch = false;   mouseLeft(fighters[LOCAL]); }
+  if (touchInput.press.context) { touchInput.press.context = false; mouseRight(fighters[LOCAL]); }
+}
+function pollTouchGuard() {
+  if (touchInput.press.guard) { touchInput.press.guard = false; doGuard(fighters[LOCAL]); }
+}
+// 按鈕字依本機玩家情境變:扛人→揮拳鍵變「投擲」、情境鍵變「放下」;空手且有道具→「技能」,否則「抓」。
+let touchMod = null;
+function syncTouchLabels() {
+  if (!touchMod || !touchInput.enabled) return;
+  const f = fighters[LOCAL];
+  const punch = f.carrying ? '投擲' : '揮拳';
+  const context = f.carrying ? '放下' : (f.item ? '技能' : '抓');
+  touchMod.syncLabels(punch, context);
+}
 
 function step(dt) {
   // 視覺計時器先衰減再檢查 matchOver —— 否則最終封存的震屏(12)在結算畫面永遠不歸零,鏡頭抖不停
@@ -97,9 +115,11 @@ function step(dt) {
   if (v2s.localFlash > 0) v2s.localFlash -= dt;
   if (v2s.fallReasonT > 0) v2s.fallReasonT -= dt;
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
-  if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); } // 定格中也收格擋輸入:玩家的反應常落在凍結幀裡,不能吃掉
+  syncTouchLabels(); // 情境按鈕字(每幀,只在變動時寫 DOM)
+  if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); pollTouchGuard(); } // 定格中也收格擋輸入:玩家的反應常落在凍結幀裡,不能吃掉
   else {
     pollAction(); pollItem(); pollGuard(); pollContext();
+    pollTouchButtons(); pollTouchGuard();
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
       // cooldown timers
@@ -334,4 +354,4 @@ import('./actor-avatar.js').then(m => m.preloadAvatar()).catch(e => console.warn
 if (new URLSearchParams(location.search).has('tune')) import('./v2-tuning.js').catch(e => console.warn('[v2] tuning panel failed', e));
 
 // 手機觸控層(docs/mobile-touch.md)。Phase A:觸控偵測 + 橫向提示。桌機零影響。
-import('./v2-touch.js').then(m => m.initTouch()).catch(e => console.warn('[v2] touch layer failed', e));
+import('./v2-touch.js').then(m => { touchMod = m; m.initTouch(); }).catch(e => console.warn('[v2] touch layer failed', e));
