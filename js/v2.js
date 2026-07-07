@@ -80,6 +80,11 @@ function pollGuard() {
   const pressed = [keys.has(' '), keys.has('enter')];
   for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !guardPrev[i]) doGuard(fighters[i]); guardPrev[i] = pressed[i]; }
 }
+const contextPrev = [false, false]; // E 鍵=右鍵情境動作(抓/放下/放技能)的鍵盤替身:Mac 觸控板/無滑鼠玩家不必用右鍵
+function pollContext() {
+  const pressed = [keys.has('e'), false];
+  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !contextPrev[i]) mouseRight(fighters[i]); contextPrev[i] = pressed[i]; }
+}
 
 function step(dt) {
   // 視覺計時器先衰減再檢查 matchOver —— 否則最終封存的震屏(12)在結算畫面永遠不歸零,鏡頭抖不停
@@ -94,7 +99,7 @@ function step(dt) {
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); } // 定格中也收格擋輸入:玩家的反應常落在凍結幀裡,不能吃掉
   else {
-    pollAction(); pollItem(); pollGuard();
+    pollAction(); pollItem(); pollGuard(); pollContext();
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
       // cooldown timers

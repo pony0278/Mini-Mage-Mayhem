@@ -104,7 +104,7 @@ function drawCoachLine() {
   let msg = null, col = '#ffd36d';
   if (me.carriedBy) { msg = '連打 ◀A D▶ 掙脫！'; col = '#9affd0'; }
   else if (me.carrying) { msg = '拖進中央魔法陣！或 左鍵拋擲'; col = '#c98cff'; }
-  else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '⚡ 對手暈了！右鍵抓住他'; col = '#ffd36d'; }
+  else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '⚡ 對手暈了！右鍵 / E 抓住他'; col = '#ffd36d'; }
   else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
   if (!msg) return;
@@ -148,7 +148,7 @@ function drawItems() {
   }
   const me = fighters[LOCAL]; // 本機持有 HUD
   hctx.textAlign = 'left'; hctx.font = '800 14px system-ui, sans-serif';
-  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（右鍵使用）', 24, VH - 40); }
+  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（右鍵 / E 使用）', 24, VH - 40); }
   else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, VH - 40); }
 }
 const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
@@ -219,7 +219,7 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵抓／放技能 · 扛人左鍵拋擲 · 空白鍵格擋（出拳瞬間＝反暈／挨打後＝推開）　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／放技能 · 扛人左鍵拋擲 · 空白鍵格擋（出拳瞬間＝反暈／挨打後＝推開）　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
