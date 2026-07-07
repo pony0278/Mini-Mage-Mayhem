@@ -30,7 +30,7 @@ export const ANIM = {
   walk:    { minDisp: 0.25, maxDisp: 6, phaseRate: 0.18, ampEase: 0.2, legSwing: 34, armSwing: 22, kneeAdd: 18, bob: 1.6 }, // 度
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
-  carry:   { armSx: -142, armEx: 16, armSz: 18, handScale: 1.6, grip: 0.7 },               // 扛人:雙臂高舉過頭(大手托人);handScale/grip=程序化大手大小/握緊
+  carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
   flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
 };
@@ -44,31 +44,6 @@ function lightenHex(h, t) {
   return (r << 16) | (g << 8) | b;
 }
 const grp = (parent, x, y, z = 0) => { const p = new THREE.Group(); p.position.set(x, y, z); parent.add(p); return p; };
-
-// 程序化大手(GetAmped 風抓人手):掌 + 4 指 + 拇指,primitive 拼成;抓人時才顯示、手指可 curl 握緊。
-// 掛在手腕(wr)、往 -Y 生(同拳頭方向)。所有 mesh 標 userData.bigHand → avatar 模式隱藏時豁免它(見 actor-avatar)。
-function makeBigHand(color) {
-  const sc = ANIM.carry.handScale;
-  const g = new THREE.Group(); g.userData.bigHand = true; g.visible = false;
-  const mk = (w, h, d) => { const m = makeBox(w, h, d, color); m.userData.bigHand = true; return m; };
-  const palm = mk(16, 6, 14); palm.position.y = -9; g.add(palm);
-  const fingers = [];
-  for (let i = 0; i < 4; i++) {
-    const piv = new THREE.Group(); piv.position.set(-6 + i * 4, -15, 5); g.add(piv);   // 指根 pivot(掌前緣)
-    const seg = mk(3.2, 9, 3.2); seg.position.y = -4.5; piv.add(seg);
-    fingers.push(piv);
-  }
-  const thumb = new THREE.Group(); thumb.position.set(9.5, -8, 3); g.add(thumb);
-  const tseg = mk(3.8, 8, 3.8); tseg.position.y = -4; thumb.add(tseg);
-  g.scale.setScalar(sc);
-  g.userData.fingers = fingers; g.userData.thumb = thumb;
-  return g;
-}
-function setBigHandGrip(hand, grip) {
-  const f = hand.userData.fingers; if (!f) return;
-  for (const piv of f) piv.rotation.x = grip * 1.2;     // 手指往掌心 curl(握)
-  hand.userData.thumb.rotation.z = -grip * 0.9;          // 拇指橫過
-}
 
 // 組裝:編排器骨架階層。g(=render-actors 給的實體根)→ P(姿勢根:root 旋轉/擠壓)
 //   → pelvis → 髖L/R → 膝 → 小腿;→ spine → 軀幹/肩甲/肩L/R → 肘 → lm(前臂+腕+拳,命中放大)
@@ -96,12 +71,9 @@ export function buildBrawler(g, tints, tintable, base) {
     const fa = makeBox(S.foreArm.w, S.foreArm.h, S.foreArm.d, limb); fa.position.y = -S.foreArm.h / 2; lm.add(fa);
     const wr = grp(lm, 0, -S.foreArm.h);
     const fist = makeBox(S.fist.w, S.fist.h, S.fist.d, pale); fist.position.y = S.fist.dropY; wr.add(fist);
-    return { sh, el, lm, wr, fist, side };
+    return { sh, el, lm, wr, side };
   };
   const armL = mkArm(-1), armR = mkArm(1);
-  // 抓人大手(程序化):掛手腕、平時隱藏,updateBrawler 依 e.carrying 顯示/藏拳
-  armL.bigHand = makeBigHand(pale); armL.wr.add(armL.bigHand);
-  armR.bigHand = makeBigHand(pale); armR.wr.add(armR.bigHand);
   const headPivot = grp(spine, 0, S.headPivotY);
   const head = makeBox(S.head.w, S.head.h, S.head.d, pale); head.position.y = S.head.cy; headPivot.add(head);
   const hair = tintable(g, tints, makeBox(S.hair.w, S.hair.h, S.hair.d, base, base, C.glow)); hair.position.y = S.hair.cy; headPivot.add(hair);
@@ -191,10 +163,9 @@ export function updateBrawler(e, g) {
       pose.aR_sx = C.armBase - Math.sin(t * C.armRateMul) * C.armAmp;
       pose.aL_ex = 20; pose.aR_ex = 20;
       wob = Math.sin(now * C.wobRate) * C.wobAmp;
-    } else if (e.carrying) {    // 扛人:雙臂高舉過頭(大手托人到頭頂)
+    } else if (e.carrying) {    // 扛人:雙臂高舉過頭
       pose.aL_sx = A.carry.armSx; pose.aR_sx = A.carry.armSx;
       pose.aL_ex = A.carry.armEx; pose.aR_ex = A.carry.armEx;
-      pose.aL_sz = A.carry.armSz; pose.aR_sz = A.carry.armSz;   // 雙手往上收攏,托在頭頂
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
     } else {                    // 走路:髖膝擺動+手臂反相(疊在戰鬥站姿上)
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
@@ -222,15 +193,6 @@ export function updateBrawler(e, g) {
   if (!u.pose) u.pose = { ...pose };
   else for (const key of POSE_KEYS) u.pose[key] += ((pose[key] ?? 0) - u.pose[key]) * k;
   applyBrawlerPose(R, u.pose);
-
-  // 抓人大手:e.carrying 時顯示大手 + 藏拳頭 + 握緊;放開/投擲時換回拳頭。box + avatar 兩模式皆生效(大手掛 box wr,豁免 avatar 隱藏)。
-  if (R.armL.bigHand) {
-    const carrying = !!e.carrying;
-    R.armL.bigHand.visible = carrying; R.armR.bigHand.visible = carrying;
-    if (R.armL.fist) R.armL.fist.visible = !carrying;
-    if (R.armR.fist) R.armR.fist.visible = !carrying;
-    if (carrying) { setBigHandGrip(R.armL.bigHand, A.carry.grip); setBigHandGrip(R.armR.bigHand, A.carry.grip); }
-  }
 
   // Phase 1:?avatar=1 且 GLB 就緒 → box rig 當隱形 driver,把世界差量轉寫到 GLB 角色。
   // 首次就緒時 lazy 建立(GLB 非同步載入);建立會 T-pose 校正,故放在 applyBrawlerPose 之後、

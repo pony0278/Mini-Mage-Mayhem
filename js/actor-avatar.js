@@ -94,10 +94,9 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   const order = Object.keys(by).sort((a, b) => depth(by[a].bone) - depth(by[b].bone));
   const av = { wrap, S, by, order };
 
-  // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回。豁免抓人大手(userData.bigHand):
-  // 大手掛 box wr(driver 節點,avatar 模式仍在動),抓人時要顯示、其世界位置≈avatar 手。
+  // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];
-  g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap) && !o.userData.bigHand) { av.hidden.push(o); o.visible = false; } });
+  g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap)) { av.hidden.push(o); o.visible = false; } });
 
   g.userData.avatar = av;
   if (typeof window !== 'undefined') (window.__avatars || (window.__avatars = [])).push(av);   // headless 健檢用
