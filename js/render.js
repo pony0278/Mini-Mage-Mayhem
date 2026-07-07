@@ -5,7 +5,7 @@ import { W, H } from './constants.js';
 import { rnd } from './utils.js';
 import { game, CAM } from './state.js';
 import { renderer, gl3dOk, scene, camera, setStockLights } from './render-core.js';
-import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, updateWallFade, setStockGroundVisible, setStockWallsVisible, setWallFade as _setWallFade } from './render-world.js';
+import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, updateWallFade, setStockGroundVisible, setStockWallsVisible, setToyboxDecorVisible, setWallFade as _setWallFade } from './render-world.js';
 import { initLabScene, updateLabScene } from './render-lab.js';
 export { setLabFlicker } from './render-lab.js'; // 減閃爍(光敏無障礙):凍結 lab 脈動光
 import { syncActors } from './render-actors.js';
@@ -22,8 +22,8 @@ let labOn = false;
 export function setLabTheme(on) {
   labOn = on;
   setStockLights(!on); // lab 燈組接管,關掉單機常設燈(疊加會過曝)
-  if (on) { initLabScene(); setStockGroundVisible(false); setStockWallsVisible(false); _setWallFade(false); } // 舊牆整組隱藏;lab 邊界=力場矮緣,不擋視線無需淡出
-  else { setStockGroundVisible(true); setStockWallsVisible(true); }
+  if (on) { initLabScene(); setStockGroundVisible(false); setStockWallsVisible(false); setToyboxDecorVisible(false); _setWallFade(false); } // 舊牆+童趣裝飾整組隱藏;lab 邊界=力場矮緣,不擋視線無需淡出
+  else { setStockGroundVisible(true); setStockWallsVisible(true); setToyboxDecorVisible(true); }
 }
 
 // camera-sandbox 的跟隨開關(camTarget 存在時被覆寫)

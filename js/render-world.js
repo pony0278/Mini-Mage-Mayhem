@@ -419,6 +419,8 @@ import { scene, camera, ART, boxGeo, octaGeo, cylGeo, coneGeo, matLambert, makeB
 
 
 // --- lab 場景(render-lab.js 復刻版)用的小開關:藏舊地板 / 舊牆壓暗(正式牆板前的過渡) ---
+// 舊「toybox」裝飾(藥水瓶+軟木塞+紫水晶,單機童趣風)在 v2 工業場是違和殘留 → v2 藏掉。
+export function setToyboxDecorVisible(on) { decorGroup.visible = on; }
 export function setStockGroundVisible(on) { groundMesh.visible = on; }
 export function setStockWallsVisible(on) { wallGroup.visible = on; }
 export function setWallDarkTint(on) {
