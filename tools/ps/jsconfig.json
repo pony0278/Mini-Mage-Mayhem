@@ -1,0 +1,16 @@
+{
+  "//": "punch-studio 開發工具的型別檢查設定(零建構:型別純 JSDoc 註解,程式碼照跑,不編譯任何東西)。",
+  "//checkJs": "全域關閉自動檢查 → 逐檔用檔頭 `// @ts-check` opt-in,一次只收一個檔案的型別債,不被既有碼淹沒。",
+  "//lib": "古典 script 共享全域 + 用 DOM/THREE(CDN 全域)。THREE 未安裝型別,any 帶過即可。",
+  "compilerOptions": {
+    "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true
+  },
+  "include": ["*.js"]
+}

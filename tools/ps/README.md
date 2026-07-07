@@ -6,7 +6,7 @@
 
 ## 載入順序(= 相依順序,由 punch-studio.html 決定)
 
-1. `pose-data.js` — 姿勢資料模型:POSE_KEYS 47 軸、presets、時間軸(SEQ)模型、滑桿定義
+1. `pose-data.js` — 姿勢資料模型:POSE_KEYS 51 軸、presets、時間軸(SEQ)模型、滑桿定義
 2. `rig.js` — Three.js 場景、DIM 角色比例、狀態存檔(undo/autosave/JSON IO)、素體建構、applyPose/lerp
 3. `hitfeel.js` — 打擊感試打台 + 主渲染迴圈 `tick()`
 4. `editor-ui.js` — 滑桿/時間軸/phase tabs UI、按鍵綁定、白模/鏡像、contact sheet、匯出匯入
@@ -27,3 +27,11 @@ SOCKETS_JSON(接縫規格)與 MediaPipe AI 偵測的 module script 仍留在 HTM
 
 改完跑 headless 回歸(13 部位自動掛載+套姿勢,`window.__ps`),
 方法見 `docs/animation-workflow.md` §7。
+
+## 型別檢查(零建構,逐檔 opt-in)
+
+`jsconfig.json` 開了型別檢查基礎設定,但 **`checkJs:false`**——**逐檔用檔頭 `// @ts-check`
+才會被檢查**,一次只收一個檔案的型別債、不被既有碼淹沒。型別=純 JSDoc 註解,
+**不編譯、程式碼照跑**(維護性,非建構步驟)。目前已標:`pose-data.js`(Pose/Phases/
+TimelineKey/Snapshot 等資料形狀 typedef;VS Code / `tsc -p tools/ps/jsconfig.json` 即檢查)。
+新標一個檔:檔頭加 `// @ts-check`,把 `tsc` 跑到零錯即可(型別債限縮在該檔)。

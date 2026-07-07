@@ -1,5 +1,24 @@
-// punch-studio — pose-data:姿勢資料模型:POSE_KEYS 47 軸、presets、時間軸(SEQ)模型、滑桿定義
+// @ts-check
+// punch-studio — pose-data:姿勢資料模型:POSE_KEYS 51 軸、presets、時間軸(SEQ)模型、滑桿定義
 // 古典 script(非 module):所有 ps/*.js 共享同一個全域作用域,載入順序由 punch-studio.html 決定(見 ps/README.md)。
+// 型別安全:此檔開了 `// @ts-check`(零建構,型別純 JSDoc 註解、程式碼照跑;jsconfig.json 提供設定)。
+//   Pose/snapshot 的形狀在這裡定義一次,編輯器就會抓錯軸名以外的形狀錯誤(值非數字、缺欄位、frame 打錯…)。
+/** @typedef {'out'|'in'|'lin'} Ease 緩動:out=快進慢出 / in=慢進快出 / lin=線性 */
+/** @typedef {Record<string, number>} Pose 一個姿勢:軸名 → 值(度/比例/位置);軸名見 POSE_KEYS(51 軸) */
+/** @typedef {Record<string, Pose>} Phases phase 名(idle/anti/strike/…) → Pose */
+/** @typedef {{aL:number, aR:number, lL:number, lR:number}} Lags 四肢跟隨延遲(0..1;impact 段自動歸零) */
+/**
+ * @typedef {Object} TimelineKey 時間軸的一個 key(repairTimeline 正規化後的形狀)
+ * @property {string} name key 名(SEQ[0] 恆為 'idle')
+ * @property {number} [frame] 絕對影格(@60fps;idle=0;normalize 後必有)
+ * @property {number} frames 段長=「前一 key → 此 key」的過渡影格數
+ * @property {string} [ease] 'out' | 'in' | 'lin'
+ * @property {boolean} [impact] 命中段(此段無 lag + 紅框 + 命中放大)
+ * @property {boolean} [cancel] 可取消接段點
+ * @property {string} [tag] 語意標籤(idle/anti/strike/impact/follow/recover/custom)
+ * @property {number} [returnFrames] 僅 idle:播完最後一 key 收尾回 idle 的時長
+ */
+/** @typedef {{seq:TimelineKey[], phases:Phases, lags:Lags}} Snapshot 匯出/匯入的動作快照 */
 const D2R = Math.PI/180;
 const REF_FPS = 60;
 
@@ -19,12 +38,15 @@ const POSE_KEYS = [
   'lL_ty','lR_ty',                   // 腳尖朝向(踝 Y;×side,正=外八)— 可獨立於髖瞄準腳尖
   'aL_stretch','aR_stretch','lL_stretch','lR_stretch'   // 整肢從近端關節等比伸展(1=原長;遠鏡頭下伸手更明顯)
 ];
+/** @param {string} k 軸名 @returns {number} 該軸的預設值(scale/stretch=1,其餘=0) */
 function defaultPoseValue(k){
   // 所有 scale / stretch 類型預設必須是 1；重置/匯入/匯出都走這個函式，避免資料變 0。
   if(k === 'body_scale' || k.endsWith('_scale') || k.endsWith('_stretch')) return 1;
   return 0;
 }
+/** @param {Record<string, any>} [p] 部分姿勢(缺的軸補預設) @returns {Pose} 補滿 51 軸的姿勢 */
 function normalizePose(p={}){
+  /** @type {Pose} */
   const out = {};
   POSE_KEYS.forEach(k=>{ out[k] = (p[k] !== undefined && isFinite(p[k])) ? Number(p[k]) : defaultPoseValue(k); });
   return out;
@@ -165,6 +187,7 @@ const PRESETS = {
 const DEFAULT_LAGS = {aL:0.0, aR:0.20, lL:0.0, lR:0.10};
 // 時間軸:有序 key 列。SEQ[0]=idle(起點;它的 frames = 收尾回 idle 的時長)。
 // 其後每個 key = 一段「前一 key → 此 key」的過渡:frames 段長、ease 緩動、impact 命中段(無 lag + 紅框 + 放大)。
+/** @type {TimelineKey[]} */
 const DEFAULT_SEQ = [
   {name:'idle',     frames:10, ease:'out', impact:false},
   {name:'anti',     frames:7,  ease:'out', impact:false},
@@ -176,12 +199,14 @@ const EASES = ['out','in','lin'];
 const KEY_TAGS = ['idle','anti','strike','impact','follow','recover','custom'];
 const DEFAULT_RETURN_FRAMES = 10;
 
+/** @param {*} name @param {string} [fallback] @returns {string} 合法識別字(去非字元、避免數字開頭) */
 function cleanKeyName(name, fallback='key'){
   let n = String(name || fallback).trim().replace(/[^\w]/g,'_');
   if(!n) n = fallback;
   if(/^\d/.test(n)) n = 'k_'+n;
   return n;
 }
+/** @param {string} base @returns {string} 在 SEQ 中不重複的 key 名 */
 function uniqueKeyName(base){
   const root = cleanKeyName(base || 'key').replace(/_\d+$/,'');
   let name = root, n = 1;
@@ -189,6 +214,7 @@ function uniqueKeyName(base){
   while(used.has(name)) name = root + '_' + (++n);
   return name;
 }
+/** @param {string} name @param {boolean} [impact] @returns {string} 由 key 名/命中旗標推語意標籤 */
 function tagFromName(name, impact){
   if(impact) return 'impact';
   const n=String(name||'').toLowerCase();
@@ -200,10 +226,13 @@ function tagFromName(name, impact){
   return 'custom';
 }
 function timelineReturnFrames(){
+  /** @type {Partial<TimelineKey>} */
   const idle = SEQ && SEQ[0] ? SEQ[0] : {};
   return Math.max(1, Math.round(Number(idle.returnFrames ?? idle.frames ?? DEFAULT_RETURN_FRAMES)));
 }
+/** @param {any[]} seqIn 原始/部分時間軸 @returns {TimelineKey[]} 正規化後的時間軸(每 key 必有 frame) */
 function repairTimeline(seqIn){
+  /** @type {TimelineKey[]} */
   let raw = (Array.isArray(seqIn) && seqIn.length ? seqIn : DEFAULT_SEQ).map((k,i)=>({
     name: cleanKeyName(k.name || (i===0?'idle':`key_${i}`), i===0?'idle':`key_${i}`),
     frame: Number.isFinite(Number(k.frame)) ? Math.round(Number(k.frame)) : undefined,
@@ -294,8 +323,10 @@ function setKeyFrameByName(name, frame){
 }
 
 // 把 preset 補滿 POSE_KEYS(舊 preset 缺新增的 idle/scale 欄位時自動補預設值)
+/** @param {string} key preset 名(PRESETS 的鍵) @returns {Phases} 五個 phase(補滿 51 軸)的姿勢表 */
 function makePhasesFromPreset(key){
   const preset = PRESETS[key];
+  /** @type {Phases} */
   const out = {};
   ['idle','anti','strike','impact','recovery'].forEach(ph=>{
     out[ph] = {};
@@ -319,8 +350,11 @@ function makePhasesFromPreset(key){
 }
 
 // 啟動載入 cross 當例子
+/** @type {Phases} */
 let PHASES = makePhasesFromPreset('cross');
+/** @type {TimelineKey[]} */
 let SEQ = DEFAULT_SEQ.map(s=>({...s}));
+/** @type {Lags} */
 let LAGS = {...DEFAULT_LAGS};
 
 let activeIdx = 1;        // 目前編輯第幾個 key(SEQ 索引)
