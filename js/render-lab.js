@@ -374,6 +374,7 @@ export function initLabScene() {
   buildSortingRoutes();
   buildIndustrialFloorMarkings();
   buildCoreCombatGuide();
+  if (!FX_LOW) { buildArcaneArm(); buildServicePipeNetwork(); } // Phase 4:純裝飾,低效能模式剝除(決策 #3)
   labAnimated.push({ update: (t) => {                       // 溫和呼吸,不旋轉
     circleMat.opacity = 0.58 + Math.sin(t * 1.1) * 0.08;
     circleGlow.intensity = 1.6 + Math.max(0, Math.sin(t * 1.1)) * 0.6;
@@ -409,9 +410,9 @@ function buildLabWalls() {
     const seg = length / segCount;
     for (let i = 0; i < segCount; i++) {
       const local = -length / 2 + seg / 2 + i * seg;
-      const p = mesh(new THREE.BoxGeometry(seg * 0.96, 0.44, 0.6), M.stone(0x201a38), 0, 0.22, 0);
+      const p = mesh(new THREE.BoxGeometry(seg * 0.96, 0.44, 0.6), M.stone(0x28302f), 0, 0.22, 0); // v2_10 工業灰
       p.scale.y = 0.9 + ((i * 7 + sideIndex * 3) % 5) * 0.06;  // 沿用舊牆板的高低參差
-      const trim = mesh(new THREE.BoxGeometry(seg * 0.96, 0.1, 0.22), M.glow(0x7a4dff, 1.2), 0, 0.47 * p.scale.y, 0, false);
+      const trim = mesh(new THREE.BoxGeometry(seg * 0.96, 0.1, 0.22), M.glow(0xd8a12f, 0.6), 0, 0.47 * p.scale.y, 0, false); // 琥珀邊條(原紫)
       const g = new THREE.Group(); g.add(p); g.add(trim);
       g.rotation.y = rotY;
       if (Math.abs(Math.sin(rotY)) < 0.1) g.position.set(local, 0, fixedZ);
@@ -428,30 +429,105 @@ function buildLabWalls() {
   const capG = new THREE.CylinderGeometry(0.62, 0.55, 0.28, 8);
   [[-WALL_HX, -WALL_HZ], [WALL_HX, -WALL_HZ], [-WALL_HX, WALL_HZ], [WALL_HX, WALL_HZ]].forEach(([x, z]) => {
     const pil = mesh(pillarG, M.darkMetal(), x, 0.55, z);
-    const cap = mesh(capG, M.metal(0x352c58), x, 1.24, z);
-    const orb = mesh(new THREE.SphereGeometry(0.3, 12, 12), M.glow(0xb08cff, 2), x, 1.62, z, false);
-    labAnimated.push({ update: t => { orb.material.emissiveIntensity = 1.6 + Math.sin(t * 2 + x + z) * 0.6; } });
+    const cap = mesh(capG, M.metal(0x48504e), x, 1.24, z);                                    // 灰金屬帽(原紫)
+    const orb = mesh(new THREE.SphereGeometry(0.3, 12, 12), M.glow(0xe2a52f, 1.4), x, 1.62, z, false); // 琥珀力場錨點(原紫)
+    labAnimated.push({ update: t => { orb.material.emissiveIntensity = 1.1 + Math.max(0, Math.sin(t * 2 + x + z)) * 0.5; } });
     wall.add(pil); wall.add(cap); wall.add(orb);
   });
   labGroup.add(wall);
 }
 /* ---------- 能量管(原型 buildEnergyTubes;沿牆基內側) ---------- */
 function buildLabEnergyTubes() {
-  const colors = [0x53e0ff, 0x8a5cff, 0x6dff9e, 0xffa14f];
+  const colors = [0xd29b2d, 0x9c3d31, 0x4f8d68, 0x4b7f93]; // v2_10 工業:琥珀/鏽紅/苔綠/鋼藍(原霓虹四色)
   const offX = WALL_HX - 0.6, offZ = WALL_HZ - 0.6;
   function addTube(length, x, z, rotY, color, phase) {
-    const tube = mesh(new THREE.CylinderGeometry(0.13, 0.13, length, 10), M.glow(color, 1.4), 0, 0, 0, false);
+    const tube = mesh(new THREE.CylinderGeometry(0.13, 0.13, length, 10), M.glow(color, 1.0), 0, 0, 0, false);
     tube.rotation.z = Math.PI / 2;
     const g = new THREE.Group(); g.add(tube);
     g.rotation.y = rotY;
     g.position.set(x, 0.5, z);
     labGroup.add(g);
-    labAnimated.push({ update: t => { tube.material.emissiveIntensity = 1.1 + Math.sin(t * 3 + phase) * 0.5; } });
+    labAnimated.push({ update: t => { tube.material.emissiveIntensity = 0.8 + Math.max(0, Math.sin(t * 3 + phase)) * 0.35; } });
   }
   addTube(CORE_W - 4, 0, -offZ, 0, colors[0], 0.0);
   addTube(CORE_D - 4, -offX, 0, Math.PI / 2, colors[1], 1.7);
   addTube(CORE_W - 4, 0, offZ, Math.PI, colors[2], 3.4);
   addTube(CORE_D - 4, offX, 0, -Math.PI / 2, colors[3], 5.1);
+}
+
+/* ---------- Phase 4:懸浮機械臂(純裝飾;沿場邊高空繞行,細長不擋中央;?fx=low 剝除) ---------- */
+function buildArcaneArm() {
+  const pivot = new THREE.Group(); labGroup.add(pivot);
+  const arm = new THREE.Group();
+  arm.position.set(15.5, 5.8, 0);          // +X 外側懸臂,-X 朝中央;高 5.8 只有夾爪接近頭部高度
+  pivot.add(arm);
+  const metal = M.metal(0x4a524f), dark = M.darkMetal(), steel = M.metal(0x565e5a);
+  const amberSoft = M.glow(0xffb257, 0.6), violet = M.glow(0xb27bff, 1.1), podCore = M.glow(0xff9a34, 1.3), grab = M.glow(0xff9a34, 0.5);
+  function segment(a, b, w, mat) {
+    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+    const len = Math.hypot(dx, dy, dz);
+    const seg = mesh(new THREE.CylinderGeometry(w * 0.7, w, len, 10), mat, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, false);
+    seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize());
+    return seg;
+  }
+  arm.add(mesh(new THREE.OctahedronGeometry(0.5, 0), metal, 0, 0, 0, false));
+  const core = mesh(new THREE.OctahedronGeometry(0.26, 0), podCore, 0, 0, 0, false); arm.add(core);
+  const ring1 = mesh(new THREE.TorusGeometry(0.7, 0.05, 8, 26), amberSoft, 0, 0, 0, false); arm.add(ring1);
+  const ring2 = mesh(new THREE.TorusGeometry(0.82, 0.04, 8, 26), violet, 0, 0, 0, false); ring2.rotation.x = Math.PI / 2; arm.add(ring2);
+  const E = [-0.85, -0.55, 0], W = [-1.55, -1.10, 0];
+  arm.add(segment([0, -0.05, 0], E, 0.2, metal));
+  arm.add(mesh(new THREE.SphereGeometry(0.24, 12, 12), dark, E[0], E[1], E[2], false));
+  arm.add(mesh(new THREE.TorusGeometry(0.3, 0.045, 8, 18), violet, E[0], E[1], E[2], false));
+  arm.add(segment(E, W, 0.16, metal));
+  const claw = new THREE.Group(); claw.position.set(W[0], W[1], W[2]);
+  claw.add(mesh(new THREE.CylinderGeometry(0.42, 0.58, 0.55, 10), steel, 0, 0, 0, false));
+  const fingers = [];
+  for (let i = 0; i < 3; i++) {
+    const a = i / 3 * Math.PI * 2;
+    const fg = new THREE.Group();
+    fg.position.set(Math.cos(a) * 0.18, 0.0, Math.sin(a) * 0.18);
+    fg.add(mesh(new THREE.BoxGeometry(0.22, 1.2, 0.34), grab, 0, -0.62, 0, false));
+    fg.rotation.z = Math.cos(a) * 0.5; fg.rotation.x = Math.sin(a) * 0.5;
+    fingers.push({ fg, a }); claw.add(fg);
+  }
+  claw.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(W[0] - E[0], W[1] - E[1], 0).normalize());
+  arm.add(claw);
+  const shards = [];
+  for (let i = 0; i < 3; i++) { const s = mesh(new THREE.OctahedronGeometry(0.13, 0), violet, 0, 0, 0, false); arm.add(s); shards.push(s); }
+  labAnimated.push({ update: t => {
+    pivot.rotation.y = t * 0.16;
+    arm.position.y = 5.8 + Math.sin(t * 0.9) * 0.25;
+    ring1.rotation.z = t * 0.6; ring2.rotation.y = t * 0.5;
+    core.material.emissiveIntensity = 1.0 + Math.sin(t * 2.2) * 0.45;
+    const open = 0.5 + Math.sin(t * 1.6) * 0.42;
+    fingers.forEach(({ fg, a }) => { fg.rotation.z = Math.cos(a) * open; fg.rotation.x = Math.sin(a) * open; });
+    shards.forEach((s, i) => {
+      const a = t * 0.8 + i * Math.PI * 2 / 3;
+      s.position.set(Math.cos(a) * 0.95, Math.sin(t * 1.1 + i) * 0.4, Math.sin(a) * 0.95);
+      s.rotation.set(t * 1.2, t * 0.9, 0);
+    });
+  } });
+}
+
+/* ---------- Phase 4:牆面服務管線(北牆水平管 + 側牆立管閥;非發光工業件;?fx=low 剝除) ---------- */
+function buildServicePipeNetwork() {
+  const g = new THREE.Group();
+  const cols = [0x6f5b31, 0x6f3530, 0x335a4a];
+  [-11.5, -8.6, -5.7].forEach((x, i) => {
+    const p = mesh(new THREE.CylinderGeometry(0.22, 0.22, 8.2, 10), M.metal(cols[i]), x, 4.4, -14.45);
+    p.rotation.z = Math.PI / 2; g.add(p);
+    for (let j = 0; j < 4; j++) {
+      const clamp = mesh(new THREE.TorusGeometry(0.25, 0.055, 6, 10), M.darkMetal(), x - 3 + j * 2, 4.4, -14.45); clamp.rotation.x = Math.PI / 2; g.add(clamp);
+    }
+  });
+  [-13.9, 13.9].forEach((x, side) => {
+    for (let i = 0; i < 2; i++) {
+      const px = x + (side ? -0.55 : 0.55) * i;
+      g.add(mesh(new THREE.CylinderGeometry(0.18, 0.18, 4.9, 10), M.metal(i ? 0x6f3530 : 0x415b50), px, 3.2, 14.35));
+      const valve = mesh(new THREE.TorusGeometry(0.38, 0.07, 6, 12), M.metal(0xa16d2a), px, 4.1, 14.0); valve.rotation.y = Math.PI / 2; g.add(valve);
+    }
+  });
+  labGroup.add(g);
 }
 /* ==========================================================================
    帶區裝飾 —— 模組化:下面全是純 builder(回傳 Group,原型逐字移植),
