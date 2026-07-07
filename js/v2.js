@@ -332,3 +332,6 @@ import('./actor-avatar.js').then(m => m.preloadAvatar()).catch(e => console.warn
 
 // opt-in live tuning panel (角色大小 / 格線 / 地板顏色·搶眼度 / 攝影機): open v2.html?tune=1
 if (new URLSearchParams(location.search).has('tune')) import('./v2-tuning.js').catch(e => console.warn('[v2] tuning panel failed', e));
+
+// 手機觸控層(docs/mobile-touch.md)。Phase A:觸控偵測 + 橫向提示。桌機零影響。
+import('./v2-touch.js').then(m => m.initTouch()).catch(e => console.warn('[v2] touch layer failed', e));
