@@ -19,7 +19,7 @@ import {
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch } from './v2-combat.js';
 import { updatePads, updateIce, updateBarrels, useItem, castWind, castTeleport, castIce, explodeBarrel } from './v2-items.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -94,6 +94,8 @@ function pollTouchButtons() {
 function pollTouchGuard() {
   if (touchInput.press.guard) { touchInput.press.guard = false; doGuard(fighters[LOCAL]); }
 }
+// 結算畫面「複製」觸控鈕:等同鍵盤 C(把戰報分享文字寫進剪貼簿)。
+function copyShare() { if (v2s.report && navigator.clipboard) { navigator.clipboard.writeText(v2s.report.share); dlog('copied share text'); } }
 // 按鈕字依本機玩家情境變:扛人→揮拳鍵變「投擲」、情境鍵變「放下」;空手且有道具→「技能」,否則「抓」。
 let touchMod = null;
 function syncTouchLabels() {
@@ -234,6 +236,7 @@ function frame(now) {
   if (parryActive !== grayOn) { grayOn = parryActive; gameCanvas.style.filter = parryActive ? 'saturate(0.12) brightness(0.9)' : ''; }
   updateMouseWorld(); // 滑鼠螢幕座標 → 地面世界座標(供本地玩家瞄準)
   step(dt);
+  if (touchMod) touchMod.setReportVisible(v2s.matchOver); // 結算畫面亮觸控「再戰/複製」、收起對戰控制(桌機 no-op)
   render3D();
   if (game.sfx.length) { for (const e of game.sfx) playSfx(e); game.sfx.length = 0; } // drain sfx
   drawHud();
@@ -245,7 +248,7 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   restartMatch,
   POD, barrels, explodeBarrel, CAMB, camRig,
-  punch, startCarry, stunFighter, throwCarried, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport,
+  punch, startCarry, stunFighter, throwCarried, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -354,4 +357,4 @@ import('./actor-avatar.js').then(m => m.preloadAvatar()).catch(e => console.warn
 if (new URLSearchParams(location.search).has('tune')) import('./v2-tuning.js').catch(e => console.warn('[v2] tuning panel failed', e));
 
 // 手機觸控層(docs/mobile-touch.md)。Phase A:觸控偵測 + 橫向提示。桌機零影響。
-import('./v2-touch.js').then(m => { touchMod = m; m.initTouch(); }).catch(e => console.warn('[v2] touch layer failed', e));
+import('./v2-touch.js').then(m => { touchMod = m; m.initTouch(); m.setReportActions({ rematch: restartMatch, copy: copyShare }); }).catch(e => console.warn('[v2] touch layer failed', e));

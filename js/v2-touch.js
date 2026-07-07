@@ -24,11 +24,12 @@ export function initTouch() {
   buildRotateGate();
   buildJoystick();                          // Phase B:左半螢幕浮動搖桿
   buildButtons();                           // Phase C:右下 3 顆動作按鈕
+  buildReport();                            // 結算畫面:再戰 / 複製(觸控保底出口)
   window.addEventListener('resize', syncOrientation);
   if (window.screen && screen.orientation && typeof screen.orientation.addEventListener === 'function')
     screen.orientation.addEventListener('change', syncOrientation);
   syncOrientation();
-  if (typeof window !== 'undefined') window.__touch = { isTouch, syncOrientation, gate: () => gateEl, joy: () => ({ ...touchInput }), btns: () => ({ punch: btnPunch, context: btnContext, guard: btnGuard }) }; // headless 健檢
+  if (typeof window !== 'undefined') window.__touch = { isTouch, syncOrientation, gate: () => gateEl, joy: () => ({ ...touchInput }), btns: () => ({ punch: btnPunch, context: btnContext, guard: btnGuard }), report: () => reportEl }; // headless 健檢
 }
 
 // ===== Phase B:浮動虛擬搖桿(左半螢幕,拇指按哪冒哪)→ 類比移動 + 面向 =====
@@ -103,6 +104,50 @@ function buildButtons() {
 export function syncLabels(punchLabel, contextLabel) {
   if (btnPunch && btnPunch.textContent !== punchLabel) btnPunch.textContent = punchLabel;
   if (btnContext && btnContext.textContent !== contextLabel) btnContext.textContent = contextLabel;
+}
+
+// ===== 結算/報告畫面觸控按鈕(matchOver 時顯示)=====
+// 桌機靠鍵盤 R 再戰 / C 複製;觸控玩家沒鍵盤 → 打完一局會卡在報告畫面,這兩顆是保底出口。
+// 動作直接回呼 v2.js 給的閉包(restartMatch / 複製分享文字)——報告畫面 sim 已凍結,不走 step 輪詢。
+let reportEl = null, reportActions = null;
+export function setReportActions(a) { reportActions = a; } // v2.js 開機時注入 { rematch, copy }
+function buildReport() {
+  reportEl = document.createElement('div');
+  reportEl.id = 'touchReport';
+  reportEl.style.cssText = 'position:fixed;left:0;right:0;bottom:6vmin;z-index:9998;display:none;justify-content:center;align-items:flex-end;gap:5vmin;pointer-events:none;';
+  const mk = (label, primary, fn) => {
+    const b = document.createElement('div');
+    b.textContent = label;
+    b.style.cssText = 'pointer-events:auto;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;'
+      + `min-width:${primary ? 34 : 24}vmin;height:${primary ? 14 : 12}vmin;padding:0 4vmin;border-radius:8vmin;`
+      + `font:800 ${primary ? 5.5 : 4.2}vmin system-ui,sans-serif;color:#eaf6ff;text-align:center;`
+      + (primary ? 'border:2px solid rgba(140,255,190,.7);background:rgba(40,200,120,.32);box-shadow:0 0 18px rgba(80,255,160,.5);'
+                 : 'border:2px solid rgba(159,231,255,.55);background:rgba(30,50,70,.5);box-shadow:0 0 12px rgba(120,200,255,.3);');
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.style.filter = 'brightness(1.4)'; if (reportActions) fn(reportActions); });
+    const rel = () => { b.style.filter = ''; };
+    b.addEventListener('pointerup', rel); b.addEventListener('pointercancel', rel); b.addEventListener('pointerleave', rel);
+    return b;
+  };
+  reportEl.appendChild(mk('再戰', true, a => a.rematch()));
+  reportEl.appendChild(mk('複製', false, a => a.copy()));
+  document.body.appendChild(reportEl);
+}
+
+// v2.js 每幀呼叫:matchOver→亮結算按鈕、收起對戰控制(搖桿/3 顆);回到對戰→反之。
+let reportShown = false;
+export function setReportVisible(v) {
+  if (!touch || reportShown === v) return;
+  reportShown = v;
+  if (reportEl) reportEl.style.display = v ? 'flex' : 'none';
+  const gp = v ? 'none' : '';                 // 結算時收起對戰控制:免誤觸 + 免殘留 latch 在重開第一幀誤發拳
+  if (joyZone) joyZone.style.display = gp;
+  for (const b of [btnPunch, btnContext, btnGuard]) if (b) b.style.display = gp;
+  if (v) {
+    touchInput.press.punch = touchInput.press.context = touchInput.press.guard = false;
+    touchInput.active = false; touchInput.x = 0; touchInput.y = 0; joyId = null;
+    if (joyBase) joyBase.style.display = 'none';
+    if (joyThumb) joyThumb.style.display = 'none';
+  }
 }
 
 // 直向提示層(全螢幕蓋住,吃掉 pointer 事件=擋住底下遊戲)
