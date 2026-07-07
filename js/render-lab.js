@@ -11,7 +11,7 @@ const CX = W / 2, CZ = H / 2;           // 場地中心(世界px)
 const SCENE_W = 34, SCENE_D = 30;       // 總場景(tiles) — 牆外含裝飾帶
 const CORE_W = 30, CORE_D = 20;         // 戰鬥核心區(tiles) = 現行模擬場地(=W/H)
 const CORE_HX = CORE_W / 2, CORE_HZ = CORE_D / 2; // 核心半寬/半深(15/10;戰區導引/地標用)
-const CENTER_SCALE = 0.75;              // 中央清運口(收容平台+分揀陣列+斑馬安全圈)整體縮放;純視覺,不動 POD 判定半徑
+const CENTER_SCALE = 0.68;              // 中央清運口(收容平台+分揀陣列+斑馬安全圈)整體縮放;純視覺,不動 POD 判定半徑
 export const LAB = { SCENE_W, SCENE_D, CORE_W, CORE_D, CX, CZ, S: LAB_SCALE };
 
 // 低效能模式(?fx=low):關陰影/剝裝飾性點光/關玻璃 transmission(額外整景渲染 pass)。
