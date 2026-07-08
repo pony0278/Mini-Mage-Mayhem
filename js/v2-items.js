@@ -4,7 +4,7 @@
 import { W, H } from './constants.js';
 import { clamp } from './utils.js';
 import { game } from './state.js';
-import { addShake, addHitstop, addRing, hitSpark, addText } from './sim.js';
+import { addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,

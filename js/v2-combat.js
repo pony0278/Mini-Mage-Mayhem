@@ -5,7 +5,7 @@
 import { W, H } from './constants.js';
 import { clamp, norm } from './utils.js';
 import { game, keys, mouse, CAM, touchInput } from './state.js';
-import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './sim.js';
+import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   SPEED, POD, inPod, iceAt, resetFighter, applyStage,

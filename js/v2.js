@@ -8,7 +8,7 @@
 // 已移除,要考古看 git 歷史。
 import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
-import { updateDeathTheater, addText, updateParticles, updateRings, updateFloatingTexts } from './sim.js';
+import { updateDeathTheater, addText, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
 import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {

@@ -3,6 +3,7 @@ import { rnd, clamp, dist, angleTo, norm, circleRectOverlap } from './utils.js';
 import { ELEMENT_INFO, arenaTemplates, fusionKind, isFireKind, isIceKind, isLightningKind, isPoisonKind, isEarthKind } from './data.js';
 import { game } from './state.js'; // headless: sim reads game.input (neutral intents), never raw keys/mouse/CAM
 import { T } from './strings.js';  // pure data lookup (no DOM) — used only to compose the translated death line
+import { isSolidTile, circleHitsSolid, addText, addHitstop, addShake, addRing, hitSpark, updateParticles, updateRings, updateFloatingTexts, updateDeathTheater } from './fx.js';
 
 // Headless-ish simulation core: state mutation + all game logic. Imports only
 // data/state/constants/utils; never imports render/input/main (DAG invariant).
@@ -533,21 +534,6 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     return game.map[ty][tx];
   }
 
-  export function isSolidTile(t) { return t === TILE_WALL || t === TILE_THIN || t === TILE_ICEWALL; }
-
-  export function circleHitsSolid(x, y, r) {
-    const minX = Math.floor((x - r) / TILE);
-    const maxX = Math.floor((x + r) / TILE);
-    const minY = Math.floor((y - r) / TILE);
-    const maxY = Math.floor((y + r) / TILE);
-    for (let ty = minY; ty <= maxY; ty++) {
-      for (let tx = minX; tx <= maxX; tx++) {
-        if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return true;
-        if (isSolidTile(game.map[ty][tx]) && circleRectOverlap(x, y, r, tx * TILE, ty * TILE, TILE, TILE)) return true;
-      }
-    }
-    return false;
-  }
 
   export function damagePlayer(amount, source = '災難') {
     const p = game.player;
@@ -1316,47 +1302,15 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     }
   }
 
-  export function addText(x, y, text, color = '#fff') {
-    game.floatingTexts.push({ x, y, text, color, life: 0.82, maxLife: 0.82, vy: -34 });
-  }
   // Headless SFX emit: push an abstract event name; the client drains game.sfx each frame and plays it.
   export function sfx(name) { game.sfx.push(name); }
-  // Hitstop (頓幀): freeze the gameplay sim for s seconds on a hit. Math.max (no stacking) + a hard cap
-  // so rapid multi-hits can't snowball into a laggy freeze.
-  export function addHitstop(s) { game.hitstop = Math.min(0.12, Math.max(game.hitstop, s)); }
 
-  // Screen-shake throttle (P1 finish): every swing/cast/hit used to Math.max into screenShake,
-  // so during sustained combat the screen never settled — constant small jitter. Now SMALL shakes
-  // (< SHAKE_BIG) are rate-limited (one per shakeSmallCd window) AND soft-capped, so routine combat
-  // reads calm; BIG events (Boss, big booms, earthquakes, 絕對零度…) bypass both and still punch.
-  const SHAKE_BIG = 6;         // >= this = a "big" event: always lands, uncapped
-  const SHAKE_SMALL_CAP = 3.5; // small events can't push the shake past this
   const LIGHT_MARK = 4;        // 雷印 lifetime (s): a lightning hit marks a foe; dashing through it detonates (雷掌 signature)
   const HEAVY_CHARGE = 0.45;   // 重擊 (長按) charge time: hold the main attack this long to load a heavy
-  export function addShake(s) {
-    if (s >= SHAKE_BIG) { game.screenShake = Math.max(game.screenShake, s); return; } // big: always
-    if (game.shakeSmallCd > 0) return;                 // a small shake already fired this window — coalesce
-    game.shakeSmallCd = 0.1;
-    game.screenShake = Math.max(game.screenShake, Math.min(s, SHAKE_SMALL_CAP));
-  }
 
   // Big directional palm-slam shock (brawler main attack) — rendered in syncZones.
   export function addSlam(x, y, angle, hex, power = 1) {
     game.slams.push({ x, y, angle, hex, power, life: 0.28, maxLife: 0.28 });
-  }
-  export function addRing(x, y, r, color = '#fff', life = 0.35, width = 3) {
-    game.rings.push({ x, y, r, color, life, maxLife: life, width });
-  }
-  // Per-hit contact feedback (P1.3): a tight element-coloured spark burst + a fast
-  // contact ring at the exact strike point. All procedural (no models). `power` ~ hit
-  // weight (1 = light, ~2 = heavy/boss): scales spark count, speed and ring size.
-  export function hitSpark(x, y, color = '#fff3e2', power = 1) {
-    const n = Math.round(4 + power * 4);
-    for (let i = 0; i < n; i++) {
-      const a = rnd(0, Math.PI * 2), sp = rnd(70, 120) * (0.7 + power * 0.5);
-      game.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rnd(1.5, 3.4), life: rnd(0.1, 0.24), maxLife: 0.24, color });
-    }
-    addRing(x, y, 8 + power * 7, color, 0.13, 2);
   }
 
   export function recordDisaster(source, kills, radius) {
@@ -2913,33 +2867,6 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     else addRing(fb.x, fb.y, fb.r * 3.2, fb.color, 0.18, 2);
   }
 
-  // --- v2 死亡劇場 A (docs/v2-spec-A-dumb-deaths.md): 空洞墜落 + 凸眼 ---
-  const VOID_LAUNCH_THRESH = 280; // 擊退速度超過 → 凸眼 (panic face)
-  const VOID_FALL_TIME = 0.6;     // 墜落:縮小 + 旋轉 + 下沉
-  const VOID_FALL_GRACE = 0.07;   // 懸空多久才確定墜落 (防邊緣抖動)
-  const VOID_FACE_TIME = 0.35;    // 凸眼臉持續
-  // Over-the-abyss test. A client can plug in a custom shape test via game.isVoidAt (v2 free-form
-  // round islands use disc/bridge geometry); default falls back to the tile grid (single-player).
-  export function overVoid(e) { return game.isVoidAt ? game.isVoidAt(e) : (tileAtPixel(e.x, e.y) === TILE_VOID); }
-  // 每幀對每個實體跑。回傳 true 表示在死亡劇場中(呼叫端跳過 AI)。
-  export function updateDeathTheater(e, dt) {
-    if (e.faceT > 0) e.faceT -= dt;
-    if (e.falling) {
-      e.fallT -= dt; e.spin = (e.spin || 0) + 18 * dt;
-      if (e.fallT <= 0) { e.dead = true; addText(e.x, e.y - 8, '墜落!', '#eafaff'); }
-      return true;
-    }
-    if (Math.hypot(e.vx || 0, e.vy || 0) >= VOID_LAUNCH_THRESH) e.faceT = VOID_FACE_TIME; // 凸眼:被轟飛瞬間
-    if (overVoid(e)) {
-      e.voidT = (e.voidT || 0) + dt;
-      if (e.voidT > VOID_FALL_GRACE) {
-        e.falling = true; e.fallT = VOID_FALL_TIME; e.faceT = Math.max(e.faceT || 0, VOID_FACE_TIME);
-        addHitstop(0.05); addShake(4); sfx('dash'); // 致死 beat:小頓幀 + 一聲 whoosh
-        return true;
-      }
-    } else e.voidT = 0;
-    return false;
-  }
   // 沙盒用:在玩家前方挖一個空洞坑(training only)。
   export function spawnVoidPit() {
     const p = game.player, a = p.facing || 0;
@@ -3389,28 +3316,3 @@ import { T } from './strings.js';  // pure data lookup (no DOM) — used only to
     game.explosions = game.explosions.filter(ex => ex.life > 0);
   }
 
-  export function updateParticles(dt) {
-    for (const p of game.particles) {
-      p.life -= dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vx *= Math.pow(0.05, dt);
-      p.vy *= Math.pow(0.05, dt);
-    }
-    game.particles = game.particles.filter(p => p.life > 0);
-  }
-
-  export function updateRings(dt) {
-    for (const r of game.rings) r.life -= dt;
-    game.rings = game.rings.filter(r => r.life > 0);
-    for (const s of game.slams) s.life -= dt;
-    game.slams = game.slams.filter(s => s.life > 0);
-  }
-
-  export function updateFloatingTexts(dt) {
-    for (const t of game.floatingTexts) {
-      t.life -= dt;
-      t.y += t.vy * dt;
-    }
-    game.floatingTexts = game.floatingTexts.filter(t => t.life > 0);
-  }
