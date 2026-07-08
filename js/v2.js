@@ -20,7 +20,7 @@ import {
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateIce, updateBarrels, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor } from './v2-items.js';
+import { updatePads, updateIce, updateBarrels, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -50,17 +50,20 @@ function updateCamRig(dt) {
 }
 
 // --- 輸入:情境動作(J)/道具(K)/格擋(空白鍵),邊緣觸發;滑鼠=瞄準+左鍵連擊+右鍵情境 ---
-function mouseLeft(f) {                                                         // 左鍵=揮拳;扛著人=朝滑鼠方向拋擲
+function mouseLeft(f) {                                                         // 左鍵=揮拳;扛人=拋擲;扛桶=丟桶
   if (f.state !== 'alive') return;
+  if (f.carryObj) { throwBarrel(f); return; }
   if (f.carrying) { throwCarried(f); return; }
   punch(f);
 }
-function mouseRight(f) {                                                        // 右鍵=拖被擊暈的人 / 放技能(道具)
+function mouseRight(f) {                                                        // 右鍵=拖被擊暈的人 / 撿桶 / 放技能(道具)
   if (f.state !== 'alive') return;
+  if (f.carryObj) { dropBarrel(f); return; }                                   // 扛桶中 → 放下桶
   if (f.carrying) { dropCarry(f); return; }                                    // 搬運中 → 放下
   if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {        // 空手且可動作 → 優先抓近處被擊暈的對手
     const o = fighters[1 - f.pid];
     if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
+    const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }        // 沒有可抓的暈眩對手 → 撿桶
   }
   useItem(f); // 否則放技能(useItem 自帶守衛:無道具直接略過;被抓/暈時只有傳送可用)
 }
@@ -102,8 +105,8 @@ let touchMod = null;
 function syncTouchLabels() {
   if (!touchMod || !touchInput.enabled) return;
   const f = fighters[LOCAL];
-  const punch = f.carrying ? '投擲' : '揮拳';
-  const context = f.carrying ? '放下' : (f.item ? '技能' : '抓');
+  const punch = f.carryObj ? '丟桶' : f.carrying ? '投擲' : '揮拳';
+  const context = f.carryObj ? '放下桶' : f.carrying ? '放下' : (f.item ? '技能' : '抓');
   touchMod.syncLabels(punch, context);
 }
 
@@ -176,6 +179,12 @@ function step(dt) {
         o._aPrev = aDown; o._dPrev = dDown;
       }
       if (o.escape >= CARRY_ESCAPE_NEED) breakFree(o);
+    }
+    // 扛桶(§12.1 步驟 B):桶跟在面前;暈/死 → 掉桶(在手上爆已由 explodeBarrel 放開持有者)
+    for (const f of fighters) {
+      const b = f.carryObj; if (!b) continue;
+      if (f.state !== 'alive' || f.stunned || !b.alive) { if (b.alive) dropBarrel(f); else f.carryObj = null; continue; }
+      b.x = f.x + Math.cos(f.facing) * (f.r + b.r * 0.9); b.y = f.y + Math.sin(f.facing) * (f.r + b.r * 0.9); b.vx = 0; b.vy = 0;
     }
     // 失控入艙: 被擊退/打滑(速度夠快)、暈眩者、或被拋出翻滾中進到艙半徑 → 收容(對手勝)。無敵中免疫。
     for (const f of fighters) {

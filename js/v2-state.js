@@ -56,9 +56,11 @@ export function inPod(x, y) { return Math.hypot(x - POD.x, y - POD.y) <= POD.r; 
 export const BARREL_FUSE = 1.0, BARREL_BLAST = 95, BARREL_FORCE = 700, BARREL_STAB = 50, BARREL_RESPAWN = 6;
 export const BARREL_PATCH_R = 40;                       // 爆後污染地板的小塊半徑(~1.3 tile)
 export const WILD_CONTAM = ['oil', 'water', 'poison'];  // 未充能=野生隨機污染(不含火,免整場失火)
+// 步驟 B:可推/撿/丟。丟出初速、滾動摩擦(快衰減=不永遠滾)、推力、撞擊引爆前的安全延遲。
+export const BARREL_THROW = 520, BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARREL_ARM_GRACE = 0.15;
 export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
-export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null }));
-export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; } }
+export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0 }));
+export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; } }
 
 // --- 道具系統 (spec F §3/§4): 補給座撿即用, 只拿 1, 用完即空 ---
 export const ITEM_TYPES = ['wind', 'teleport', 'ice'];
@@ -145,6 +147,7 @@ export function resetFighter(f) {
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
   f.item = null; f.itemUses = 0;                        // 道具型別 + 剩餘次數
+  f.carryObj = null;                                    // 扛著的物件(廢料桶;與 carrying=扛人 互斥)
   f._itemCastAt = 0; f._itemCastType = null;            // 排程施放(impact 幀觸發效果)
   f.itemFx = -9; f.itemClip = null; f.itemCastCd = 0;   // 施放動畫時鐘/clip + 承諾冷卻
   f.state = 'alive';

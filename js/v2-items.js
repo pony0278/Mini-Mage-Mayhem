@@ -10,10 +10,12 @@ import {
   pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
+  BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, GRAB_RANGE,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
 import { flinch, camKick, dropCarry, stunFighter } from './v2-combat.js';
 import { stampElement, stateAtPixel, FL } from './v2-floor.js';
+import { circleHitsSolid } from './fx.js';
 
 // 元素 → 顏色(爆炸 tint + 升壓發光 telegraph);wild=未充能野生紫
 const ELEM_COL = { fire: '#ff7a3a', water: '#4da6ff', poison: '#b06bff', ice: '#bfe6ff', oil: '#9a8a5a', wild: '#c98cff' };
@@ -120,7 +122,41 @@ export function castIce(f) { // 前方丟出 → 地板冰面(cut 3:走地板化
 }
 
 // --- 危險 #1:爆桶。靠近→點燃→爆炸:炸飛+削弱穩定值 ---
+// --- 步驟 B:桶可推 / 撿 / 丟(接 carry/throw §12.1)。桶非 fighter → 走 f.carryObj 平行結構,與扛人(carrying)互斥。 ---
+export function grabbableBarrel(f) { // 範圍內最近的可撿 idle 桶
+  let best = null, bd = GRAB_RANGE + 20;
+  for (const b of barrels) {
+    if (!b.alive || b.held || b.state !== 'idle') continue;
+    const d = Math.hypot(b.x - f.x, b.y - f.y);
+    if (d < bd + b.r) { bd = d; best = b; }
+  }
+  return best;
+}
+export function pickUpBarrel(f, b) {
+  if (f.carrying || f.carryObj || !b || !b.alive || b.held) return;
+  f.carryObj = b; b.held = true; b.vx = 0; b.vy = 0;
+  addText(f.x, f.y - 30, '抓起桶！', barrelChargeColor(b.charge)); addRing(f.x, f.y, 30, barrelChargeColor(b.charge), 0.3, 4); game.sfx.push('upgrade');
+}
+export function dropBarrel(f) {
+  const b = f.carryObj; if (!b) return;
+  b.held = false; f.carryObj = null; f.regrabCd = REGRAB_CD;
+  b.x = f.x + Math.cos(f.facing) * (f.r + b.r + 4); b.y = f.y + Math.sin(f.facing) * (f.r + b.r + 4);
+  b.vx = 0; b.vy = 0;
+}
+export function throwBarrel(f) {
+  const b = f.carryObj; if (!b || f.state !== 'alive') return;
+  f.carryObj = null; b.held = false; f.regrabCd = REGRAB_CD;
+  const a = f.facing;
+  b.x = f.x + Math.cos(a) * (f.r + b.r); b.y = f.y + Math.sin(a) * (f.r + b.r);
+  b.vx = Math.cos(a) * BARREL_THROW; b.vy = Math.sin(a) * BARREL_THROW;
+  b.thrownBy = f.pid; b.armGrace = BARREL_ARM_GRACE;
+  pressurizeBarrel(b);                                        // 被丟 → 升壓(1s 引信;飛行中/落地/撞人爆)
+  f.punchFx = game.time; f.punchKind = 2; f.punchArm = 1; f.punchCd = 0.4; // 借終結技大動作當投擲姿勢
+  addShake(4); game.sfx.push('dash'); addText(b.x, b.y - 26, '丟桶！', barrelChargeColor(b.charge));
+}
 export function explodeBarrel(b) {
+  for (const f of fighters) if (f.carryObj === b) f.carryObj = null; // 在手上爆 → 放開持有者
+  b.held = false; b.thrownBy = -1;
   b.alive = false; b.respawn = v2s.barrelRespawnCur; inc.barrelBooms++; inc.types.add('barrel');
   // 爆種 = 充能元素;未充能 → 野生隨機污染。決定爆色 + 留下的地板。
   const elem = b.charge || WILD_CONTAM[Math.floor(Math.random() * WILD_CONTAM.length)];
@@ -144,8 +180,28 @@ export function explodeBarrel(b) {
 }
 export function updateBarrels(dt) {
   for (const b of barrels) {
-    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; } continue; }
-    if (b.state === 'idle') b.charge = floorChargeUnder(b);              // 吸收腳下元素地板(爆時決定爆種);被動近距引爆已拿掉
-    else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); } // 升壓到底 → 爆
+    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; } continue; }
+    if (b.armGrace > 0) b.armGrace -= dt;
+    if (!b.held) {                                                      // 被扛的桶由 carry loop 定位;其餘走物理
+      if (b.vx || b.vy) {                                              // 推/丟:速度整合 + 牆碰撞 + 摩擦
+        const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt;
+        if (!circleHitsSolid(nx, b.y, b.r)) b.x = nx; else b.vx = 0;
+        if (!circleHitsSolid(b.x, ny, b.r)) b.y = ny; else b.vy = 0;
+        b.x = clamp(b.x, b.r, W - b.r); b.y = clamp(b.y, b.r, H - b.r);
+        const k = Math.pow(BARREL_FRICTION, dt); b.vx *= k; b.vy *= k;
+        if (b.vx * b.vx + b.vy * b.vy < 400) { b.vx = 0; b.vy = 0; }
+      }
+      for (const f of fighters) {                                      // 碰到人:丟出中的活桶→撞擊引爆;否則推開
+        if (f.state !== 'alive' || f.carryObj === b || f.invuln > 0) continue;
+        const dx = b.x - f.x, dy = b.y - f.y, d = Math.hypot(dx, dy) || 1;
+        if (d > f.r + b.r) continue;
+        if (b.state === 'fuse' && (b.vx || b.vy) && b.armGrace <= 0 && f.pid !== b.thrownBy) { explodeBarrel(b); break; } // 撞人引爆(不炸自己人、過安全延遲)
+        b.vx += dx / d * BARREL_PUSH; b.vy += dy / d * BARREL_PUSH;    // 走進 idle 桶 → 推開
+        b.x = f.x + dx / d * (f.r + b.r); b.y = f.y + dy / d * (f.r + b.r);
+      }
+      if (!b.alive) continue;                                          // 上面撞擊引爆了
+    }
+    if (b.state === 'idle') { if (!b.held) b.charge = floorChargeUnder(b); } // idle:吸收腳下元素(扛在手上不吸,保留原 charge)
+    else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); } // 升壓到底 → 爆(扛在手上也會炸=在手上爆)
   }
 }
