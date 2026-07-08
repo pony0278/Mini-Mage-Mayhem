@@ -15,7 +15,7 @@
 | [v2-spec-B-ownership.md](v2-spec-B-ownership.md) | **規格 B（測試計畫）**：鋪設→累積→引爆的 ownership；旋鈕起始值 + A/B 測法 + kill-criteria |
 | [v2-spec-C-share.md](v2-spec-C-share.md) | **規格 C（增長引擎）**：最大災難回顧 / 一鍵分享截圖卡（站在 A 鏡頭 + B 歸因上）|
 | [v2-spec-elements.md](v2-spec-elements.md) | **元素/融合/取得**：融合搬到地板成環境反應；元素＝空間動詞；MVP 對稱固定 kit |
-| [v2-element-floor-chemistry.md](v2-element-floor-chemistry.md) | **地板化學（元素反應藍圖）**：一格一狀態（取代非疊層）+ ~6 條招牌反應表（複用單機火燃油/雷導水/火引爆毒）+ 地板狀態機 + 兩個已答複合情境 + 場地洩漏掛鉤；**§9 元素×道具對照（7 元素投放原型 + 次數3/2/1 + 四項定案）／§10 元素站洩漏節奏（總開關拉桿啟動、四站錯開輪噴、雷站=原始電弧）／§11 道具刷新搶點（稀疏分層·油風保底、MVP 固定刷新台→輸送帶升級）** |
+| [v2-element-floor-chemistry.md](v2-element-floor-chemistry.md) | **地板化學（元素反應藍圖）**：一格一狀態（取代非疊層）+ ~6 條招牌反應表（複用單機火燃油/雷導水/火引爆毒）+ 地板狀態機 + 兩個已答複合情境 + 場地洩漏掛鉤；**§9 元素×道具對照（7 元素投放原型 + 次數3/2/1 + 四項定案）／§10 元素站洩漏節奏（總開關拉桿啟動、四站錯開輪噴、雷站=原始電弧）／§11 道具刷新搶點（稀疏分層·油風保底、MVP 固定刷新台→輸送帶升級）／§12 不穩定魔力廢料桶（取代爆桶：可推撿丟·受擊升壓·爆後種地板·元素充能決定爆種+升壓發光 telegraph）** |
 | [v2-floor-state-architecture.md](v2-floor-state-architecture.md) | **地板狀態機架構/實作指引**：新開 `js/v2-floor.js`（守 v2 DAG、鏡射 `game.oils` 計時覆蓋模式、不抄 sim.js）+ v2 私有 `v2s.floor` 層 + `FLOOR_RX` 正交反應表 + 單一 `applyElement` choke point + `stepFloor`；接線改動清單 + 維護性風險 + 四刀落地切法（先純 sim 邏輯層 headless 驗、render 後接） |
 | [v2-spec-D-arenas.md](v2-spec-D-arenas.md) | **規格 D（地圖 + loop）**：搶獎盃→Boss 甦醒→追逐；浮島四周墜落（render-only）；斷橋孤島落地 + 型錄 + 落地順序 |
 | [v2-spec-E-incident-report.md](v2-spec-E-incident-report.md) | **規格 E（北極星再定位）**：魔法事故報告/收容測試；吸收 C 為核心；收容狀態機 + 報告 schema + 等級 + V0.8/0.9/1.0 路線；可重用零件對照 |
