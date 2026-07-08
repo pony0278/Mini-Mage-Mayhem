@@ -20,7 +20,7 @@ import {
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch } from './v2-combat.js';
-import { updatePads, updateIce, updateBarrels, useItem, castWind, castTeleport, castIce, explodeBarrel } from './v2-items.js';
+import { updatePads, updateIce, updateBarrels, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel } from './v2-items.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
 
@@ -126,6 +126,7 @@ function step(dt) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
       // cooldown timers
       if (f.punchCd > 0) f.punchCd -= dt;
+      if (f.itemCastCd > 0) f.itemCastCd -= dt;
       if (f.regrabCd > 0) f.regrabCd -= dt;
       if (f.fumbleT > 0) f.fumbleT -= dt;
       if (f.restunT > 0) f.restunT -= dt;
@@ -137,6 +138,7 @@ function step(dt) {
       if (f.parryWinT > 0) { f.parryWinT -= dt; if (f.parryWinT <= 0) f.parryFrom = null; } // 黃金窗口過期
       if (f.ai && f._aiPushAt && game.time >= f._aiPushAt) { f._aiPushAt = 0; doPushOff(f); } // AI 的格擋反應
       if (f._strikeAt && game.time >= f._strikeAt) resolveStrike(f); // impact 影格到 → 判定命中(起手被打斷則取消)
+      if (f._itemCastAt && game.time >= f._itemCastAt) resolveItemCast(f); // 道具施放 impact 幀到 → 發動效果(被打斷則取消)
       // stability regen (paused right after a hit; frozen while stunned/carried)
       if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
       // stun countdown → recover (ungrabbed)

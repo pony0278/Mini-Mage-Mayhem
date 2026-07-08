@@ -145,10 +145,11 @@ function drawItems() {
     const s = project(f.x, f.y, (f.r || 14) * 2.2 + 34); if (s.behind) continue;
     hctx.fillStyle = ITEM_INFO[f.item].color; hctx.beginPath(); hctx.arc(s.x, s.y, 7, 0, Math.PI * 2); hctx.fill();
     hctx.strokeStyle = 'rgba(255,255,255,.8)'; hctx.lineWidth = 1.5; hctx.stroke();
+    if (f.itemUses > 1) { hctx.textAlign = 'left'; hctx.font = '800 11px system-ui, sans-serif'; hctx.fillStyle = '#eafaff'; hctx.fillText('×' + f.itemUses, s.x + 10, s.y + 4); } // 多次數:球旁標剩餘
   }
   const me = fighters[LOCAL]; // 本機持有 HUD
   hctx.textAlign = 'left'; hctx.font = '800 14px system-ui, sans-serif';
-  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + '（右鍵 / E 使用）', 24, VH - 40); }
+  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + ' ×' + me.itemUses + '（右鍵 / E 使用）', 24, VH - 40); }
   else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, VH - 40); }
 }
 const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };

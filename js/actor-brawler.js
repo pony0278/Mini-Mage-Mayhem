@@ -189,9 +189,13 @@ export function updateBrawler(e, g) {
 
   // --- 目標姿勢 ---
   let pose = null, wob = 0;
+  const free = !e.carriedBy && !e.carrying;
+  const iclip = e.itemClip ? CLIPS[e.itemClip] : null;              // 道具施法 clip(骨架階段 itemClip 恆 null → 不啟用;與拳互斥,優先)
+  const ipt = now - (e.itemFx != null ? e.itemFx : -9);
   const pt = now - (e.punchFx != null ? e.punchFx : -9);
   const clip = CLIPS[PUNCH_CLIPS[e.punchKind || 0]];
-  if (!e.carriedBy && !e.carrying && pt >= 0 && clip && pt < clip.dur) pose = evalClip(clip, pt);
+  if (free && iclip && ipt >= 0 && ipt < iclip.dur) pose = evalClip(iclip, ipt);
+  else if (free && pt >= 0 && clip && pt < clip.dur) pose = evalClip(clip, pt);
   const usingClip = pose != null;    // clip 播放 → 用高 blend 檔,別把浮誇關鍵幀壓扁
   if (!pose) {
     pose = { ..._zeroIdle };

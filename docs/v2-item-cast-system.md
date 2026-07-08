@@ -1,6 +1,7 @@
 # v2 道具系統:次數 + 排程施放(設計/規劃)
 
-> 狀態:**規劃中,尚未實作**。骨架先出、行為不變,等 PUNCH STUDIO 動畫到位再逐列開。
+> 狀態:**骨架已實作(全 `delay:0` = 行為不變,只多了次數)**;動畫階段待 avatar 手指骨架後,
+> 在 PUNCH STUDIO 排 clip → 填 `ITEM_SPEC` 的 clip+delay 逐列開。
 > 相關:規格 F（[v2-spec-F-spells-items.md](v2-spec-F-spells-items.md)，撿即用道具 5 動詞）、
 > 動作工作流（[animation-workflow.md](animation-workflow.md)，clip↔impact 對齊）。
 

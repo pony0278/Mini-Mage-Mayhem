@@ -60,6 +60,16 @@ export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.
 // --- 道具系統 (spec F §3/§4): 補給座撿即用, 只拿 1, 用完即空 ---
 export const ITEM_TYPES = ['wind', 'teleport', 'ice'];
 export const ITEM_INFO = { wind: { name: '風壓手套', color: '#bfeaff' }, teleport: { name: '傳送符', color: '#c98cff' }, ice: { name: '冰霜瓶', color: '#9fd8ff' } };
+// 道具規格表(單一真相來源;分類=正交欄位,見 docs/v2-item-cast-system.md)。骨架階段 clip:null/delay:0
+// = 全部瞬發(行為不變),等 studio 動畫到位再逐列填 clip+delay(=impact 幀÷60,同 STRIKE_DELAY)。
+//   uses=次數 · clip/delay=施放動畫與 impact · whileDisabled=被抓/暈可用(取代寫死的 !=='teleport')
+//   aim=facing/self/target(未來瞄準用) · kind=純標籤(HUD/AI/文件分組;機制不靠它)
+export const ITEM_SPEC = {
+  wind:     { uses: 3, clip: null, delay: 0, whileDisabled: false, aim: 'facing', kind: 'blast' },
+  ice:      { uses: 1, clip: null, delay: 0, whileDisabled: false, aim: 'facing', kind: 'hazard' },
+  teleport: { uses: 1, clip: null, delay: 0, whileDisabled: true,  aim: 'self',   kind: 'mobility' },
+};
+export const ITEM_CAST_RECOVER = 0.18; // 排程施放後的恢復(承諾冷卻);瞬發道具(delay:0)不套用
 export const PAD_SPOTS = [[480, 140], [480, 500]]; // 補給座:上下中線(避開角落爆桶與中央實驗艙)
 export const PAD_RESPAWN = 5, PICKUP_R = 26;
 export const WIND_RANGE = 150, WIND_CONE = 1.0, WIND_FORCE = 620, WIND_SELF = 180; // 貼臉(<50)發射自身反彈=風壓過載
@@ -122,7 +132,9 @@ export function resetFighter(f) {
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
-  f.item = null;
+  f.item = null; f.itemUses = 0;                        // 道具型別 + 剩餘次數
+  f._itemCastAt = 0; f._itemCastType = null;            // 排程施放(impact 幀觸發效果)
+  f.itemFx = -9; f.itemClip = null; f.itemCastCd = 0;   // 施放動畫時鐘/clip + 承諾冷卻
   f.state = 'alive';
 }
 export const fighters = [makeFighter(0), makeFighter(1)];

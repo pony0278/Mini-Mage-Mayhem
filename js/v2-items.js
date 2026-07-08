@@ -7,7 +7,7 @@ import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText } from './sim.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
-  pads, iceZones, randItem, ITEM_INFO, PICKUP_R,
+  pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
   barrels, BARREL_IGNITE, BARREL_BLAST, BARREL_FORCE, BARREL_STAB,
   FUMBLE_T, REGRAB_CD,
@@ -21,7 +21,7 @@ export function updatePads(dt) {
     for (const f of fighters) {
       if (f.ai || f.state !== 'alive' || f.item || f.carriedBy || f.carrying || f.stunned) continue; // AI 這步不撿道具
       if (Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r) {
-        f.item = p.item; p.item = null; p.respawn = v2s.padRespawnCur;
+        f.item = p.item; f.itemUses = ITEM_SPEC[p.item].uses; p.item = null; p.respawn = v2s.padRespawnCur;
         addText(f.x, f.y - 32, ITEM_INFO[f.item].name + '！', ITEM_INFO[f.item].color); addRing(f.x, f.y, 28, ITEM_INFO[f.item].color, 0.3, 4); game.sfx.push('upgrade');
         dlog('PICKUP', NAMES[f.pid], f.item); break;
       }
@@ -31,13 +31,29 @@ export function updatePads(dt) {
 export function updateIce(dt) { for (let i = iceZones.length - 1; i >= 0; i--) { iceZones[i].life -= dt; if (iceZones[i].life <= 0) iceZones.splice(i, 1); } }
 export function useItem(f) {
   if (!f.item || f.state !== 'alive' || f.carrying) return;                 // 搬運中兩手全滿,不能用道具
+  const spec = ITEM_SPEC[f.item];
   const grabbed = !!f.carriedBy;
-  if ((grabbed || f.stunned || f.fumbleT > 0) && f.item !== 'teleport') return; // 被抓/暈/踉蹌:只有傳送能用
-  const type = f.item; f.item = null;                                        // 用完即空
+  if ((grabbed || f.stunned || f.fumbleT > 0) && !spec.whileDisabled) return; // 被抓/暈/踉蹌:僅 whileDisabled 道具(傳送)可用
+  if (f.itemCastCd > 0 || f._itemCastAt > 0) return;                        // 施法中/承諾冷卻中:不重複觸發
+  const type = f.item;
+  if (--f.itemUses <= 0) f.item = null;                                     // 起手即扣一次;歸零清空(不退還)
   inc.itemUses[type]++;
+  if (!spec.clip || spec.delay <= 0) { castItem(type, f); return; }         // 瞬發(傳送)→ 直接生效、無動畫
+  // 排程施放:動畫時鐘 + impact 幀 + 承諾冷卻
+  f.itemFx = game.time; f.itemClip = spec.clip;
+  f._itemCastAt = game.time + spec.delay; f._itemCastType = type;
+  f.itemCastCd = spec.delay + ITEM_CAST_RECOVER;
+}
+function castItem(type, f) {
   if (type === 'wind') castWind(f);
   else if (type === 'teleport') castTeleport(f);
   else if (type === 'ice') castIce(f);
+}
+// step 在 impact 幀呼叫:施法中被打斷(暈/被抓)→ 取消(次數已扣、不退);否則發動效果
+export function resolveItemCast(f) {
+  const type = f._itemCastType; f._itemCastAt = 0; f._itemCastType = null;
+  if (f.stunned || f.carriedBy || f.state !== 'alive') return;
+  castItem(type, f);
 }
 export function castWind(f) { // 前方風錐強擊退; 貼臉發射自身反彈(過載)
   const a = f.facing; let hit = false;
