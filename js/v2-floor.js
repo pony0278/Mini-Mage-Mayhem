@@ -71,6 +71,20 @@ export function applyElement(tx, ty, element) {
   if (sub && SUBSTRATE.has(sub)) setState(tx, ty, sub);
 }
 
+// 以世界像素圓 (cx,cy,r) 蓋一片元素(道具投擲 / 元素站噴發共用)。回傳實際改變的格數。
+export function stampElement(cx, cy, r, element) {
+  let n = 0;
+  const t0x = Math.floor((cx - r) / TILE), t1x = Math.floor((cx + r) / TILE);
+  const t0y = Math.floor((cy - r) / TILE), t1y = Math.floor((cy + r) / TILE);
+  for (let ty = t0y; ty <= t1y; ty++) for (let tx = t0x; tx <= t1x; tx++) {
+    if (Math.hypot(tx * TILE + TILE / 2 - cx, ty * TILE + TILE / 2 - cy) > r) continue;
+    const before = stateAt(tx, ty);
+    applyElement(tx, ty, element);
+    if (stateAt(tx, ty) !== before) n++;
+  }
+  return n;
+}
+
 // 每幀:1) 火沿油滾動  2) 衰退+預警(charged 雙計時器)。在 v2.js step() 於道具 impact 派發之後、移動之前呼叫。
 export function stepFloor(dt) {
   // 1) 火沿相連油傳播 → 火像波浪滾過油田(§3.1)。先收集後套用,避免同幀連鎖爆走。

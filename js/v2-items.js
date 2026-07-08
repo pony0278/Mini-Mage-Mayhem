@@ -13,6 +13,7 @@ import {
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
 import { flinch, camKick, dropCarry, stunFighter } from './v2-combat.js';
+import { stampElement } from './v2-floor.js';
 
 // --- 道具:撿取 / 使用 (spec F §4). 補給座重刷隨機道具; 只拿1; 用完即空; 傳送符是被抓時唯一可用 ---
 export function updatePads(dt) {
@@ -91,11 +92,11 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
   f.vx = 0; f.vy = 0; game.sfx.push('upgrade');
   dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
 }
-export function castIce(f) { // 前方丟出 → 冰面
+export function castIce(f) { // 前方丟出 → 地板冰面(cut 3:走地板化學 applyElement,格化、吃衰退、可被火熄成水)
   const lx = clamp(f.x + Math.cos(f.facing) * ICE_THROW, 24, W - 24), ly = clamp(f.y + Math.sin(f.facing) * ICE_THROW, 24, H - 24);
-  iceZones.push({ x: lx, y: ly, r: ICE_R, life: ICE_DUR });
+  const n = stampElement(lx, ly, ICE_R, 'ice'); // 舊 iceZones 圓區退場(onSlipperyIce 仍相容);視覺待 cut 4 動態 tile
   addRing(lx, ly, ICE_R, ITEM_INFO.ice.color, 0.4, 5); addText(lx, ly - 20, '冰面！', ITEM_INFO.ice.color); game.sfx.push('dash');
-  dlog('ICE @', Math.round(lx) + ',' + Math.round(ly));
+  dlog('ICE @', Math.round(lx) + ',' + Math.round(ly), 'tiles', n);
 }
 
 // --- 危險 #1:爆桶。靠近→點燃→爆炸:炸飛+削弱穩定值 ---
