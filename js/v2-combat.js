@@ -8,7 +8,7 @@ import { game, keys, mouse, CAM, touchInput } from './state.js';
 import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  SPEED, POD, inPod, iceAt, resetFighter, applyStage,
+  SPEED, POD, inPod, iceAt, resetFighter, applyStage, barrels,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, FINISHER_KNOCK,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
@@ -215,6 +215,13 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     }
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
     if (o.pid === LOCAL) v2s.localFlash = 0.2;
+  }
+  for (const b of barrels) { // 揍到廢料桶 → 升壓(不需命中對手;charge 已由 idle 吸收,telegraph 在地面標記)
+    if (!b.alive || b.state !== 'idle') continue;
+    const dx = b.x - f.x, dy = b.y - f.y, d = Math.hypot(dx, dy);
+    if (d > PUNCH_RANGE + b.r) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) <= PUNCH_CONE) { b.state = 'fuse'; b.fuse = v2s.barrelFuseCur; addText(b.x, b.y - 26, '升壓！', '#ffd36d'); hit = true; }
   }
   // 命中回饋分級:終結技最重(定格/鏡頭踹/重音)
   if (hit) {

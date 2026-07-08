@@ -51,11 +51,14 @@ export const FUMBLE_T = 0.5, ESCAPE_STAB = 50;
 export const BODY_SEP = 0.8;   // 角色實心圈 = (r+r)*BODY_SEP:視覺貼近到體素肩碰肩才停
 export function inPod(x, y) { return Math.hypot(x - POD.x, y - POD.y) <= POD.r; }
 
-// --- 危險 #1:爆桶。靠近→點燃→爆炸:炸飛+削弱穩定值 ---
-export const BARREL_IGNITE = 28, BARREL_FUSE = 0.5, BARREL_BLAST = 95, BARREL_FORCE = 700, BARREL_STAB = 50, BARREL_RESPAWN = 6;
-export const BARREL_SPOTS = [[300, 210], [660, 210], [300, 470], [660, 470]];
-export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0 }));
-export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; } }
+// --- 危險 #1:不穩定魔力廢料桶 (docs/v2-element-floor-chemistry.md §12)。受攻擊/被丟→升壓 1s→大擊飛+種地板。
+// charge = 桶下的元素地板(idle 時吸收,爆時決定爆種+污染);null = 野生隨機爆。被動近距引爆已拿掉。
+export const BARREL_FUSE = 1.0, BARREL_BLAST = 95, BARREL_FORCE = 700, BARREL_STAB = 50, BARREL_RESPAWN = 6;
+export const BARREL_PATCH_R = 40;                       // 爆後污染地板的小塊半徑(~1.3 tile)
+export const WILD_CONTAM = ['oil', 'water', 'poison'];  // 未充能=野生隨機污染(不含火,免整場失火)
+export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
+export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null }));
+export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; } }
 
 // --- 道具系統 (spec F §3/§4): 補給座撿即用, 只拿 1, 用完即空 ---
 export const ITEM_TYPES = ['wind', 'teleport', 'ice'];
@@ -112,7 +115,7 @@ export const v2s = {
 export function resetStage() { v2s.stage = 1; v2s.barrelRespawnCur = BARREL_RESPAWN; v2s.barrelFuseCur = BARREL_FUSE; v2s.padRespawnCur = PAD_RESPAWN; v2s.slideContainCur = SLIDE_CONTAIN_V; }
 export function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門檻)
   v2s.stage = s;
-  if (s >= 2) { v2s.barrelRespawnCur = 4; v2s.barrelFuseCur = 0.4; v2s.padRespawnCur = 4; }
+  if (s >= 2) { v2s.barrelRespawnCur = 4; v2s.barrelFuseCur = 0.7; v2s.padRespawnCur = 4; }
   if (s >= 3) { v2s.barrelRespawnCur = 3; v2s.slideContainCur = 150; } // 艙吸力變強
 }
 

@@ -9,11 +9,24 @@ import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
-  barrels, BARREL_IGNITE, BARREL_BLAST, BARREL_FORCE, BARREL_STAB,
+  barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
 import { flinch, camKick, dropCarry, stunFighter } from './v2-combat.js';
-import { stampElement } from './v2-floor.js';
+import { stampElement, stateAtPixel, FL } from './v2-floor.js';
+
+// 元素 → 顏色(爆炸 tint + 升壓發光 telegraph);wild=未充能野生紫
+const ELEM_COL = { fire: '#ff7a3a', water: '#4da6ff', poison: '#b06bff', ice: '#bfe6ff', oil: '#9a8a5a', wild: '#c98cff' };
+export function barrelChargeColor(charge) { return ELEM_COL[charge] || ELEM_COL.wild; }
+// 桶下的元素地板 → 充能元素名(idle 時吸收;決定爆種+污染)。clean/無 → null(野生隨機)
+const FLOOR_TO_ELEM = { [FL.FIRE]: 'fire', [FL.ICE]: 'ice', [FL.POISON]: 'poison', [FL.WATER]: 'water', [FL.OIL]: 'oil', [FL.CHARGED]: 'water' };
+function floorChargeUnder(b) { return FLOOR_TO_ELEM[stateAtPixel(b.x, b.y)] || null; }
+// 受攻擊/被丟 → 開始升壓(idle → fuse)。charge 已由 idle 吸收,此刻凍結(升壓中不再更新)。
+export function pressurizeBarrel(b) {
+  if (!b.alive || b.state !== 'idle') return;
+  b.state = 'fuse'; b.fuse = v2s.barrelFuseCur;
+  addRing(b.x, b.y, b.r + 8, barrelChargeColor(b.charge), 0.3, 4); addText(b.x, b.y - 26, '升壓！', barrelChargeColor(b.charge)); game.sfx.push('dash');
+}
 
 // --- 道具:撿取 / 使用 (spec F §4). 補給座重刷隨機道具; 只拿1; 用完即空; 傳送符是被抓時唯一可用 ---
 export function updatePads(dt) {
@@ -73,6 +86,13 @@ export function castWind(f) { // 前方風錐強擊退; 貼臉發射自身反彈
     if (o.pid === LOCAL) v2s.localFlash = 0.25;
     if (d < 50) { f.vx -= Math.cos(a) * WIND_SELF; f.vy -= Math.sin(a) * WIND_SELF; inc.itemBackfires++; addText(f.x, f.y - 32, '過載反彈！', '#ff9a9a'); } // 風壓過載自反噬
   }
+  for (const b of barrels) { // 風也能引爆桶(遠距升壓)
+    if (!b.alive || b.state !== 'idle') continue;
+    const dx = b.x - f.x, dy = b.y - f.y, d = Math.hypot(dx, dy);
+    if (d > WIND_RANGE) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) <= WIND_CONE) pressurizeBarrel(b);
+  }
   addRing(f.x + Math.cos(a) * 30, f.y + Math.sin(a) * 30, 62, '#dff3ff', 0.25, 5); addShake(hit ? 5 : 3); game.sfx.push('dash');
   dlog('WIND', NAMES[f.pid], hit ? 'hit' : 'miss');
 }
@@ -102,9 +122,13 @@ export function castIce(f) { // 前方丟出 → 地板冰面(cut 3:走地板化
 // --- 危險 #1:爆桶。靠近→點燃→爆炸:炸飛+削弱穩定值 ---
 export function explodeBarrel(b) {
   b.alive = false; b.respawn = v2s.barrelRespawnCur; inc.barrelBooms++; inc.types.add('barrel');
-  addRing(b.x, b.y, BARREL_BLAST, '#ff9a4a', 0.4, 6); addRing(b.x, b.y, BARREL_BLAST * 0.6, '#fff1bb', 0.3, 5);
-  hitSpark(b.x, b.y, '#ffd36d', 2); addShake(8); addHitstop(0.1); game.sfx.push('explosion');
-  addText(b.x, b.y - 30, '爆！', '#ff7b72');
+  // 爆種 = 充能元素;未充能 → 野生隨機污染。決定爆色 + 留下的地板。
+  const elem = b.charge || WILD_CONTAM[Math.floor(Math.random() * WILD_CONTAM.length)];
+  const col = barrelChargeColor(b.charge);
+  addRing(b.x, b.y, BARREL_BLAST, col, 0.4, 6); addRing(b.x, b.y, BARREL_BLAST * 0.6, '#fff1bb', 0.3, 5);
+  hitSpark(b.x, b.y, col, 2); addShake(8); addHitstop(0.1); game.sfx.push('explosion');
+  addText(b.x, b.y - 30, '爆！', col);
+  stampElement(b.x, b.y, BARREL_PATCH_R, elem); // 留一塊污染地板 → 接地板化學連段
   for (const f of fighters) {
     if (f.state !== 'alive' || f.invuln > 0) continue;
     const dx = f.x - b.x, dy = f.y - b.y, d = Math.hypot(dx, dy) || 1;
@@ -116,13 +140,12 @@ export function explodeBarrel(b) {
     if (f.stability <= 0 && !f.stunned && f.restunT <= 0) stunFighter(f); // 炸崩 → 可能擊暈
     if (f.pid === LOCAL) v2s.localFlash = 0.32;
   }
-  dlog('BARREL boom @', Math.round(b.x) + ',' + Math.round(b.y));
+  dlog('BARREL boom @', Math.round(b.x) + ',' + Math.round(b.y), 'as', elem);
 }
 export function updateBarrels(dt) {
   for (const b of barrels) {
-    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; } continue; }
-    if (b.state === 'idle') {
-      for (const f of fighters) { if (f.state === 'alive' && Math.hypot(f.x - b.x, f.y - b.y) < BARREL_IGNITE + f.r) { b.state = 'fuse'; b.fuse = v2s.barrelFuseCur; addText(b.x, b.y - 26, '!', '#ffd36d'); game.sfx.push('dash'); break; } }
-    } else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); }
+    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; } continue; }
+    if (b.state === 'idle') b.charge = floorChargeUnder(b);              // 吸收腳下元素地板(爆時決定爆種);被動近距引爆已拿掉
+    else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); } // 升壓到底 → 爆
   }
 }

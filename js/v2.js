@@ -20,7 +20,7 @@ import {
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateIce, updateBarrels, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel } from './v2-items.js';
+import { updatePads, updateIce, updateBarrels, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -202,8 +202,11 @@ function step(dt) {
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];
-  for (const b of barrels) if (b.alive && b.state === 'fuse') // 平時不畫;只有引信中(快爆)才亮出完整爆炸範圍危險環
-    marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: '#ff7a3a', pulse: true, op: 0.92, fill: 0.24, speed: 18 });
+  for (const b of barrels) { // 升壓中=完整危險環(元素色 telegraph);idle 被充能=小光圈(先看得出爆種)
+    if (!b.alive) continue;
+    if (b.state === 'fuse') marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: barrelChargeColor(b.charge), pulse: true, op: 0.92, fill: 0.24, speed: 18 });
+    else if (b.charge) marks.push({ x: b.x, y: b.y, r: b.r + 12, color: barrelChargeColor(b.charge), pulse: true, op: 0.5, fill: 0.18, speed: 3 });
+  }
   for (const z of iceZones) marks.push({ x: z.x, y: z.y, r: z.r, color: '#bfe9ff', pulse: false, op: 0.4, fill: 0.28 }); // 冰面
   for (const p of pads) if (p.item) marks.push({ x: p.x, y: p.y, r: 24, color: ITEM_INFO[p.item].color, pulse: true, op: 0.5, fill: 0.12, speed: 4 }); // 補給座光圈
   if (v2s.lowFlicker) for (const m of marks) m.pulse = false; // 減閃爍:標記全改常亮
