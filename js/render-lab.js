@@ -3,8 +3,9 @@
 // sRGB 輸出、PCFSoft 陰影、局部點光源。只在 v2.html 啟用(每頁獨立 renderer,單機零影響)。
 // 原型單位:1 unit = 1 tile;我們的世界:1 tile = 32px → 一律乘 LAB_SCALE 換算,
 // builder 幾乎逐字移植。碰撞/模擬完全不動(牆的碰撞仍在 30×20 核心邊界)。
-import { W, H, TILE } from './constants.js';
+import { W, H, TILE, COLS, ROWS } from './constants.js';
 import { renderer, scene } from './render-core.js';
+import { floor as floorGrid, FL } from './v2-floor.js'; // 地板化學狀態(唯讀);render→v2-floor 同 render→sim 方向,無循環
 
 const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
 const CX = W / 2, CZ = H / 2;           // 場地中心(世界px)
@@ -19,6 +20,46 @@ export const LAB = { SCENE_W, SCENE_D, CORE_W, CORE_D, CX, CZ, S: LAB_SCALE };
 export const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
 export const labAnimated = [];          // { update(t, dt) } — updateLabScene 每幀跑
 let labBuilt = false;
+
+/* ---------- 地板化學動態 tile(第四刀 MVP 粗色塊)----------
+   讀 v2-floor 的狀態格,每幀更新一層貼在地板上的半透明 quad。危險醒目、底料低調;
+   衰退最後 40% 淡出、cell.warn 期閃爍(用 updateLabScene 傳入的 ta → LOW_FLICKER 時凍結,光敏無障礙)。
+   之後要精緻化(粒子/符文/加色發光)只換這裡的材質,狀態機/邏輯層完全不動。 */
+const FLOOR_FX_COL = {          // MVP 顏色
+  [FL.FIRE]: 0xff6a2a, [FL.ICE]: 0xbfe6ff, [FL.POISON]: 0xa24bd8,
+  [FL.CHARGED]: 0x8fdcff, [FL.WATER]: 0x2f6a9a, [FL.OIL]: 0x171720,
+};
+const FLOOR_FX_ALPHA = {       // 底料低調、危險醒目
+  [FL.FIRE]: 0.60, [FL.ICE]: 0.50, [FL.POISON]: 0.50,
+  [FL.CHARGED]: 0.60, [FL.WATER]: 0.34, [FL.OIL]: 0.52,
+};
+let floorFxGroup = null, floorFxGeo = null;
+const floorFxPool = [];
+function getFloorTile(i) {
+  if (floorFxPool[i]) return floorFxPool[i];
+  if (!floorFxGeo) { floorFxGeo = new THREE.PlaneGeometry(TILE, TILE); floorFxGeo.rotateX(-Math.PI / 2); }
+  const m = new THREE.Mesh(floorFxGeo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
+  m.renderOrder = 2; m.visible = false; floorFxGroup.add(m); floorFxPool[i] = m; return m;
+}
+function updateFloorFx(ta) {
+  if (!floorFxGroup) return;
+  let i = 0;
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const c = floorGrid[y][x];
+    if (!c) continue;
+    const col = FLOOR_FX_COL[c.st]; if (col === undefined) continue;
+    const m = getFloorTile(i++);
+    m.visible = true;
+    m.position.set(x * TILE + TILE / 2, 0.6, y * TILE + TILE / 2);
+    let a = FLOOR_FX_ALPHA[c.st] ?? 0.5;
+    const frac = c.max > 0 ? c.ttl / c.max : 1;
+    if (frac < 0.4) a *= Math.max(0, frac / 0.4);                       // 衰退最後 40% 淡出
+    if (c.warn) a *= 0.55 + 0.45 * Math.sin(ta * 18);                   // 預警閃爍(ta 凍結時不閃 = 光敏友善)
+    m.material.color.setHex(col);
+    m.material.opacity = Math.max(0, a);
+  }
+  for (; i < floorFxPool.length; i++) floorFxPool[i].visible = false;   // 隱藏本幀沒用到的池 mesh
+}
 
 /* ---------- 地板貼圖(v2_10 工業改版:灰綠金屬石磚 + 凹陷維護縫[淡琥珀維護電流]+ 稀疏符文汙染;
    map+emissive 雙貼圖;canvas 逐字移植自使用者原型,像素空間不吃 LAB_SCALE) ---------- */
@@ -354,6 +395,10 @@ export function initLabScene() {
   floor.rotation.x = -Math.PI / 2; floor.position.set(CX, -0.5, CZ);
   floor.receiveShadow = true;
   scene.add(floor);
+
+  // 地板化學動態層(世界座標,獨立於 labGroup 縮放)+ 註冊每幀更新
+  floorFxGroup = new THREE.Group(); scene.add(floorFxGroup);
+  labAnimated.push({ update: (ta) => updateFloorFx(ta) });
 
   // 中央分揀陣列(收容艙腳下)+ 琥珀點光。不旋轉 —— 四向元素導軌箭頭要固定指向四方,轉了就錯位。
   const circleMat = new THREE.MeshBasicMaterial({
@@ -1121,7 +1166,7 @@ function buildCoreCombatGuide() {
 // dt 照常傳 → 純運動(魔塵/氣泡/旋轉)不受影響。雷電弧另在自己的 updater 裡讀這旗標。
 export let LOW_FLICKER = false;
 export function setLabFlicker(low) { LOW_FLICKER = low; }
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;
