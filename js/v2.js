@@ -15,7 +15,7 @@ import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
   resetFighter, resetBarrels, resetPads, resetStage, resetStations,
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
-  stations, STATION_WARN, ERUPT_PATCH_R,
+  stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
   camRig, CAMB,
 } from './v2-state.js';
@@ -209,9 +209,11 @@ function step(dt) {
   game.enemies = fighters.filter(f => f.state !== 'down');
   // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
   game.props = barrels.filter(b => b.alive).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
+  game.props.push({ x: labSwitch.x, y: labSwitch.y, r: labSwitch.r, charge: 'lightning', hp: 1, maxHp: 1, held: false }); // 中央緊急控制台(佔位=藍色發光箱)
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];
+  if (!labSwitch.armed) marks.push({ x: labSwitch.x, y: labSwitch.y, r: labSwitch.r + 12, color: '#ff9a4a', pulse: true, op: 0.8, fill: 0.2, speed: 5 }); // 未啟動=琥珀脈衝邀請揍它;啟動後熄
   for (const b of barrels) { // 升壓中=完整危險環(元素色 telegraph);idle 被充能=小光圈(先看得出爆種)
     if (!b.alive) continue;
     if (b.state === 'fuse') marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: barrelChargeColor(b.charge), pulse: true, op: 0.92, fill: 0.24, speed: 18 });
@@ -271,7 +273,7 @@ function frame(now) {
 // --- boot ---
 window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   restartMatch,
-  POD, barrels, explodeBarrel, stations, updateStations, CAMB, camRig,
+  POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   punch, startCarry, stunFighter, throwCarried, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),

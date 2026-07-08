@@ -74,7 +74,9 @@ export const stations = [
   { x: 150, y: 490, elem: 'poison',    state: 'idle', warnT: 0 }, // 西南
   { x: 810, y: 490, elem: 'lightning', state: 'idle', warnT: 0 }, // 東南
 ];
-export function resetStations() { for (const s of stations) { s.state = 'idle'; s.warnT = 0; } }
+// 總開關(§10.1):貼近清運口的緊急控制台,揍它一下 arm 四站循環,單向不可關;開局平靜。
+export const labSwitch = { x: 480, y: 250, r: 16, armed: false };
+export function resetStations() { for (const s of stations) { s.state = 'idle'; s.warnT = 0; } labSwitch.armed = false; v2s.stationsArmed = false; }
 
 // --- 道具系統 (spec F §3/§4): 補給座撿即用, 只拿 1, 用完即空 ---
 export const ITEM_TYPES = ['wind', 'teleport', 'ice'];
@@ -123,7 +125,7 @@ export const v2s = {
   barrelRespawnCur: BARREL_RESPAWN, barrelFuseCur: BARREL_FUSE, // 階段升級後的現值(*Cur)
   padRespawnCur: PAD_RESPAWN, slideContainCur: SLIDE_CONTAIN_V,
   stationTimer: STATION_INTERVAL, stationIntervalCur: STATION_INTERVAL, lastStationIdx: -1, // 元素站輪替(隨機不連續)
-  stationsArmed: true,                        // 總開關(A 刀 always-on;B 刀改開局 false、揍開關 arm)
+  stationsArmed: false,                       // 總開關:開局平靜,揍中央控制台(labSwitch)才 arm 四站循環(單向)
   matchOver: false, report: null,            // 對局結束旗標 + 事故報告物件
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝

@@ -8,7 +8,7 @@ import { game, keys, mouse, CAM, touchInput } from './state.js';
 import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  SPEED, POD, inPod, iceAt, resetFighter, applyStage, barrels,
+  SPEED, POD, inPod, iceAt, resetFighter, applyStage, barrels, labSwitch,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, FINISHER_KNOCK,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
@@ -222,6 +222,16 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     if (d > PUNCH_RANGE + b.r) continue;
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) <= PUNCH_CONE) { b.state = 'fuse'; b.fuse = v2s.barrelFuseCur; addText(b.x, b.y - 26, '升壓！', '#ffd36d'); hit = true; }
+  }
+  if (!labSwitch.armed) { // 揍中央緊急控制台 → arm 四站洩漏循環(單向不可關;§10.1)
+    const dx = labSwitch.x - f.x, dy = labSwitch.y - f.y, d = Math.hypot(dx, dy);
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (d <= PUNCH_RANGE + labSwitch.r && Math.abs(da) <= PUNCH_CONE) {
+      labSwitch.armed = true; v2s.stationsArmed = true; hit = true;
+      addText(labSwitch.x, labSwitch.y - 34, '收容失控！四角開始洩漏', '#ff9a4a');
+      addRing(labSwitch.x, labSwitch.y, 64, '#ff9a4a', 0.6, 7); addShake(9); addHitstop(0.12); game.sfx.push('explosion');
+      dlog('SWITCH ARMED → stations live');
+    }
   }
   // 命中回饋分級:終結技最重(定格/鏡頭踹/重音)
   if (hit) {
