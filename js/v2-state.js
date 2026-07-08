@@ -82,6 +82,11 @@ export function resetPads() { for (const p of pads) { p.item = randItem(); p.res
 export const iceZones = []; // { x, y, r, life }
 export function iceAt(x, y) { for (const z of iceZones) if (Math.hypot(x - z.x, y - z.y) <= z.r) return true; return false; }
 
+// --- 地板化學壽命 (docs/v2-floor-state-architecture.md §3.1;危險度↔壽命反比:鋪陳長/佈場中/主動殺傷短) ---
+// key 對齊 v2-floor.js 的 FL.* 狀態字串;charged_water = 電荷壽命(到期退回水,不重置水的底料時鐘)。
+export const FLOOR_LIFE = { oil: 10, water: 10, poison: 8, ice: 8, fire: 4, charged_water: 4 }; // 秒
+export const FLOOR_WARN = 1; // 最後 1s 進入閃爍預警(render 吃 cell.warn)
+
 // --- 三階段收容升級 (spec F §2.5) 的資料表 ---
 export const STAGE_NAME = ['普通', '黃色警戒', '全面失控'];
 export const STAGE_BANNER = ['臨時收容成功！樣本逃逸', '高危險樣本再收容！基地警戒升級'];
