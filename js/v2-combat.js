@@ -14,9 +14,11 @@ import {
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   THROW_FORCE, THROW_TUMBLE, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   ICE_ACCEL, ICE_FRICTION, STAGE_NAME, STAGE_BANNER,
+  FIRE_STAB_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
 import { FREEFORM, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
 import { generateReport } from './v2-report.js';
+import { stateAtPixel, floorEvents, FL } from './v2-floor.js';
 
 // camera-relative basis (mirrors main.js buildInput) so screen-up = forward at any azimuth
 export function camRel(sx, sy) {
@@ -62,6 +64,42 @@ export function hitsFighter(f, nx, ny) {
   }
   return false;
 }
+// --- 地板化學讀取 (docs/v2-floor-state-architecture.md 第二刀):踩冰滑 / 踩電水硬直 / 站火海·毒區削穩定值 ---
+// 冰面:item 冰(iceZones 圓區)或 地板狀態 FL.ICE 都打滑 → 統一入口(cut 3 冰道具改走地板後 iceZones 退場)。
+export function onSlipperyIce(x, y) { return iceAt(x, y) || stateAtPixel(x, y) === FL.ICE; }
+// 每幀(移動前)呼叫:電水=自電硬直(restunT 節流,避免每幀重暈);火海/毒區=削穩定值 → 歸零擊暈(好抓=收容路徑)。
+export function floorHazards(f, dt) {
+  if (f.state !== 'alive' || f.carriedBy || f.invuln > 0) return;
+  const st = stateAtPixel(f.x, f.y);
+  if (st === FL.CHARGED) {
+    if (!f.stunned && f.restunT <= 0) { stunFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); }
+    return;
+  }
+  if (st === FL.FIRE || st === FL.POISON) {
+    f.stability = Math.max(0, f.stability - (st === FL.FIRE ? FIRE_STAB_DPS : POISON_STAB_DPS) * dt);
+    f.stabCd = 0.3; // 站危險區時暫停穩定值回復
+    if (f.stability <= 0 && !f.stunned && f.restunT <= 0) stunFighter(f);
+  }
+}
+// 消化地板一次性事件(毒爆):範圍削穩定值 + 擊退。v2.js 每幀在 stepFloor 之後呼叫。
+export function drainFloorEvents() {
+  for (const e of floorEvents) {
+    if (e.type !== 'poison_burst') continue;
+    addRing(e.x, e.y, POISON_BURST_R, '#b06bff', 0.45, 6); addShake(5); addHitstop(0.06);
+    addText(e.x, e.y - 30, '毒爆！', '#c98cff'); game.sfx.push('hurt');
+    for (const f of fighters) {
+      if (f.state !== 'alive' || f.carriedBy || f.invuln > 0) continue;
+      const dx = f.x - e.x, dy = f.y - e.y, d = Math.hypot(dx, dy);
+      if (d > POISON_BURST_R + f.r) continue;
+      const a = Math.atan2(dy, dx) || 0;
+      f.vx += Math.cos(a) * POISON_BURST_FORCE; f.vy += Math.sin(a) * POISON_BURST_FORCE;
+      f.stability = Math.max(0, f.stability - POISON_BURST_STAB); f.stabCd = 0.8;
+      f.lastHitBy = -4; f.lastHitT = game.time; flinch(f, a, 0.28); // -4 = 毒爆(環境;歸因細分留待 cut 3)
+      if (f.stability <= 0 && !f.stunned && f.restunT <= 0) stunFighter(f);
+    }
+  }
+  floorEvents.length = 0;
+}
 export function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
   const m = f.ai ? aiMove(f) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 被動假人(非 AI 非本機)不吃方向鍵,原地站
@@ -70,7 +108,7 @@ export function moveFighter(f, dt) {
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
   } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
   const sp = SPEED * (f.carrying ? CARRY_SLOW : 1); // 搬運時變慢
-  if (iceAt(f.x, f.y)) { // 冰面:打滑(走路變成加速度,低摩擦保留動量 → 滑行,可滑進艙)
+  if (onSlipperyIce(f.x, f.y)) { // 冰面:打滑(走路變成加速度,低摩擦保留動量 → 滑行,可滑進艙)
     f.vx += m.x * sp * ICE_ACCEL * dt; f.vy += m.y * sp * ICE_ACCEL * dt;
     const vv = Math.hypot(f.vx, f.vy), vmax = sp * 1.4; if (vv > vmax) { f.vx *= vmax / vv; f.vy *= vmax / vv; }
     const isx = f.vx * dt, isy = f.vy * dt;

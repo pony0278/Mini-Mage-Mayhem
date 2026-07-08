@@ -19,8 +19,9 @@ import {
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
 import { updatePads, updateIce, updateBarrels, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel } from './v2-items.js';
+import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
 
@@ -28,7 +29,7 @@ let prevLocalSolid = true; // track when YOU step off solid ground (isles diagno
 
 // --- round / match orchestration ---
 function resetRound() {
-  resetBarrels(); resetPads(); iceZones.length = 0;
+  resetBarrels(); resetPads(); iceZones.length = 0; resetFloor();
   for (const f of fighters) resetFighter(f);
 }
 function restartMatch() {
@@ -122,6 +123,7 @@ function step(dt) {
   else {
     pollAction(); pollItem(); pollGuard(); pollContext();
     pollTouchButtons(); pollTouchGuard();
+    stepFloor(dt); // 地板化學:火沿油滾動 + 每格衰退/預警 + 電水雙計時器(注入=道具/站;cut 3 接)
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
       // cooldown timers
@@ -154,8 +156,10 @@ function step(dt) {
         }
         continue;
       }
+      floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
       if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
     }
+    drainFloorEvents(); // 毒爆等一次性事件 AoE(本幀 stepFloor/道具注入產生的)
     // 搬運: 被搬者跟隨在搬運者身前 + 全程掙脫 + 拖進艙 = 收容
     for (const f of fighters) {
       if (!f.carrying) continue;
@@ -178,7 +182,7 @@ function step(dt) {
       if (f.state !== 'alive' || f.carriedBy || f.carrying || f.invuln > 0) continue;
       const thrown = inThrowFlight(f);
       if ((f.stunned || thrown || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
-        const cause = thrown ? 'throw' : iceAt(f.x, f.y) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind');
+        const cause = thrown ? 'throw' : onSlipperyIce(f.x, f.y) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind');
         containByEnviron(f, cause); break;
       }
     }

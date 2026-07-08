@@ -86,6 +86,10 @@ export function iceAt(x, y) { for (const z of iceZones) if (Math.hypot(x - z.x, 
 // key 對齊 v2-floor.js 的 FL.* 狀態字串;charged_water = 電荷壽命(到期退回水,不重置水的底料時鐘)。
 export const FLOOR_LIFE = { oil: 10, water: 10, poison: 8, ice: 8, fire: 4, charged_water: 4 }; // 秒
 export const FLOOR_WARN = 1; // 最後 1s 進入閃爍預警(render 吃 cell.warn)
+// 地板危險對角色(第二刀):stability→0 = 擊暈 = 好抓 = 收容路徑(火/毒不直接扣血,削穩定值)。
+export const FIRE_STAB_DPS = 60;   // 站火海每秒削穩定值(~1.7s 從滿到暈)
+export const POISON_STAB_DPS = 32; // 站毒區較慢(慌張計時器,逼離開;不是主力擊殺)
+export const POISON_BURST_R = 72, POISON_BURST_STAB = 45, POISON_BURST_FORCE = 260; // 毒爆一次性 AoE
 
 // --- 三階段收容升級 (spec F §2.5) 的資料表 ---
 export const STAGE_NAME = ['普通', '黃色警戒', '全面失控'];
