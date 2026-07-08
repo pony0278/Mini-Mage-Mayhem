@@ -15,7 +15,7 @@
 | [v2-spec-B-ownership.md](v2-spec-B-ownership.md) | **規格 B（測試計畫）**：鋪設→累積→引爆的 ownership；旋鈕起始值 + A/B 測法 + kill-criteria |
 | [v2-spec-C-share.md](v2-spec-C-share.md) | **規格 C（增長引擎）**：最大災難回顧 / 一鍵分享截圖卡（站在 A 鏡頭 + B 歸因上）|
 | [v2-spec-elements.md](v2-spec-elements.md) | **元素/融合/取得**：融合搬到地板成環境反應；元素＝空間動詞；MVP 對稱固定 kit |
-| [v2-element-floor-chemistry.md](v2-element-floor-chemistry.md) | **地板化學（元素反應藍圖）**：一格一狀態（取代非疊層）+ ~6 條招牌反應表（複用單機火燃油/雷導水/火引爆毒）+ 地板狀態機 + 兩個已答複合情境 + 場地洩漏掛鉤；元素災難＝送人進艙的工具 |
+| [v2-element-floor-chemistry.md](v2-element-floor-chemistry.md) | **地板化學（元素反應藍圖）**：一格一狀態（取代非疊層）+ ~6 條招牌反應表（複用單機火燃油/雷導水/火引爆毒）+ 地板狀態機 + 兩個已答複合情境 + 場地洩漏掛鉤；**§9 元素×道具對照（7 元素投放原型 + 四項定案：土 deferred／元素vs工具分桶／水=濕地+擊倒／火雷退化單發 + 建模順序）** |
 | [v2-spec-D-arenas.md](v2-spec-D-arenas.md) | **規格 D（地圖 + loop）**：搶獎盃→Boss 甦醒→追逐；浮島四周墜落（render-only）；斷橋孤島落地 + 型錄 + 落地順序 |
 | [v2-spec-E-incident-report.md](v2-spec-E-incident-report.md) | **規格 E（北極星再定位）**：魔法事故報告/收容測試；吸收 C 為核心；收容狀態機 + 報告 schema + 等級 + V0.8/0.9/1.0 路線；可重用零件對照 |
 | [v2-spec-F-spells-items.md](v2-spec-F-spells-items.md) | **規格 F（法術系統再定義）**：撿即用道具取代升級樹；基礎動詞改「揮拳→擊暈→抓→搬→入倉」（陣風降為道具，取代 E §4）；道具 5 動詞框架 + 補給座/只拿1 + MVP 道具集（風/傳送/冰+爆桶）；**§2.5 回合模型：三階段收容升級（軟重整取代完全重置）**；報告吃道具故事 |

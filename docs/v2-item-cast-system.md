@@ -102,6 +102,22 @@ if (f._itemCastAt && game.time>=f._itemCastAt) resolveItemCast(f);
 3. **施法承諾**:短承諾、**可被打斷**、施法中**不能同時揮拳**;**傳送 `delay:0` 瞬發**不受此限。
 4. **分類**:不做 category enum,用 `ITEM_SPEC` 正交欄位;`whileDisabled` 取代 `!=='teleport'` 硬編碼。
 
+## 元素道具接軌(2026-07,見 [v2-element-floor-chemistry.md](v2-element-floor-chemistry.md) §9)
+
+道具正式定為 **7 元素 + 工具道具** 兩類,同一張 `ITEM_SPEC`,靠 `kind` 區分:
+
+- **`kind` 分類定案**:元素道具(`blast`/`hazard`/`field`…,吃地板化學、有連段角色)vs 工具道具
+  (`mobility`…,不吃地板、廢料科技風)。**MVP 工具桶只放傳送一個**。這正是既有 `kind` 純標籤欄位的用途,
+  不用開第二張表。
+- **投放原型 × 骨架**:7 個元素對應 7 種不重疊投放原型。其中 **5 個(水砸/毒放置/冰投/油投/風近戰)= 單一 impact**,
+  直接吻合現有 `_itemCastAt` 骨架。**火(持續火柱=channel)/ 雷(纏→灌→拉=多階段)撐破單 impact 模型**。
+  - **MVP 落地**:火/雷**先退化成單發**塞現有骨架(火=一發短噴點油、雷=一發電擊),七個全走現行 `_itemCastAt`。
+  - **第二層(驗穩後,純加法)**:`ITEM_SPEC` 加 `impact:'point'|'channel'`;`channel` 類把 `_itemCastAt`
+    從「一個時刻」擴成「一個區間 `[start,end]`」逐幀 tick;雷再疊「階段時間點陣列」(命中/灌電區間/拉近幀)。
+    `point` 類不動,只有 `channel` 走新分支——比照下方「骨架先出、逐列開」策略。
+- **水的定位**:`kind:'field'`(造濕地餵地板 R2)+ 砸中**短擊倒**(空間動詞,好抓送進艙);直擊只是佐料。
+- **建模/開列順序**:油+火+風(最小連段迴圈)→ 水+雷 → 冰+毒(見 floor-chemistry §9.2)。
+
 ## 落地策略:骨架先出、行為零改變
 
 `ITEM_SPEC` 一開始全填 `clip:null / delay:0` → **所有道具仍瞬發**(跟現在一模一樣),只是多了「次數」。
