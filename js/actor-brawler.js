@@ -157,6 +157,12 @@ function setArmHand(arm, mode) {                                    // mode: 'gl
   arm.handOpen.visible = mode === 'open';
 }
 function updateHands(e, R, u, now) {
+  // ?avatar=1:方塊人是隱形 driver、avatar 才是可見角色。手模掛在方塊人手腕,若顯示會穿出 avatar
+  // 身體外(box rig 與 avatar 形狀/比例不同)→ avatar 模式全程不顯示(也不建立)。手模功能只給方塊人。
+  if (avatarEnabled() && avatarReady()) {
+    for (const a of [R.armL, R.armR]) { if (a.handGrip) a.handGrip.visible = false; if (a.handOpen) a.handOpen.visible = false; }
+    return;
+  }
   if (!handsReady()) { R.armL.fist.visible = true; R.armR.fist.visible = true; return; }
   const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0 });
   let mode = 'glove';
