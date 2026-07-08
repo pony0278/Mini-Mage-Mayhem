@@ -137,6 +137,7 @@
       </div>
       <div class="ref-row">
         <label class="filebtn" title="逐一/多檔載入單一部位 GLB(檔名需含 head/torso/upper_arm_l…)">＋ 逐一載入部位<input type="file" id="partsFiles" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" multiple></label>
+        <label class="filebtn" title="載入任意道具 GLB 掛到「下方選定的 slot」(如 HEADGEAR 頭戴)。不靠檔名對應——先在下方選 slot,再載入,然後用 scale/x/y/z/rot 校準,最後「匯出對位 JSON」">🎩 載入裝備到選定 slot<input type="file" id="partsEquip" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
         <button id="partsDummyToggle" title="隱藏/顯示原本幾何假人，只保留關節群組與載入模型">隱藏假人</button>
         <button id="partInspectTpose" title="暫時把手臂平舉成 T-pose,讓上臂離開肋廓,確認肩→肘→腕→手接合(不影響存的 phases)">組裝檢視 T-pose</button>
         <button id="partsClear">清除部位</button>

@@ -353,6 +353,24 @@ const SOCKETS_JSON_RAW =
  },
  "equipment_mounts": [
   {
+   "mount_id": "headgear",
+   "bone": "head",
+   "overlay_class": "helmet",
+   "transform": {
+    "offset": [
+     0,
+     0,
+     0
+    ],
+    "rot_euler_deg": [
+     0,
+     0,
+     0
+    ]
+   },
+   "_note": "頭戴道具(火帽/過熱核心噴火帽等);PS 掛 headPivot,對位用校準滑桿→匯出 EQUIP_CAL"
+  },
+  {
    "mount_id": "armguard.l",
    "bone": "lowerarm.R",
    "transform": {

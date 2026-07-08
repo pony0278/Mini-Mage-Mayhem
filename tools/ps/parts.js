@@ -35,6 +35,7 @@ const PS_RIG_TARGET = {
   cloak:       ()=>headPivot,
   pouch:       ()=>spine,
   bow:         ()=>armR && armR.wr,
+  headgear:    ()=>headPivot,                 // 頭戴道具(火帽…);掛頭骨,對位用校準滑桿
 };
 
 // (2) 中文標籤(未列者自動用 slot 名)
@@ -46,6 +47,7 @@ const PS_SLOT_LABEL = {
   thigh_r:'THIGH_R 右大腿', calf_r:'CALF_R 右小腿', foot_r:'FOOT_R 右腳',
   armguard_l:'ARMGUARD_L 左護腕', armguard_r:'ARMGUARD_R 右護腕',
   cloak:'CLOAK 披風', pouch:'POUCH 腰包', bow:'BOW 弓/武器',
+  headgear:'HEADGEAR 頭戴道具',
 };
 
 // (3) sockets.json 讀取 + slot 推導
@@ -95,6 +97,7 @@ const PART_SLOT_DEFS_FALLBACK = [
   {slot:'cloak',label:'CLOAK 披風',target:()=>headPivot},
   {slot:'pouch',label:'POUCH 腰包',target:()=>spine},
   {slot:'bow',label:'BOW 弓/武器',target:()=>armR && armR.wr},
+  {slot:'headgear',label:'HEADGEAR 頭戴道具',target:()=>headPivot},
 ];
 
 const SOCKETS_DATA = readSocketsJson();
@@ -413,6 +416,36 @@ async function loadPartFiles(files){
   for(const f of Array.from(files||[])){ if(await loadPartFile(f)) ok++; }
   updatePartsStatus(ok ? `載入完成：${ok} 個部位。可用下方 scale/x/y/z/rot 微調對位。` : undefined);
 }
+// 裝備載入(通用):不靠檔名對應,直接把整個 GLB 掛到「目前選定的 slot」(如 headgear)。
+// 供任意單網格道具(火帽等)——選 slot → 載入 → 用校準滑桿眼睛喬 → 匯出對位 JSON(= EQUIP_CAL)。
+window.__PS_EQUIP_TARGET_SLOT = 'headgear';    // 預設頭戴;__ps 測試/UI 可覆寫
+async function loadEquipFile(file){
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
+  const sel = document.getElementById('partSlotSelect');
+  const slot = (sel && sel.value) || window.__PS_EQUIP_TARGET_SLOT;
+  if(!getPartTarget(slot)){ updatePartsStatus(`slot「${slot}」在目前 rig 沒有掛點,無法掛裝備。`); return false; }
+  const loader = new THREE.GLTFLoader();
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((res,rej)=>loader.load(url,res,undefined,rej));
+    const obj = gltf.scene || gltf.scenes[0];
+    obj.name = 'PUNCH_EQUIP_'+slot;
+    attachPart(slot, obj);
+    updatePartsStatus(`已載入裝備 ${file.name} → ${slot}。用下方 scale/x/y/z/rot 校準對位,再「匯出對位 JSON」(= 遊戲的 EQUIP_CAL)。`);
+    return true;
+  }catch(err){ console.error(err); updatePartsStatus(`裝備載入失敗:${file.name} — ${err.message||err}`); return false; }
+  finally{ URL.revokeObjectURL(url); }
+}
+// headless 健檢 hook(比照 __v2/__mpe;獨立命名空間,避免被 game-bridge 的 window.__ps 覆寫)。
+window.__psEquip = {
+  slots: ()=>PART_SLOT_DEFS.map(d=>d.slot),
+  partInfo: (slot)=>{ const o=PART_MODELS[slot]; if(!o) return null; return { slot, mounted:true, onHeadPivot:o.parent===headPivot, cfg:partCfg(slot) }; },
+  loadEquipBuffer: (ab, slot='headgear')=> new Promise((resolve,reject)=>{
+    if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
+    const s=document.getElementById('partSlotSelect'); if(s) s.value=slot;
+    new THREE.GLTFLoader().parse(ab, '', (gltf)=>{ const obj=gltf.scene||gltf.scenes[0]; obj.name='PUNCH_EQUIP_'+slot; try{ attachPart(slot,obj); resolve(true); }catch(e){ reject(e); } }, reject);
+  }),
+};
 function buildPartSlotUI(){
   const sel=document.getElementById('partSlotSelect'); if(!sel) return;
   sel.innerHTML='';
@@ -440,6 +473,7 @@ function buildPartSlotUI(){
     e.target.value='';   // 允許同一檔重新上傳再次觸發
   });
   document.getElementById('partsFiles')?.addEventListener('change',e=>loadPartFiles(e.target.files));
+  document.getElementById('partsEquip')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadEquipFile(f); e.target.value=''; }); // 裝備→選定 slot
   document.getElementById('partsClear')?.addEventListener('click',()=>clearParts());
   document.getElementById('partsDummyToggle')?.addEventListener('click',()=>{
     PARTS_HIDE_DUMMY=!PARTS_HIDE_DUMMY;
