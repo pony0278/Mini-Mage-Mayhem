@@ -13,14 +13,15 @@ import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, 
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
-  resetFighter, resetBarrels, resetPads, resetStage,
+  resetFighter, resetBarrels, resetPads, resetStage, resetStations,
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
+  stations, STATION_WARN, ERUPT_PATCH_R,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateIce, updateBarrels, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel } from './v2-items.js';
+import { updatePads, updateIce, updateBarrels, updateStations, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -29,7 +30,7 @@ let prevLocalSolid = true; // track when YOU step off solid ground (isles diagno
 
 // --- round / match orchestration ---
 function resetRound() {
-  resetBarrels(); resetPads(); iceZones.length = 0; resetFloor();
+  resetBarrels(); resetPads(); resetStations(); iceZones.length = 0; resetFloor();
   for (const f of fighters) resetFighter(f);
 }
 function restartMatch() {
@@ -195,7 +196,7 @@ function step(dt) {
         containByEnviron(f, cause); break;
       }
     }
-    updateBarrels(dt); updatePads(dt); updateIce(dt); // 爆桶 / 補給座重刷 / 冰面消退
+    updateBarrels(dt); updateStations(dt); updatePads(dt); updateIce(dt); // 廢料桶 / 元素站噴發 / 補給座重刷 / 冰面消退
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment, isles)
   const lf = fighters[LOCAL];
@@ -215,6 +216,11 @@ function step(dt) {
     if (!b.alive) continue;
     if (b.state === 'fuse') marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: barrelChargeColor(b.charge), pulse: true, op: 0.92, fill: 0.24, speed: 18 });
     else if (b.charge) marks.push({ x: b.x, y: b.y, r: b.r + 12, color: barrelChargeColor(b.charge), pulse: true, op: 0.5, fill: 0.18, speed: 3 });
+  }
+  for (const s of stations) if (s.state === 'warn') { // 元素站預警:靜態落點圈(元素色淡)+ 收縮倒數環(收到中心=噴)
+    const prog = s.warnT / STATION_WARN, col = elemColor(s.elem); // 1→0
+    marks.push({ x: s.x, y: s.y, r: ERUPT_PATCH_R, color: col, pulse: false, op: 0.36, fill: 0.16 });
+    marks.push({ x: s.x, y: s.y, r: ERUPT_PATCH_R + prog * ERUPT_PATCH_R * 1.7, color: col, pulse: true, op: 0.92, fill: 0, speed: 6 + (1 - prog) * 16 });
   }
   for (const z of iceZones) marks.push({ x: z.x, y: z.y, r: z.r, color: '#bfe9ff', pulse: false, op: 0.4, fill: 0.28 }); // 冰面
   for (const p of pads) if (p.item) marks.push({ x: p.x, y: p.y, r: 24, color: ITEM_INFO[p.item].color, pulse: true, op: 0.5, fill: 0.12, speed: 4 }); // 補給座光圈
@@ -265,7 +271,7 @@ function frame(now) {
 // --- boot ---
 window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   restartMatch,
-  POD, barrels, explodeBarrel, CAMB, camRig,
+  POD, barrels, explodeBarrel, stations, updateStations, CAMB, camRig,
   punch, startCarry, stunFighter, throwCarried, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),

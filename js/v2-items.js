@@ -11,6 +11,7 @@ import {
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, GRAB_RANGE,
+  stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
 import { flinch, camKick, dropCarry, stunFighter } from './v2-combat.js';
@@ -18,7 +19,8 @@ import { stampElement, stateAtPixel, FL } from './v2-floor.js';
 import { circleHitsSolid } from './fx.js';
 
 // 元素 → 顏色(爆炸 tint + 升壓發光 telegraph);wild=未充能野生紫
-const ELEM_COL = { fire: '#ff7a3a', water: '#4da6ff', poison: '#b06bff', ice: '#bfe6ff', oil: '#9a8a5a', wild: '#c98cff' };
+const ELEM_COL = { fire: '#ff7a3a', water: '#4da6ff', poison: '#b06bff', ice: '#bfe6ff', oil: '#9a8a5a', lightning: '#9fd0ff', wild: '#c98cff' };
+export function elemColor(elem) { return ELEM_COL[elem] || ELEM_COL.wild; }
 export function barrelChargeColor(charge) { return ELEM_COL[charge] || ELEM_COL.wild; }
 // 桶下的元素地板 → 充能元素名(idle 時吸收;決定爆種+污染)。clean/無 → null(野生隨機)
 const FLOOR_TO_ELEM = { [FL.FIRE]: 'fire', [FL.ICE]: 'ice', [FL.POISON]: 'poison', [FL.WATER]: 'water', [FL.OIL]: 'oil', [FL.CHARGED]: 'water' };
@@ -203,5 +205,41 @@ export function updateBarrels(dt) {
     }
     if (b.state === 'idle') { if (!b.held) b.charge = floorChargeUnder(b); } // idle:吸收腳下元素(扛在手上不吸,保留原 charge)
     else if (b.state === 'fuse') { b.fuse -= dt; if (b.fuse <= 0) explodeBarrel(b); } // 升壓到底 → 爆(扛在手上也會炸=在手上爆)
+  }
+}
+
+// --- 危險 #2:四角元素站 (§10)。輪流噴發:預警 3s → 徑向脈衝+小削穩 + 殘留元素地板(雷=電擊擊暈無地板)。---
+function eruptStation(s) {
+  s.state = 'idle';
+  const col = elemColor(s.elem), light = s.elem === 'lightning';
+  addRing(s.x, s.y, ERUPT_PATCH_R * 1.25, col, 0.45, 7); addRing(s.x, s.y, ERUPT_PATCH_R * 0.55, '#ffffff', 0.3, 4);
+  hitSpark(s.x, s.y, col, 2.2); addShake(6); addHitstop(0.05); game.sfx.push('explosion');
+  if (!light) stampElement(s.x, s.y, ERUPT_PATCH_R, s.elem);        // 殘留:火/冰/毒 種地板(雷=raw arc 無地板)
+  for (const f of fighters) {
+    if (f.state !== 'alive' || f.invuln > 0) continue;
+    const dx = f.x - s.x, dy = f.y - s.y, d = Math.hypot(dx, dy);
+    if (d > ERUPT_PATCH_R + f.r) continue;
+    const a = Math.atan2(dy, dx) || 0;
+    f.vx += Math.cos(a) * ERUPT_PULSE; f.vy += Math.sin(a) * ERUPT_PULSE; // 徑向脈衝(角落→往中央≈送進艙)
+    f.stability = Math.max(0, f.stability - ERUPT_STAB); f.stabCd = 0.6; f.lastHitBy = -5; f.lastHitT = game.time; // -5 = 元素站
+    flinch(f, a, 0.3);
+    if (light && !f.stunned && f.restunT <= 0) stunFighter(f);       // 雷=電擊擊暈
+    else if (f.stability <= 0 && !f.stunned && f.restunT <= 0) stunFighter(f);
+    if (f.pid === LOCAL) v2s.localFlash = 0.3;
+  }
+  dlog('ERUPT', s.elem, '@', s.x + ',' + s.y);
+}
+export function updateStations(dt) {
+  if (!v2s.stationsArmed) return;                                    // 總開關(B 刀);A 刀 always-on
+  let warning = false;
+  for (const s of stations) { if (s.state === 'warn') { warning = true; s.warnT -= dt; if (s.warnT <= 0) eruptStation(s); } }
+  if (warning) return;                                               // 一次只有一個站在跑
+  v2s.stationTimer -= dt;
+  if (v2s.stationTimer <= 0) {                                       // 輪替:隨機挑一個(不重複上一個)開始預警
+    const pool = stations.map((s, i) => i).filter(i => i !== v2s.lastStationIdx);
+    const idx = pool[Math.floor(Math.random() * pool.length)];
+    stations[idx].state = 'warn'; stations[idx].warnT = STATION_WARN;
+    v2s.lastStationIdx = idx; v2s.stationTimer = v2s.stationIntervalCur;
+    addText(stations[idx].x, stations[idx].y - 30, '洩漏警告！', elemColor(stations[idx].elem)); game.sfx.push('dash');
   }
 }
