@@ -676,17 +676,23 @@ function ghostOffFor(key){
   return (GHOST_FOLLOW[key] && GHOST_FOLLOW[key].off) || {x:0,y:0,z:0};
 }
 // 掛點 → 幽靈原點位置(+設 rotation):
-//  grip='head'=拎頭吊掛:被拎的「頭(=掛點)」固定,身體繞頭以 carry_tilt 傾角旋轉(0=直吊、90=打橫)。
-//    原點在腳底,故 原點 = 頭 − 身高沿(旋轉後的)身體軸;rotation.x=傾角 讓模型跟著轉。逐關鍵格內插=可安排哪幀打橫。
+//  grip='head'=拎頭吊掛:被拎的「頭(=掛點)」固定,身體繞頭轉——pitch(carry_tilt,前後傾/打橫)+
+//    yaw(carry_yaw,左右轉向,繞世界 Y)。合成四元數 R=yaw∘pitch;原點(腳底)= 頭 − R·(0,身高,0);
+//    ghost.quaternion=R 讓模型跟著轉。頭在任何角度都固定在掛點。逐關鍵格內插=安排哪幀打橫/轉多少。
 //  grip='feet'(預設)=原點直接貼掛點(物件坐在手上,不旋轉)。
+const _CQP = new THREE.Quaternion(), _CQY = new THREE.Quaternion(), _CHV = new THREE.Vector3();
+const _CAX = new THREE.Vector3(1,0,0), _CAY = new THREE.Vector3(0,1,0);
 function ghostHoldWorld(key, ghost){
   const cfg = GHOST_FOLLOW[key];
   const m = ghostAnchorWorld(cfg, ghostOffFor(key)); if(!m) return null;
   if((cfg && cfg.grip) === 'head'){
     const h = ghost.userData.h || 0;
-    const t = (typeof CARRY_TILT_NOW !== 'undefined' ? CARRY_TILT_NOW : 0) * Math.PI / 180;
-    ghost.rotation.set(t, 0, 0);                       // 身體隨傾角轉(繞頭)
-    return { x: m.x, y: m.y - h * Math.cos(t), z: m.z - h * Math.sin(t) };  // 頭固定在 m,腳沿身體軸擺出去
+    const pitch = (typeof CARRY_TILT_NOW !== 'undefined' ? CARRY_TILT_NOW : 0) * Math.PI / 180;
+    const yaw   = (typeof CARRY_YAW_NOW  !== 'undefined' ? CARRY_YAW_NOW  : 0) * Math.PI / 180;
+    _CQP.setFromAxisAngle(_CAX, pitch); _CQY.setFromAxisAngle(_CAY, yaw);
+    ghost.quaternion.copy(_CQY).multiply(_CQP);            // R = yaw ∘ pitch(先前後傾,再繞垂直軸左右轉)
+    _CHV.set(0, h, 0).applyQuaternion(ghost.quaternion);   // 頭相對腳底的世界向量
+    return { x: m.x - _CHV.x, y: m.y - _CHV.y, z: m.z - _CHV.z };   // 頭固定在 m
   }
   ghost.rotation.set(0, 0, 0);
   return m;

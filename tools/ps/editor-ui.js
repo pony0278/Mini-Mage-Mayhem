@@ -552,7 +552,7 @@ function mirrorPose(p){
   swap('aL_sx','aR_sx'); swap('aL_sz','aR_sz'); swap('aL_ex','aR_ex'); swap('aL_idle','aR_idle'); swap('aL_scale','aR_scale'); swap('aL_wx','aR_wx');
   swap('lL_hx','lR_hx'); swap('lL_hy','lR_hy'); swap('lL_hz','lR_hz'); swap('lL_kx','lR_kx'); swap('lL_ax','lR_ax'); swap('lL_idle','lR_idle'); swap('lL_scale','lR_scale'); swap('lL_contact','lR_contact'); swap('lL_ty','lR_ty');
   swap('aL_fbase','aR_fbase'); swap('aL_fmid','aR_fmid'); swap('aL_ftip','aR_ftip'); swap('aL_fthumb','aR_fthumb');  // 手指彎曲同號鏡像(左右皆負=往掌心)
-  p.carry_ox = -(p.carry_ox||0);   // 被扛者掛點 X(手局部)鏡像反號;傾角/Y/Z 不變
+  p.carry_ox = -(p.carry_ox||0); p.carry_yaw = -(p.carry_yaw||0);   // 被扛者掛點 X + 轉向 yaw 鏡像反號;傾角/Y/Z 不變
   // Y 軸鏡像時要反號
   const tmpY = p.aL_sy; p.aL_sy = -(p.aR_sy||0); p.aR_sy = -(tmpY||0);
   const tmpWy = p.aL_wy||0; p.aL_wy = -(p.aR_wy||0); p.aR_wy = -tmpWy;

@@ -14,7 +14,7 @@
 | 檔 | 行數± | 職責 | 關鍵全域/函式 |
 |---|---|---|---|
 | `sockets-data.js` | 純資料 | 接縫規格 sockets.json 快照 | `SOCKETS_JSON_RAW` |
-| `pose-data.js` | 450 | 姿勢資料模型 | `POSE_KEYS`(**63 軸**,含左右各 4 手指 `aL_/aR_ f*` + 被扛者 `carry_tilt`/`carry_o{x,y,z}`)、`PRESETS`、`ZERO_POSE`/`GOOFY_IDLE`、`REF_FPS=60`、timeline 修復/命名(`normalizeTimelineInPlace`、`uniqueKeyName`…) |
+| `pose-data.js` | 450 | 姿勢資料模型 | `POSE_KEYS`(**64 軸**,含左右各 4 手指 `aL_/aR_ f*` + 被扛者 `carry_tilt`(pitch)/`carry_yaw`/`carry_o{x,y,z}`)、`PRESETS`、`ZERO_POSE`/`GOOFY_IDLE`、`REF_FPS=60`、timeline 修復/命名 |
 | `rig.js` | 490 | 場景+素體+狀態機 | 相機(`placeCam`,拖曳/滾輪 handler)、`DIM`(素體比例)、**素體節點:`root/pelvis/spine/headPivot/armL/armR/legL/legR`**(arm={sh,el,wr,fist})、`buildCharacter/rebuildCharacter`、**`applyPose(p)`/`lerpPose`**、undo/autosave(`pushHistory`/`STORAGE_KEY`)、`exportJson/importJson`、`getPlayPose` |
 | `hitfeel.js` | 100 | 沙包試打 + **主渲染迴圈 `tick()`** | `triggerHit`、`tick`(每幀:播放/scrub/沙包/渲染) |
 | `editor-ui.js` | 860 | 全部編輯 UI | 滑桿(`bindPoseSliders/refreshSliders`)、timeline(`buildTimelineUI/setActiveKey/addKey/delKey/moveKey`)、phase tabs、`buildPropPanel`(比例面板;角色模式鎖定)、白模/鏡像/T-pose、contact sheet、`showExport/importGd`、`resize` |

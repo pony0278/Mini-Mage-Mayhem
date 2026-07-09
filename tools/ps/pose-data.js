@@ -41,10 +41,11 @@ const POSE_KEYS = [
   // HAND_RIG.{L,R}.{fingers,mid,tips,thumb}。無 rigged 手時這些軸無作用。接近幀 0=張開、抓取幀捲起 → 沿時間軸內插。
   'aL_fbase','aL_fmid','aL_ftip','aL_fthumb',
   'aR_fbase','aR_fmid','aR_ftip','aR_fthumb',
-  // 被扛者傾角+掛點偏移(拎頭吊掛預覽用;逐關鍵格內插)。carry_tilt:0=直吊、90=打橫(繞被拎的頭旋轉)。
-  // carry_o{x,y,z}:掛點偏移(手局部座標,PS 單位),逐幀微調頭貼手的位置。非骨軸,applyPose/applyBrawlerPose 忽略;
-  // parts.js 幽靈消費(CARRY_TILT_NOW/CARRY_OFF_NOW),遊戲端未來旋轉/定位被扛 actor。
-  'carry_tilt', 'carry_ox', 'carry_oy', 'carry_oz'
+  // 被扛者傾角/轉向/掛點偏移(拎頭吊掛預覽用;逐關鍵格內插)。都繞「被拎的頭(掛點)」轉,頭恆貼手。
+  // carry_tilt:pitch 前後傾(0=直吊、90=打橫,繞 X);carry_yaw:yaw 左右轉向(繞垂直 Y;直吊=轉面向、打橫=水平擺);
+  // carry_o{x,y,z}:掛點偏移(手局部座標,PS 單位)。非骨軸,applyPose/applyBrawlerPose 忽略;
+  // parts.js 幽靈消費(CARRY_TILT_NOW/CARRY_YAW_NOW/CARRY_OFF_NOW),遊戲端未來旋轉/定位被扛 actor。
+  'carry_tilt', 'carry_yaw', 'carry_ox', 'carry_oy', 'carry_oz'
 ];
 /** @param {string} k 軸名 @returns {number} 該軸的預設值(scale/stretch=1,其餘=0) */
 function defaultPoseValue(k){
@@ -429,7 +430,8 @@ const SLIDER_GROUPS = [
     ['aR_fthumb', '拇指', -120, 30, 1, '°']
   ]},
   {h:'被扛者(拎人預覽)', cls:'arms', keys:[
-    ['carry_tilt', '傾角(0=直吊 / 90=打橫;繞被拎的頭旋轉,逐關鍵格內插=安排哪幀打橫)', -180, 180, 1, '°'],
+    ['carry_tilt', '傾角 pitch(0=直吊 / 90=打橫;前後傾,繞被拎的頭)', -180, 180, 1, '°'],
+    ['carry_yaw', '轉向 yaw(左右轉;繞垂直軸,直吊=轉面向、打橫=水平擺)', -180, 180, 1, '°'],
     ['carry_ox', '掛點 X(手局部;逐幀微調頭貼手位置)', -3, 3, 0.02, ''],
     ['carry_oy', '掛點 Y(手局部)', -3, 3, 0.02, ''],
     ['carry_oz', '掛點 Z(手局部)', -3, 3, 0.02, ''],
