@@ -662,13 +662,18 @@ function handsMidWorld(){   // 雙手抓握點中點(掌指關節線;無 rigged 
   return a.add(b).multiplyScalar(0.5);
 }
 // 依 cfg 解析幽靈掛點世界座標:單手=該手抓握面 + off(手局部,隨手轉);mid=雙手中點 + off(世界)。
-function ghostAnchorWorld(cfg){
-  const off = cfg && cfg.off || {x:0,y:0,z:0};
+function ghostAnchorWorld(cfg, off){
+  off = off || (cfg && cfg.off) || {x:0,y:0,z:0};
   if(!cfg || cfg.anchor === 'mid'){ const m=handsMidWorld(); if(!m) return null; return m.add(new THREE.Vector3(off.x||0, off.y||0, off.z||0)); }
   const bone = handGripBone(cfg.anchor); if(!bone) return null;
   const pos = new THREE.Vector3(); bone.getWorldPosition(pos);
   const q = new THREE.Quaternion(); bone.getWorldQuaternion(q);
   return pos.add(new THREE.Vector3(off.x||0, off.y||0, off.z||0).applyQuaternion(q));   // off 在手局部座標
+}
+// 被扛者=逐幀掛點偏移(pose 軸 carry_o*,rig 每幀轉存 CARRY_OFF_NOW);其它幽靈=靜態 GHOST_FOLLOW[key].off。
+function ghostOffFor(key){
+  if(key === 'carried' && typeof CARRY_OFF_NOW !== 'undefined') return CARRY_OFF_NOW;
+  return (GHOST_FOLLOW[key] && GHOST_FOLLOW[key].off) || {x:0,y:0,z:0};
 }
 // 掛點 → 幽靈原點位置(+設 rotation):
 //  grip='head'=拎頭吊掛:被拎的「頭(=掛點)」固定,身體繞頭以 carry_tilt 傾角旋轉(0=直吊、90=打橫)。
@@ -676,7 +681,7 @@ function ghostAnchorWorld(cfg){
 //  grip='feet'(預設)=原點直接貼掛點(物件坐在手上,不旋轉)。
 function ghostHoldWorld(key, ghost){
   const cfg = GHOST_FOLLOW[key];
-  const m = ghostAnchorWorld(cfg); if(!m) return null;
+  const m = ghostAnchorWorld(cfg, ghostOffFor(key)); if(!m) return null;
   if((cfg && cfg.grip) === 'head'){
     const h = ghost.userData.h || 0;
     const t = (typeof CARRY_TILT_NOW !== 'undefined' ? CARRY_TILT_NOW : 0) * Math.PI / 180;
@@ -785,22 +790,23 @@ function buildPartSlotUI(){
   document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
   document.getElementById('ghostCarried')?.addEventListener('click',e=>{ toggleCarriedGhost().then(on=>e.target.classList.toggle('on',on)); }); // 對照:被扛者
   document.getElementById('ghostBarrel')?.addEventListener('click',e=>{ e.target.classList.toggle('on', toggleBarrelGhost()); });               // 對照:桶
-  // 幽靈跟手掛點 UI:掛哪隻手/中點 + grip(拎頭吊掛/坐在手上)+ 偏移(單手=手局部);存 localStorage、即時反映
+  // 幽靈跟手掛點 UI:掛哪隻手/中點 + grip(拎頭吊掛/坐在手上)+ 靜態偏移(XYZ,選配)。存 localStorage、即時反映。
+  // 被扛者的 XYZ 偏移改走逐幀 pose 軸(carry_o*),故其 UI 不含 XYZ(只 anchor+grip)。
   function bindGhostFollowUI(key, anchorId, gripId, oxId, oyId, ozId){
     const cfg=GHOST_FOLLOW[key];
     const anchorSel=document.getElementById(anchorId), gripSel=gripId?document.getElementById(gripId):null;
-    const ox=document.getElementById(oxId), oy=document.getElementById(oyId), oz=document.getElementById(ozId);
-    if(!anchorSel||!ox||!oy||!oz) return;
+    const ox=oxId?document.getElementById(oxId):null, oy=oyId?document.getElementById(oyId):null, oz=ozId?document.getElementById(ozId):null;
+    if(!anchorSel) return;
     anchorSel.value=cfg.anchor; if(gripSel) gripSel.value=cfg.grip||'feet';
-    ox.value=cfg.off.x; oy.value=cfg.off.y; oz.value=cfg.off.z;
+    if(ox&&oy&&oz){ ox.value=cfg.off.x; oy.value=cfg.off.y; oz.value=cfg.off.z; }
     const apply=()=>{ cfg.anchor=anchorSel.value; if(gripSel) cfg.grip=gripSel.value;
-      cfg.off={ x:Number(ox.value)||0, y:Number(oy.value)||0, z:Number(oz.value)||0 };
+      if(ox&&oy&&oz) cfg.off={ x:Number(ox.value)||0, y:Number(oy.value)||0, z:Number(oz.value)||0 };
       saveGhostFollow(); if(typeof updateGhostFollow==='function') updateGhostFollow(); };
     anchorSel.addEventListener('change',apply); gripSel && gripSel.addEventListener('change',apply);
-    [ox,oy,oz].forEach(el=>el.addEventListener('input',apply));
+    [ox,oy,oz].forEach(el=>el && el.addEventListener('input',apply));
   }
   bindGhostFollowUI('barrel', 'ghostBarrelAnchor', null, 'ghostBarrelOX', 'ghostBarrelOY', 'ghostBarrelOZ');
-  bindGhostFollowUI('carried', 'ghostCarriedAnchor', 'ghostCarriedGrip', 'ghostCarriedOX', 'ghostCarriedOY', 'ghostCarriedOZ');
+  bindGhostFollowUI('carried', 'ghostCarriedAnchor', 'ghostCarriedGrip');   // 人:XYZ 走逐幀 pose 軸,UI 不含
   // 手指預設鈕:快速把「當前 key」的兩手手指軸套成該形(open/grip/fist);之後在 ARM L/ARM R 群組的
   // 指根/指中/指尖/拇指 滑桿逐手微調(那些是普通姿勢軸,見 pose-data SLIDER_GROUPS)。
   document.querySelectorAll('[data-handpose]').forEach(btn=>btn.addEventListener('click',()=>{
