@@ -12,7 +12,7 @@ import {
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, FINISHER_KNOCK,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
-  THROW_FORCE, THROW_TUMBLE, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
+  THROW_FORCE, THROW_TUMBLE, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   ICE_ACCEL, ICE_FRICTION, STAGE_NAME, STAGE_BANNER,
   FIRE_STAB_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
@@ -260,12 +260,21 @@ export function startCarry(f, o) {
   addText(o.x, o.y - 30, '抓住！', COLORS[f.pid]); addRing(o.x, o.y, 34, COLORS[f.pid], 0.35, 4); addShake(4); game.sfx.push('upgrade');
   dlog('GRAB', NAMES[f.pid], '→', NAMES[o.pid]);
 }
-export function dropCarry(f) { const o = f.carrying; if (o) { o.carriedBy = null; o.stability = Math.max(o.stability, 30); } f.carrying = null; f.regrabCd = REGRAB_CD; }
-// 投擲:扛著的人朝面向方向丟出去 → 翻滾滑行(不能自走)。翻滾中進艙=遠距收容;
-// 丟歪則對方落地恢復=白抓一趟。飛行路過爆桶會點燃引信(updateBarrels 的接近點火,免費湧現)。
+export function dropCarry(f) { const o = f.carrying; if (o) { o.carriedBy = null; o.stability = Math.max(o.stability, 30); } f.carrying = null; f._carryThrowAt = 0; f.regrabCd = REGRAB_CD; }
+// 丟人=排程動作:按下 → 播拎頭過頂 heave clip、人仍扛在手(render 貼手上)→ release 幀才 launchCarried 甩飛。
 export function throwCarried(f) {
   const o = f.carrying;
-  if (!o || f.state !== 'alive' || f.stunned) return;
+  if (!o || f.state !== 'alive' || f.stunned || f._carryThrowAt > 0) return;   // 已在 heave 中 → 不重複
+  f.carryFx = game.time; f.carryClip = 'person_throw';        // 播動畫(render 端 Cut B 消費)
+  f._carryThrowAt = game.time + PERSON_THROW_DELAY;           // release 幀甩飛(v2.js step 判定)
+  game.sfx.push('dash'); addText(f.x, f.y - 34, '舉起！', COLORS[f.pid]);
+}
+// release 幀到:真的把人甩出去(舊 throwCarried 的物理段)。中途被打斷/掙脫 → carrying 沒了 → 取消。
+export function launchCarried(f) {
+  f._carryThrowAt = 0; f.carryClip = null;
+  const o = f.carrying;
+  if (!o || f.state !== 'alive') return;
+  if (f.stunned) { dropCarry(f); return; }                   // release 幀被打暈 → 掉人不甩(同原 throwCarried 守衛)
   f.carrying = null; o.carriedBy = null; o.escape = 0; o.mashSide = 0; f.regrabCd = REGRAB_CD;
   const a = f.facing;
   o.x = f.x + Math.cos(a) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(a) * (f.r + o.r * 0.7);
@@ -283,7 +292,7 @@ export function throwCarried(f) {
 export function inThrowFlight(f) { return f.fumbleT > 0 && game.time - (f._thrownT ?? -9) < THROW_TUMBLE + 0.05; } // 翻滾中(入艙判定用)
 export function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
   const f = o.carriedBy; o.carriedBy = null; o.escape = 0; o.stability = ESCAPE_STAB; inc.struggleEscapes++;
-  if (f) { f.carrying = null; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; f.wasCarryingT = game.time; if (f.pid === LOCAL) v2s.localFlash = 0.28; }
+  if (f) { f.carrying = null; f._carryThrowAt = 0; f.carryClip = null; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; f.wasCarryingT = game.time; if (f.pid === LOCAL) v2s.localFlash = 0.28; }
   addText(o.x, o.y - 30, '掙脫！', COLORS[o.pid]); addRing(o.x, o.y, 32, COLORS[o.pid], 0.35, 4); addShake(5); game.sfx.push('dash');
   dlog('ESCAPE', NAMES[o.pid], 'from', f ? NAMES[f.pid] : '?');
 }
@@ -292,7 +301,7 @@ export function containByCarry(f, o) { // 拖進艙 = 收容成功 (spec F §2.2
   const w = f.pid, rev = isReversal(o);
   inc.contains[w]++; inc.carries[w]++; inc.types.add('contain');
   if (rev) { inc.reverseContains++; inc.types.add('reverse'); }
-  f.carrying = null; o.carriedBy = null;
+  f.carrying = null; f._carryThrowAt = 0; f.carryClip = null; o.carriedBy = null;
   resolveContain(w, o, rev ? 'reverse' : 'carry');
 }
 export function containByEnviron(v, cause) { // 被擊退/打滑失控進艙 → v 被收容, 對手勝(spec F §2.2)
