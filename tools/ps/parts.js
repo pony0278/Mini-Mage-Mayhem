@@ -631,25 +631,42 @@ function toggleBarrelGhost(){
 //   幀 < grab → home;grab ≤ 幀 < release → 貼雙腕中點+偏移(手到哪它到哪);幀 ≥ release → 沿面向(+Z)
 //   以遊戲真實速度飛出(THROW_FORCE 780px/s → 0.52 單位/幀)+ 高度過渡到地面。
 // 掛點:AVATAR 在 → avatar 手骨(畫面上真正的手);否則素體手腕。每幀由 hitfeel tick 呼叫(typeof 守衛)。
-const GHOST_FOLLOW_OFFSET = { carried: 0, barrel: 0 };            // 世界 Y 偏移(單位);貼合不好看再調
+// 每個幽靈的跟手設定:anchor='mid'(雙手中點,適合雙手抬人)/'L'/'R'(單手抓握點,適合桶);
+// off=偏移(單手時=手局部座標,隨手旋轉;mid 時=世界座標)。使用者可在 UI 眼睛喬,存 localStorage。
+const GHOST_FOLLOW = {
+  carried: { anchor:'mid', off:{x:0,y:0,z:0} },   // 被扛者:雙手抬高
+  barrel:  { anchor:'R',   off:{x:0,y:0,z:0} },   // 桶:單手抓(預設右/後手,可改左或中點;off 自己喬進掌心)
+};
+const GHOST_FOLLOW_KEY = 'PS_GHOST_FOLLOW_V1';
+(function loadGhostFollow(){ try{ const s=localStorage.getItem(GHOST_FOLLOW_KEY); if(s){ const j=JSON.parse(s);
+  for(const k of ['carried','barrel']) if(j[k]){ GHOST_FOLLOW[k].anchor=j[k].anchor||GHOST_FOLLOW[k].anchor; Object.assign(GHOST_FOLLOW[k].off, j[k].off||{}); } } }catch(e){} })();
+function saveGhostFollow(){ try{ localStorage.setItem(GHOST_FOLLOW_KEY, JSON.stringify(GHOST_FOLLOW)); }catch(e){} }
 const GHOST_THROW = { speed: (780 / 25) / 60, dropFrames: 12 };   // 速度=js/v2-state THROW_FORCE 換算;墜地過渡幀
 function ghostTagFrames(){
   let gf = null, rf = null;
   try{ for(const k of (SEQ || [])){ if(k.tag === 'grab' && gf === null) gf = k.frame; if(k.tag === 'release' && rf === null) rf = k.frame; } }catch(e){}
   return { gf, rf };
 }
-function handsMidWorld(){
-  const a = new THREE.Vector3(), b = new THREE.Vector3();
-  // 抓握點 = 指尖↔手掌的交接處(Fingers 骨 = 近端指節基部/掌指關節線 = 手實際抓握的面),
-  // 不是手腕關節——用手腕當掛點物件會坐在手背後方、且抬手姿勢會往頭部竄。
-  if(typeof HAND_RIG !== 'undefined' && HAND_RIG && HAND_RIG.L && HAND_RIG.R && HAND_RIG.L.fingers && HAND_RIG.R.fingers){
-    HAND_RIG.L.fingers.getWorldPosition(a); HAND_RIG.R.fingers.getWorldPosition(b);
-  } else if(typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_l && AVATAR.by.hand_r){
-    AVATAR.by.hand_l.bone.getWorldPosition(a); AVATAR.by.hand_r.bone.getWorldPosition(b); // 無 rigged 手時退回手腕
-  } else if(typeof armL !== 'undefined' && armL && armL.wr && armR && armR.wr){
-    armL.wr.getWorldPosition(a); armR.wr.getWorldPosition(b);
-  } else return null;
+// 單手抓握點:回傳該手 Fingers 骨(掌指關節/抓握面)的世界位置 + 骨頭(供把 off 轉到手局部)。
+function handGripBone(side){
+  if(typeof HAND_RIG !== 'undefined' && HAND_RIG && HAND_RIG[side] && HAND_RIG[side].fingers) return HAND_RIG[side].fingers;
+  if(typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by){ const e=AVATAR.by[side==='L'?'hand_l':'hand_r']; if(e && e.bone) return e.bone; }
+  if(typeof armL !== 'undefined'){ const w = side==='L' ? (armL&&armL.wr) : (armR&&armR.wr); if(w) return w; }
+  return null;
+}
+function handsMidWorld(){   // 雙手抓握點中點(掌指關節線;無 rigged 手退回手腕)
+  const bl=handGripBone('L'), br=handGripBone('R'); if(!bl||!br) return null;
+  const a=new THREE.Vector3(), b=new THREE.Vector3(); bl.getWorldPosition(a); br.getWorldPosition(b);
   return a.add(b).multiplyScalar(0.5);
+}
+// 依 cfg 解析幽靈掛點世界座標:單手=該手抓握面 + off(手局部,隨手轉);mid=雙手中點 + off(世界)。
+function ghostAnchorWorld(cfg){
+  const off = cfg && cfg.off || {x:0,y:0,z:0};
+  if(!cfg || cfg.anchor === 'mid'){ const m=handsMidWorld(); if(!m) return null; return m.add(new THREE.Vector3(off.x||0, off.y||0, off.z||0)); }
+  const bone = handGripBone(cfg.anchor); if(!bone) return null;
+  const pos = new THREE.Vector3(); bone.getWorldPosition(pos);
+  const q = new THREE.Quaternion(); bone.getWorldQuaternion(q);
+  return pos.add(new THREE.Vector3(off.x||0, off.y||0, off.z||0).applyQuaternion(q));   // off 在手局部座標
 }
 function updateGhostFollow(){
   const anyGhost = REF_GHOSTS.carried || REF_GHOSTS.barrel;
@@ -662,14 +679,14 @@ function updateGhostFollow(){
     if(gf === null || cur < gf){                                   // 未附著:躺在地面起點
       ghost.position.copy(ud.home); ud.rel = null; continue;
     }
-    if(rf === null || cur < rf){                                   // 附著:貼雙腕中點+偏移
-      const m = handsMidWorld(); if(!m) continue;
-      ghost.position.set(m.x, m.y + (GHOST_FOLLOW_OFFSET[key] || 0), m.z);
+    if(rf === null || cur < rf){                                   // 附著:貼掛點(桶=單手抓握面、被扛者=雙手中點)+偏移
+      const m = ghostAnchorWorld(GHOST_FOLLOW[key]); if(!m) continue;
+      ghost.position.copy(m);
       ud.rel = null; continue;
     }
     if(!ud.rel){                                                   // 脫手:記下脫手點(scrub 倒回會清掉重算)
-      const m = handsMidWorld() || ghost.position;
-      ud.rel = { x: m.x, y: m.y + (GHOST_FOLLOW_OFFSET[key] || 0), z: m.z };
+      const m = ghostAnchorWorld(GHOST_FOLLOW[key]) || ghost.position;
+      ud.rel = { x: m.x, y: m.y, z: m.z };
     }
     const df = cur - rf;
     const drop = Math.min(1, df / GHOST_THROW.dropFrames);
@@ -700,9 +717,11 @@ window.__psEquip = {
   loadHandsBuiltin: loadRiggedHandsBuiltin,
   setHandShow: (m)=>{ HAND_SHOW = m; applyHandShow(); return { show: HAND_SHOW, lVis: PART_MODELS.hand_l ? PART_MODELS.hand_l.visible : null, rVis: PART_MODELS.hand_r ? PART_MODELS.hand_r.visible : null }; },
   toggleCarriedGhost, toggleBarrelGhost,
+  setGhostFollow: (key, cfg)=>{ if(!GHOST_FOLLOW[key]) return null; if(cfg.anchor) GHOST_FOLLOW[key].anchor=cfg.anchor; if(cfg.off) Object.assign(GHOST_FOLLOW[key].off, cfg.off); saveGhostFollow(); if(typeof updateGhostFollow==='function') updateGhostFollow(); return JSON.parse(JSON.stringify(GHOST_FOLLOW[key])); },
+  ghostFollow: ()=>JSON.parse(JSON.stringify(GHOST_FOLLOW)),
   ghosts: ()=>({ carried: !!REF_GHOSTS.carried, barrel: !!REF_GHOSTS.barrel,
-    carriedZ: REF_GHOSTS.carried ? +REF_GHOSTS.carried.position.z.toFixed(3) : null,
-    barrelZ: REF_GHOSTS.barrel ? +REF_GHOSTS.barrel.position.z.toFixed(3) : null }),
+    carriedPos: REF_GHOSTS.carried ? REF_GHOSTS.carried.position.toArray().map(v=>+v.toFixed(3)) : null,
+    barrelPos: REF_GHOSTS.barrel ? REF_GHOSTS.barrel.position.toArray().map(v=>+v.toFixed(3)) : null }),
   handInfo: ()=>{
     if(!HAND_RIG) return null;
     const info = {};
@@ -748,6 +767,17 @@ function buildPartSlotUI(){
   document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
   document.getElementById('ghostCarried')?.addEventListener('click',e=>{ toggleCarriedGhost().then(on=>e.target.classList.toggle('on',on)); }); // 對照:被扛者
   document.getElementById('ghostBarrel')?.addEventListener('click',e=>{ e.target.classList.toggle('on', toggleBarrelGhost()); });               // 對照:桶
+  // 桶跟手掛點:單手/中點 + 手局部偏移(眼睛喬進掌心);存 localStorage、即時反映
+  (function bindBarrelFollowUI(){
+    const anchorSel=document.getElementById('ghostBarrelAnchor');
+    const ox=document.getElementById('ghostBarrelOX'), oy=document.getElementById('ghostBarrelOY'), oz=document.getElementById('ghostBarrelOZ');
+    if(!anchorSel||!ox||!oy||!oz) return;
+    anchorSel.value=GHOST_FOLLOW.barrel.anchor; ox.value=GHOST_FOLLOW.barrel.off.x; oy.value=GHOST_FOLLOW.barrel.off.y; oz.value=GHOST_FOLLOW.barrel.off.z;
+    const apply=()=>{ GHOST_FOLLOW.barrel.anchor=anchorSel.value;
+      GHOST_FOLLOW.barrel.off={ x:Number(ox.value)||0, y:Number(oy.value)||0, z:Number(oz.value)||0 };
+      saveGhostFollow(); if(typeof updateGhostFollow==='function') updateGhostFollow(); };
+    anchorSel.addEventListener('change',apply); [ox,oy,oz].forEach(el=>el.addEventListener('input',apply));
+  })();
   // 手指預設鈕:快速把「當前 key」的兩手手指軸套成該形(open/grip/fist);之後在 ARM L/ARM R 群組的
   // 指根/指中/指尖/拇指 滑桿逐手微調(那些是普通姿勢軸,見 pose-data SLIDER_GROUPS)。
   document.querySelectorAll('[data-handpose]').forEach(btn=>btn.addEventListener('click',()=>{
