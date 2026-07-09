@@ -485,21 +485,8 @@ function applyFingerPose(p){
     }
   }
 }
-// 手指滑桿:slot-aware(選 HAND_L→L 軸、HAND_R→R 軸),寫進「當前 key」的姿勢軸;非手 slot 時停用。
-function fingerSideFromSlot(){
-  const s=document.getElementById('partSlotSelect'); const v=s?s.value:'';
-  return v==='hand_l'?'L': v==='hand_r'?'R': null;
-}
-const HAND_SLIDER_MAP = [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']];
-function refreshFingerSliders(){
-  const side = fingerSideFromSlot();
-  const p = (typeof PHASES!=='undefined' && typeof activePhase!=='undefined' && PHASES[activePhase]) ? PHASES[activePhase] : null;
-  HAND_SLIDER_MAP.forEach(([id,k])=>{
-    const r=document.getElementById(id), n=document.getElementById(id+'Num'); if(!r||!n) return;
-    const on = !!side; r.disabled=!on; n.disabled=!on;
-    if(on && p){ const v=Number(p[FINGER_POSE_AXES[side][k]])||0; r.value=v; n.value=v; }
-  });
-}
+// 手指彎曲滑桿住在主面板的 ARM L / ARM R 群組(pose-data SLIDER_GROUPS),當普通姿勢軸走
+// (bindPoseSliders 綁定、refreshSliders 同步)。這裡只留 applyFingerPose(驅動骨)+ 預設鈕(快速套形)。
 // 預設對位,依掛載對象分兩套:
 // - avatar(chibi 人物,正式基準):手與 avatar 出自同一套 rig → 骨頭已提供 rest 旋轉,
 //   手節點歸零(位置+旋轉)identity 掛上即貼合 → 出廠對位 = identity。
@@ -549,11 +536,10 @@ function mountRiggedHands(gltf){
   if(!av){ PARTS_HIDE_DUMMY = false; setSyntheticDummyVisible(true); } // 假人路徑才需要顯示假人;avatar 路徑完全不動假人(維持隱藏)
   applyFingerPose((typeof PHASES!=='undefined' && typeof activePhase!=='undefined' && PHASES[activePhase]) ? PHASES[activePhase]
     : (typeof ZERO_POSE!=='undefined' ? ZERO_POSE : null));   // 依當前 key 的手指軸擺位(通常張開)
-  refreshFingerSliders();
   applyHandShow(); // 重載時保持目前的雙手/單手顯示模式
   updatePartsStatus(av
-    ? '已載入 rigged 手 → chibi 人物手骨(原生手已隱藏)。選 HAND_L/HAND_R:對位滑桿調掛載、手指滑桿逐關鍵格調彎曲(✋✊👊套雙手起始形);彎曲隨招式匯出。'
-    : '已載入 rigged 手 → 假人手腕(fallback)。選 HAND_L/HAND_R:對位滑桿調掛載、手指滑桿逐關鍵格調彎曲(✋✊👊套雙手起始形)。');
+    ? '已載入 rigged 手 → chibi 人物手骨(原生手已隱藏)。手指彎曲在 ARM L / ARM R 群組滑桿逐關鍵格調(✋✊👊套雙手起始形);彎曲隨招式匯出。'
+    : '已載入 rigged 手 → 假人手腕(fallback)。手指彎曲在 ARM L / ARM R 群組滑桿逐關鍵格調(✋✊👊套雙手起始形)。');
 }
 async function loadRiggedHandsFile(file){
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
@@ -748,8 +734,8 @@ function buildPartSlotUI(){
       const r=document.getElementById(rId), n=document.getElementById(nId); if(r)r.value=c[k]; if(n)n.value=c[k];
     });
   }
-  sel.addEventListener('change',()=>{ refresh(); refreshFingerSliders(); });   // 換 slot 時手指滑桿也重讀(HAND_L/HAND_R 各自軸)
-  refresh(); refreshFingerSliders();
+  sel.addEventListener('change',refresh);
+  refresh();
   document.getElementById('partsBundle')?.addEventListener('change',e=>{
     const f = e.target.files && e.target.files[0];
     if(f) loadPartBundle(f);
@@ -762,26 +748,14 @@ function buildPartSlotUI(){
   document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
   document.getElementById('ghostCarried')?.addEventListener('click',e=>{ toggleCarriedGhost().then(on=>e.target.classList.toggle('on',on)); }); // 對照:被扛者
   document.getElementById('ghostBarrel')?.addEventListener('click',e=>{ e.target.classList.toggle('on', toggleBarrelGhost()); });               // 對照:桶
-  // 手指彎曲滑桿:slot-aware(選 HAND_L→L、HAND_R→R),寫進「當前 key」的姿勢軸(逐關鍵格,沿時間軸內插)。
-  // 骨局部 X 角度、負=往掌心。history 由全域 range-pointerdown 統一 push(見 editor-ui)。
-  HAND_SLIDER_MAP.forEach(([id,k])=>{
-    const r=document.getElementById(id), n=document.getElementById(id+'Num'); if(!r||!n) return;
-    const write=(val)=>{
-      const side=fingerSideFromSlot(); const v=Number(val)||0; r.value=v; n.value=v;
-      if(!side || typeof PHASES==='undefined' || !PHASES[activePhase]) return;
-      PHASES[activePhase][FINGER_POSE_AXES[side][k]] = v;   // tick 的 applyPose→applyFingerPose 會即時反映
-      if(typeof scheduleAutosave==='function') scheduleAutosave();
-    };
-    r.addEventListener('input',e=>write(e.target.value));
-    n.addEventListener('input',e=>write(e.target.value));
-  });
-  // 預設鈕:快速把「當前 key」的兩手手指軸套成該形(open/grip/fist),之後可用滑桿逐手微調
+  // 手指預設鈕:快速把「當前 key」的兩手手指軸套成該形(open/grip/fist);之後在 ARM L/ARM R 群組的
+  // 指根/指中/指尖/拇指 滑桿逐手微調(那些是普通姿勢軸,見 pose-data SLIDER_GROUPS)。
   document.querySelectorAll('[data-handpose]').forEach(btn=>btn.addEventListener('click',()=>{
     const preset=HAND_POSE_PRESETS[btn.dataset.handpose]; if(!preset) return;
     if(typeof PHASES==='undefined' || !PHASES[activePhase]) return;
     if(typeof pushHistory==='function') pushHistory();
     for(const side of ['L','R']) for(const k of Object.keys(preset)) PHASES[activePhase][FINGER_POSE_AXES[side][k]] = Number(preset[k])||0;
-    refreshFingerSliders();
+    if(typeof refreshSliders==='function') refreshSliders();   // 反映到主面板 ARM 群組的手指滑桿
     if(typeof scheduleAutosave==='function') scheduleAutosave();
   }));
   document.getElementById('partsClear')?.addEventListener('click',()=>clearParts());

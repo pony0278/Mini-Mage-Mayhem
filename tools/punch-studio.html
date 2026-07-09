@@ -109,7 +109,7 @@
         <label>rotY</label><input type="range" id="partRY" min="-180" max="180" step="1" value="0"><input id="partRYNum" type="number" step="1" value="0">
         <label>rotZ</label><input type="range" id="partRZ" min="-180" max="180" step="1" value="0"><input id="partRZNum" type="number" step="1" value="0">
       </div>
-      <div class="ref-row" title="手指彎曲=逐關鍵格姿勢(隨時間軸內插):接近幀張開、抓取幀捲起。預設鈕把「當前 key」兩手套成該形,再用下方滑桿逐手微調。左右獨立:先在上方 slot 選 HAND_L 或 HAND_R,下方滑桿就控那隻手">
+      <div class="ref-row" title="手指彎曲=逐關鍵格姿勢(隨時間軸內插):接近幀張開、抓取幀捲起。預設鈕把「當前 key」兩手套成該形;逐手微調在上方 ARM L / ARM R 群組的 指根/指中/指尖/拇指 滑桿(左右獨立)">
         <button data-handpose="open" title="當前 key 兩手 → 張開">✋ 張開</button>
         <button data-handpose="grip" title="當前 key 兩手 → 抓握">✊ 抓握</button>
         <button data-handpose="fist" title="當前 key 兩手 → 握拳">👊 握拳</button>
@@ -118,12 +118,6 @@
       <div class="ref-row" title="對照 stand-in:編扛人/丟人/扛桶動作時的參照幽靈,擺在遊戲真實位置(被扛者=正前方32px地面高度、桶=前方31px)。純參照,不參與姿勢/匯出">
         <button id="ghostCarried" title="半透明紅色 chibi,擺在遊戲扛人的真實位置(再按一次移除)">👤 對照:被扛者</button>
         <button id="ghostBarrel" title="半透明橘色桶佔位箱,擺在遊戲扛桶的真實位置(再按一次移除)">🛢 對照:桶</button>
-      </div>
-      <div class="parts-grid" title="手指彎曲(度,負=往掌心)——寫進「當前 key」的手指軸,逐關鍵格。停用時=上方 slot 不是 HAND_L/HAND_R,先選一隻手">
-        <label>指根</label><input type="range" id="handFingers" min="-120" max="30" step="1" value="0"><input id="handFingersNum" type="number" step="1" value="0">
-        <label>指中</label><input type="range" id="handMid" min="-120" max="30" step="1" value="0"><input id="handMidNum" type="number" step="1" value="0">
-        <label>指尖</label><input type="range" id="handTips" min="-120" max="30" step="1" value="0"><input id="handTipsNum" type="number" step="1" value="0">
-        <label>拇指</label><input type="range" id="handThumb" min="-120" max="30" step="1" value="0"><input id="handThumbNum" type="number" step="1" value="0">
       </div>
       <div id="partsStatus" class="parts-status">尚未載入。最快：用「📦 上傳整包 GLB」一次匯入含全部部位的 bundle(如 tactics5x5_body_parts.glb),自動對應 15 個部位。或用「＋ 逐一載入部位」分檔載入。</div>
     </div>

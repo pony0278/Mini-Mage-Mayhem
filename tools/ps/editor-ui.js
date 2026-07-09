@@ -167,7 +167,6 @@ function refreshSliders(){
     const unit = r.parentElement.querySelector('.unit').textContent;
     document.getElementById('v_'+k).innerHTML=(isFloat?pv.toFixed(2):Math.round(pv))+'<span class="unit">'+unit+'</span>';
   });
-  if(typeof refreshFingerSliders==='function') refreshFingerSliders();   // 手指滑桿(parts.js;slot-aware)隨當前 key 同步
 }
 
 // ===== Timeline marker drag =====

@@ -30,8 +30,9 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 - **素體節點**(rig 定義,parts/avatar/hitfeel 讀):`root/pelvis/spine/headPivot/armL{sh,el,wr,fist}/armR/legL{hp,kn,ankle}/legR`。
   `rebuildCharacter` 會重建它們 → 先 `detachPunchPartsForRebuild()` 後 `reattachPunchPartsAfterRebuild()`(parts 提供,rig 呼叫)。
 - **`applyPose(p)`**(rig):唯一姿勢入口;套姿勢後依序 `updateAvatarPose()`(avatar 世界差量重定向)→ `applyFingerPose(p)`(parts:手指軸→指骨,未掛手 no-op)。
-  新增姿勢軸 = 動 `POSE_KEYS`(pose-data)+ `applyPose`/消費者消費 + 滑桿(editor-ui 主面板;**若軸沒有主面板滑桿要在別處綁**,如手指軸走 parts 的 slot-aware 滑桿)。
-  ⚠ `bindPoseSliders`/`refreshSliders` 現在對「無主面板滑桿的軸」有 `if(!r)return` 守衛——加無滑桿的軸不會炸,但記得補上它的專屬 UI。
+  新增姿勢軸 = 動 `POSE_KEYS`(pose-data)+ `applyPose`/消費者消費 + `SLIDER_GROUPS` 加一列(pose-data;buildPoseGroups 建 DOM、bindPoseSliders 綁)。
+  手指軸(`aL_/aR_ f*`)就住在 ARM L / ARM R 群組,由 parts `applyFingerPose` 消費驅動指骨。
+  ⚠ `bindPoseSliders`/`refreshSliders` 對「無主面板滑桿的軸」有 `if(!r)return` 守衛——沒放進 `SLIDER_GROUPS` 的軸不會炸,但也沒 UI。
 - **`tick()`**(hitfeel)= 唯一 rAF 迴圈:播放進度(`playT`×`REF_FPS`)、scrub、渲染。要每幀跑的東西掛這裡(或它呼叫的函式)。
 - **`PART_MODELS[slot]` 的 parent 不固定**:一般部位=假人節點(`PS_RIG_TARGET`);rigged 手在 avatar 模式=**avatar 手骨**。
   遍歷假人 mesh 判斷「是不是部位」用 `isInsidePartObject(o)`(靠 userData 標記),別用 parent 鏈猜。
@@ -60,7 +61,8 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 - **裝備載入**:UI 走 `#partsEquip`(掛「選定 slot」);程式走 `__psEquip.loadEquipBuffer(ab, slot)`。
 - **rigged 手**:`#handsBuiltin` 一鍵載 `assets/rigs/chibi-hands-rigged.glb`;骨=Hand→Fingers→FingerMid→FingerTips(+Thumb),彎曲軸=骨局部 X、負=往掌心。
   **手指彎曲=逐關鍵格姿勢(左右獨立)**:8 軸 `aL_/aR_ f{base,mid,tip,thumb}` 進 POSE_KEYS,沿時間軸內插(接近幀張開→抓取幀捲起);
-  滑桿是 **slot-aware**(選 HAND_L→寫 `aL_*`、HAND_R→`aR_*`;非手 slot 停用),寫進「當前 key」;預設鈕(✋✊👊)把當前 key 兩手套成該形(`HAND_POSE_PRESETS`)。無獨立匯出——隨 clip 一起走。
+  **滑桿住在主面板 ARM L / ARM R 群組**(pose-data `SLIDER_GROUPS`,緊接腕軸之後),當普通姿勢軸走(bindPoseSliders 綁、refreshSliders 同步、mirror/lerp 涵蓋);
+  parts 面板只留預設鈕(✋✊👊=把當前 key 兩手套成 `HAND_POSE_PRESETS` 形,再 `refreshSliders`)。無獨立匯出——隨 clip 一起走。
 - **對照 stand-in**(編扛人/丟人/扛桶動作的參照幽靈):`#ghostCarried`(半透明紅 chibi)/`#ghostBarrel`(橘桶箱),位置=遊戲真實 offset(`GHOST_ANCHOR`,源自 js/v2.js 搬運 loop:被扛≈前方32px、桶≈31px;PS 1 單位=25px)。**改遊戲搬運常數要同步 GHOST_ANCHOR**。純參照物,直接掛 scene、不參與姿勢/匯出。
   **跟手預覽(tag 驅動)**:key tag 設 `grab`(附著幀)/`release`(脫手幀)→ 幽靈依目前幀:grab 前=地面 home、grab–release=貼**雙手指節基部中點**(`handsMidWorld`:rigged 手在→`HAND_RIG.{L,R}.fingers`=掌指關節線/抓握面;無 rigged 手退回 avatar 手腕→素體腕;`GHOST_FOLLOW_OFFSET` 世界 Y 微調)、release 後=沿 +Z 以遊戲真實速度飛出+落地(`GHOST_THROW`,速度=THROW_FORCE 780px/s 換算)。每幀由 hitfeel `tick()` 的 typeof 守衛呼叫 `updateGhostFollow`,依 `playT×REF_FPS` 定位。無 grab tag=靜止(零回歸)。**掛點為何是指節基部不是手腕**:手腕是關節、在手背後方,物件會坐在手後方且抬手姿勢往頭部竄;指節線(`Fingers` 骨原點)黏在手上,擺成抓握姿勢時就落在拳頭前緣=物件實際坐落處。想更深進掌心可改 `FingerMid`。**WYSIWYG 契約**:`updateGhostFollow` 吃 `playT`;播放/scrub/timeline 拖曳都會設 `playT`,而**選 key(`setActiveKey`)也設 `playT=frame/REF_FPS`**——所以停在某幀調姿勢時幽靈即時跟手。任何新的「停在某幀」入口都要維持這個(否則幽靈用舊 `playT` 跟身體對不上)。
 - **headless 測**(CDN 被 egress 擋):puppeteer `setRequestInterception` 把 r128 兩支 CDN 餵本地
