@@ -138,7 +138,8 @@
       <div class="ref-row">
         <label class="filebtn" title="逐一/多檔載入單一部位 GLB(檔名需含 head/torso/upper_arm_l…)">＋ 逐一載入部位<input type="file" id="partsFiles" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" multiple></label>
         <label class="filebtn" title="載入任意道具 GLB 掛到「下方選定的 slot」(如 HEADGEAR 頭戴)。不靠檔名對應——先在下方選 slot,再載入,然後用 scale/x/y/z/rot 校準,最後「匯出對位 JSON」">🎩 載入裝備到選定 slot<input type="file" id="partsEquip" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
-        <label class="filebtn" title="載入 rigged 手 GLB(assets/rigs/chibi-hands-rigged.glb):自動拆 Hand.L/Hand.R 掛到左右手腕。對位用部位滑桿(選 HAND_L/HAND_R);手勢用下方「手勢」滑桿">🖐 載入 rigged 手（自動拆左右）<input type="file" id="partsHandsRig" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
+        <button id="handsBuiltin" title="一鍵載入 repo 內建 rigged 手(assets/rigs/chibi-hands-rigged.glb):自動拆 Hand.L/Hand.R 掛左右手腕(需以本機伺服器開啟;file:// 請用旁邊的選檔載入)">🖐 rigged 手（內建）</button>
+        <label class="filebtn" title="選檔載入 rigged 手 GLB:自動拆 Hand.L/Hand.R 掛到左右手腕。對位用部位滑桿(選 HAND_L/HAND_R);手勢用下方「手勢」滑桿">🖐 選檔載入<input type="file" id="partsHandsRig" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
         <button id="partsDummyToggle" title="隱藏/顯示原本幾何假人，只保留關節群組與載入模型">隱藏假人</button>
         <button id="partInspectTpose" title="暫時把手臂平舉成 T-pose,讓上臂離開肋廓,確認肩→肘→腕→手接合(不影響存的 phases)">組裝檢視 T-pose</button>
         <button id="partsClear">清除部位</button>
@@ -161,6 +162,7 @@
         <button data-handpose="open">✋ 張開</button>
         <button data-handpose="grip">✊ 抓握</button>
         <button data-handpose="fist">👊 握拳</button>
+        <button id="handShowToggle" title="切換手的顯示:雙手 → 只左手 → 只右手(調單手時不被另一手擋視線)">顯示:雙手</button>
         <button id="handPoseExport">匯出手勢 JSON</button>
       </div>
       <div class="parts-grid">

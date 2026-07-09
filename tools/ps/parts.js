@@ -491,6 +491,7 @@ function mountRiggedHands(gltf){
     attachPart(slot, wrap);
   }
   applyHandPose();
+  applyHandShow(); // 重載時保持目前的雙手/單手顯示模式
   updatePartsStatus('已載入 rigged 手 → hand_l / hand_r。用部位滑桿(選 HAND_L/HAND_R)對位手腕;用「手勢」滑桿調張開/抓握/握拳,調好「匯出手勢 JSON」。');
 }
 async function loadRiggedHandsFile(file){
@@ -502,6 +503,31 @@ async function loadRiggedHandsFile(file){
   }catch(err){ console.error(err); updatePartsStatus('rigged 手載入失敗:'+(err.message||err)); return false; }
   finally{ URL.revokeObjectURL(url); }
 }
+// 內建一鍵載入(repo 內 assets/rigs/chibi-hands-rigged.glb;比照 avatar.js 的 base-avatar fetch 套路,
+// HTTP 服務下直接成功;file:// 開啟時 fetch 失敗 → 提示改用檔案選擇器)
+async function loadRiggedHandsBuiltin(){
+  try{
+    const r = await fetch('../assets/rigs/chibi-hands-rigged.glb');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const ab = await r.arrayBuffer();
+    await new Promise((res,rej)=>new THREE.GLTFLoader().parse(ab, '', (g)=>{ try{ mountRiggedHands(g); res(); }catch(e){ rej(e); } }, rej));
+    return true;
+  }catch(err){
+    console.warn('builtin hands load failed', err);
+    updatePartsStatus('內建 rigged 手載入失敗(file:// 開啟時請改用「🖐 選檔載入」選 assets/rigs/chibi-hands-rigged.glb)。');
+    return false;
+  }
+}
+// 顯示切換:雙手 → 只左 → 只右(調單手手勢/對位時不被另一手擋視線)
+let HAND_SHOW = 'both';
+function applyHandShow(){
+  const l = PART_MODELS.hand_l, r = PART_MODELS.hand_r;
+  if(l) l.visible = (HAND_SHOW !== 'R');
+  if(r) r.visible = (HAND_SHOW !== 'L');
+  const btn = document.getElementById('handShowToggle');
+  if(btn) btn.textContent = HAND_SHOW === 'both' ? '顯示:雙手' : HAND_SHOW === 'L' ? '顯示:只左手' : '顯示:只右手';
+}
+function cycleHandShow(){ HAND_SHOW = HAND_SHOW === 'both' ? 'L' : HAND_SHOW === 'L' ? 'R' : 'both'; applyHandShow(); }
 function exportHandPoses(){
   // 匯出目前三個 preset(open 固定歸零;grip/fist 以「目前滑桿」覆寫使用者正在調的那組?
   // 規則:按過 preset 鈕後滑桿=該 preset;匯出時把目前滑桿寫回「最後按的 preset」,再輸出全部)
@@ -529,6 +555,8 @@ window.__psEquip = {
     new THREE.GLTFLoader().parse(ab, '', (gltf)=>{ try{ mountRiggedHands(gltf); resolve(true); }catch(e){ reject(e); } }, reject);
   }),
   setHandPose: (p)=>{ setHandPose(p); return HAND_POSE; },
+  loadHandsBuiltin: loadRiggedHandsBuiltin,
+  setHandShow: (m)=>{ HAND_SHOW = m; applyHandShow(); return { show: HAND_SHOW, lVis: PART_MODELS.hand_l ? PART_MODELS.hand_l.visible : null, rVis: PART_MODELS.hand_r ? PART_MODELS.hand_r.visible : null }; },
   handInfo: ()=>{
     if(!HAND_RIG) return null;
     const info = {};
@@ -571,6 +599,8 @@ function buildPartSlotUI(){
   document.getElementById('partsFiles')?.addEventListener('change',e=>loadPartFiles(e.target.files));
   document.getElementById('partsEquip')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadEquipFile(f); e.target.value=''; }); // 裝備→選定 slot
   document.getElementById('partsHandsRig')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadRiggedHandsFile(f); e.target.value=''; }); // rigged 手→自動拆左右
+  document.getElementById('handsBuiltin')?.addEventListener('click',()=>loadRiggedHandsBuiltin()); // 內建一鍵載入
+  document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
   // 手勢滑桿(骨局部 X 角度;負=往掌心彎)+ 預設鈕 + 匯出
   [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']].forEach(([id,k])=>{
     const r=document.getElementById(id), n=document.getElementById(id+'Num'); if(!r||!n) return;
