@@ -10,10 +10,10 @@ const target=new THREE.Vector3(0,1.15,0);
 let theta=0.6, phi=1.1, radius=6.0;
 function placeCam(){camera.position.set(target.x+radius*Math.sin(phi)*Math.sin(theta), target.y+radius*Math.cos(phi), target.z+radius*Math.sin(phi)*Math.cos(theta)); camera.lookAt(target);}
 let drag=false,lx=0,ly=0;
-canvas.addEventListener('pointerdown',e=>{if(solveMode)return;drag=true;lx=e.clientX;ly=e.clientY;canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;canvas.setPointerCapture(e.pointerId)});
 canvas.addEventListener('pointerup',()=>drag=false);
 canvas.addEventListener('pointermove',e=>{if(!drag)return;theta-=(e.clientX-lx)*0.008;phi-=(e.clientY-ly)*0.008;phi=Math.max(0.25,Math.min(1.45,phi));lx=e.clientX;ly=e.clientY;placeCam();});
-canvas.addEventListener('wheel',e=>{if(solveMode){e.preventDefault();return;}e.preventDefault();radius=Math.max(3.2,Math.min(14,radius+e.deltaY*0.01));placeCam();},{passive:false});
+canvas.addEventListener('wheel',e=>{e.preventDefault();radius=Math.max(3.2,Math.min(14,radius+e.deltaY*0.01));placeCam();},{passive:false});
 
 scene.add(new THREE.HemisphereLight(0x9fb6ff,0x10121a,0.85));
 const key=new THREE.DirectionalLight(0xffffff,1.1); key.position.set(4,7,5); scene.add(key);

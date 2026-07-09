@@ -11,13 +11,15 @@
 2. `rig.js` — Three.js 場景、DIM 角色比例、狀態存檔(undo/autosave/JSON IO)、素體建構、applyPose/lerp
 3. `hitfeel.js` — 打擊感試打台 + 主渲染迴圈 `tick()`
 4. `editor-ui.js` — 滑桿/時間軸/phase tabs UI、按鍵綁定、白模/鏡像、contact sheet、匯出匯入
-5. `ref-solve.js` — 參考疊圖、關節對位 SOLVER(單視角/multi-view/AI 偵測)、scrub、FK 拖動
-6. `parts.js` — 部位掛載系統(sockets.json→slot、GLB 掛載)
-7. `avatar.js` — 基底角色(rigged avatar)模式:16 骨角色 GLB 世界差量重定向 + 開機自動載入調度(角色優先→Meshy 部位人偶退路)
-8. `game-bridge.js` — `window.__ps` 健檢 hook + 遊戲整合面板(招式庫/遊戲視角/impact 讀出)
+5. `parts.js` — 部位掛載系統(sockets.json→slot、GLB 掛載、裝備/rigged 手+手勢庫)
+6. `avatar.js` — 基底角色(rigged avatar)模式:16 骨角色 GLB 世界差量重定向 + 開機自動載入調度(角色優先→Meshy 部位人偶退路)
+7. `game-bridge.js` — `window.__ps` 健檢 hook + 遊戲整合面板(招式庫/遊戲視角/impact 讀出)
 
-接縫規格已抽成 `sockets-data.js`(古典 script,`SOCKETS_JSON_RAW` 全域,同步載入=保留 file:// 直開);
-MediaPipe AI 偵測的 module script 仍留在 HTML 裡。
+接縫規格已抽成 `sockets-data.js`(古典 script,`SOCKETS_JSON_RAW` 全域,同步載入=保留 file:// 直開)。
+
+> 歷史:`ref-solve.js`(參考疊圖/關節對位 SOLVER/multi-view/AI 偵測/FK 直接拖動 + HTML 的 MediaPipe
+> module)已於 2026-07 整組移除(使用者要求;工作流已改用 preset+滑桿編姿勢,這套沒在用)。
+> 要回收從 git 歷史撈。時間軸 scrub 不屬於它,仍在(rig/editor-ui)。
 
 ## ⚠ 唯一要遵守的規則(hoisting 是「每檔」為單位)
 
@@ -63,6 +65,6 @@ TimelineKey/Snapshot 等資料形狀 typedef;VS Code / `tsc -p tools/ps/jsconfig
 剛好落在 `__ps` 煙霧測**抓不到**的盲區。所以最划算的時機是**下次 punch-studio 較大功能改版時一起做**——
 那時本來就要碰這些檔、也該補行為回歸測試,init 排序的成本被攤掉、風險被回歸網接住。屆時:
 1. 先跑分析腳本重生相依圖(acorn 抽頂層宣告 + eslint-scope 抽 free vars → import/export 計畫);
-2. 各模組 boot 副作用抽進 `export function initX()`,`boot.js` 依 `sockets→pose-data→rig→hitfeel→editor-ui→ref-solve→parts→avatar→game-bridge` 呼叫;
+2. 各模組 boot 副作用抽進 `export function initX()`,`boot.js` 依 `sockets→pose-data→rig→hitfeel→editor-ui→parts→avatar→game-bridge` 呼叫(ref-solve 已移除;上方量化數字含當時的它,重啟時重跑分析);
 3. THREE 是 CDN 全域,module 內直接參照即可(不用 import);HTML 改成單一 `<script type="module" src="ps/boot.js">`;
 4. 補行為回歸(rebuild 角色／undo-redo→UI 刷新／parts detach-reattach 往返／avatar 套姿勢／solver／timeline 編輯／播放),再逐輪驗到全綠。

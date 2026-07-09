@@ -64,10 +64,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .modal .row{display:flex; gap:8px; margin-top:8px}
 .modal .row button{flex:1; cursor:pointer; padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:11px; font-weight:700}
 @media (max-width:900px){main{grid-template-columns:1fr; grid-template-rows:42vh 1fr}#stage{order:1} aside{order:2; border-left:none; border-top:1px solid var(--line)}}
-/* ── 參考疊圖 + 時間軸 scrub(新增,純視覺輔助)── */
-.refimg{position:absolute; inset:0; margin:auto; max-width:96%; max-height:90%; object-fit:contain;
-  pointer-events:none; opacity:0; z-index:4; display:none; will-change:transform;}
-.refimg.align{pointer-events:auto; cursor:move; outline:1px dashed var(--cy); outline-offset:-1px;}
+/* ── 時間軸 scrub(純視覺輔助)── */
 .hud{z-index:6} .hint{z-index:6}
 .scrub{position:absolute; left:50%; bottom:14px; transform:translateX(-50%); z-index:6;
   display:flex; align-items:center; gap:10px; width:min(72%,560px);
@@ -77,7 +74,6 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .scrub input[type=range]::-webkit-slider-thumb{background:var(--amber)}
 .scrub input[type=range]::-moz-range-thumb{background:var(--amber)}
 .scrub .slbl{font-size:10px; color:var(--amber); font-weight:700; min-width:70px; text-align:right; letter-spacing:.5px}
-.group.ref h3{color:var(--lime)}
 .group.parts h3{color:var(--cy)}
 .parts-status{font-size:9.5px;color:var(--dim);line-height:1.45;margin-top:6px}
 .parts-grid{display:grid;grid-template-columns:70px 1fr 52px;gap:5px;align-items:center;margin-top:6px}
@@ -87,39 +83,6 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .ref-row button, .ref-row label.filebtn{cursor:pointer; padding:6px 9px; border-radius:6px; border:1px solid var(--line); background:var(--bg2); color:var(--txt); font-family:var(--mono); font-size:10px; font-weight:700}
 .ref-row button.on{border-color:var(--lime); color:var(--lime)}
 .ref-row input[type=file]{display:none}
-/* ── Cascadeur 風 FK 拖動節點 ── */
-#nodeLayer{position:absolute; inset:0; z-index:5; pointer-events:none;}
-.jnode{position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%;
-  border:2px solid #0b0b12; background:var(--cy); pointer-events:auto; cursor:grab;
-  box-shadow:0 0 6px rgba(0,0,0,.5); transition:transform .07s; touch-action:none;}
-.jnode:hover{transform:scale(1.4)} .jnode:active{cursor:grabbing; transform:scale(1.4)}
-.jnode.arm{background:var(--orange)} .jnode.leg{background:var(--amber)} .jnode.core{background:var(--cy)}
-.jnode.hide{display:none}
-.jnode .jlabel{position:absolute; left:13px; top:-7px; white-space:nowrap; font-family:var(--mono);
-  font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px #000,0 0 5px #000;
-  pointer-events:none; opacity:.8;}
-.jnode.active{transform:scale(1.5)!important; box-shadow:0 0 0 3px rgba(255,138,61,.6),0 0 14px rgba(255,138,61,.85);}
-.jnode.active .jlabel{opacity:1; color:var(--orange)}
-/* ── 關節對位 solver ── */
-#solveLayer{position:absolute; inset:0; z-index:7; pointer-events:none;}
-.starget{position:absolute; width:18px; height:18px; margin:-9px 0 0 -9px; border-radius:50%;
-  border:2px solid #fff; background:rgba(0,0,0,.22); pointer-events:auto; cursor:grab;
-  box-shadow:0 0 0 1px rgba(0,0,0,.55), 0 0 8px rgba(0,0,0,.45);}
-.starget.on{cursor:grabbing; transform:scale(1.25);}
-.starget.arm{border-color:var(--orange)} .starget.leg{border-color:var(--amber)} .starget.core{border-color:var(--cy)}
-.starget.off{opacity:.22; border-style:dashed;}
-.starget .slbl2{position:absolute; left:15px; top:-6px; white-space:nowrap; font-family:var(--mono);
-  font-size:9px; color:#fff; opacity:.72; pointer-events:none; text-shadow:0 1px 2px #000;}
-.srig{position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%;
-  background:var(--lime); opacity:.92; pointer-events:none; box-shadow:0 0 6px var(--lime);}
-#solveRun{flex:1.4; border-color:var(--lime)!important; color:#0a1a00!important;
-  background:linear-gradient(180deg,#c8ff8a,var(--lime))!important; font-weight:700;}
-#solveToggle.on{border-color:var(--lime); color:var(--lime);}
-#dragReadout{position:absolute; top:52px; left:50%; transform:translateX(-50%); z-index:7; display:none;
-  padding:7px 14px; border-radius:9px; background:rgba(10,10,18,.84); border:1px solid var(--orange);
-  font-family:var(--mono); font-size:11px; color:var(--txt); white-space:nowrap; pointer-events:none;
-  box-shadow:0 6px 18px rgba(0,0,0,.5);}
-#dragReadout b{color:var(--orange)} #dragReadout .v{color:var(--cy)}
 /* 動態 phase tab 工具 */
 #phaseTabs{flex-wrap:wrap}
 #phaseTabs button.imp{border-color:var(--hot); color:var(--hot)}

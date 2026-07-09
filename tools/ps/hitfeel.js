@@ -90,8 +90,6 @@ function tick(now){
       sandbag.scale.set(1+0.12*k, 1-0.18*k, 1+0.12*k);
     } else { sandbag.position.set(0, sandbagBaseY, baseZ); sandbag.scale.set(1,1,1); }
   }
-  if(nodesOn) updateNodes();
-  if(solveMode) updateSolveLayer();
   // 畫面震動(命中後衰減)
   let sox=0, soy=0;
   if(shakeT>0){ shakeT-=dt; const k=Math.max(0,shakeT/SHAKE_DUR), amp=HITFEEL.shake*0.13*k;

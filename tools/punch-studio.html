@@ -25,11 +25,6 @@
     <div class="hint">滑鼠拖曳：旋轉 · 滾輪：縮放<br>
       <span style="color:var(--cy)">EDIT:</span> 拖 slider 即時看姿勢 · 點 Timeline key 換編輯目標<br>
       <span style="color:var(--lime)">PLAY:</span> 按下後動畫照 timing 跑完一輪</div>
-    <img id="refImg" class="refimg" alt="reference overlay">
-    <video id="refVid" class="refimg" playsinline muted preload="auto"></video>
-    <div id="nodeLayer" style="display:none"></div>
-    <div id="solveLayer" style="display:none"></div>
-    <div id="dragReadout"></div>
     <div id="hitFlash" style="position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:8"></div>
     <div class="scrub" id="scrubWrap">
       <span class="slbl" style="min-width:auto;color:var(--dim)">SCRUB</span>
@@ -65,7 +60,6 @@
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="XYZ 三色基準線 + 腳下 FRONT/BACK/L/R 方向標示"><input type="checkbox" id="axesToggle" checked> 軸向標示</label>
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="地面格線"><input type="checkbox" id="gridToggle" checked> 格線</label>
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="markerToggle" checked> 🟠 朝向標記</label>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dragToggle"> 🖐 直接拖動</label>
     </div>
 
     <div class="util">
@@ -86,49 +80,6 @@
       <button id="goofyBtn">填入站架</button>
       <button id="tposeBtn" title="把目前 key 的參數整組設為 T-pose(雙臂水平、其餘歸零),可 undo;快捷鍵 T。與部位面板的「檢視 T-pose」不同——那個是唯讀檢視不動參數">T-pose 填入(T)</button>
     </div>
-
-    <div class="group ref">
-      <h3>參考疊圖 REFERENCE(onion-skin 對位)</h3>
-      <div class="ref-row">
-        <label class="filebtn">📁 載入參考圖<input type="file" id="refFile" accept="image/*"></label>
-        <button id="refAlign">對齊(拖曳/滾輪)</button>
-        <button id="refFlip">水平翻轉</button>
-        <button id="refClear">清除</button>
-      </div>
-      <div class="ref-row">
-        <label class="filebtn">📹 載入參考影片<input type="file" id="refVidFile" accept="video/*"></label>
-        <button id="refVidPrev" title="上一幀(約 1/30s)">◀ 幀</button>
-        <button id="refVidNext" title="下一幀(約 1/30s)">幀 ▶</button>
-        <span id="refVidTime" style="font-size:10px;color:var(--dim)">—</span>
-      </div>
-      <div class="ctrl" id="refVidScrubWrap" style="display:none">
-        <div class="lab"><span class="name">影片 scrub(拖到要的那一幀)</span><span class="val" id="refVidLbl">0.00s</span></div>
-        <input type="range" id="refVidScrub" min="0" max="1000" step="1" value="0">
-      </div>
-      <div class="ctrl">
-        <div class="lab"><span class="name">透明度 opacity</span><span class="val" id="v_refop">0.50</span></div>
-        <input type="range" id="r_refop" min="0" max="1" step="0.01" value="0.5">
-      </div>
-      <div class="ref-row" style="margin-top:8px; border-top:1px dashed var(--line); padding-top:9px">
-        <button id="frontBtn" title="鏡頭轉到正面 θ=0">🎥 正面</button>
-        <button id="sideBtn" title="鏡頭轉到側面 θ=90°(第二視角)">🎥 側面</button>
-        <button id="solveToggle" title="顯示/隱藏關節目標點">🎯 點關節對位</button>
-        <button id="solveReset" title="目標點貼回骨架現況">↺ 重設目標</button>
-        <button id="aiDetectBtn" title="用 MediaPipe 從目前參考圖自動放關節目標點(風格化人形需實測)">🤖 AI 偵測</button>
-        <button id="solveRun" title="反求 active key 的關節角度">▶ Solve 反求</button>
-      </div>
-      <div class="ref-row" id="solveViewRow" style="margin-top:6px; border-top:1px dashed var(--line); padding-top:8px">
-        <span style="color:var(--lime); font-size:9px; letter-spacing:.5px; width:100%">多視角三角測量(治景深歧義)</span>
-        <button id="captureViewBtn" title="把目前鏡頭 + 目標點 + 參考圖存成「新」視角">📸 存成視角</button>
-        <button id="updateViewBtn" title="用目前狀態覆寫「作用中」視角">💾 更新</button>
-        <button id="clearViewsBtn" title="清空所有已存視角">🗑 清空</button>
-        <div id="solveViewBar" style="display:flex; gap:4px; flex-wrap:wrap; width:100%; margin-top:4px"></div>
-      </div>
-      <div class="ref-row" style="margin-top:2px">
-        <span id="solveReadout" style="font-family:var(--mono); font-size:9.5px; color:var(--dim); line-height:1.5">空心圈=目標(拖到參考圖關節)· 綠點=骨架現況 · 雙擊圈=排除遮擋關節 · Solve 寫入「目前 key」</span>
-      </div>
-    </div>
-
 
     <div class="group parts">
       <h3>15 PARTS 部位式模型 (sockets.json 驅動)</h3>
@@ -292,36 +243,9 @@
 <script src="ps/rig.js"></script>
 <script src="ps/hitfeel.js"></script>
 <script src="ps/editor-ui.js"></script>
-<script src="ps/ref-solve.js"></script>
 <script src="ps/parts.js"></script>
 <script src="ps/avatar.js"></script>
 <script src="ps/game-bridge.js"></script>
 
-<!-- AI 姿勢偵測(MediaPipe Tasks Vision)。獨立 module:lazy-load,首次「AI 偵測」才下載模型;
-     離線/載入失敗只會讓 window.aiDetectPose 不存在,主程式 graceful 處理,不影響其他功能。 -->
-<script type="module">
-import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
-let _pl=null, _loading=null;
-async function ensure(){
-  if(_pl) return _pl;
-  if(!_loading){
-    _loading = (async()=>{
-      const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
-      _pl = await PoseLandmarker.createFromOptions(vision, {
-        baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task" },
-        runningMode:"IMAGE", numPoses:1
-      });
-      return _pl;
-    })();
-  }
-  return _loading;
-}
-// 回傳第一個人的 33 個 landmark({x,y,z,visibility},x/y 正規化[0,1]),抓不到回 null
-window.aiDetectPose = async function(imgEl){
-  const pl = await ensure();
-  const r = pl.detect(imgEl);
-  return (r && r.landmarks && r.landmarks[0]) ? r.landmarks[0] : null;
-};
-</script>
 </body>
 </html>
