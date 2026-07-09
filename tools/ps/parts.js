@@ -280,6 +280,7 @@ function clearParts(){
   Object.values(PART_MODELS).forEach(o=>{ if(o && o.parent) o.parent.remove(o); });
   PART_MODELS = {}; PART_DETACHED = {};
   if(typeof HAND_RIG !== 'undefined') HAND_RIG = null;  // 拳頭盒抑制解除(見 setSyntheticDummyVisible)
+  if(typeof HAND_AVATAR_HIDDEN !== 'undefined'){ HAND_AVATAR_HIDDEN.forEach(m=>{ m.visible = true; }); HAND_AVATAR_HIDDEN = []; } // 恢復 avatar 原生手
   updatePartsStatus(); setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
 }
 function setSyntheticDummyVisible(on){
@@ -483,38 +484,58 @@ function syncHandPoseUI(){
     if(r) r.value=HAND_POSE[k]; if(n) n.value=HAND_POSE[k];
   });
 }
-// 預設對位(從 rig 事實推導):手指沿節點空間 +X(L)/−X(R),假人拳頭沿手腕 −Y、大小 ≈0.42×DIM.fist
-// → 預設 rz=∓90° 把指向轉到 −Y、scale≈0.55 使手長 ≈ 拳頭盒。只在該 slot 的 cfg 還是出廠值時套用(不蓋使用者調過的)。
-const HAND_DEFAULT_CAL = { L:{ x:0,y:0,z:0, rx:0, ry:0, rz:-90, s:0.55 }, R:{ x:0,y:0,z:0, rx:0, ry:0, rz:90, s:0.55 } };
-// 「使用者沒調過」= cfg 仍等於該 slot 的出廠值(hand slot 出廠值帶 rx:180,不是 identity,不能用零值判斷)
+// 預設對位,依掛載對象分兩套:
+// - avatar(chibi 人物,正式基準):手與 avatar 出自同一套 rig → 骨頭已提供 rest 旋轉,
+//   手節點歸零(位置+旋轉)identity 掛上即貼合 → 出廠對位 = identity。
+// - 假人(fallback,無 avatar 時):手指沿節點空間 +X(L)/−X(R)、假人拳頭沿手腕 −Y、大小≈0.42×DIM.fist
+//   → rz=∓90° 轉指向、scale≈0.55 對拳頭盒。
+const HAND_CAL_AVATAR = { L:{ x:0,y:0,z:0, rx:0, ry:0, rz:0, s:1 }, R:{ x:0,y:0,z:0, rx:0, ry:0, rz:0, s:1 } };
+const HAND_CAL_DUMMY  = { L:{ x:0,y:0,z:0, rx:0, ry:0, rz:-90, s:0.55 }, R:{ x:0,y:0,z:0, rx:0, ry:0, rz:90, s:0.55 } };
+// 「使用者沒調過」= cfg 等於該 slot 出廠值(hand slot 出廠值帶 rx:180,不能用零值判斷),
+// 或等於我們自動寫入過的任一套起始對位(換掛載對象時要能重新套用,不能被舊自動值卡住)
 function cfgUntouched(slot, c){
-  const d = partDefaultConfig(slot);
-  return ['x','y','z','rx','ry','rz','s'].every(k=>Number(c[k])===Number(d[k]));
+  const side = slot === 'hand_l' ? 'L' : 'R';
+  const candidates = [partDefaultConfig(slot), HAND_CAL_AVATAR[side], HAND_CAL_DUMMY[side]];
+  return candidates.some(d => ['x','y','z','rx','ry','rz','s'].every(k=>Number(c[k])===Number(d[k])));
 }
+let HAND_AVATAR_HIDDEN = [];   // 掛載時被隱藏的 avatar 原生手網格(clearParts 恢復)
 function mountRiggedHands(gltf){
   const scene = gltf.scene || gltf.scenes[0];
   // GLTFLoader 名稱淨化:Hand.L → HandL(同 actor-hands 的既知行為)
   let hl=null, hr=null;
   scene.traverse(o=>{ if(o.name==='HandL') hl=o; else if(o.name==='HandR') hr=o; });
   if(!hl || !hr) throw new Error('GLB 內找不到 HandL/HandR 節點');
+  const av = (typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_l && AVATAR.by.hand_r) ? AVATAR : null;
   HAND_RIG = {};
+  HAND_AVATAR_HIDDEN.forEach(m=>{ m.visible = true; }); HAND_AVATAR_HIDDEN = [];
   for(const [node, side, slot] of [[hl,'L','hand_l'],[hr,'R','hand_r']]){
     const wrap = new THREE.Group(); wrap.name='PUNCH_RIGGEDHAND_'+side;
-    node.position.set(0,0,0);        // 去掉 rig 內左右並排的偏移(rest 旋轉保留;attachPart 的 cfg 動 wrap 不動它)
+    node.position.set(0,0,0);                    // 去掉 rig 內左右並排的偏移
+    if(av) node.quaternion.identity();           // avatar:骨頭已帶 rest 旋轉,節點再疊會轉兩次 → 歸零
     wrap.add(node);
     HAND_RIG[side] = collectHandRig(node, side);
     const c = partCfg(slot);
-    if(cfgUntouched(slot, c)) Object.assign(c, HAND_DEFAULT_CAL[side]); // 起始對位:整組覆寫(手指轉向 −Y、縮到拳頭大小);使用者調過則保留
-    attachPart(slot, wrap);
+    if(cfgUntouched(slot, c)) Object.assign(c, (av ? HAND_CAL_AVATAR : HAND_CAL_DUMMY)[side]); // 依掛載對象給起始對位;使用者調過則保留
+    if(av){
+      // 掛 chibi 人物手骨(正式基準):不走 attachPart(那會掛假人腕+把假人叫回來)
+      const entry = AVATAR.by[slot];
+      if(PART_MODELS[slot] && PART_MODELS[slot].parent) PART_MODELS[slot].parent.remove(PART_MODELS[slot]);
+      markPartObject(wrap, slot);
+      PART_MODELS[slot] = wrap;
+      entry.bone.add(wrap);
+      applyPartConfig(slot);
+      entry.meshes.forEach(m=>{ m.visible = false; HAND_AVATAR_HIDDEN.push(m); }); // 藏 avatar 原生手,避免同框
+    } else {
+      attachPart(slot, wrap);                    // fallback:無 avatar → 掛假人腕(舊路徑,拳頭盒抑制照舊)
+    }
     savePartConfig();
   }
-  // 調手台:手掛在「假人」手腕上 → 假人=對位載體,必須看得到;基底角色同場只會擋視線 → 暫時隱藏
-  if(typeof AVATAR !== 'undefined' && AVATAR && AVATAR.wrap) AVATAR.wrap.visible = false;
-  PARTS_HIDE_DUMMY = false;
-  setSyntheticDummyVisible(true);   // 內含 rigged 手期間抑制假人拳頭盒(box 手不再同框)
+  if(!av){ PARTS_HIDE_DUMMY = false; setSyntheticDummyVisible(true); } // 假人路徑才需要顯示假人;avatar 路徑完全不動假人(維持隱藏)
   applyHandPose();
   applyHandShow(); // 重載時保持目前的雙手/單手顯示模式
-  updatePartsStatus('已載入 rigged 手 → hand_l / hand_r(假人拳頭盒已隱藏;基底角色暫時隱藏)。選 HAND_L/HAND_R 用滑桿微調對位;手勢用 ✋✊👊+滑桿;調好「匯出手勢 JSON」。');
+  updatePartsStatus(av
+    ? '已載入 rigged 手 → chibi 人物手骨(原生手已隱藏;假人維持隱藏)。選 HAND_L/HAND_R 微調對位;✋✊👊+滑桿調手勢;調好「匯出手勢 JSON」。'
+    : '已載入 rigged 手 → 假人手腕(無基底角色的 fallback)。選 HAND_L/HAND_R 微調對位;✋✊👊+滑桿調手勢。');
 }
 async function loadRiggedHandsFile(file){
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
