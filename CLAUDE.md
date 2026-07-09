@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mini Mage Mayhem — a single-player, web, top-down magic roguelike (4 elements, fusions, elemental reactions, enemy waves, a boss). No framework, no bundler, no npm for the game itself; runtime deps are Three.js (vendored at `vendor/three.min.js`, r149 UMD global `THREE`) plus **build-free ES modules under `js/`**. The HTML files load the game via `<script type="module">` and `import` from `js/`.
 
-The game JS now lives in **`js/` ES modules** (build-free); the three HTML files are thin shells that load them. **There is no duplicated game code anymore — edit the modules, not the HTML.** History/rationale of the split: `docs/module-boundaries.md`.
+The game JS now lives in **`js/` ES modules** (build-free); the three HTML files are thin shells that load them. **There is no duplicated game code anymore — edit the modules, not the HTML.** History/rationale of the split: `docs/module-boundaries.md`. **Before modifying `js/` modules, read `js/CLAUDE.md`** (auto-loads when touching `js/*`) — the runtime maintenance manual: module map (v2 systems/render/actor families), invariants, the v2 step() order, headless-test patterns (incl. the rAF-throttle gotcha), task recipes; no need to sweep-read the sources.
 
 - `js/constants.js` — `W/H/TILE/COLS/ROWS` + `TILE_*` enum.
 - `js/utils.js` — pure helpers (`rnd/clamp/dist/angleTo/norm/circleRectOverlap`).
