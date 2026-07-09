@@ -436,6 +436,85 @@ async function loadEquipFile(file){
   }catch(err){ console.error(err); updatePartsStatus(`裝備載入失敗:${file.name} — ${err.message||err}`); return false; }
   finally{ URL.revokeObjectURL(url); }
 }
+// ===== Rigged 手(chibi-hands-rigged.glb):自動拆左右掛手腕 + 手勢庫(GetAmped 式預設姿勢+插值的編輯端)=====
+// rig 事實(解析自 GLB):骨鏈 Hand→Fingers→FingerMid→FingerTips(+Thumb),手指沿骨局部 +Y 生長,
+// 彎曲軸=骨局部 X(rest 已帶 -2.4° 自然微彎,左右同號 → 同一組角度兩手對稱)。剛性分段(無蒙皮),轉骨即彎。
+let HAND_RIG = null;   // { L:{fingers,mid,tips,thumb}, R:{...} } 各=THREE.Object3D;rest 四元數存在 userData.restQ
+let HAND_POSE = { fingers:0, mid:0, tips:0, thumb:0 };  // 目前滑桿角度(度;負=往掌心彎)
+// 預設庫(起始值,使用者滑桿調完可覆寫進 preset 再匯出)
+const HAND_POSE_PRESETS = {
+  open: { fingers: 0,   mid: 0,   tips: 0,   thumb: 0 },
+  grip: { fingers: -50, mid: -70, tips: -40, thumb: -40 },
+  fist: { fingers: -80, mid: -95, tips: -70, thumb: -55 },
+};
+const HAND_BONE_KEYS = { fingers:'Fingers', mid:'FingerMid', tips:'FingerTips', thumb:'Thumb' };
+function collectHandRig(handNode, side){
+  const out = {};
+  handNode.traverse(o=>{
+    for(const [k, base] of Object.entries(HAND_BONE_KEYS)){
+      if(o.name === base + side){ o.userData.restQ = o.quaternion.clone(); out[k] = o; }
+    }
+  });
+  return out;
+}
+function applyHandPose(){
+  if(!HAND_RIG) return;
+  const AX = new THREE.Vector3(1,0,0);
+  for(const side of ['L','R']){
+    const rig = HAND_RIG[side]; if(!rig) continue;
+    for(const [k, bone] of Object.entries(rig)){
+      if(!bone || !bone.userData.restQ) continue;
+      bone.quaternion.copy(bone.userData.restQ)
+        .multiply(new THREE.Quaternion().setFromAxisAngle(AX, (Number(HAND_POSE[k])||0)*D2R));
+    }
+  }
+}
+function setHandPose(p){ Object.assign(HAND_POSE, p||{}); applyHandPose(); syncHandPoseUI(); }
+function syncHandPoseUI(){
+  [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']].forEach(([id,k])=>{
+    const r=document.getElementById(id), n=document.getElementById(id+'Num');
+    if(r) r.value=HAND_POSE[k]; if(n) n.value=HAND_POSE[k];
+  });
+}
+function mountRiggedHands(gltf){
+  const scene = gltf.scene || gltf.scenes[0];
+  // GLTFLoader 名稱淨化:Hand.L → HandL(同 actor-hands 的既知行為)
+  let hl=null, hr=null;
+  scene.traverse(o=>{ if(o.name==='HandL') hl=o; else if(o.name==='HandR') hr=o; });
+  if(!hl || !hr) throw new Error('GLB 內找不到 HandL/HandR 節點');
+  HAND_RIG = {};
+  for(const [node, side, slot] of [[hl,'L','hand_l'],[hr,'R','hand_r']]){
+    const wrap = new THREE.Group(); wrap.name='PUNCH_RIGGEDHAND_'+side;
+    node.position.set(0,0,0);        // 去掉 rig 內左右並排的偏移(rest 旋轉保留;attachPart 的 cfg 動 wrap 不動它)
+    wrap.add(node);
+    HAND_RIG[side] = collectHandRig(node, side);
+    attachPart(slot, wrap);
+  }
+  applyHandPose();
+  updatePartsStatus('已載入 rigged 手 → hand_l / hand_r。用部位滑桿(選 HAND_L/HAND_R)對位手腕;用「手勢」滑桿調張開/抓握/握拳,調好「匯出手勢 JSON」。');
+}
+async function loadRiggedHandsFile(file){
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((res,rej)=>new THREE.GLTFLoader().load(url,res,undefined,rej));
+    mountRiggedHands(gltf); return true;
+  }catch(err){ console.error(err); updatePartsStatus('rigged 手載入失敗:'+(err.message||err)); return false; }
+  finally{ URL.revokeObjectURL(url); }
+}
+function exportHandPoses(){
+  // 匯出目前三個 preset(open 固定歸零;grip/fist 以「目前滑桿」覆寫使用者正在調的那組?
+  // 規則:按過 preset 鈕後滑桿=該 preset;匯出時把目前滑桿寫回「最後按的 preset」,再輸出全部)
+  if(HAND_LAST_PRESET && HAND_POSE_PRESETS[HAND_LAST_PRESET]) Object.assign(HAND_POSE_PRESETS[HAND_LAST_PRESET], HAND_POSE);
+  const payload = { fmt:'HAND_POSES v1', axis:'bone-local X (deg, negative curls inward)', presets: HAND_POSE_PRESETS };
+  const text = JSON.stringify(payload, null, 2);
+  try{ navigator.clipboard && navigator.clipboard.writeText(text); }catch(e){}
+  console.log('[hand poses]', text);
+  updatePartsStatus('手勢 JSON 已複製到剪貼簿(也印在 console)。貼給遊戲端當 HAND_POSES。');
+  return payload;
+}
+let HAND_LAST_PRESET = null;
+
 // headless 健檢 hook(比照 __v2/__mpe;獨立命名空間,避免被 game-bridge 的 window.__ps 覆寫)。
 window.__psEquip = {
   slots: ()=>PART_SLOT_DEFS.map(d=>d.slot),
@@ -445,6 +524,23 @@ window.__psEquip = {
     const s=document.getElementById('partSlotSelect'); if(s) s.value=slot;
     new THREE.GLTFLoader().parse(ab, '', (gltf)=>{ const obj=gltf.scene||gltf.scenes[0]; obj.name='PUNCH_EQUIP_'+slot; try{ attachPart(slot,obj); resolve(true); }catch(e){ reject(e); } }, reject);
   }),
+  loadHandsBuffer: (ab)=> new Promise((resolve,reject)=>{
+    if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
+    new THREE.GLTFLoader().parse(ab, '', (gltf)=>{ try{ mountRiggedHands(gltf); resolve(true); }catch(e){ reject(e); } }, reject);
+  }),
+  setHandPose: (p)=>{ setHandPose(p); return HAND_POSE; },
+  handInfo: ()=>{
+    if(!HAND_RIG) return null;
+    const info = {};
+    for(const side of ['L','R']){
+      const rig=HAND_RIG[side]; if(!rig) continue;
+      const wrap = PART_MODELS[side==='L'?'hand_l':'hand_r'];
+      info[side] = { mounted: !!(wrap && wrap.parent), bones: Object.keys(rig),
+        midQuatX: rig.mid ? +rig.mid.quaternion.x.toFixed(4) : null };
+    }
+    return info;
+  },
+  exportHandPoses,
 };
 function buildPartSlotUI(){
   const sel=document.getElementById('partSlotSelect'); if(!sel) return;
@@ -474,6 +570,19 @@ function buildPartSlotUI(){
   });
   document.getElementById('partsFiles')?.addEventListener('change',e=>loadPartFiles(e.target.files));
   document.getElementById('partsEquip')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadEquipFile(f); e.target.value=''; }); // 裝備→選定 slot
+  document.getElementById('partsHandsRig')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadRiggedHandsFile(f); e.target.value=''; }); // rigged 手→自動拆左右
+  // 手勢滑桿(骨局部 X 角度;負=往掌心彎)+ 預設鈕 + 匯出
+  [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']].forEach(([id,k])=>{
+    const r=document.getElementById(id), n=document.getElementById(id+'Num'); if(!r||!n) return;
+    const write=(val)=>{ HAND_POSE[k]=Number(val)||0; r.value=HAND_POSE[k]; n.value=HAND_POSE[k]; applyHandPose(); };
+    r.addEventListener('input',e=>write(e.target.value));
+    n.addEventListener('input',e=>write(e.target.value));
+  });
+  document.querySelectorAll('[data-handpose]').forEach(btn=>btn.addEventListener('click',()=>{
+    const name=btn.dataset.handpose; HAND_LAST_PRESET=name;
+    setHandPose(Object.assign({}, HAND_POSE_PRESETS[name]));
+  }));
+  document.getElementById('handPoseExport')?.addEventListener('click',()=>exportHandPoses());
   document.getElementById('partsClear')?.addEventListener('click',()=>clearParts());
   document.getElementById('partsDummyToggle')?.addEventListener('click',()=>{
     PARTS_HIDE_DUMMY=!PARTS_HIDE_DUMMY;

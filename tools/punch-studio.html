@@ -138,6 +138,7 @@
       <div class="ref-row">
         <label class="filebtn" title="逐一/多檔載入單一部位 GLB(檔名需含 head/torso/upper_arm_l…)">＋ 逐一載入部位<input type="file" id="partsFiles" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" multiple></label>
         <label class="filebtn" title="載入任意道具 GLB 掛到「下方選定的 slot」(如 HEADGEAR 頭戴)。不靠檔名對應——先在下方選 slot,再載入,然後用 scale/x/y/z/rot 校準,最後「匯出對位 JSON」">🎩 載入裝備到選定 slot<input type="file" id="partsEquip" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
+        <label class="filebtn" title="載入 rigged 手 GLB(assets/rigs/chibi-hands-rigged.glb):自動拆 Hand.L/Hand.R 掛到左右手腕。對位用部位滑桿(選 HAND_L/HAND_R);手勢用下方「手勢」滑桿">🖐 載入 rigged 手（自動拆左右）<input type="file" id="partsHandsRig" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
         <button id="partsDummyToggle" title="隱藏/顯示原本幾何假人，只保留關節群組與載入模型">隱藏假人</button>
         <button id="partInspectTpose" title="暫時把手臂平舉成 T-pose,讓上臂離開肋廓,確認肩→肘→腕→手接合(不影響存的 phases)">組裝檢視 T-pose</button>
         <button id="partsClear">清除部位</button>
@@ -155,6 +156,18 @@
         <label>rotX</label><input type="range" id="partRX" min="-180" max="180" step="1" value="0"><input id="partRXNum" type="number" step="1" value="0">
         <label>rotY</label><input type="range" id="partRY" min="-180" max="180" step="1" value="0"><input id="partRYNum" type="number" step="1" value="0">
         <label>rotZ</label><input type="range" id="partRZ" min="-180" max="180" step="1" value="0"><input id="partRZNum" type="number" step="1" value="0">
+      </div>
+      <div class="ref-row" title="rigged 手手勢:骨局部 X 角度(負=往掌心彎)。先按預設鈕再微調滑桿;「匯出手勢 JSON」會把目前滑桿寫回最後按的預設再輸出全部(給遊戲端 HAND_POSES)">
+        <button data-handpose="open">✋ 張開</button>
+        <button data-handpose="grip">✊ 抓握</button>
+        <button data-handpose="fist">👊 握拳</button>
+        <button id="handPoseExport">匯出手勢 JSON</button>
+      </div>
+      <div class="parts-grid">
+        <label>指根</label><input type="range" id="handFingers" min="-120" max="30" step="1" value="0"><input id="handFingersNum" type="number" step="1" value="0">
+        <label>指中</label><input type="range" id="handMid" min="-120" max="30" step="1" value="0"><input id="handMidNum" type="number" step="1" value="0">
+        <label>指尖</label><input type="range" id="handTips" min="-120" max="30" step="1" value="0"><input id="handTipsNum" type="number" step="1" value="0">
+        <label>拇指</label><input type="range" id="handThumb" min="-120" max="30" step="1" value="0"><input id="handThumbNum" type="number" step="1" value="0">
       </div>
       <div id="partsStatus" class="parts-status">尚未載入。最快：用「📦 上傳整包 GLB」一次匯入含全部部位的 bundle(如 tactics5x5_body_parts.glb),自動對應 15 個部位。或用「＋ 逐一載入部位」分檔載入。</div>
     </div>
