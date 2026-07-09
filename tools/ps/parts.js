@@ -618,6 +618,7 @@ async function toggleCarriedGhost(){
   tintGhost(obj, 0xff5a5a, 0.42);
   obj.name = 'PS_GHOST_CARRIED';
   obj.position.set(0, 0, GHOST_ANCHOR.carried);   // 遊戲真實 offset:正前方 ~1.29 單位、地面高度
+  obj.userData.home = obj.position.clone();       // 跟手預覽的「地面起點」(grab 幀前/清 tag 後回這)
   scene.add(obj); REF_GHOSTS.carried = obj; return true;
 }
 function toggleBarrelGhost(){
@@ -628,7 +629,55 @@ function toggleBarrelGhost(){
   const g = new THREE.Group(); g.add(m); tintGhost(g, 0xff9a4a, 0.5);
   g.name = 'PS_GHOST_BARREL';
   g.position.set(0, 0, GHOST_ANCHOR.barrel);       // 遊戲真實 offset:正前方 ~1.23 單位
+  g.userData.home = g.position.clone();            // 跟手預覽的「地面起點」
   scene.add(g); REF_GHOSTS.barrel = g; return true;
+}
+
+// ===== 幽靈跟手預覽(tag 驅動;題目①②定案:雙腕中點+固定偏移、grab/release 正式 tag)=====
+// 行為:SEQ 沒有 grab tag → 幽靈靜止在 home(純參照,零回歸)。有 tag 時依「目前幀」(playT×REF_FPS):
+//   幀 < grab → home;grab ≤ 幀 < release → 貼雙腕中點+偏移(手到哪它到哪);幀 ≥ release → 沿面向(+Z)
+//   以遊戲真實速度飛出(THROW_FORCE 780px/s → 0.52 單位/幀)+ 高度過渡到地面。
+// 掛點:AVATAR 在 → avatar 手骨(畫面上真正的手);否則素體手腕。每幀由 hitfeel tick 呼叫(typeof 守衛)。
+const GHOST_FOLLOW_OFFSET = { carried: 0, barrel: 0 };            // 世界 Y 偏移(單位);貼合不好看再調
+const GHOST_THROW = { speed: (780 / 25) / 60, dropFrames: 12 };   // 速度=js/v2-state THROW_FORCE 換算;墜地過渡幀
+function ghostTagFrames(){
+  let gf = null, rf = null;
+  try{ for(const k of (SEQ || [])){ if(k.tag === 'grab' && gf === null) gf = k.frame; if(k.tag === 'release' && rf === null) rf = k.frame; } }catch(e){}
+  return { gf, rf };
+}
+function handsMidWorld(){
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  if(typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_l && AVATAR.by.hand_r){
+    AVATAR.by.hand_l.bone.getWorldPosition(a); AVATAR.by.hand_r.bone.getWorldPosition(b);
+  } else if(typeof armL !== 'undefined' && armL && armL.wr && armR && armR.wr){
+    armL.wr.getWorldPosition(a); armR.wr.getWorldPosition(b);
+  } else return null;
+  return a.add(b).multiplyScalar(0.5);
+}
+function updateGhostFollow(){
+  const anyGhost = REF_GHOSTS.carried || REF_GHOSTS.barrel;
+  if(!anyGhost) return;
+  const { gf, rf } = ghostTagFrames();
+  const cur = (typeof playT !== 'undefined' ? playT : 0) * REF_FPS;
+  for(const [key, ghost] of Object.entries(REF_GHOSTS)){
+    if(!ghost || !ghost.userData.home) continue;
+    const ud = ghost.userData;
+    if(gf === null || cur < gf){                                   // 未附著:躺在地面起點
+      ghost.position.copy(ud.home); ud.rel = null; continue;
+    }
+    if(rf === null || cur < rf){                                   // 附著:貼雙腕中點+偏移
+      const m = handsMidWorld(); if(!m) continue;
+      ghost.position.set(m.x, m.y + (GHOST_FOLLOW_OFFSET[key] || 0), m.z);
+      ud.rel = null; continue;
+    }
+    if(!ud.rel){                                                   // 脫手:記下脫手點(scrub 倒回會清掉重算)
+      const m = handsMidWorld() || ghost.position;
+      ud.rel = { x: m.x, y: m.y + (GHOST_FOLLOW_OFFSET[key] || 0), z: m.z };
+    }
+    const df = cur - rf;
+    const drop = Math.min(1, df / GHOST_THROW.dropFrames);
+    ghost.position.set(ud.rel.x, ud.rel.y * (1 - drop) + ud.home.y * drop, ud.rel.z + df * GHOST_THROW.speed);
+  }
 }
 
 // headless 健檢 hook(比照 __v2/__mpe;獨立命名空間,避免被 game-bridge 的 window.__ps 覆寫)。

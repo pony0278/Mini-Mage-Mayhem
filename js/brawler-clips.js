@@ -58,7 +58,7 @@ export function prepClip(snap) {
   const phases = {};
   for (const [n, p] of Object.entries(snap.phases || {})) phases[n] = normalizePose(n === 'idle' ? { ...COMBAT_IDLE, ...p } : p);
   if (!phases.idle) phases.idle = { ...COMBAT_IDLE };
-  const seq = (snap.seq || []).map(k => ({ name: k.name, frame: k.frame || 0, ease: k.ease || 'in', impact: !!k.impact }));
+  const seq = (snap.seq || []).map(k => ({ name: k.name, frame: k.frame || 0, ease: k.ease || 'in', impact: !!k.impact, tag: k.tag || null }));
   const segs = [];
   for (let i = 1; i < seq.length; i++) {
     const a = seq[i - 1], b = seq[i];
@@ -68,7 +68,11 @@ export function prepClip(snap) {
   const rf = Math.max(1, Math.round((snap.seq && snap.seq[0] && (snap.seq[0].returnFrames ?? snap.seq[0].frames)) || 10));
   if (last && last.name !== 'idle') segs.push({ from: last.name, to: 'idle', start: last.frame, end: last.frame + rf, ease: 'out', impact: false });
   const dur = segs.length ? segs[segs.length - 1].end / REF_FPS : 0;
-  return { segs, phases, lags, dur };
+  // tags:B 層(排程抓/丟)的零風險準備——保留 grab/release 等 tag 的幀時刻(秒),目前無人消費。
+  // 未來遊戲端:grabAt=播 grab clip 後掛上被扛物的時刻、releaseAt=丟出給速度的時刻(鏡像 STRIKE_DELAY 模式)。
+  const tags = {};
+  for (const k of seq) if (k.tag && !(k.tag in tags)) tags[k.tag] = k.frame / REF_FPS;
+  return { segs, phases, lags, dur, tags };
 }
 const NO_LAGS = { aL: 0, aR: 0, lL: 0, lR: 0 };
 export function evalClip(clip, tSec) { // t 秒 → 47 軸姿勢;超出長度回 null(caller 落回 idle)

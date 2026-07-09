@@ -196,7 +196,9 @@ const DEFAULT_SEQ = [
   {name:'recovery', frames:12, ease:'out', impact:false},
 ];
 const EASES = ['out','in','lin'];
-const KEY_TAGS = ['idle','anti','strike','impact','follow','recover','custom'];
+// grab=附著幀(扛人/扛桶:這幀起被扛物跟手)、release=脫手幀(丟出:這幀起沿面向飛出)。
+// PS 對照幽靈的跟手預覽 + 遊戲端未來的排程抓/丟(鏡像 impact÷60 模式)都讀這兩個 tag。
+const KEY_TAGS = ['idle','anti','strike','impact','follow','recover','grab','release','custom'];
 const DEFAULT_RETURN_FRAMES = 10;
 
 /** @param {*} name @param {string} [fallback] @returns {string} 合法識別字(去非字元、避免數字開頭) */

@@ -57,6 +57,7 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 - **裝備載入**:UI 走 `#partsEquip`(掛「選定 slot」);程式走 `__psEquip.loadEquipBuffer(ab, slot)`。
 - **rigged 手**:`#handsBuiltin` 一鍵載 `assets/rigs/chibi-hands-rigged.glb`;手勢=`HAND_POSE_PRESETS` 起始值+滑桿;骨=Hand→Fingers→FingerMid→FingerTips(+Thumb),彎曲軸=骨局部 X、負=往掌心。
 - **對照 stand-in**(編扛人/丟人/扛桶動作的參照幽靈):`#ghostCarried`(半透明紅 chibi)/`#ghostBarrel`(橘桶箱),位置=遊戲真實 offset(`GHOST_ANCHOR`,源自 js/v2.js 搬運 loop:被扛≈前方32px、桶≈31px;PS 1 單位=25px)。**改遊戲搬運常數要同步 GHOST_ANCHOR**。純參照物,直接掛 scene、不參與姿勢/匯出。
+  **跟手預覽(tag 驅動)**:key tag 設 `grab`(附著幀)/`release`(脫手幀)→ 幽靈依目前幀:grab 前=地面 home、grab–release=貼雙腕中點(AVATAR 在→avatar 手骨,否則素體腕;`GHOST_FOLLOW_OFFSET` 微調)、release 後=沿 +Z 以遊戲真實速度飛出+落地(`GHOST_THROW`,速度=THROW_FORCE 780px/s 換算)。每幀由 hitfeel `tick()` 的 typeof 守衛呼叫 `updateGhostFollow`。無 grab tag=靜止(零回歸)。
 - **headless 測**(CDN 被 egress 擋):puppeteer `setRequestInterception` 把 r128 兩支 CDN 餵本地
   `npm i three-128@npm:three@0.128.0` 的檔案(`build/three.min.js` + `examples/js/loaders/GLTFLoader.js`,**記得 `access-control-allow-origin:*`**);
   SwiftShader flags 照根 CLAUDE.md;hook 用 `__ps`/`__psEquip`;斷言 0 pageerror + 實際滑鼠拖曳/滾輪。
@@ -69,3 +70,4 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 | 動作 clip JSON | `js/brawler-clips.js` CLIPS | impact 幀÷60 = `v2-state.js STRIKE_DELAY` / `ITEM_SPEC.delay` |
 | 對位 JSON(`#partExportCfg`)| 裝備 `EQUIP_CAL`(遊戲掛載器用)| slot 同名;scale/位移/旋轉照搬 |
 | 手勢 JSON(`#handPoseExport`)| `HAND_POSES`(actor 手勢插值用)| 骨局部 X 角度(度),負=握 |
+| clip 內 `grab`/`release` tag | `brawler-clips prepClip` → `clip.tags.grab/.release`(秒)| B 層排程抓/丟的觸發時刻(鏡像 impact÷60;目前遊戲端保留未消費)|
