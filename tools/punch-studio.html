@@ -126,6 +126,14 @@
         <label style="font-size:10.5px">Y<input id="ghostBarrelOY" type="number" step="0.02" value="0" style="width:52px"></label>
         <label style="font-size:10.5px">Z<input id="ghostBarrelOZ" type="number" step="0.02" value="0" style="width:52px"></label>
       </div>
+      <div class="ref-row" title="被扛者跟手掛點:grab 期間人要黏在哪隻手。「拎頭吊掛」=頭頂貼該手抓握面、身體垂直吊下(拎人專用,不隨腕旋轉亂甩);「坐在手上」=腳底貼掛點。X/Y/Z 單手=手局部偏移(隨手轉)、中點=世界偏移。">
+        <span style="font-size:10.5px;color:var(--mut)">人掛點</span>
+        <select id="ghostCarriedAnchor"><option value="R">右手(後手)</option><option value="L">左手(前手)</option><option value="mid">兩手中點</option></select>
+        <select id="ghostCarriedGrip"><option value="head">拎頭吊掛</option><option value="feet">坐在手上</option></select>
+        <label style="font-size:10.5px">X<input id="ghostCarriedOX" type="number" step="0.02" value="0" style="width:52px"></label>
+        <label style="font-size:10.5px">Y<input id="ghostCarriedOY" type="number" step="0.02" value="0" style="width:52px"></label>
+        <label style="font-size:10.5px">Z<input id="ghostCarriedOZ" type="number" step="0.02" value="0" style="width:52px"></label>
+      </div>
       <div id="partsStatus" class="parts-status">尚未載入。最快：用「📦 上傳整包 GLB」一次匯入含全部部位的 bundle(如 tactics5x5_body_parts.glb),自動對應 15 個部位。或用「＋ 逐一載入部位」分檔載入。</div>
     </div>
 
