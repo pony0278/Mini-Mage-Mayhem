@@ -41,9 +41,11 @@ export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 // 投擲:扛人時左鍵朝面向丟出。翻滾(不能自走)中進艙=遠距收容;翻滾結束落地=恢復(丟歪的代價)。
 // 有效射程 ≈ FORCE/3(KNOCK_FRICTION 0.05 積分) + 艙半徑 ≈ 270px。
 export const THROW_FORCE = 780, THROW_TUMBLE = 0.7;
-// 丟人=排程動作:按下→播拎頭過頂 heave clip('person_throw')→ release 幀才把人甩飛。
-// ⚠ 這個延遲=clip 的 release tag 幀÷60,須與 brawler-clips.js person_throw release@22f 對齊(同 STRIKE_DELAY↔impact 慣例)。
-export const PERSON_THROW_DELAY = 22 / 60;
+// 扛/丟人動畫時序(person_throw clip):抓起就播「reach→grab→lift→翻橫」(0→16f)然後**定格在 hold 幀**
+// (grab_windup_2@16f=舉過頭頂+打橫)扛著走;按丟才續播 16→release@22f 甩飛。
+// PERSON_HOLD_T=hold 幀秒(定格點);PERSON_THROW_DELAY=按丟→甩飛=(release-hold)/60。移動 clip 要同步這兩個。
+export const PERSON_HOLD_T = 16 / 60;
+export const PERSON_THROW_DELAY = (22 - 16) / 60;
 export const AI_THROW_DIST = 200, AI_THROW_PANIC = 60, AI_THROW_DELAY = 0.3; // AI:近艙穩丟/掙脫快滿恐慌丟(可能丟歪),帶反應延遲
 export const CARRY_ESCAPE_NEED = 100, CARRY_MASH_AI = 30, CARRY_MASH_TAP = 8; // AI 掙脫≈3.3s(玩家反饋:AI 太強,45→30);人類左右交替每下+8
 // AI 人味缺陷(玩家反饋「AI 太強」:人類贏不了零反應延遲的機器):
@@ -168,7 +170,7 @@ export function resetFighter(f) {
   f.pushWinT = 0; f.pushCd = 0; f.pushFrom = null; f._aiPushAt = 0; // 格擋推開:窗口/冷卻/攻擊者/AI排程
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
-  f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; // 排程丟人(release 幀甩飛;0=沒在丟)+ 拎頭 heave clip 動畫時鐘
+  f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
   f.item = null; f.itemUses = 0;                        // 道具型別 + 剩餘次數

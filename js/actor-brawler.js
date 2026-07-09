@@ -213,7 +213,8 @@ export function updateBrawler(e, g) {
   let pose = null, wob = 0;
   const free = !e.carriedBy && !e.carrying;
   const cclip = e.carryClip ? CLIPS[e.carryClip] : null;           // 丟人 heave clip:扛人期間覆蓋程序姿勢(跨 free,最優先)
-  const cpt = now - (e.carryFx != null ? e.carryFx : -9);
+  let cpt = now - (e.carryFx != null ? e.carryFx : -9);
+  if (e.carryHold && cpt > e.carryHold) cpt = e.carryHold;         // 扛著走:定格在 hold 幀(抓起播完 0→hold 後停);按丟解除 → 續播
   const iclip = e.itemClip ? CLIPS[e.itemClip] : null;              // 道具施法 clip(與拳互斥,優先)
   const ipt = now - (e.itemFx != null ? e.itemFx : -9);
   const pt = now - (e.punchFx != null ? e.punchFx : -9);
