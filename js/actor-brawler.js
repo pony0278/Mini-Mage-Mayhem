@@ -8,6 +8,7 @@ import { makeBox } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
+import { setRiggedHandsVisible } from './actor-hands-rigged.js';
 
 // ===== 建模規格表:尺寸/位置(世界 px)/配色。關節鏈長 Lu/Ll(腿)、Au/Al(臂)給自動踩地/組裝用 =====
 export const BRAWLER_SPEC = {
@@ -158,10 +159,17 @@ function setArmHand(arm, mode) {                                    // mode: 'gl
   arm.handOpen.visible = mode === 'open';
 }
 function updateHands(e, R, u, now) {
-  // ?avatar=1:方塊人是隱形 driver、avatar 才是可見角色。手模掛在方塊人手腕,若顯示會穿出 avatar
-  // 身體外(box rig 與 avatar 形狀/比例不同)→ avatar 模式全程不顯示(也不建立)。手模功能只給方塊人。
+  // ?avatar=1:方塊人是隱形 driver、avatar 才是可見角色。方塊手模掛在方塊人手腕,若顯示會穿出 avatar
+  // 身體外 → avatar 模式全程不顯示方塊手模。avatar 的手改由 rigged 手接管:一般/戰鬥=原生手,
+  // 抓握物品(扛人/扛桶,含丟出後短暫收招)才換 rigged 手(對齊舊設計:扛/丟才換手模)。
   if (avatarEnabled() && avatarReady()) {
     for (const a of [R.armL, R.armR]) { if (a.handGrip) a.handGrip.visible = false; if (a.handOpen) a.handOpen.visible = false; }
+    const av = u.avatar;
+    if (av && av.handRig) {
+      const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0, rigT: 0 });
+      if (e.carrying || e.carryObj) h.rigT = now + 0.3;              // 抓握中→續握;放/丟後多留 0.3s 收招(手指張開的跟隨)
+      setRiggedHandsVisible(av, now < h.rigT);
+    }
     return;
   }
   if (!handsReady()) { R.armL.fist.visible = true; R.armR.fist.visible = true; return; }

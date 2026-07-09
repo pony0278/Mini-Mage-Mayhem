@@ -39,8 +39,10 @@ function collectHandRig(handNode, side) {
 }
 
 // 掛到 avatar 手骨(av.by.hand_l/hand_r.bone)。avatar 與 rigged 手同出 base rig → 手骨已帶 rest
-// 旋轉,手節點歸零(位置+旋轉)identity 掛上即貼合。藏 avatar 原生手網格避免同框。
-// 成功回傳 true 並在 av 掛上 { handRig:{L,R}, handHidden:[...] }。
+// 旋轉,手節點歸零(位置+旋轉)identity 掛上即貼合。
+// 設計:rigged 手**只在抓握物品時**顯示(一般/戰鬥維持 avatar 原生手);故掛載後預設「rigged 藏、原生顯」,
+//   由 setRiggedHandsVisible 依 grab 狀態切換(對齊 actor-hands 舊設計:扛/丟才換手模,其餘維持拳套/原生手)。
+// 成功回傳 true 並在 av 掛上 { handRig:{L,R}, handWraps:{L,R}, handNative:[...] }。
 export function mountRiggedHands(av) {
   if (state !== 2 || !TEMPLATE || !av || !av.by || !av.by.hand_l || !av.by.hand_r) return false;
   const sc = TEMPLATE.clone(true); sc.updateMatrixWorld(true);
@@ -48,18 +50,30 @@ export function mountRiggedHands(av) {
   sc.traverse(o => { if (o.name === 'HandL') hl = o; else if (o.name === 'HandR') hr = o; });   // GLTFLoader:Hand.L→HandL
   if (!hl || !hr) { console.warn('[rigged-hands] GLB 內找不到 HandL/HandR 節點'); return false; }
   av.handRig = {};
-  av.handHidden = [];
+  av.handWraps = {};
+  av.handNative = [];
   for (const [node, side, slot] of [[hl, 'L', 'hand_l'], [hr, 'R', 'hand_r']]) {
     const wrap = new THREE.Group(); wrap.name = 'RIGGED_HAND_' + side;
     node.position.set(0, 0, 0);       // 去掉 rig 內左右並排的偏移
     node.quaternion.identity();       // avatar 手骨已帶 rest 旋轉,節點再疊會轉兩次 → 歸零
     wrap.add(node);
+    wrap.visible = false;             // 預設藏:只在抓握時顯示
     av.handRig[side] = collectHandRig(node, side);
+    av.handWraps[side] = wrap;
     const entry = av.by[slot];
     entry.bone.add(wrap);
-    (entry.meshes || []).forEach(m => { m.visible = false; av.handHidden.push(m); });   // 藏 avatar 原生手
+    (entry.meshes || []).forEach(m => av.handNative.push(m));   // avatar 原生手(預設顯示)
   }
+  av.handShowingRigged = false;
   return true;
+}
+
+// 依 grab 狀態切換:抓握物品時 rigged 手(顯示握持+手指軸)↔ 一般/戰鬥時 avatar 原生手。
+export function setRiggedHandsVisible(av, on) {
+  if (!av || !av.handRig || av.handShowingRigged === on) return;
+  av.handShowingRigged = on;
+  if (av.handWraps) { if (av.handWraps.L) av.handWraps.L.visible = on; if (av.handWraps.R) av.handWraps.R.visible = on; }
+  (av.handNative || []).forEach(m => { m.visible = !on; });   // 顯 rigged 時藏原生,反之
 }
 
 // 每幀:從當前(播放/內插)姿勢的手指軸驅動指骨彎曲。未掛=no-op。彎曲軸=骨局部 X(負=往掌心)。

@@ -148,9 +148,10 @@ export function retargetAvatar(g, boxRig, pose) {
   const groundY = boxFootWorldY(boxRig);
   if (isFinite(_fbox.min.y)) w.position.y = groundY - _fbox.min.y;
 
-  // rigged 手:async 載入,首次就緒時 lazy 掛;每幀由 clip 的手指軸(aL_/aR_ f*)驅動指骨彎曲。
+  // rigged 手:async 載入,首次就緒時 lazy 掛;顯示中(抓握物品)才由 clip 手指軸(aL_/aR_ f*)驅動指骨。
+  // 顯示切換在 actor-brawler updateHands 依 grab 狀態做(一般/戰鬥=原生手,抓握=rigged 手)。
   if (!av.handRig && riggedHandsReady()) mountRiggedHands(av);
-  if (av.handRig) applyFingerPose(av, p);
+  if (av.handRig && av.handShowingRigged) applyFingerPose(av, p);
 }
 
 // ---- 幾何小工具 ----
