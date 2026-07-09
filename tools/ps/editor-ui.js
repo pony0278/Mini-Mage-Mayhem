@@ -294,6 +294,8 @@ function setActiveKey(i){
   activeIdx=Math.max(0,Math.min(SEQ.length-1,i));
   activePhase=SEQ[activeIdx].name;
   scrubActive=false;
+  // 停在被選 key 的幀:讓「跟手幽靈」等吃 playT 的預覽在編輯模式也所見即所得(對齊 timeline 拖曳的行為)
+  playT=(SEQ[activeIdx].frame||0)/REF_FPS;
   buildPhaseTabs();
   buildTimingControls();
   refreshSliders();
