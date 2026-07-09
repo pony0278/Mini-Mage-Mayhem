@@ -647,8 +647,12 @@ function ghostTagFrames(){
 }
 function handsMidWorld(){
   const a = new THREE.Vector3(), b = new THREE.Vector3();
-  if(typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_l && AVATAR.by.hand_r){
-    AVATAR.by.hand_l.bone.getWorldPosition(a); AVATAR.by.hand_r.bone.getWorldPosition(b);
+  // 抓握點 = 指尖↔手掌的交接處(Fingers 骨 = 近端指節基部/掌指關節線 = 手實際抓握的面),
+  // 不是手腕關節——用手腕當掛點物件會坐在手背後方、且抬手姿勢會往頭部竄。
+  if(typeof HAND_RIG !== 'undefined' && HAND_RIG && HAND_RIG.L && HAND_RIG.R && HAND_RIG.L.fingers && HAND_RIG.R.fingers){
+    HAND_RIG.L.fingers.getWorldPosition(a); HAND_RIG.R.fingers.getWorldPosition(b);
+  } else if(typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_l && AVATAR.by.hand_r){
+    AVATAR.by.hand_l.bone.getWorldPosition(a); AVATAR.by.hand_r.bone.getWorldPosition(b); // 無 rigged 手時退回手腕
   } else if(typeof armL !== 'undefined' && armL && armL.wr && armR && armR.wr){
     armL.wr.getWorldPosition(a); armR.wr.getWorldPosition(b);
   } else return null;
