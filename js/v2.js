@@ -209,10 +209,8 @@ function step(dt) {
   // present live fighters for the renderer
   game.enemies = fighters.filter(f => f.state !== 'down');
   // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
-  // 丟桶動畫中的桶(持有者 _barrelThrowAt>0)由 actor-brawler 畫在雙手上,這裡略過免雙重繪
-  const heaving = new Set();
-  for (const f of fighters) if (f.carryObj && f._barrelThrowAt > 0) heaving.add(f.carryObj);
-  game.props = barrels.filter(b => b.alive && !heaving.has(b)).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
+  // 被扛的桶(b.held)由 actor-brawler 畫在雙手上(舉過頭頂/丟桶 heave),這裡略過免雙重繪
+  game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
   game.props.push({ x: labSwitch.x, y: labSwitch.y, r: labSwitch.r, charge: 'lightning', hp: 1, maxHp: 1, held: false }); // 中央緊急控制台(佔位=藍色發光箱)
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);

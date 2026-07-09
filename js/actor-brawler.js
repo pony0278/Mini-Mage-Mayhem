@@ -32,6 +32,7 @@ export const ANIM = {
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
+  barrelHold: { sx: -157, syL: 71, syR: -70, szL: 61, szR: 52, ex: 2, wx: 73, stretch: 1.72 }, // 扛桶:雙臂舉過頭托住桶(對齊 barrel_throw grab_hold 幀 → 搬運↔丟桶無縫、桶恆在手上頭頂)
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
   flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
 };
@@ -176,16 +177,16 @@ function updateHands(e, R, u, now) {
   setArmHand(R.armL, mode); setArmHand(R.armR, mode);
 }
 
-// ===== 丟桶動畫期間:把桶畫在雙手腕中點(隨過頂 heave→甩下)。遊戲端 v2.js 於此期間略過該桶的 prop,
-// 交由這裡畫,甩出瞬間(carryObj 清空)交還給飛行 prop。桶=橘箱+蓋(比照 render-entities syncProps 外觀)。=====
+// ===== 扛桶:把桶畫在雙手腕中點(舉過頭頂;丟桶時隨 heave clip 走)。遊戲端 v2.js 對 held 桶略過 ground prop,
+// 交由這裡畫,甩出/放下瞬間(carryObj 清空)交還給地面/飛行 prop。桶=橘箱+蓋(比照 render-entities syncProps 外觀)。=====
 const _wlp = new THREE.Vector3(), _wrp = new THREE.Vector3();
-function updateThrownBarrel(e, g, R) {
-  const throwing = !!(e.carryObj && e._barrelThrowAt > 0);
+function updateHeldBarrel(e, g, R) {
+  const holding = !!e.carryObj;
   let bm = g.userData.throwBarrel;
-  if (!throwing) { if (bm) bm.visible = false; return; }
+  if (!holding) { if (bm) bm.visible = false; return; }
   if (!bm) {                                                        // lazy 建桶
     const s = (e.carryObj.r || 13) * 2;
-    bm = new THREE.Group(); bm.name = 'THROW_BARREL';
+    bm = new THREE.Group(); bm.name = 'HELD_BARREL';
     const box = makeBox(s, s, s, 0xff7a3a, 0xff5a20, 0.5); bm.add(box);
     const cap = makeBox(s * 1.04, 3, s * 1.04, 0x9c4422); cap.position.y = s * 0.5 + 1.5; bm.add(cap);
     g.add(bm); g.userData.throwBarrel = bm;
@@ -236,6 +237,12 @@ export function updateBrawler(e, g) {
       pose.aL_sx = A.carry.armSx; pose.aR_sx = A.carry.armSx;
       pose.aL_ex = A.carry.armEx; pose.aR_ex = A.carry.armEx;
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
+    } else if (e.carryObj) {    // 扛桶:雙臂舉過頭頂托住桶(桶由 updateHeldBarrel 貼在雙腕中點;丟桶時改由 clip 驅動)
+      const C = A.barrelHold;
+      pose.aL_sx = C.sx; pose.aR_sx = C.sx; pose.aL_sy = C.syL; pose.aR_sy = C.syR;
+      pose.aL_sz = C.szL; pose.aR_sz = C.szR; pose.aL_ex = C.ex; pose.aR_ex = C.ex;
+      pose.aL_wx = C.wx; pose.aR_wx = C.wx; pose.aL_stretch = C.stretch; pose.aR_stretch = C.stretch;
+      pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
     } else {                    // 走路:髖膝擺動+手臂反相(疊在戰鬥站姿上)
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
       pose.lL_kx += Math.max(0, Math.sin(u.ph)) * A.walk.kneeAdd * u.amp;
@@ -278,5 +285,5 @@ export function updateBrawler(e, g) {
   const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
-  updateThrownBarrel(e, g, R);   // 丟桶動畫:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
+  updateHeldBarrel(e, g, R);   // 扛桶:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
 }
