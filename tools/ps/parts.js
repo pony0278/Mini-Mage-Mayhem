@@ -584,6 +584,53 @@ function exportHandPoses(){
 }
 let HAND_LAST_PRESET = null;
 
+// ===== 對照 stand-in(編扛人/丟人/扛桶動作的參照幽靈;位置=遊戲真實值,PS 1 單位=25 遊戲px)=====
+// 遊戲事實(js/v2.js 搬運 loop):被扛者=前方 f.r+o.r*0.7≈32px(地面高度,2D sim 不抬高);
+// 扛桶=前方 f.r+b.r*0.9≈31px、桶 r=13(voxel 箱 ≈26px 見方)。改遊戲常數要同步這裡。
+const GHOST_ANCHOR = { carried: 32.3/25, barrel: 30.7/25, barrelSize: 26/25 };
+let REF_GHOSTS = { carried: null, barrel: null };
+function tintGhost(obj, hex, op){
+  obj.traverse(o=>{ if(o.isMesh){ o.material = o.material.clone();
+    if(o.material.color) o.material.color.lerp(new THREE.Color(hex), 0.55);
+    o.material.transparent = true; o.material.opacity = op; o.material.depthWrite = false; } });
+}
+async function _loadGhostAvatar(){
+  const r = await fetch('../assets/rigs/base-avatar.glb'); if(!r.ok) throw new Error('HTTP '+r.status);
+  const ab = await r.arrayBuffer();
+  return await new Promise((res,rej)=>new THREE.GLTFLoader().parse(ab,'',res,rej));
+}
+async function toggleCarriedGhost(){
+  if(REF_GHOSTS.carried){ scene.remove(REF_GHOSTS.carried); REF_GHOSTS.carried = null; return false; }
+  let obj;
+  try{
+    const gltf = await _loadGhostAvatar();
+    obj = gltf.scene || gltf.scenes[0];
+    const bb = new THREE.Box3().setFromObject(obj), size = new THREE.Vector3(); bb.getSize(size);
+    const standH = (typeof headCY !== 'undefined' ? headCY + DIM.headSize*0.5 : 2);
+    const S = size.y > 1e-6 ? standH/size.y : 1;
+    obj.scale.setScalar(S);
+  }catch(e){ // file:// 或缺檔 → 幽靈箱剪影(同身高)
+    const standH = (typeof headCY !== 'undefined' ? headCY + DIM.headSize*0.5 : 2);
+    obj = new THREE.Mesh(new THREE.BoxGeometry(0.9, standH, 0.55), new THREE.MeshStandardMaterial());
+    obj.position.y = standH/2;
+    const wrapb = new THREE.Group(); wrapb.add(obj); obj = wrapb;
+  }
+  tintGhost(obj, 0xff5a5a, 0.42);
+  obj.name = 'PS_GHOST_CARRIED';
+  obj.position.set(0, 0, GHOST_ANCHOR.carried);   // 遊戲真實 offset:正前方 ~1.29 單位、地面高度
+  scene.add(obj); REF_GHOSTS.carried = obj; return true;
+}
+function toggleBarrelGhost(){
+  if(REF_GHOSTS.barrel){ scene.remove(REF_GHOSTS.barrel); REF_GHOSTS.barrel = null; return false; }
+  const s = GHOST_ANCHOR.barrelSize;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), new THREE.MeshStandardMaterial());
+  m.position.set(0, s/2, 0);                       // 底貼地
+  const g = new THREE.Group(); g.add(m); tintGhost(g, 0xff9a4a, 0.5);
+  g.name = 'PS_GHOST_BARREL';
+  g.position.set(0, 0, GHOST_ANCHOR.barrel);       // 遊戲真實 offset:正前方 ~1.23 單位
+  scene.add(g); REF_GHOSTS.barrel = g; return true;
+}
+
 // headless 健檢 hook(比照 __v2/__mpe;獨立命名空間,避免被 game-bridge 的 window.__ps 覆寫)。
 window.__psEquip = {
   slots: ()=>PART_SLOT_DEFS.map(d=>d.slot),
@@ -600,6 +647,10 @@ window.__psEquip = {
   setHandPose: (p)=>{ setHandPose(p); return HAND_POSE; },
   loadHandsBuiltin: loadRiggedHandsBuiltin,
   setHandShow: (m)=>{ HAND_SHOW = m; applyHandShow(); return { show: HAND_SHOW, lVis: PART_MODELS.hand_l ? PART_MODELS.hand_l.visible : null, rVis: PART_MODELS.hand_r ? PART_MODELS.hand_r.visible : null }; },
+  toggleCarriedGhost, toggleBarrelGhost,
+  ghosts: ()=>({ carried: !!REF_GHOSTS.carried, barrel: !!REF_GHOSTS.barrel,
+    carriedZ: REF_GHOSTS.carried ? +REF_GHOSTS.carried.position.z.toFixed(3) : null,
+    barrelZ: REF_GHOSTS.barrel ? +REF_GHOSTS.barrel.position.z.toFixed(3) : null }),
   handInfo: ()=>{
     if(!HAND_RIG) return null;
     const info = {};
@@ -644,6 +695,8 @@ function buildPartSlotUI(){
   document.getElementById('partsHandsRig')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadRiggedHandsFile(f); e.target.value=''; }); // rigged 手→自動拆左右
   document.getElementById('handsBuiltin')?.addEventListener('click',()=>loadRiggedHandsBuiltin()); // 內建一鍵載入
   document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
+  document.getElementById('ghostCarried')?.addEventListener('click',e=>{ toggleCarriedGhost().then(on=>e.target.classList.toggle('on',on)); }); // 對照:被扛者
+  document.getElementById('ghostBarrel')?.addEventListener('click',e=>{ e.target.classList.toggle('on', toggleBarrelGhost()); });               // 對照:桶
   // 手勢滑桿(骨局部 X 角度;負=往掌心彎)+ 預設鈕 + 匯出
   [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']].forEach(([id,k])=>{
     const r=document.getElementById(id), n=document.getElementById(id+'Num'); if(!r||!n) return;

@@ -116,6 +116,10 @@
         <button id="handShowToggle" title="切換手的顯示:雙手 → 只左手 → 只右手(調單手時不被另一手擋視線)">顯示:雙手</button>
         <button id="handPoseExport">匯出手勢 JSON</button>
       </div>
+      <div class="ref-row" title="對照 stand-in:編扛人/丟人/扛桶動作時的參照幽靈,擺在遊戲真實位置(被扛者=正前方32px地面高度、桶=前方31px)。純參照,不參與姿勢/匯出">
+        <button id="ghostCarried" title="半透明紅色 chibi,擺在遊戲扛人的真實位置(再按一次移除)">👤 對照:被扛者</button>
+        <button id="ghostBarrel" title="半透明橘色桶佔位箱,擺在遊戲扛桶的真實位置(再按一次移除)">🛢 對照:桶</button>
+      </div>
       <div class="parts-grid">
         <label>指根</label><input type="range" id="handFingers" min="-120" max="30" step="1" value="0"><input id="handFingersNum" type="number" step="1" value="0">
         <label>指中</label><input type="range" id="handMid" min="-120" max="30" step="1" value="0"><input id="handMidNum" type="number" step="1" value="0">

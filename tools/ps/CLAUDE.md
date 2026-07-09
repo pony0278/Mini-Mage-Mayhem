@@ -56,6 +56,7 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 - **加部位/裝備 slot**:sockets-data `equipment_mounts` 加 mount + parts `PS_RIG_TARGET`/`PS_SLOT_LABEL`/`PART_SLOT_DEFS_FALLBACK` 各加一行(參考 `headgear`)。
 - **裝備載入**:UI 走 `#partsEquip`(掛「選定 slot」);程式走 `__psEquip.loadEquipBuffer(ab, slot)`。
 - **rigged 手**:`#handsBuiltin` 一鍵載 `assets/rigs/chibi-hands-rigged.glb`;手勢=`HAND_POSE_PRESETS` 起始值+滑桿;骨=Hand→Fingers→FingerMid→FingerTips(+Thumb),彎曲軸=骨局部 X、負=往掌心。
+- **對照 stand-in**(編扛人/丟人/扛桶動作的參照幽靈):`#ghostCarried`(半透明紅 chibi)/`#ghostBarrel`(橘桶箱),位置=遊戲真實 offset(`GHOST_ANCHOR`,源自 js/v2.js 搬運 loop:被扛≈前方32px、桶≈31px;PS 1 單位=25px)。**改遊戲搬運常數要同步 GHOST_ANCHOR**。純參照物,直接掛 scene、不參與姿勢/匯出。
 - **headless 測**(CDN 被 egress 擋):puppeteer `setRequestInterception` 把 r128 兩支 CDN 餵本地
   `npm i three-128@npm:three@0.128.0` 的檔案(`build/three.min.js` + `examples/js/loaders/GLTFLoader.js`,**記得 `access-control-allow-origin:*`**);
   SwiftShader flags 照根 CLAUDE.md;hook 用 `__ps`/`__psEquip`;斷言 0 pageerror + 實際滑鼠拖曳/滾輪。
