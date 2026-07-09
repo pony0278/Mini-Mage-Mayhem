@@ -98,5 +98,5 @@
 ## 設計文件對照(要「為什麼」看這些)
 
 `docs/v2-element-floor-chemistry.md`(地板化學+道具對照+站+桶全設計)、`docs/v2-floor-state-architecture.md`(floor 工程藍圖)、
-`docs/v2-item-cast-system.md`(道具次數+排程施放)、`docs/v2-module-boundaries.md`(拆檔史)、`docs/animation-workflow.md`(clip↔impact)、
-`docs/v2-spec-*.md`(北極星/蠢死法/報告)。**改完系統記得回寫對應文件的「狀態」行。**
+`docs/v2-item-cast-system.md`(道具次數+排程施放)、**`docs/v2-carry-throw-system.md`(扛/丟系統維護分析:桶+人共用架構、三時鐘同步、貼手模式、病因庫、測試陷阱——動 carry/throw 前必看)**、
+`docs/v2-module-boundaries.md`(拆檔史)、`docs/animation-workflow.md`(clip↔impact)、`docs/v2-spec-*.md`(北極星/蠢死法/報告)。**改完系統記得回寫對應文件的「狀態」行。**

@@ -28,6 +28,7 @@
 | [render-module-boundaries.md](render-module-boundaries.md) | **render.js 模組邊界定義書**：渲染層拆分（core/world/actors/entities/hud + 門面）、跨區依賴分析、雙遊戲驗證協定 |
 | [animation-workflow.md](animation-workflow.md) | **動作工作流**：PUNCH STUDIO 編排器（`tools/punch-studio.html`）→ JSON 匯出 → 貼 `brawler-clips.js`；impact 影格 ↔ `STRIKE_DELAY` 對齊規則、軸支援表、招式插槽 |
 | [v2-item-cast-system.md](v2-item-cast-system.md) | **道具系統：次數 + 排程施放**（規劃）：道具改多次數消耗品 + 每道具專屬使用動畫（impact 幀觸發，鏡像揮拳）；`ITEM_SPEC` 正交欄位表（uses/clip/delay/whileDisabled/aim/kind，取代單一分類 enum）；骨架先出行為不變、動畫到位再逐列開 |
+| [v2-carry-throw-system.md](v2-carry-throw-system.md) | **扛/丟系統維護分析（桶+人）**：「拿起→舉著定格→排程甩出」共用架構的單一真相——7 檔地圖、每 fighter 狀態機、**三時鐘同步鐵則**（人 `(release-hold)/60` ≠ 桶 `release/60`）、render 貼手（桶=child of g `updateHeldBarrel` / 人=syncActors 後處理 `positionCarried`+繞頭旋轉）、**病因庫**（含「抓起沒打橫＝持有狀態要持續驅動」）、headless 兩陷阱（rAF 節流跳 clip 時鐘 / 非本機自動掙脫）、調參速查、加新可扛物食譜 |
 | [../assets/README.md](../assets/README.md) | **assets/ 素材倉庫**:建模管線的 GLB 原始檔（raw=整塊來源模型、parts=已切部位）；哪些檔案還需要跑規範匯出 |
 | [part-authoring.md](part-authoring.md) | **部位建模規範**(給建模師):插頭與插座心智模型、原點/+Y/+Z 三規則、全部位接縫半徑與標準長度表、Blender 匯出清單、症狀對照 |
 
