@@ -21,6 +21,9 @@ export const POSE_KEYS = [
   'aL_wx', 'aL_wy', 'aR_wx', 'aR_wy',
   'lL_ty', 'lR_ty',
   'aL_stretch', 'aR_stretch', 'lL_stretch', 'lR_stretch',   // 整肢從近端關節等比伸展(1=原長;遠鏡頭下伸手更明顯)
+  // 被扛者旋轉/偏移(拎頭吊掛;非扛者骨軸,applyBrawlerPose 忽略)。render-actors 讀 clip 這幾軸,把被扛 actor
+  // 貼到扛者手上+繞頭轉(pitch/yaw)+微調偏移。丟人 clip(person_throw)帶這些,一般 clip 全 0。
+  'carry_tilt', 'carry_yaw', 'carry_ox', 'carry_oy', 'carry_oz',
 ];
 export function defaultPoseValue(k) { return (k === 'body_scale' || k.endsWith('_scale') || k.endsWith('_stretch')) ? 1 : 0; }
 export function normalizePose(p = {}) {
@@ -185,6 +188,35 @@ export const CLIPS = {
       release: { squat: 35, spine_x: 7, aL_sx: 16, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: 0, aR_sy: -70, aR_sz: 52, aL_wy: 7 },
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },   // 雙手對稱 heave → aR lag 歸零(兩手同步,不錯開)
+  }),
+  // 拎頭過頂丟人(carryClip 頻道播,扛人期間覆蓋程序姿勢)。使用者 PUNCH STUDIO 定稿。
+  // grab@10=抓頭、release@22=甩飛(= v2-state PERSON_THROW_DELAY,移動要同步)。被扛者靠 carry_tilt(-85 打橫)/
+  // carry_yaw(-100 轉向)/carry_o*(掛點微調)由 render-actors 定位+旋轉。idle 略去→補 COMBAT_IDLE。
+  person_throw: prepClip({
+    seq: [
+      { name: "idle", frame: 0, frames: 10, ease: "out", tag: "idle" },
+      { name: "windup", frame: 4, ease: "out", tag: "anti" },
+      { name: "grab", frame: 10, ease: "out", tag: "grab" },
+      { name: "grab_windup", frame: 13, ease: "out", tag: "grab" },
+      { name: "grab_windup_2", frame: 16, ease: "out", tag: "grab" },
+      { name: "ready_throw", frame: 19, ease: "out", tag: "grab" },
+      { name: "throw_2", frame: 22, ease: "out", tag: "release" },
+      { name: "throw_2_hold", frame: 25, ease: "out", tag: "release" },
+      { name: "throw_finsh", frame: 28, ease: "out", tag: "recover" },
+      { name: "recovery", frame: 38, ease: "out", tag: "recover" },
+    ],
+    phases: {
+      windup: { spine_x: -6, spine_y: -63, pelvis_y: -6, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: 2, aR_sy: -18, aR_sz: 130, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wx: -13, aR_wy: -49, aR_stretch: 2.02 },
+      grab: { spine_x: -6, spine_y: -63, pelvis_y: -6, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: -1, aR_sy: -28, aR_sz: 119, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wy: -97, aR_stretch: 1.95 },
+      grab_windup: { spine_x: -28, spine_y: -63, pelvis_y: -6, head_x: 4, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: -34, aR_sy: -28, aR_sz: 119, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wy: -97, aR_stretch: 1.95 },
+      grab_windup_2: { pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -6, lL_kx: 8, lR_hx: -15, lR_hy: 8, lR_kx: 11, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      ready_throw: { spine_x: -55, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -6, lL_kx: 8, lR_hx: -15, lR_hy: 8, lR_kx: 11, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      throw_2: { spine_x: 33, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lL_kx: -20, lR_hx: -15, lR_hy: 8, lR_kx: -20, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      throw_2_hold: { spine_x: 33, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lL_kx: -20, lR_hx: -15, lR_hy: 8, lR_kx: -20, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      throw_finsh: { spine_x: -2, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lR_hx: -15, lR_hy: 8, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      recovery: { spine_x: -2, pelvis_y: -6, head_x: 4, aL_sx: 63, aL_sy: 66, aL_sz: 87, aL_ex: -3, aR_sx: 156, aR_sy: -25, aR_sz: 163, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lR_hx: -15, lR_hy: 8, aL_wx: 7, aL_wy: 30, aR_wx: 22, aR_wy: 66, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+    },
+    lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
   }),
 };
 export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand']; // punchKind 0/1/2 → clip(使用者自編三連擊)

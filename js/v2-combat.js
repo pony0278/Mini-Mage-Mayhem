@@ -257,6 +257,7 @@ export function doPushOff(o) {
 }
 export function startCarry(f, o) {
   f.carrying = o; o.carriedBy = f; o.escape = 0; o.stunned = false; o.stunT = 0; o.mashSide = 0; o._aPrev = false; o._dPrev = false;
+  f._carryThrowAt = 0; f.carryClip = null;              // 新抓一趟:清掉上一次丟人 clip 殘留(免舊動畫沾到新搬運)
   addText(o.x, o.y - 30, '抓住！', COLORS[f.pid]); addRing(o.x, o.y, 34, COLORS[f.pid], 0.35, 4); addShake(4); game.sfx.push('upgrade');
   dlog('GRAB', NAMES[f.pid], '→', NAMES[o.pid]);
 }
@@ -271,10 +272,10 @@ export function throwCarried(f) {
 }
 // release 幀到:真的把人甩出去(舊 throwCarried 的物理段)。中途被打斷/掙脫 → carrying 沒了 → 取消。
 export function launchCarried(f) {
-  f._carryThrowAt = 0; f.carryClip = null;
+  f._carryThrowAt = 0;                                         // carryClip 不清:讓 heave clip 播完收招(release 後仍是同一段動畫)
   const o = f.carrying;
   if (!o || f.state !== 'alive') return;
-  if (f.stunned) { dropCarry(f); return; }                   // release 幀被打暈 → 掉人不甩(同原 throwCarried 守衛)
+  if (f.stunned) { dropCarry(f); f.carryClip = null; return; } // release 幀被打暈 → 掉人不甩(同原 throwCarried 守衛)
   f.carrying = null; o.carriedBy = null; o.escape = 0; o.mashSide = 0; f.regrabCd = REGRAB_CD;
   const a = f.facing;
   o.x = f.x + Math.cos(a) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(a) * (f.r + o.r * 0.7);
@@ -282,8 +283,7 @@ export function launchCarried(f) {
   o.fumbleT = THROW_TUMBLE; o._thrownT = game.time;            // 翻滾:moveFighter 只走 slideKnock
   o.lastHitBy = f.pid; o.lastHitT = game.time; o.faceT = 0.3;
   o.stability = Math.max(o.stability, 30);                     // 同放下:落地不至於原地再被打暈
-  f.punchFx = game.time; f.punchKind = 2; f.punchArm = 1;      // 借終結技的大動作當投擲姿勢
-  f.punchCd = 0.5;                                             // 投擲後恢復:丟完不能立刻接拳
+  f.punchCd = 0.5;                                             // 投擲後恢復:丟完不能立刻接拳(動畫由 carryClip 收招)
   inc.throws[f.pid]++;
   flinch(o, a, 0.3); camKick(a, 7); addShake(5); game.sfx.push('dash');
   addText(o.x, o.y - 32, '拋出！', COLORS[f.pid]); addRing(f.x, f.y, 30, COLORS[f.pid], 0.3, 4);

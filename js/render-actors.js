@@ -8,11 +8,29 @@ import { ELEMENT_INFO } from './data.js';
 import { dashElement } from './sim.js';
 import { scene, circleGeo, octaGeo, colorHex, matLambert, makeBox, makeGlowSphere, actorShadow } from './render-core.js';
 import { freeIslands } from './render-world.js';
-import { buildBrawler, updateBrawler } from './actor-brawler.js';
+import { buildBrawler, updateBrawler, BRAWLER_SPEC } from './actor-brawler.js';
 
   // --- actor (player + enemy) voxel meshes ---
   const actorMeshes = new Map();
   let playerMesh = null;
+  // 被扛者拎頭吊掛:頭頂貼扛者手、繞頭以 clip 的 carry_tilt(pitch)/carry_yaw(yaw)旋轉 + carry_o* 手局部偏移。
+  // 掙扎姿勢(四肢亂踢)仍由 updateBrawler 套在 rig 上;這裡只覆蓋 g 的世界位置+朝向(比照 punch-studio 幽靈)。
+  const _cD2R = Math.PI / 180, CARRY_HEAD = 44;   // 被扛者頭頂高度(px);拎頭把頭貼到手上
+  const _cH = new THREE.Vector3(), _cQp = new THREE.Quaternion(), _cQh = new THREE.Quaternion(), _cHV = new THREE.Vector3(), _cOFF = new THREE.Vector3();
+  const _cAX = new THREE.Vector3(1, 0, 0), _cAY = new THREE.Vector3(0, 1, 0);
+  function positionCarried(e, g) {
+    const cg = actorMeshes.get(e.carriedBy); if (!cg || !cg.userData.rig) return;
+    const rig = cg.userData.rig, cp = cg.userData.pose || {};
+    rig.armL.wr.getWorldPosition(_cH);                                    // 抓握手=左手腕(clip 的 aL 過頂手)
+    rig.armL.wr.getWorldQuaternion(_cQh);
+    _cOFF.set((cp.carry_ox || 0) * BRAWLER_SPEC.PX, (cp.carry_oy || 0) * BRAWLER_SPEC.PX, (cp.carry_oz || 0) * BRAWLER_SPEC.PX).applyQuaternion(_cQh);
+    _cH.add(_cOFF);                                                       // 掛點 = 手 + 手局部偏移
+    _cQp.setFromAxisAngle(_cAX, (cp.carry_tilt || 0) * _cD2R);            // pitch
+    g.quaternion.setFromAxisAngle(_cAY, (cp.carry_yaw || 0) * _cD2R).multiply(_cQp);  // R = yaw ∘ pitch(繞頭)
+    _cHV.set(0, CARRY_HEAD, 0).applyQuaternion(g.quaternion);
+    g.position.set(_cH.x - _cHV.x, _cH.y - _cHV.y, _cH.z - _cHV.z);       // 頭貼掛點,腳沿身體軸擺出
+    g.scale.set(1, 1, 1);
+  }
   // drop cached voxel meshes so syncActors rebuilds them from the entity's current r (e.g. after resizing fighters)
   export function refreshActors() { for (const g of actorMeshes.values()) scene.remove(g); actorMeshes.clear(); }
 
@@ -168,7 +186,7 @@ import { buildBrawler, updateBrawler } from './actor-brawler.js';
       }
     }
     // brawler 的姿勢狀態機(走路/三段拳/扛/被扛/暈眩/flinch)在 actor-brawler.js(ANIM 參數表驅動)
-    if (e.type === 'brawler') updateBrawler(e, g);
+    if (e.type === 'brawler') updateBrawler(e, g);   // 被扛者定位在 syncActors 的後處理(等扛者本幀更新完,手骨才是最新)
     else if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
     else g.rotation.y = Math.atan2((game.player ? game.player.x - e.x : 0), (game.player ? game.player.y - e.y : 1));
     const tintHex = e.hurt > 0 ? 0xffffff : (e.slowTimer > 0 ? 0xd8fbff : null);
@@ -183,6 +201,8 @@ import { buildBrawler, updateBrawler } from './actor-brawler.js';
       if (!g) { g = buildEnemy(e); scene.add(g); actorMeshes.set(e, g); }
       updateActor(e, g);
     }
+    // 後處理:被扛者定位貼扛者手上(此時所有 actor 本幀已更新,扛者手骨=最新,無 1 幀延遲)
+    for (const e of game.enemies) { if (e.type === 'brawler' && e.carriedBy) { const g = actorMeshes.get(e); if (g) positionCarried(e, g); } }
     for (const [e, g] of actorMeshes) {
       if (!seen.has(e)) { scene.remove(g); actorMeshes.delete(e); }
     }
