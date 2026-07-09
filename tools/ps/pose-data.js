@@ -36,7 +36,11 @@ const POSE_KEYS = [
   'lL_contact','lR_contact',  // 腳掌接觸鎖:0=平踩 1=墊腳(抬跟) 2=抬起(離地,不當地面錨點)
   'aL_wx','aL_wy','aR_wx','aR_wy',   // 腕關節:wx 屈伸 / wy 沿前臂軸扭轉(旋前旋後)
   'lL_ty','lR_ty',                   // 腳尖朝向(踝 Y;×side,正=外八)— 可獨立於髖瞄準腳尖
-  'aL_stretch','aR_stretch','lL_stretch','lR_stretch'   // 整肢從近端關節等比伸展(1=原長;遠鏡頭下伸手更明顯)
+  'aL_stretch','aR_stretch','lL_stretch','lR_stretch',  // 整肢從近端關節等比伸展(1=原長;遠鏡頭下伸手更明顯)
+  // rigged 手手指彎曲(逐關鍵格、左右獨立;骨局部 X 角度,負=往掌心彎)。由 parts.js applyFingerPose 消費 →
+  // HAND_RIG.{L,R}.{fingers,mid,tips,thumb}。無 rigged 手時這些軸無作用。接近幀 0=張開、抓取幀捲起 → 沿時間軸內插。
+  'aL_fbase','aL_fmid','aL_ftip','aL_fthumb',
+  'aR_fbase','aR_fmid','aR_ftip','aR_fthumb'
 ];
 /** @param {string} k 軸名 @returns {number} 該軸的預設值(scale/stretch=1,其餘=0) */
 function defaultPoseValue(k){

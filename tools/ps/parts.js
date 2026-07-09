@@ -448,14 +448,18 @@ async function loadEquipFile(file){
 // rig 事實(解析自 GLB):骨鏈 Hand→Fingers→FingerMid→FingerTips(+Thumb),手指沿骨局部 +Y 生長,
 // 彎曲軸=骨局部 X(rest 已帶 -2.4° 自然微彎,左右同號 → 同一組角度兩手對稱)。剛性分段(無蒙皮),轉骨即彎。
 let HAND_RIG = null;   // { L:{fingers,mid,tips,thumb}, R:{...} } 各=THREE.Object3D;rest 四元數存在 userData.restQ
-let HAND_POSE = { fingers:0, mid:0, tips:0, thumb:0 };  // 目前滑桿角度(度;負=往掌心彎)
-// 預設庫(起始值,使用者滑桿調完可覆寫進 preset 再匯出)
+// 手指彎曲=逐關鍵格姿勢軸(左右獨立);preset=快速套形的起始值(open/grip/fist),按鈕會寫進當前 key 的兩手軸。
 const HAND_POSE_PRESETS = {
   open: { fingers: 0,   mid: 0,   tips: 0,   thumb: 0 },
   grip: { fingers: -50, mid: -70, tips: -40, thumb: -40 },
   fist: { fingers: -80, mid: -95, tips: -70, thumb: -55 },
 };
 const HAND_BONE_KEYS = { fingers:'Fingers', mid:'FingerMid', tips:'FingerTips', thumb:'Thumb' };
+// 指骨鍵 → 姿勢軸名(左右各一組);applyFingerPose 依此把 pose 值寫進骨頭。
+const FINGER_POSE_AXES = {
+  L: { fingers:'aL_fbase', mid:'aL_fmid', tips:'aL_ftip', thumb:'aL_fthumb' },
+  R: { fingers:'aR_fbase', mid:'aR_fmid', tips:'aR_ftip', thumb:'aR_fthumb' },
+};
 function collectHandRig(handNode, side){
   const out = {};
   handNode.traverse(o=>{
@@ -465,23 +469,35 @@ function collectHandRig(handNode, side){
   });
   return out;
 }
-function applyHandPose(){
-  if(!HAND_RIG) return;
+// 每幀由 rig.js applyPose(p) 呼叫:從當前姿勢(播放/scrub 內插值、或編輯的靜態 key)驅動指骨彎曲。
+// 未掛 rigged 手 = no-op;彎曲軸=骨局部 X(負=往掌心)。
+function applyFingerPose(p){
+  if(!HAND_RIG || !p) return;
   const AX = new THREE.Vector3(1,0,0);
   for(const side of ['L','R']){
     const rig = HAND_RIG[side]; if(!rig) continue;
+    const axes = FINGER_POSE_AXES[side];
     for(const [k, bone] of Object.entries(rig)){
       if(!bone || !bone.userData.restQ) continue;
+      const deg = Number(p[axes[k]]) || 0;
       bone.quaternion.copy(bone.userData.restQ)
-        .multiply(new THREE.Quaternion().setFromAxisAngle(AX, (Number(HAND_POSE[k])||0)*D2R));
+        .multiply(new THREE.Quaternion().setFromAxisAngle(AX, deg*D2R));
     }
   }
 }
-function setHandPose(p){ Object.assign(HAND_POSE, p||{}); applyHandPose(); syncHandPoseUI(); }
-function syncHandPoseUI(){
-  [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']].forEach(([id,k])=>{
-    const r=document.getElementById(id), n=document.getElementById(id+'Num');
-    if(r) r.value=HAND_POSE[k]; if(n) n.value=HAND_POSE[k];
+// 手指滑桿:slot-aware(選 HAND_L→L 軸、HAND_R→R 軸),寫進「當前 key」的姿勢軸;非手 slot 時停用。
+function fingerSideFromSlot(){
+  const s=document.getElementById('partSlotSelect'); const v=s?s.value:'';
+  return v==='hand_l'?'L': v==='hand_r'?'R': null;
+}
+const HAND_SLIDER_MAP = [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']];
+function refreshFingerSliders(){
+  const side = fingerSideFromSlot();
+  const p = (typeof PHASES!=='undefined' && typeof activePhase!=='undefined' && PHASES[activePhase]) ? PHASES[activePhase] : null;
+  HAND_SLIDER_MAP.forEach(([id,k])=>{
+    const r=document.getElementById(id), n=document.getElementById(id+'Num'); if(!r||!n) return;
+    const on = !!side; r.disabled=!on; n.disabled=!on;
+    if(on && p){ const v=Number(p[FINGER_POSE_AXES[side][k]])||0; r.value=v; n.value=v; }
   });
 }
 // 預設對位,依掛載對象分兩套:
@@ -531,11 +547,13 @@ function mountRiggedHands(gltf){
     savePartConfig();
   }
   if(!av){ PARTS_HIDE_DUMMY = false; setSyntheticDummyVisible(true); } // 假人路徑才需要顯示假人;avatar 路徑完全不動假人(維持隱藏)
-  applyHandPose();
+  applyFingerPose((typeof PHASES!=='undefined' && typeof activePhase!=='undefined' && PHASES[activePhase]) ? PHASES[activePhase]
+    : (typeof ZERO_POSE!=='undefined' ? ZERO_POSE : null));   // 依當前 key 的手指軸擺位(通常張開)
+  refreshFingerSliders();
   applyHandShow(); // 重載時保持目前的雙手/單手顯示模式
   updatePartsStatus(av
-    ? '已載入 rigged 手 → chibi 人物手骨(原生手已隱藏;假人維持隱藏)。選 HAND_L/HAND_R 微調對位;✋✊👊+滑桿調手勢;調好「匯出手勢 JSON」。'
-    : '已載入 rigged 手 → 假人手腕(無基底角色的 fallback)。選 HAND_L/HAND_R 微調對位;✋✊👊+滑桿調手勢。');
+    ? '已載入 rigged 手 → chibi 人物手骨(原生手已隱藏)。選 HAND_L/HAND_R:對位滑桿調掛載、手指滑桿逐關鍵格調彎曲(✋✊👊套雙手起始形);彎曲隨招式匯出。'
+    : '已載入 rigged 手 → 假人手腕(fallback)。選 HAND_L/HAND_R:對位滑桿調掛載、手指滑桿逐關鍵格調彎曲(✋✊👊套雙手起始形)。');
 }
 async function loadRiggedHandsFile(file){
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
@@ -571,18 +589,7 @@ function applyHandShow(){
   if(btn) btn.textContent = HAND_SHOW === 'both' ? '顯示:雙手' : HAND_SHOW === 'L' ? '顯示:只左手' : '顯示:只右手';
 }
 function cycleHandShow(){ HAND_SHOW = HAND_SHOW === 'both' ? 'L' : HAND_SHOW === 'L' ? 'R' : 'both'; applyHandShow(); }
-function exportHandPoses(){
-  // 匯出目前三個 preset(open 固定歸零;grip/fist 以「目前滑桿」覆寫使用者正在調的那組?
-  // 規則:按過 preset 鈕後滑桿=該 preset;匯出時把目前滑桿寫回「最後按的 preset」,再輸出全部)
-  if(HAND_LAST_PRESET && HAND_POSE_PRESETS[HAND_LAST_PRESET]) Object.assign(HAND_POSE_PRESETS[HAND_LAST_PRESET], HAND_POSE);
-  const payload = { fmt:'HAND_POSES v1', axis:'bone-local X (deg, negative curls inward)', presets: HAND_POSE_PRESETS };
-  const text = JSON.stringify(payload, null, 2);
-  try{ navigator.clipboard && navigator.clipboard.writeText(text); }catch(e){}
-  console.log('[hand poses]', text);
-  updatePartsStatus('手勢 JSON 已複製到剪貼簿(也印在 console)。貼給遊戲端當 HAND_POSES。');
-  return payload;
-}
-let HAND_LAST_PRESET = null;
+// 手指彎曲已併入招式 clip 的姿勢資料(逐關鍵格),不再有獨立「手勢 JSON」匯出——「全部匯出 JSON」就帶著它。
 
 // ===== 對照 stand-in(編扛人/丟人/扛桶動作的參照幽靈;位置=遊戲真實值,PS 1 單位=25 遊戲px)=====
 // 遊戲事實(js/v2.js 搬運 loop):被扛者=前方 f.r+o.r*0.7≈32px(地面高度,2D sim 不抬高);
@@ -697,7 +704,13 @@ window.__psEquip = {
     if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
     new THREE.GLTFLoader().parse(ab, '', (gltf)=>{ try{ mountRiggedHands(gltf); resolve(true); }catch(e){ reject(e); } }, reject);
   }),
-  setHandPose: (p)=>{ setHandPose(p); return HAND_POSE; },
+  // 逐關鍵格手指:寫進當前 key 的姿勢軸(side='L'/'R'),套用後回傳指骨四元數供驗證
+  setFingerPose: (partial, side='L')=>{
+    const axes = FINGER_POSE_AXES[side]; if(!axes) return null;
+    if(typeof PHASES!=='undefined' && PHASES[activePhase]) for(const k of Object.keys(partial)) PHASES[activePhase][axes[k]] = Number(partial[k])||0;
+    if(typeof applyPose==='function' && typeof PHASES!=='undefined' && PHASES[activePhase]) applyPose(PHASES[activePhase]);
+    return { mounted: !!HAND_RIG };
+  },
   loadHandsBuiltin: loadRiggedHandsBuiltin,
   setHandShow: (m)=>{ HAND_SHOW = m; applyHandShow(); return { show: HAND_SHOW, lVis: PART_MODELS.hand_l ? PART_MODELS.hand_l.visible : null, rVis: PART_MODELS.hand_r ? PART_MODELS.hand_r.visible : null }; },
   toggleCarriedGhost, toggleBarrelGhost,
@@ -715,7 +728,6 @@ window.__psEquip = {
     }
     return info;
   },
-  exportHandPoses,
 };
 function buildPartSlotUI(){
   const sel=document.getElementById('partSlotSelect'); if(!sel) return;
@@ -736,8 +748,8 @@ function buildPartSlotUI(){
       const r=document.getElementById(rId), n=document.getElementById(nId); if(r)r.value=c[k]; if(n)n.value=c[k];
     });
   }
-  sel.addEventListener('change',refresh);
-  refresh();
+  sel.addEventListener('change',()=>{ refresh(); refreshFingerSliders(); });   // 換 slot 時手指滑桿也重讀(HAND_L/HAND_R 各自軸)
+  refresh(); refreshFingerSliders();
   document.getElementById('partsBundle')?.addEventListener('change',e=>{
     const f = e.target.files && e.target.files[0];
     if(f) loadPartBundle(f);
@@ -750,18 +762,28 @@ function buildPartSlotUI(){
   document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
   document.getElementById('ghostCarried')?.addEventListener('click',e=>{ toggleCarriedGhost().then(on=>e.target.classList.toggle('on',on)); }); // 對照:被扛者
   document.getElementById('ghostBarrel')?.addEventListener('click',e=>{ e.target.classList.toggle('on', toggleBarrelGhost()); });               // 對照:桶
-  // 手勢滑桿(骨局部 X 角度;負=往掌心彎)+ 預設鈕 + 匯出
-  [['handFingers','fingers'],['handMid','mid'],['handTips','tips'],['handThumb','thumb']].forEach(([id,k])=>{
+  // 手指彎曲滑桿:slot-aware(選 HAND_L→L、HAND_R→R),寫進「當前 key」的姿勢軸(逐關鍵格,沿時間軸內插)。
+  // 骨局部 X 角度、負=往掌心。history 由全域 range-pointerdown 統一 push(見 editor-ui)。
+  HAND_SLIDER_MAP.forEach(([id,k])=>{
     const r=document.getElementById(id), n=document.getElementById(id+'Num'); if(!r||!n) return;
-    const write=(val)=>{ HAND_POSE[k]=Number(val)||0; r.value=HAND_POSE[k]; n.value=HAND_POSE[k]; applyHandPose(); };
+    const write=(val)=>{
+      const side=fingerSideFromSlot(); const v=Number(val)||0; r.value=v; n.value=v;
+      if(!side || typeof PHASES==='undefined' || !PHASES[activePhase]) return;
+      PHASES[activePhase][FINGER_POSE_AXES[side][k]] = v;   // tick 的 applyPose→applyFingerPose 會即時反映
+      if(typeof scheduleAutosave==='function') scheduleAutosave();
+    };
     r.addEventListener('input',e=>write(e.target.value));
     n.addEventListener('input',e=>write(e.target.value));
   });
+  // 預設鈕:快速把「當前 key」的兩手手指軸套成該形(open/grip/fist),之後可用滑桿逐手微調
   document.querySelectorAll('[data-handpose]').forEach(btn=>btn.addEventListener('click',()=>{
-    const name=btn.dataset.handpose; HAND_LAST_PRESET=name;
-    setHandPose(Object.assign({}, HAND_POSE_PRESETS[name]));
+    const preset=HAND_POSE_PRESETS[btn.dataset.handpose]; if(!preset) return;
+    if(typeof PHASES==='undefined' || !PHASES[activePhase]) return;
+    if(typeof pushHistory==='function') pushHistory();
+    for(const side of ['L','R']) for(const k of Object.keys(preset)) PHASES[activePhase][FINGER_POSE_AXES[side][k]] = Number(preset[k])||0;
+    refreshFingerSliders();
+    if(typeof scheduleAutosave==='function') scheduleAutosave();
   }));
-  document.getElementById('handPoseExport')?.addEventListener('click',()=>exportHandPoses());
   document.getElementById('partsClear')?.addEventListener('click',()=>clearParts());
   document.getElementById('partsDummyToggle')?.addEventListener('click',()=>{
     PARTS_HIDE_DUMMY=!PARTS_HIDE_DUMMY;

@@ -22,7 +22,7 @@
 `render-core`(renderer/scene/camera/快取/project)→ `render-world`(地板烘焙/牆/toybox decor)/`render-actors`(體素小人+brawler 委派)/`render-entities`(props/投射物/zones/粒子/地面標記)/`render-hud`(單機 2D HUD)/`render-lab`(**v2 專屬場景** 1175 行:工業回收中心、`labAnimated[]` 每幀 update、**地板化學動態 tile 層 `updateFloorFx`**(讀 v2-floor 格,粗色塊 MVP)、`FX_LOW`=?fx=low、`window.__lab`)。
 
 **actor 家族(brawler 動作/角色)**
-`actor-brawler.js`(260,關節化體素小人:吃編排器 47 軸姿勢、CLIPS 播放、punch/item 雙動畫頻道、`HAND_CAL`)、`brawler-clips.js`(**PUNCH STUDIO JSON 直貼**;impact 幀÷60 必須=`STRIKE_DELAY`/`ITEM_SPEC.delay`;`prepClip` 另保留 `clip.tags`(grab/release 等 tag 幀時刻秒)供未來排程抓/丟,目前無人消費)、`actor-avatar.js`(?avatar=1:16 骨世界差量重定向、`__avatars`)、`actor-hands.js`(chibi 手模掛手腕、`__hands`;rigged 手+手勢庫接入=進行中)。
+`actor-brawler.js`(260,關節化體素小人:吃編排器 47 軸姿勢、CLIPS 播放、punch/item 雙動畫頻道、`HAND_CAL`)、`brawler-clips.js`(**PUNCH STUDIO JSON 直貼**;impact 幀÷60 必須=`STRIKE_DELAY`/`ITEM_SPEC.delay`;`prepClip` 另保留 `clip.tags`(grab/release 等 tag 幀時刻秒)供未來排程抓/丟,目前無人消費)、`actor-avatar.js`(?avatar=1:16 骨世界差量重定向、`__avatars`)、`actor-hands.js`(chibi 手模掛手腕、`__hands`;rigged 手+手勢接入=進行中)。**手指彎曲現為 clip 姿勢的一部分**:PUNCH STUDIO clip 帶逐關鍵格軸 `aL_/aR_ f{base,mid,tip,thumb}`(骨局部 X 度、負=握),遊戲端播 clip 即應驅動 rigged 指骨(消費者待接)。
 
 **v2 家族(DAG:v2-state → v2-terrain/v2-floor/v2-report → v2-combat → v2-items → v2-hud/v2-touch → v2.js)**
 | 檔 | 行 | 職責 / 關鍵符號 |
