@@ -284,6 +284,7 @@ function normalizeTimelineInPlace(){
 }
 function timelineLastFrame(){ normalizeTimelineInPlace(); return SEQ.length ? SEQ[SEQ.length-1].frame : 0; }
 function totalTimelineFrames(){ return timelineLastFrame() + timelineReturnFrames(); }
+function totalTime(){ return totalTimelineFrames()/REF_FPS; }   // 總時長(秒);播放/scrub/contact sheet 共用(原住 ref-solve,拆除時歸位到這)
 function timelineDisplayMaxFrame(){
   const last = timelineLastFrame();
   const total = totalTimelineFrames();

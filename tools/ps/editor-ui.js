@@ -864,3 +864,21 @@ window.addEventListener('keydown',e=>{
 
 function resize(){const r=canvas.parentElement.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); camera.aspect=r.width/r.height; camera.updateProjectionMatrix();}
 window.addEventListener('resize',resize); resize();
+
+// ===== 時間軸 SCRUB 拖桿 =====(原住 ref-solve;拆除時這段被誤刪,移植歸位)
+// 凍結在任一 in-between 幀觀察弧線(只讀,不改 pose)。scrubActive/scrubPose 住 pose-data。
+document.getElementById('rscrub')?.addEventListener('input', ()=>{
+  if(playing){ playing=false; updateUI(); }
+  scrubActive=true;
+  const tt=totalTime();
+  playT=Math.min((parseFloat(document.getElementById('rscrub').value)/1000)*tt, tt-1e-4);
+  const r=getPlayPose();
+  if(r){
+    scrubPose=r.pose; applyPose(r.pose);
+    const pn=document.getElementById('phasenow');
+    pn.textContent=r.phase; pn.classList.add('playing');
+    const sl=document.getElementById('scrubLbl');
+    if(sl) sl.textContent=Math.round(playT*REF_FPS)+'f · '+r.phase+' '+Math.round((playT/tt)*100)+'%';
+    buildTimelineUI();
+  }
+});

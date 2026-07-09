@@ -35,8 +35,10 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 - **`PART_MODELS[slot]` 的 parent 不固定**:一般部位=假人節點(`PS_RIG_TARGET`);rigged 手在 avatar 模式=**avatar 手骨**。
   遍歷假人 mesh 判斷「是不是部位」用 `isInsidePartObject(o)`(靠 userData 標記),別用 parent 鏈猜。
 - **`setSyntheticDummyVisible`**(parts)被 attachPart/clearParts/avatar 呼叫;內含「rigged 手掛載期間抑制假人拳頭盒」邏輯。
-- **移除功能 checklist**(ref-solve 的教訓):HTML 元素/按鈕 + CSS 區塊 + script 標籤 + **其他檔的 guard 呼叫**
-  (grep 該檔全部頂層符號名到其他檔)+ README/本手冊更新 + headless 回歸(0 pageerror + 拖曳/滾輪實測)。
+- **移除功能 checklist**(ref-solve 的教訓,兩次):HTML 元素/按鈕 + CSS 區塊 + script 標籤 + **其他檔的引用**——
+  grep 該檔**全部**頂層符號到其他檔,注意 **`let a=1, b=2` 多重宣告只抓第一個名字會漏**(totalTime/scrub listener 就是這樣漏掉的;
+  被刪檔可能還「寄宿」別人的功能,如 scrub 拖桿住在 ref-solve)+ README/本手冊更新 +
+  headless 回歸必須**實際操作**:拖曳/滾輪 + **按 PLAY + 拖 SCRUB**(0 pageerror 不夠,死路徑要跑到)。
 
 ## 陷阱(踩過的)
 
