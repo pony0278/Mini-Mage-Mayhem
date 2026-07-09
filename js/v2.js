@@ -21,7 +21,7 @@ import {
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateIce, updateBarrels, updateStations, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel } from './v2-items.js';
+import { updatePads, updateIce, updateBarrels, updateStations, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -145,6 +145,7 @@ function step(dt) {
       if (f.ai && f._aiPushAt && game.time >= f._aiPushAt) { f._aiPushAt = 0; doPushOff(f); } // AI 的格擋反應
       if (f._strikeAt && game.time >= f._strikeAt) resolveStrike(f); // impact 影格到 → 判定命中(起手被打斷則取消)
       if (f._itemCastAt && game.time >= f._itemCastAt) resolveItemCast(f); // 道具施放 impact 幀到 → 發動效果(被打斷則取消)
+      if (f._barrelThrowAt && game.time >= f._barrelThrowAt) launchBarrel(f); // 丟桶 release 幀到 → 甩出(掉桶則取消)
       // stability regen (paused right after a hit; frozen while stunned/carried)
       if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
       // stun countdown → recover (ungrabbed)
@@ -184,7 +185,7 @@ function step(dt) {
     // 扛桶(§12.1 步驟 B):桶跟在面前;暈/死 → 掉桶(在手上爆已由 explodeBarrel 放開持有者)
     for (const f of fighters) {
       const b = f.carryObj; if (!b) continue;
-      if (f.state !== 'alive' || f.stunned || !b.alive) { if (b.alive) dropBarrel(f); else f.carryObj = null; continue; }
+      if (f.state !== 'alive' || f.stunned || !b.alive) { if (b.alive) dropBarrel(f); else { f.carryObj = null; f._barrelThrowAt = 0; } continue; }
       b.x = f.x + Math.cos(f.facing) * (f.r + b.r * 0.9); b.y = f.y + Math.sin(f.facing) * (f.r + b.r * 0.9); b.vx = 0; b.vy = 0;
     }
     // 失控入艙: 被擊退/打滑(速度夠快)、暈眩者、或被拋出翻滾中進到艙半徑 → 收容(對手勝)。無敵中免疫。
@@ -274,6 +275,7 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
+  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel,
   punch, startCarry, stunFighter, throwCarried, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),

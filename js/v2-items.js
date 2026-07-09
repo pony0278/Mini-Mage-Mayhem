@@ -10,7 +10,7 @@ import {
   pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
-  BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, GRAB_RANGE,
+  BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
@@ -141,11 +141,20 @@ export function pickUpBarrel(f, b) {
 }
 export function dropBarrel(f) {
   const b = f.carryObj; if (!b) return;
-  b.held = false; f.carryObj = null; f.regrabCd = REGRAB_CD;
+  b.held = false; f.carryObj = null; f._barrelThrowAt = 0; f.regrabCd = REGRAB_CD;
   b.x = f.x + Math.cos(f.facing) * (f.r + b.r + 4); b.y = f.y + Math.sin(f.facing) * (f.r + b.r + 4);
   b.vx = 0; b.vy = 0;
 }
+// 丟桶=排程動作:按下 → 播雙手過頂 heave clip、桶仍握在手(carry loop 定位)→ release 幀才 launchBarrel 甩出。
 export function throwBarrel(f) {
+  const b = f.carryObj; if (!b || f.state !== 'alive' || f._barrelThrowAt > 0) return; // 已在 heave 中 → 不重複
+  f.itemFx = game.time; f.itemClip = 'barrel_throw';         // 播動畫(itemClip 頻道;free 時生效)
+  f._barrelThrowAt = game.time + BARREL_THROW_DELAY;         // release 幀甩出(v2.js step 判定)
+  game.sfx.push('dash'); addText(f.x, f.y - 32, '舉桶！', barrelChargeColor(b.charge));
+}
+// release 幀到:真的把桶甩出去(舊 throwBarrel 的物理段)。中途被打斷/掉桶 → carryObj 沒了 → 取消。
+export function launchBarrel(f) {
+  f._barrelThrowAt = 0;
   const b = f.carryObj; if (!b || f.state !== 'alive') return;
   f.carryObj = null; b.held = false; f.regrabCd = REGRAB_CD;
   const a = f.facing;
@@ -153,11 +162,10 @@ export function throwBarrel(f) {
   b.vx = Math.cos(a) * BARREL_THROW; b.vy = Math.sin(a) * BARREL_THROW;
   b.thrownBy = f.pid; b.armGrace = BARREL_ARM_GRACE;
   pressurizeBarrel(b);                                        // 被丟 → 升壓(1s 引信;飛行中/落地/撞人爆)
-  f.punchFx = game.time; f.punchKind = 2; f.punchArm = 1; f.punchCd = 0.4; // 借終結技大動作當投擲姿勢
   addShake(4); game.sfx.push('dash'); addText(b.x, b.y - 26, '丟桶！', barrelChargeColor(b.charge));
 }
 export function explodeBarrel(b) {
-  for (const f of fighters) if (f.carryObj === b) f.carryObj = null; // 在手上爆 → 放開持有者
+  for (const f of fighters) if (f.carryObj === b) { f.carryObj = null; f._barrelThrowAt = 0; } // 在手上爆 → 放開持有者(取消排程丟)
   b.held = false; b.thrownBy = -1;
   b.alive = false; b.respawn = v2s.barrelRespawnCur; inc.barrelBooms++; inc.types.add('barrel');
   // 爆種 = 充能元素;未充能 → 野生隨機污染。決定爆色 + 留下的地板。

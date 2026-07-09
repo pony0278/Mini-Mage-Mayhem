@@ -58,6 +58,9 @@ export const BARREL_PATCH_R = 40;                       // 爆後污染地板的
 export const WILD_CONTAM = ['oil', 'water', 'poison'];  // 未充能=野生隨機污染(不含火,免整場失火)
 // 步驟 B:可推/撿/丟。丟出初速、滾動摩擦(快衰減=不永遠滾)、推力、撞擊引爆前的安全延遲。
 export const BARREL_THROW = 520, BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARREL_ARM_GRACE = 0.15;
+// 丟桶=排程動作:按下→播雙手過頂 heave 動畫(itemClip 'barrel_throw')→ release 幀才真的甩出。
+// ⚠ 這個延遲=clip 的 release tag 幀÷60,必須與 brawler-clips.js 的 barrel_throw release@22f 對齊(同 STRIKE_DELAY↔impact 慣例)。
+export const BARREL_THROW_DELAY = 22 / 60;
 export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
 export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0 }));
 export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; } }
@@ -166,6 +169,7 @@ export function resetFighter(f) {
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
   f.item = null; f.itemUses = 0;                        // 道具型別 + 剩餘次數
   f.carryObj = null;                                    // 扛著的物件(廢料桶;與 carrying=扛人 互斥)
+  f._barrelThrowAt = 0;                                 // 排程丟桶(release 幀甩出;0=沒在丟)
   f._itemCastAt = 0; f._itemCastType = null;            // 排程施放(impact 幀觸發效果)
   f.itemFx = -9; f.itemClip = null; f.itemCastCd = 0;   // 施放動畫時鐘/clip + 承諾冷卻
   f.state = 'alive';

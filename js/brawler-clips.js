@@ -161,5 +161,30 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0.1, lL: 0, lR: 0.1 },
   }),
+  // 雙手過頂 heave 丟桶(道具 clip,經 itemClip 頻道播;非 combo)。使用者 PUNCH STUDIO 定稿。
+  // grab@7f=桶黏手(遊戲端桶仍由 carry loop 定位)、release@22f=甩出時刻(= v2-state BARREL_THROW_DELAY,移動要同步)。
+  // idle 略去 → prepClip 補 COMBAT_IDLE(與遊戲站姿無縫接)。手指軸(aL_/aR_ f*)保留給 Phase 2,目前 47 軸 normalizePose 會忽略。
+  barrel_throw: prepClip({
+    seq: [
+      { name: 'idle', frame: 0, frames: 10, ease: 'out' },
+      { name: 'anti', frame: 4, ease: 'out' },
+      { name: 'windup', frame: 7, ease: 'out', tag: 'grab' },
+      { name: 'grab', frame: 10, ease: 'out', tag: 'grab' },
+      { name: 'grab_hold', frame: 13, ease: 'out', tag: 'grab' },
+      { name: 'ready_to_release', frame: 16, ease: 'out', tag: 'grab' },
+      { name: 'ready_to_release_hold', frame: 19, ease: 'out', tag: 'grab' },
+      { name: 'release', frame: 22, ease: 'out', tag: 'release' },
+    ],
+    phases: {
+      anti: { squat: 35, spine_x: 27, aL_sz: 55, aR_sz: 55 },
+      windup: { squat: 35, spine_x: 27, aL_sx: -19, aL_sy: 69, aL_sz: 55, aL_ex: -10, aR_sx: -19, aR_sy: -58, aR_sz: 55, aL_stretch: 1.46, aR_stretch: 1.45 },
+      grab: { squat: 35, spine_x: 27, aL_sx: -157, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -157, aR_sy: -70, aR_sz: 52, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
+      grab_hold: { squat: 35, spine_x: 27, aL_sx: -157, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -157, aR_sy: -70, aR_sz: 52, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
+      ready_to_release: { squat: 35, spine_x: -36, head_x: -36, aL_sx: -190, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -187, aR_sy: -70, aR_sz: 52, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
+      ready_to_release_hold: { squat: 35, spine_x: 50, head_x: -36, aL_sx: -119, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -135, aR_sy: -70, aR_sz: 52, lL_hx: -60, lR_hx: -60, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
+      release: { squat: 35, spine_x: 7, aL_sx: 16, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: 0, aR_sy: -70, aR_sz: 52, aL_wy: 7 },
+    },
+    lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },   // 雙手對稱 heave → aR lag 歸零(兩手同步,不錯開)
+  }),
 };
 export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand']; // punchKind 0/1/2 → clip(使用者自編三連擊)
