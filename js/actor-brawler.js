@@ -176,6 +176,27 @@ function updateHands(e, R, u, now) {
   setArmHand(R.armL, mode); setArmHand(R.armR, mode);
 }
 
+// ===== 丟桶動畫期間:把桶畫在雙手腕中點(隨過頂 heave→甩下)。遊戲端 v2.js 於此期間略過該桶的 prop,
+// 交由這裡畫,甩出瞬間(carryObj 清空)交還給飛行 prop。桶=橘箱+蓋(比照 render-entities syncProps 外觀)。=====
+const _wlp = new THREE.Vector3(), _wrp = new THREE.Vector3();
+function updateThrownBarrel(e, g, R) {
+  const throwing = !!(e.carryObj && e._barrelThrowAt > 0);
+  let bm = g.userData.throwBarrel;
+  if (!throwing) { if (bm) bm.visible = false; return; }
+  if (!bm) {                                                        // lazy 建桶
+    const s = (e.carryObj.r || 13) * 2;
+    bm = new THREE.Group(); bm.name = 'THROW_BARREL';
+    const box = makeBox(s, s, s, 0xff7a3a, 0xff5a20, 0.5); bm.add(box);
+    const cap = makeBox(s * 1.04, 3, s * 1.04, 0x9c4422); cap.position.y = s * 0.5 + 1.5; bm.add(cap);
+    g.add(bm); g.userData.throwBarrel = bm;
+  }
+  bm.visible = true;
+  R.armL.wr.getWorldPosition(_wlp); R.armR.wr.getWorldPosition(_wrp);  // getWorldPosition 會更新 g 及祖鏈 matrixWorld
+  _wlp.add(_wrp).multiplyScalar(0.5);
+  g.worldToLocal(_wlp); bm.position.copy(_wlp);                       // 世界中點 → g 局部(g 的位移/朝向/擠壓已在本幀套好)
+  bm.rotation.y = game.time * 1.2;
+}
+
 // 每幀:狀態 → 目標姿勢(clip 或程序)→ 平滑混合 → applyBrawlerPose;
 // 面向/暈眩搖晃/flinch/整體 squash 維持世界層(g)處理,與姿勢層(P)分離。
 export function updateBrawler(e, g) {
@@ -257,4 +278,5 @@ export function updateBrawler(e, g) {
   const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
+  updateThrownBarrel(e, g, R);   // 丟桶動畫:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
 }
