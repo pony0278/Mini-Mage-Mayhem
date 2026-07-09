@@ -670,12 +670,20 @@ function ghostAnchorWorld(cfg){
   const q = new THREE.Quaternion(); bone.getWorldQuaternion(q);
   return pos.add(new THREE.Vector3(off.x||0, off.y||0, off.z||0).applyQuaternion(q));   // off 在手局部座標
 }
-// 掛點 → 幽靈原點位置:grip='head'=拎頭吊掛(頭頂貼掛點,原點=掛點下移一個身高,身體垂直吊在世界空間、
-// 不隨腕旋轉亂甩);grip='feet'(預設)=原點直接貼掛點(物件坐在手上)。
+// 掛點 → 幽靈原點位置(+設 rotation):
+//  grip='head'=拎頭吊掛:被拎的「頭(=掛點)」固定,身體繞頭以 carry_tilt 傾角旋轉(0=直吊、90=打橫)。
+//    原點在腳底,故 原點 = 頭 − 身高沿(旋轉後的)身體軸;rotation.x=傾角 讓模型跟著轉。逐關鍵格內插=可安排哪幀打橫。
+//  grip='feet'(預設)=原點直接貼掛點(物件坐在手上,不旋轉)。
 function ghostHoldWorld(key, ghost){
   const cfg = GHOST_FOLLOW[key];
   const m = ghostAnchorWorld(cfg); if(!m) return null;
-  if((cfg && cfg.grip) === 'head') m.y -= (ghost.userData.h || 0);
+  if((cfg && cfg.grip) === 'head'){
+    const h = ghost.userData.h || 0;
+    const t = (typeof CARRY_TILT_NOW !== 'undefined' ? CARRY_TILT_NOW : 0) * Math.PI / 180;
+    ghost.rotation.set(t, 0, 0);                       // 身體隨傾角轉(繞頭)
+    return { x: m.x, y: m.y - h * Math.cos(t), z: m.z - h * Math.sin(t) };  // 頭固定在 m,腳沿身體軸擺出去
+  }
+  ghost.rotation.set(0, 0, 0);
   return m;
 }
 function updateGhostFollow(){
@@ -686,8 +694,8 @@ function updateGhostFollow(){
   for(const [key, ghost] of Object.entries(REF_GHOSTS)){
     if(!ghost || !ghost.userData.home) continue;
     const ud = ghost.userData;
-    if(gf === null || cur < gf){                                   // 未附著:躺在地面起點
-      ghost.position.copy(ud.home); ud.rel = null; continue;
+    if(gf === null || cur < gf){                                   // 未附著:躺在地面起點(直立)
+      ghost.position.copy(ud.home); ghost.rotation.set(0, 0, 0); ud.rel = null; continue;
     }
     if(rf === null || cur < rf){                                   // 附著:貼掛點(grip 決定拎頭吊掛/坐在手上)
       const m = ghostHoldWorld(key, ghost); if(!m) continue;

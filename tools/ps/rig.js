@@ -368,7 +368,9 @@ buildCharacter();
 placeCam();
 
 // ===== Pose apply =====
+let CARRY_TILT_NOW = 0;   // 目前幀的被扛者傾角(度);parts.js 幽靈跟手讀它做拎頭旋轉。非骨軸,這裡只轉存。
 function applyPose(p){
+  CARRY_TILT_NOW = p.carry_tilt || 0;
   root.rotation.x = p.root_x * D2R;
   root.rotation.y = p.root_y * D2R;
   root.rotation.z = 0;

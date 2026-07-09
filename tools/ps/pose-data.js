@@ -40,7 +40,10 @@ const POSE_KEYS = [
   // rigged 手手指彎曲(逐關鍵格、左右獨立;骨局部 X 角度,負=往掌心彎)。由 parts.js applyFingerPose 消費 →
   // HAND_RIG.{L,R}.{fingers,mid,tips,thumb}。無 rigged 手時這些軸無作用。接近幀 0=張開、抓取幀捲起 → 沿時間軸內插。
   'aL_fbase','aL_fmid','aL_ftip','aL_fthumb',
-  'aR_fbase','aR_fmid','aR_ftip','aR_fthumb'
+  'aR_fbase','aR_fmid','aR_ftip','aR_fthumb',
+  // 被扛者傾角(拎頭吊掛預覽用;逐關鍵格內插):0=直吊、90=打橫。繞「被拎的頭(掛點)」旋轉,不是骨。
+  // parts.js 幽靈消費(CARRY_TILT_NOW);遊戲端未來旋轉被扛 actor。非骨軸,applyPose/applyBrawlerPose 忽略。
+  'carry_tilt'
 ];
 /** @param {string} k 軸名 @returns {number} 該軸的預設值(scale/stretch=1,其餘=0) */
 function defaultPoseValue(k){
@@ -423,6 +426,9 @@ const SLIDER_GROUPS = [
     ['aR_fmid', '指中', -120, 30, 1, '°'],
     ['aR_ftip', '指尖', -120, 30, 1, '°'],
     ['aR_fthumb', '拇指', -120, 30, 1, '°']
+  ]},
+  {h:'被扛者(拎人預覽)', cls:'arms', keys:[
+    ['carry_tilt', '傾角(0=直吊 / 90=打橫;繞被拎的頭旋轉,逐關鍵格內插=安排哪幀打橫)', -180, 180, 1, '°'],
   ]},
   {h:'左腿 LEG L(前腿)', cls:'legs', keys:[
     ['lL_hx', '髖 X(前後擺)', -60, 60, 1, '°'],
