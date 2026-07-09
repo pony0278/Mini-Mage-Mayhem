@@ -20,6 +20,10 @@ export const POSE_KEYS = [
   'lL_contact', 'lR_contact',
   'aL_wx', 'aL_wy', 'aR_wx', 'aR_wy',
   'lL_ty', 'lR_ty',
+  // rigged 手手指彎曲(逐關鍵格、左右獨立;骨局部 X 角度,負=往掌心捲)。與 punch-studio 同軸名,clip 直接帶。
+  // 消費者:actor-hands-rigged.applyFingerPose(只在 ?avatar=1 且 rigged 手掛載時)。方塊人/舊 chibi 手無視這些軸。
+  'aL_fbase', 'aL_fmid', 'aL_ftip', 'aL_fthumb',
+  'aR_fbase', 'aR_fmid', 'aR_ftip', 'aR_fthumb',
   'aL_stretch', 'aR_stretch', 'lL_stretch', 'lR_stretch',   // 整肢從近端關節等比伸展(1=原長;遠鏡頭下伸手更明顯)
   // 被扛者旋轉/偏移(拎頭吊掛;非扛者骨軸,applyBrawlerPose 忽略)。render-actors 讀 clip 這幾軸,把被扛 actor
   // 貼到扛者手上+繞頭轉(pitch/yaw)+微調偏移。丟人 clip(person_throw)帶這些,一般 clip 全 0。
@@ -166,7 +170,7 @@ export const CLIPS = {
   }),
   // 雙手過頂 heave 丟桶(道具 clip,經 itemClip 頻道播;非 combo)。使用者 PUNCH STUDIO 定稿。
   // grab@7f=桶黏手(遊戲端桶仍由 carry loop 定位)、release@22f=甩出時刻(= v2-state BARREL_THROW_DELAY,移動要同步)。
-  // idle 略去 → prepClip 補 COMBAT_IDLE(與遊戲站姿無縫接)。手指軸(aL_/aR_ f*)保留給 Phase 2,目前 47 軸 normalizePose 會忽略。
+  // idle 略去 → prepClip 補 COMBAT_IDLE(與遊戲站姿無縫接)。手指軸(aL_/aR_ f*)已進 POSE_KEYS,?avatar=1 掛 rigged 手時驅動指骨。
   barrel_throw: prepClip({
     seq: [
       { name: 'idle', frame: 0, frames: 10, ease: 'out' },

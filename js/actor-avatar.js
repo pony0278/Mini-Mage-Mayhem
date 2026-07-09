@@ -7,6 +7,7 @@
 //
 // 需求:vendor/GLTFLoader.js(全域 THREE.GLTFLoader)已在 v2.html 載入。
 import { game } from './state.js';
+import { preloadRiggedHands, riggedHandsReady, mountRiggedHands, applyFingerPose } from './actor-hands-rigged.js';
 
 const AVATAR_URL = 'assets/rigs/base-avatar.glb';
 // 角色整體放大倍率(相對「對齊 box rig 身高」的基準)。v2 遠鏡頭下大一點更好看。
@@ -20,6 +21,7 @@ export function avatarReady() { return loadState === 2; }
 export function preloadAvatar() {
   if (loadState !== 0 || !avatarEnabled()) return;
   if (!THREE.GLTFLoader) { loadState = 3; console.warn('[avatar] GLTFLoader 未載入'); return; }
+  preloadRiggedHands();   // avatar 專用 rigged 手(與 punch-studio 同一份),隨 avatar 一起備料
   loadState = 1;
   fetch(AVATAR_URL).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
     .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
@@ -98,6 +100,9 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   av.hidden = [];
   g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap)) { av.hidden.push(o); o.visible = false; } });
 
+  // rigged 手:掛到 avatar 手骨(async 載入,可能還沒好 → retargetAvatar 會 lazy 重試)
+  if (riggedHandsReady()) mountRiggedHands(av);
+
   g.userData.avatar = av;
   if (typeof window !== 'undefined') (window.__avatars || (window.__avatars = [])).push(av);   // headless 健檢用
   return av;
@@ -142,6 +147,10 @@ export function retargetAvatar(g, boxRig, pose) {
   _fbox.setFromObject(w);
   const groundY = boxFootWorldY(boxRig);
   if (isFinite(_fbox.min.y)) w.position.y = groundY - _fbox.min.y;
+
+  // rigged 手:async 載入,首次就緒時 lazy 掛;每幀由 clip 的手指軸(aL_/aR_ f*)驅動指骨彎曲。
+  if (!av.handRig && riggedHandsReady()) mountRiggedHands(av);
+  if (av.handRig) applyFingerPose(av, p);
 }
 
 // ---- 幾何小工具 ----
