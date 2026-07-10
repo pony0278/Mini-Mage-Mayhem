@@ -119,7 +119,7 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 PERSON_LOB = { range: 200, apex: 32, T: 0.5,  h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
 BARREL_LOB = { range: 180, apex: 34, T: 0.5,  h0: 58 }
 WALL_BOUNCE = 0.35         // 空中撞牆反彈係數(彈一小下→快落,不硬停懸空、不貼牆滑)
-LAND_SKID  = 0.25          // 落地保留的水平速度比(人=短滑 0.2s / 桶=滾動收尾)
+LAND_SKID  = 0.25          // 落地保留的水平速度比(人=短滑 0.1s / 桶=滾動收尾)
 BARREL_BONK_STAB = 15      // 桶砸中的第一拍穩定傷;BARREL_DROP_T = 0.15 快落秒
 BARREL_LAND_FUSE = 1.0     // 被丟的桶落地閃 1s 才爆(反制窗)
 ```
