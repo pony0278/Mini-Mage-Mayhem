@@ -94,7 +94,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   Object.values(by).forEach(e => { const nd = e.node(); if (nd) { nd.getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); } });
 
   const order = Object.keys(by).sort((a, b) => depth(by[a].bone) - depth(by[b].bone));
-  const av = { wrap, S, by, order };
+  const av = { wrap, S, by, order, standH: size.y * S };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];

@@ -94,9 +94,11 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 
 **桶**(`updateHeldBarrel`,actor-brawler):桶 mesh 是**扛者 g 的 child**,每幀貼到**雙腕中點**;`b.held` 的桶 v2.js **略過 ground prop**(免雙重繪),甩出後交還飛行 prop。
 
-**人**(`positionCarried`,render-actors,**syncActors 後處理**):被扛者是**另一個完整 actor**,把它的 g **覆蓋**成:
-- 位置 = 扛者**左手腕**(clip 的 aL 過頂手)+ `carry_o*` 手局部偏移(PS 單位×`PX=25`);
-- 旋轉 = 繞被拎的頭 `R = yaw(carry_yaw) ∘ pitch(carry_tilt)`;原點(腳底)= 頭 − R·(0,`CARRY_HEAD=44`,0);
+**人**(`positionCarried`,render-actors,**syncActors 後處理**):被扛者是**另一個完整 actor**,把它的 g **覆蓋**成——**忠實鏡射 punch-studio `ghostHoldWorld`/`ghostAnchorWorld`**(`GHOST_FOLLOW.carried = anchor:'R', grip:'head'`):
+- 掛點骨 = 扛者**右 rigged 手 `Fingers` 骨**(掌指抓握面;`carryAnchorBone`,無 rigged 手→退回`右手腕`)。**不是左手、不是手腕**——studio 的 `carry_o*` 是喬在右手 Fingers 骨局部的,掛錯手/錯骨連偏移都跑掉。
+- 位置 = 掛點骨世界位置 + `carry_o*`(骨局部,×`PX=25`);
+- 旋轉 = `R = 扛者facing yaw ∘ carry_yaw ∘ carry_tilt(pitch)`。**必須疊扛者 `cg.rotation.y`**:studio 角色固定朝前,遊戲扛者會轉,不疊 facing→頭繞著手轉但身體世界朝向不變=**十字**;
+- 原點(腳底)= 頭 − R·(0,`h`,0),`h` = 被扛者**真實站高**`av.standH`(≈75px,buildAvatar 存;**不是**寫死 44——那讓橫身只剩 ~58% 長);
 - 掙扎四肢仍由 `updateBrawler` 套在 rig 上(只覆蓋 g 的世界位置+朝向)。
 
 **為何被扛者定位要放 syncActors 後處理**:被扛者的位置要讀**扛者本幀更新完**的手骨世界座標。若在 `updateActor` 內順手做,遇到「被扛者先於扛者處理」就吃到**上一幀**的手位置 → 頭跟手差一格(快速丟人時頭會脫手)。後處理等所有 actor 更新完再貼 → dist 0 無延遲。
@@ -131,8 +133,11 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 4. **render 貼手 1 幀延遲**:被扛者定位沒放後處理 → 頭脫手。放 syncActors 後處理。
 5. **頭「貼手」其實是貼 hand+`carry_o*` 偏移**:驗證「頭在哪」要算上手局部偏移(×PX),不是裸手位置。
 6. **尺標校準(studio↔game)**:`carry_o*` 是 PS 單位,遊戲 ×`PX=25`;`CARRY_HEAD=44` 是遊戲小人頭高。studio 幽靈身高(~60px)≠ 遊戲小人(~44px),所以 studio 喬好的偏移到遊戲會有幾 px 誤差 → **實機眼睛微調**這兩個數。
-7. **左手固定**:被扛者吊在**左手**(clip aL 過頂)。改右手拎 = `positionCarried` 的 `armL`→`armR`。
-8. **桶/人互斥**:`carryObj`(桶)與 `carrying`(人)互斥;都會讓移動變 `CARRY_SLOW`。
+7. **~~左手固定~~ 掛錯手(已修)**:`positionCarried` 曾寫死掛在**左手腕**,但 studio `GHOST_FOLLOW.carried.anchor='R'` 是**右手 Fingers 骨**。掛錯手→動作全錯、`carry_o*` 偏移也跑掉。修:`carryAnchorBone` 取右 rigged 手 Fingers 骨(退回右手腕)。
+8. **十字:身體朝向沒疊扛者 facing(已修)**:被扛身體朝向只吃 `carry_yaw/tilt`,但掛點(手)會隨扛者 facing 轉→頭繞著手轉、身體世界朝向不變=十字。修:`R = cg.rotation.y ∘ carry_yaw ∘ carry_tilt`。**通則**:studio 角色固定朝前,任何「相對扛者」的世界量搬到遊戲都要疊扛者 facing。
+9. **橫身太短:身長寫死(已修)**:`CARRY_HEAD=44` 寫死→橫身只剩真實站高(~75)的 ~58%,看起來沒真的打橫過頂。修:`h = av.standH`(buildAvatar 存渲染後真實站高)。
+10. **扛人手指不捲**:`person_throw` clip **沒有手指軸**(對照 `barrel_throw` 有)→ rigged 抓握手維持張開,跟 studio 不一致。**這是資料缺,不是程式**:要在 punch-studio **重匯出 person_throw**(帶 `aL_/aR_ f*`)。遊戲端消費路徑(avatar `applyFingerPose`)已就緒,貼新 clip 即生效。
+11. **桶/人互斥**:`carryObj`(桶)與 `carrying`(人)互斥;都會讓移動變 `CARRY_SLOW`。
 
 ---
 

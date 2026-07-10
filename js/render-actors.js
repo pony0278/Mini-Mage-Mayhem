@@ -13,21 +13,33 @@ import { buildBrawler, updateBrawler, BRAWLER_SPEC } from './actor-brawler.js';
   // --- actor (player + enemy) voxel meshes ---
   const actorMeshes = new Map();
   let playerMesh = null;
-  // 被扛者拎頭吊掛:頭頂貼扛者手、繞頭以 clip 的 carry_tilt(pitch)/carry_yaw(yaw)旋轉 + carry_o* 手局部偏移。
-  // 掙扎姿勢(四肢亂踢)仍由 updateBrawler 套在 rig 上;這裡只覆蓋 g 的世界位置+朝向(比照 punch-studio 幽靈)。
-  const _cD2R = Math.PI / 180, CARRY_HEAD = 44;   // 被扛者頭頂高度(px);拎頭把頭貼到手上
+  // 被扛者拎頭吊掛:頭頂貼扛者「右手抓握面」、繞頭以 clip 的 carry_tilt(pitch)/carry_yaw(yaw)旋轉 + carry_o* 骨局部偏移。
+  // 忠實鏡射 punch-studio ghostHoldWorld/ghostAnchorWorld(GHOST_FOLLOW.carried = anchor:'R', grip:'head'):
+  //   掛點骨 = 扛者右 rigged 手 Fingers 骨(掌指抓握面;無 rigged 手退回右手腕);
+  //   身體世界朝向 = 扛者 facing yaw ∘ carry_yaw ∘ carry_tilt(studio 角色固定朝前,遊戲扛者會轉→須疊 facing,否則十字);
+  //   身長 h = 被扛者真實站高(av.standH),頭貼掛點、腳沿身體軸擺出(studio 用 ghost.userData.h)。
+  // 掙扎姿勢(四肢亂踢)仍由 updateBrawler 套在 rig 上;這裡只覆蓋 g 的世界位置+朝向。
+  const _cD2R = Math.PI / 180, CARRY_HEAD_BOX = 44;   // box 模式(無 avatar)退回值:被扛者站高(px)
   const _cH = new THREE.Vector3(), _cQp = new THREE.Quaternion(), _cQh = new THREE.Quaternion(), _cHV = new THREE.Vector3(), _cOFF = new THREE.Vector3();
   const _cAX = new THREE.Vector3(1, 0, 0), _cAY = new THREE.Vector3(0, 1, 0);
+  function carryAnchorBone(cg, rig) {
+    const av = cg.userData.avatar;                                       // 扛者右 rigged 手 Fingers 骨(= studio handGripBone('R'))
+    if (av && av.handRig && av.handRig.R && av.handRig.R.fingers) return av.handRig.R.fingers;
+    return rig.armR.wr;                                                  // 無 rigged 手(box/未載)→ 退回右手腕
+  }
   function positionCarried(e, g) {
     const cg = actorMeshes.get(e.carriedBy); if (!cg || !cg.userData.rig) return;
     const rig = cg.userData.rig, cp = cg.userData.pose || {};
-    rig.armL.wr.getWorldPosition(_cH);                                    // 抓握手=左手腕(clip 的 aL 過頂手)
-    rig.armL.wr.getWorldQuaternion(_cQh);
+    const bone = carryAnchorBone(cg, rig);
+    bone.getWorldPosition(_cH); bone.getWorldQuaternion(_cQh);
     _cOFF.set((cp.carry_ox || 0) * BRAWLER_SPEC.PX, (cp.carry_oy || 0) * BRAWLER_SPEC.PX, (cp.carry_oz || 0) * BRAWLER_SPEC.PX).applyQuaternion(_cQh);
-    _cH.add(_cOFF);                                                       // 掛點 = 手 + 手局部偏移
+    _cH.add(_cOFF);                                                       // 掛點 = 抓握骨 + carry_o*(骨局部,隨手轉)
+    const carrierYaw = cg.rotation.y;                                     // 扛者面向(updateBrawler 已設 g.rotation.y=yaw)
     _cQp.setFromAxisAngle(_cAX, (cp.carry_tilt || 0) * _cD2R);            // pitch
-    g.quaternion.setFromAxisAngle(_cAY, (cp.carry_yaw || 0) * _cD2R).multiply(_cQp);  // R = yaw ∘ pitch(繞頭)
-    _cHV.set(0, CARRY_HEAD, 0).applyQuaternion(g.quaternion);
+    g.quaternion.setFromAxisAngle(_cAY, carrierYaw + (cp.carry_yaw || 0) * _cD2R).multiply(_cQp);  // R = 扛者yaw ∘ carry_yaw ∘ pitch
+    const cav = g.userData.avatar;                                       // 被扛者身長=真實站高(studio ghost.userData.h)
+    const h = (cav && cav.standH) ? cav.standH : CARRY_HEAD_BOX;
+    _cHV.set(0, h, 0).applyQuaternion(g.quaternion);
     g.position.set(_cH.x - _cHV.x, _cH.y - _cHV.y, _cH.z - _cHV.z);       // 頭貼掛點,腳沿身體軸擺出
     g.scale.set(1, 1, 1);
   }
