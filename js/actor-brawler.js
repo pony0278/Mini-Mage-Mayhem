@@ -42,6 +42,7 @@ export const ANIM = {
   },
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
   thrown:  { lift: 8, rate: 10 },                                                          // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下的平滑速率
+  heldBarrel: { liftK: 0.9 },                                                              // 扛桶:桶心抬高 = 桶邊長×此係數(0.5=桶底貼掌心;45° 俯視鏡頭下要再高些頭才不被蓋)
   flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
 };
 
@@ -228,6 +229,7 @@ function updateHeldBarrel(e, g, R) {
   else { R.armL.wr.getWorldPosition(_wlp); R.armR.wr.getWorldPosition(_wrp); }  // getWorldPosition 會更新 g 及祖鏈 matrixWorld
   _wlp.add(_wrp).multiplyScalar(0.5);
   g.worldToLocal(_wlp); bm.position.copy(_wlp);                       // 世界中點 → g 局部(g 的位移/朝向/擠壓已在本幀套好)
+  bm.position.y += (e.carryObj.r || 13) * 2 * ANIM.heldBarrel.liftK;  // 桶心=手中點會蓋住頭 → 抬半桶高+餘裕,桶底貼掌心
   bm.rotation.y = game.time * 1.2;
 }
 
