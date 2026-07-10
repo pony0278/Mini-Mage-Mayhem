@@ -1,7 +1,7 @@
 // v2 live tuning panel — opt-in via v2.html?tune=1 (a repo-only dev tool; it never loads on the normal page,
 // so the live v2 stays clean). Sliders for 角色大小 / 地板格線·顏色·搶眼度 / 攝影機, all applied instantly,
 // plus a "複製設定" button that dumps the current values to paste back — mirrors the camera-sandbox workflow.
-import { setFloorParams, getFloorParams, refreshActors } from './render.js';
+import { setFloorParams, getFloorParams, refreshActors, ANIM } from './render.js';
 
 const v2 = window.__v2;
 if (!v2) throw new Error('[v2-tuning] window.__v2 not ready');
@@ -105,6 +105,13 @@ copyButton('複製 彈道', () =>
   `export const PERSON_LOB = { range: ${PE.range}, apex: ${PE.apex}, T: ${PE.T}, h0: ${PE.h0} };\n`
   + `export const BARREL_LOB = { range: ${BA.range}, apex: ${BA.apex}, T: ${BA.T}, h0: ${BA.h0} };\n`
   + `export const PUNCH_LAUNCH_LOB = { range: ${PL.range}, apex: ${PL.apex}, T: ${PL.T}, h0: ${PL.h0} };`);
+
+header('跑步(即時)');
+// 邊跑邊拖:雙擊方向鍵開跑後直接調,差異立刻看得到
+slider('彈跳 bob(踩地感)', 0, 0.3, 0.01, ANIM.runClip.bob, (x) => ANIM.runClip.bob = x);
+slider('步幅 stridePx(滑步率)', 40, 120, 2, ANIM.runClip.stridePx, (x) => ANIM.runClip.stridePx = x);
+copyButton('複製 跑步', () => `runClip: { stridePx: ${ANIM.runClip.stridePx}, bob: ${ANIM.runClip.bob} },`);
+
 
 header('攝影機');
 slider('fov', 20, 60, 1, CAM.fov, (v) => CAM.fov = v);
