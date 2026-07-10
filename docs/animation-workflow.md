@@ -105,6 +105,14 @@
 | `barrel_throw` | 丟桶(itemClip 頻道;release 幀甩出) | ✅ 使用者定稿(release@22f;含手指軸) |
 | `person_throw` | 扛人/丟人(carryClip 頻道;抓起播 0→hold 定格,丟續播→release 甩飛) | ✅ 使用者定稿 v2(hold@16f/release@22f;含手指軸,抓時捲、收招放開) |
 | `barrel_pickup` | 撿桶(itemClip 頻道;**可選槽**——CLIPS 有就播,沒有=瞬間抓起) | 🕳 空槽,遊戲端已接線等 studio 匯出 |
+| `run_cycle` | 跑步循環(雙擊跑 `e.running` 時**循環播放**;**可選槽**——沒有=程序跑姿 `ANIM.run`) | 🕳 空槽,遊戲端已接線 |
+
+`run_cycle` 編排注意(**第一個循環播放槽**,規則跟一次性動作不同):
+- **首尾幀姿勢要一致**(循環無縫;playback = 相位 mod 1,不會停在尾幀)。
+- **相位吃位移**:一個循環=`ANIM.runClip.stridePx`(96px;跑速 269px/s ≈ 0.36s 一循環=兩步)。
+  studio 裡編幾幀都行,遊戲端按位移縮放——想改步幅只調 stridePx,不用重排。
+- 只在「跑步中+真的在移動」播;停下/放開鍵自動 blend 回站姿。不需要 tag、無 impact。
+- 建議內容:屈肘泵臂+前傾+雙腳交替離地(頂點兩腳同時離地一格=衝刺感)。
 
 `barrel_pickup` 編排注意:桶從第 0 幀就貼在雙手中點(`updateHeldBarrel`),所以**起始幀雙手往下
 往前撈**(幽靈桶位,前方 ~31px 近地)桶才會從地上被撈起、跟著手升到頭頂;**結尾幀對齊

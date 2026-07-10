@@ -31,7 +31,8 @@ export const BRAWLER_SPEC = {
 export const ANIM = {
   blend:   { rate: 14, clipRate: 40 },                                                     // 姿勢平滑:每秒收斂速率(消除狀態切換瞬跳)。clip 播放用高檔(clip 內插已滑,低通會削掉快速關鍵幀=浮誇動作被壓扁;頭尾皆 COMBAT_IDLE 故無接縫風險)
   walk:    { minDisp: 0.25, maxDisp: 6, phaseRate: 0.18, ampEase: 0.2, legSwing: 34, armSwing: 22, kneeAdd: 18, bob: 1.6 }, // 度
-  run:     { lean: 13, swingMul: 1.4, armMul: 1.55, kneeMul: 1.3, bobMul: 1.3 },            // 跑步(e.running,雙擊觸發):前傾+擺幅放大;步頻不用調——相位吃位移,跑快自動變快
+  run:     { lean: 16, swingMul: 1.5, armMul: 1.7, kneeMul: 1.45, bobMul: 1.4, elbow: 78 }, // 程序跑姿(無 run_cycle clip 時):前傾+擺幅放大+屈肘泵臂(elbow=跑步手肘彎曲度,直臂甩=走路感的元兇);步頻吃位移自動變快
+  runClip: { stridePx: 96 },                                                                // CLIPS.run_cycle 循環槽:一個循環=幾 px 位移(位移驅動相位,跑快動作自然變快)
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
@@ -271,6 +272,10 @@ export function updateBrawler(e, g) {
   }
   else if (free && iclip && ipt >= 0 && ipt < iclip.dur) pose = evalClip(iclip, ipt);
   else if (free && pt >= 0 && clip && pt < clip.dur) pose = evalClip(clip, pt);
+  else if (free && e.running && CLIPS.run_cycle && u.amp > 0.3) {   // 跑步循環(可選槽:studio 排的 cycle,首尾幀一致才無縫)
+    u.runPh = (u.runPh || 0) + disp / A.runClip.stridePx;           // 位移驅動相位:一循環 = stridePx 像素 → 跑快動作自然變快
+    pose = evalClip(CLIPS.run_cycle, (u.runPh % 1) * CLIPS.run_cycle.dur);
+  }
   const usingClip = pose != null;    // clip 播放 → 用高 blend 檔,別把浮誇關鍵幀壓扁
   if (!pose) {
     pose = { ..._zeroIdle };
@@ -299,6 +304,7 @@ export function updateBrawler(e, g) {
       pose.aL_sx += sw * A.walk.armSwing * rarm; pose.aR_sx -= sw * A.walk.armSwing * rarm;
       pose.root_py = Math.abs(Math.sin(u.ph)) * A.walk.bob * rbob * u.amp / BRAWLER_SPEC.PX;
       pose.spine_x += A.run.lean * u.runK; pose.head_x -= A.run.lean * 0.4 * u.runK;   // 前傾衝刺感(頭回抬看前方)
+      pose.aL_ex += A.run.elbow * u.runK; pose.aR_ex += A.run.elbow * u.runK;          // 屈肘泵臂:肩擺(armMul)+肘彎=跑步臂,直臂大甩=走路感
       // 待機呼吸:站著不走(rest 大)時膝蓋微彎↔伸直的慢正弦(auto 踩地→身體隨之起伏);走路(amp 大)時淡出。
       const rest = 1 - u.amp;
       if (rest > 0.01 && !e.stunned) {

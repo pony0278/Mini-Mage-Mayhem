@@ -35,7 +35,7 @@
 | `v2-report.js` | 53 | 事故報告生成(吃 `inc` 計數器) |
 | `v2-hud.js` | 228 | 2D HUD(穩定條/道具次數/橫幅/報告) |
 | `v2-touch.js` | 185 | 手機:浮動搖桿+3 鈕+報告鈕(寫 `touchInput`;`__touch`) |
-| `v2.js` | 389 | glue:輸入 poll(滑鼠/E/J/K/空白+觸控閂鎖;**WASD 同向連按 2 下=跑** `RUN_TAP` 窗雙擊→`f.running`,速度 ×`RUN_MULT`、姿勢=程序前傾+擺幅放大 `ANIM.run`;桌面限定)、**step() 迴圈**、渲染橋接(`game.props`/`setGroundMarkers` 每幀重建)、boot、`window.__v2`。**測試旗**:`?grabany=1`(免擊暈隨時舉人+被舉不掙脫)、`?clip=名字`(任意 clip 循環試播+對手 AI 凍結;程式=`__v2.playClip(name)`)、`?slowmo=`、`?avatar=0`(退回方塊人;**avatar 預設開=正式外觀**)、`?fx=low`、`?tune=1` |
+| `v2.js` | 389 | glue:輸入 poll(滑鼠/E/J/K/空白+觸控閂鎖;**WASD 同向連按 2 下=跑** `RUN_TAP` 窗雙擊→`f.running`,速度 ×`RUN_MULT`、姿勢=程序跑姿 `ANIM.run`(屈肘泵臂+前傾)或 **`CLIPS.run_cycle` 循環槽**(有就取代程序;首尾幀一致、相位吃位移 `ANIM.runClip.stridePx`);桌面限定)、**step() 迴圈**、渲染橋接(`game.props`/`setGroundMarkers` 每幀重建)、boot、`window.__v2`。**測試旗**:`?grabany=1`(免擊暈隨時舉人+被舉不掙脫)、`?clip=名字`(任意 clip 循環試播+對手 AI 凍結;程式=`__v2.playClip(name)`)、`?slowmo=`、`?avatar=0`(退回方塊人;**avatar 預設開=正式外觀**)、`?fx=low`、`?tune=1` |
 | `v2-tuning.js` | 103 | ?tune=1 調參面板(投稿 build 會剝掉) |
 
 ## 不變式(改壞=架構回歸)
