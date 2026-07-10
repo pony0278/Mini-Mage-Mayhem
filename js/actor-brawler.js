@@ -311,7 +311,7 @@ export function updateBrawler(e, g) {
   }
 
   // --- 世界層:面向 + 暈眩搖晃 + flinch + 擠壓 ---
-  const airY = e._airY || 0;        // 被拋飛的拋物線視覺高度(v2.js 每幀算;sim 落點/判定不變)
+  const airY = e.z || 0;            // 被拋飛的 sim 彈道高度(B 案:v2.js step 由 lobZ 算,判定與視覺同一個數)
   g.position.y = airY;              // root_py 已進姿勢層;airY 是世界層的疊加
   if (u.shadow) u.shadow.position.y = 1.6 - airY;   // 影子留地面讀高度
   g.rotation.set(0, yaw, wob);

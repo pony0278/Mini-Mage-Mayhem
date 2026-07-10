@@ -110,18 +110,39 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 
 **`carry_tilt/yaw/o*` = 非骨姿勢軸**:在 POSE_KEYS 裡(所以隨 clip 內插、blend),但 `applyBrawlerPose` 忽略(它們不是扛者的骨)。消費者是 render(positionCarried 讀扛者 `g.userData.pose.carry_*`)與 punch-studio 幽靈。
 
-### 5.2 拋物線(A 案:render-only 視覺高度)
+### 5.2 拋物線(B 案:sim 真高度彈道)
 
-**sim 落點/撞牆/撞人判定全不變**(headless 不變式),飛行期間 render 疊一條高度曲線、**影子留地面**(高度的閱讀線索):
+投擲物有 **sim 高度 `z`**(判定與視覺同一個數):`z = lobZ(t, LOB)` **閉式曲線**(`h0·(1-p)+apex·4p(1-p)`,p=t/T)——不做 vz 積分,免飄移、回放安全、T 固定=射程語言直觀。
 
-- 公式:`h(p) = h0·(1-p) + peak·4p(1-p)`,`p = (game.time − 起飛時間戳)/T`;調參 `THROW_ARC = { h0, peak, tBarrel }`(v2-state)。
-- **人**:`launchCarried` 已有 `_thrownT`;T=`THROW_TUMBLE` → **落地=翻滾結束能自走**(視覺與規則同步)。v2.js 每幀算 `f._airY` → actor-brawler 世界層 `g.position.y = airY` + `u.shadow` 反向補償;落地幀 v2.js 撒塵土 ring+thud。
-- **桶**:`launchBarrel` 記 `b.flyT0`;T=`tBarrel`(< 摩擦自然停的時間)→ **落地後剩餘速度=滾動收尾**(飛→落地滾→停,updateBarrels 落地幀撒塵土)。props 橋接帶 `fly` 欄位,syncProps 的 `lift` 吃它(飛行中加速翻滾)。
-- **中斷同步(sim 為真相)**:飛行中撞牆 → sim 停(`vx=0`),`flyT0` 夾成剩 0.1s 快落,不懸空;撞人引爆 → 桶消失無所謂。
-- **studio 幽靈同款**:`GHOST_THROW.flyFrames`(carried 42f / barrel 30f)+ `peak`,release 後照同一條拋物線飛——**改遊戲 `THROW_TUMBLE`/`THROW_ARC` 要同步 GHOST_THROW**(同 GHOST_ANCHOR 規則)。
-- 已知簡化:人被丟正撞牆時 sim 原地停、視覺仍照 0.7s 拋——極端貼牆丟會看到「貼著牆升降」;要修=偵測 slideKnock 撞牆時夾 `_thrownT`(目前不值得)。
+**三參數語言**(v2-state;人/桶/未來道具同一套,加投擲物=加一行):
+```js
+PERSON_LOB = { range: 320, apex: 32, T: 0.6,  h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
+BARREL_LOB = { range: 220, apex: 34, T: 0.55, h0: 58 }
+LAND_SKID  = 0.25          // 落地保留的水平速度比(人=短滑 0.2s / 桶=滾動收尾)
+BARREL_HIT_Z = 45          // 桶低於此高度才撞人引爆(≈頭高)
+```
+水平速度 `vh = range/T`(空中無摩擦=直線飛);`THROW_FORCE`/`BARREL_THROW`/`THROW_TUMBLE`(=T+0.2 短滑)都是**衍生值**,消費端沿用舊名。
 
-若未來要「拋過障礙/頭頂」的**玩法**(B 案:sim 真 z+重力、z 高不觸發碰撞),A 案的時間戳與曲線直接沿用。
+**z 感知稽核表**(每個判定點的空中語義——**加新互動先查這張表照答**):
+
+| 判定點 | 空中語義 | 落點 |
+|---|---|---|
+| 人:`slideKnock` 身體阻擋 | **跳過**(飛越對手) | v2-combat `air` gate |
+| 人:`slideKnock` 摩擦 | **跳過**(等速直線);落地幀 ×LAND_SKID 短滑 | 同上 + v2.js 落地偵測 |
+| 人:撞牆 | **仍擋**(sim 為真相)→ `_thrownT` 夾成 0.1s z 快落,不懸空 | slideKnock |
+| 人:入艙(`thrown && inPod`) | **算**(空中灌籃,決策 B)——照舊掃過艙半徑即收容 | v2.js(零改動) |
+| 人:空中被拳打/風/元素站噴發 | **忽略 z**(0.6s 窗口極短;混亂是招牌) | 零改動 |
+| 桶:撞人引爆 | **z 感知直擊(決策 A)**:`z < BARREL_HIT_Z` 才炸——弧頂飛過頭不爆、落地前後段可直擊 | updateBarrels |
+| 桶:走路推桶 | 空中跳過(高於人) | updateBarrels `air` gate |
+| 桶:撞牆 | 仍擋 → `flyT0` 夾成 0.1s 快落 | updateBarrels |
+| 桶:引信空中到期 | **空中爆**(視覺在高度上,爆風仍 2D 圓) | 零改動 |
+| 桶:落地 | ×LAND_SKID 滾動收尾 + 塵土 ring + thud | updateBarrels |
+
+**render**:直接讀 sim z——人=`e.z`(actor-brawler 世界層 `g.position.y` + `u.shadow` 反向補償留地面)、桶=props 橋接 `fly: b.z`(syncProps lift+飛行翻滾)。**影子留地面=高度閱讀線索**。
+
+**studio 幽靈同款**:`GHOST_THROW = { speed/flyFrames/peak 各分 carried/barrel }`,release 後照 lobZ 同曲線飛、落點停——**改遊戲 PERSON_LOB/BARREL_LOB 要同步 GHOST_THROW**(同 GHOST_ANCHOR 規則)。
+
+**射程重調記錄**(決策 C):人 ~270→**320px**(`AI_THROW_DIST` 200→260 跟進)、桶 ~133+滾→**220px**+滾。丟人入艙/炸人平衡如有異樣先查這裡。
 
 ### 5.1 手部切換(抓握才換 rigged 手)
 

@@ -643,10 +643,14 @@ const GHOST_FOLLOW_KEY = 'PS_GHOST_FOLLOW_V1';
 (function loadGhostFollow(){ try{ const s=localStorage.getItem(GHOST_FOLLOW_KEY); if(s){ const j=JSON.parse(s);
   for(const k of ['carried','barrel']) if(j[k]){ GHOST_FOLLOW[k].anchor=j[k].anchor||GHOST_FOLLOW[k].anchor; if(j[k].grip) GHOST_FOLLOW[k].grip=j[k].grip; Object.assign(GHOST_FOLLOW[k].off, j[k].off||{}); } } }catch(e){} })();
 function saveGhostFollow(){ try{ localStorage.setItem(GHOST_FOLLOW_KEY, JSON.stringify(GHOST_FOLLOW)); }catch(e){} }
-// 速度=js/v2-state THROW_FORCE 換算;拋物線=遊戲 A 案同款(y(p)=離手高·(1-p)+peak·4p(1-p));
-// 飛行幀=遊戲時長×60:carried 42f=THROW_TUMBLE 0.7s、barrel 30f=THROW_ARC.tBarrel 0.5s、peak=THROW_ARC.peak 26px。
-// **改遊戲 THROW_TUMBLE/THROW_ARC 要同步這裡**(同 GHOST_ANCHOR 規則)。
-const GHOST_THROW = { speed: (780 / 25) / 60, flyFrames: { carried: 42, barrel: 30 }, peak: 26 / 25 };
+// 拋物線=遊戲 B 案彈道同款(y(p)=離手高·(1-p)+apex·4p(1-p);js/v2-state lobZ):
+// carried=PERSON_LOB{range320,apex32,T0.6→36f}、barrel=BARREL_LOB{range220,apex34,T0.55→33f};
+// speed=水平速度 range/T 換算 PS 單位/幀。**改遊戲 PERSON_LOB/BARREL_LOB 要同步這裡**(同 GHOST_ANCHOR 規則)。
+const GHOST_THROW = {
+  speed: { carried: (320 / 0.6 / 25) / 60, barrel: (220 / 0.55 / 25) / 60 },
+  flyFrames: { carried: 36, barrel: 33 },
+  peak: { carried: 32 / 25, barrel: 34 / 25 },
+};
 function ghostTagFrames(){
   let gf = null, rf = null;
   try{ for(const k of (SEQ || [])){ if(k.tag === 'grab' && gf === null) gf = k.frame; if(k.tag === 'release' && rf === null) rf = k.frame; } }catch(e){}
@@ -722,9 +726,11 @@ function updateGhostFollow(){
     }
     const df = cur - rf;
     const fly = GHOST_THROW.flyFrames[key] || 40;
-    const p = Math.min(1, df / fly);                       // 拋物線:離手高滑落 + 弧頂(同遊戲 arcY)
-    const arcY = ud.home.y + (ud.rel.y - ud.home.y) * (1 - p) + GHOST_THROW.peak * 4 * p * (1 - p);
-    ghost.position.set(ud.rel.x, arcY, ud.rel.z + df * GHOST_THROW.speed);
+    const p = Math.min(1, df / fly);                       // 拋物線:離手高滑落 + 弧頂(同遊戲 lobZ)
+    const peak = GHOST_THROW.peak[key] || 1;
+    const arcY = ud.home.y + (ud.rel.y - ud.home.y) * (1 - p) + peak * 4 * p * (1 - p);
+    const spd = GHOST_THROW.speed[key] || 0.35;
+    ghost.position.set(ud.rel.x, arcY, ud.rel.z + Math.min(df, fly) * spd);   // 落地後不再前進(等速直線到落點)
   }
 }
 

@@ -176,7 +176,7 @@ import { buildBrawler, updateBrawler, BRAWLER_SPEC } from './actor-brawler.js';
     if (freeIslands || actorShadow) {
       const sh = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
       sh.rotation.x = -Math.PI / 2; sh.position.y = 1.6; sh.scale.set(r * 1.2, r * 0.82, 1); g.add(sh);
-      g.userData.shadow = sh;   // 被拋飛(_airY)時反向補償,影子留地面讀高度(updateBrawler)
+      g.userData.shadow = sh;   // 被拋飛(e.z 彈道高度)時反向補償,影子留地面讀高度(updateBrawler)
     }
     return g;
   }

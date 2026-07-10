@@ -41,13 +41,20 @@ export const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, P
 export const PARRY_SLOW = 0.3;
 export const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
 export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
-// 投擲:扛人時左鍵朝面向丟出。翻滾(不能自走)中進艙=遠距收容;翻滾結束落地=恢復(丟歪的代價)。
-// 有效射程 ≈ FORCE/3(KNOCK_FRICTION 0.05 積分) + 艙半徑 ≈ 270px。
-export const THROW_FORCE = 780, THROW_TUMBLE = 0.7;
-// 拋物線(A 案,render-only):sim 落點/判定不變,飛行期間 render 疊視覺高度、影子留地面。
-// h(p)=h0·(1-p)+peak·4p(1-p):從離手的手高(h0,過頂丟)起、弧頂 +peak、落地歸 0。
-// 人的飛行時長=THROW_TUMBLE(落地=翻滾結束能自走,視覺與規則同步);桶=tBarrel(落地後剩餘速度=滾動收尾)。
-export const THROW_ARC = { h0: 58, peak: 26, tBarrel: 0.5 };
+// 投擲(B 案:sim 真高度彈道)。三參數語言(人/桶/未來道具同一套,加投擲物=加一行):
+//   range=落點距離(px)、apex=弧頂追加高(px)、T=滯空秒、h0=離手高(過頂丟的手高)。
+//   水平速度 vh=range/T(空中無摩擦=直線飛);z 走閉式曲線 lobZ(免積分飄移、回放安全)。
+// z 感知規則(全稽核表在 docs/v2-carry-throw-system.md §5.2):空中=人飛越對手(跳過身體阻擋)、
+//   桶低於 BARREL_HIT_Z 才撞人引爆;牆仍擋(撞牆=z 快落 0.1s);飛越艙口=入艙(空中灌籃)。
+export const PERSON_LOB = { range: 320, apex: 32, T: 0.6, h0: 58 };
+export const BARREL_LOB = { range: 220, apex: 34, T: 0.55, h0: 58 };
+export const LAND_SKID = 0.25;      // 落地保留的水平速度比(人=短滑/桶=滾動收尾)
+export const BARREL_HIT_Z = 45;     // 桶低於此高度才撞人引爆(≈頭高;弧頂飛過頭不炸,落地前後段可直擊)
+// 閉式彈道高度:t 秒(相對起飛)→ z(px)。t<0 或 ≥T 回 0(未起飛/已落地)。
+export function lobZ(t, lob) { if (!(t >= 0) || t >= lob.T) return 0; const p = t / lob.T; return lob.h0 * (1 - p) + lob.apex * 4 * p * (1 - p); }
+// 衍生(舊名沿用,消費端不用改):丟人水平初速 / 翻滾總時長(滯空+落地短滑=0.2s;結束才能自走)
+export const THROW_FORCE = PERSON_LOB.range / PERSON_LOB.T;
+export const THROW_TUMBLE = PERSON_LOB.T + 0.2;
 // 扛/丟人動畫時序(person_throw clip):抓起就播「reach→grab→lift→翻橫」(0→hold 幀)然後**定格在 hold 幀**
 // (舉過頭頂+打橫)扛著走;按丟才續播 hold→release 甩飛。
 // **自動導出**:hold=clip 的 'hold' tag(缺席退回最後一個 grab tag)、release='release' tag。
@@ -55,7 +62,7 @@ export const THROW_ARC = { h0: 58, peak: 26, tBarrel: 0.5 };
 const _pt = CLIPS.person_throw;
 export const PERSON_HOLD_T = _pt?.tags.hold ?? _pt?.tagsLast.grab ?? 16 / 60;
 export const PERSON_THROW_DELAY = (_pt?.tags.release ?? 22 / 60) - PERSON_HOLD_T;
-export const AI_THROW_DIST = 200, AI_THROW_PANIC = 60, AI_THROW_DELAY = 0.3; // AI:近艙穩丟/掙脫快滿恐慌丟(可能丟歪),帶反應延遲
+export const AI_THROW_DIST = 260, AI_THROW_PANIC = 60, AI_THROW_DELAY = 0.3; // AI:近艙穩丟/掙脫快滿恐慌丟(可能丟歪),帶反應延遲(彈道射程 320 → 拉遠)
 export const CARRY_ESCAPE_NEED = 100, CARRY_MASH_AI = 30, CARRY_MASH_TAP = 8; // AI 掙脫≈3.3s(玩家反饋:AI 太強,45→30);人類左右交替每下+8
 // AI 人味缺陷(玩家反饋「AI 太強」:人類贏不了零反應延遲的機器):
 export const AI_PUNCH_CHANCE = 0.6;   // 進範圍時每次機會只有 6 成真的出拳(否則猶豫 0.3s 再說)
@@ -71,13 +78,13 @@ export const BARREL_FUSE = 1.0, BARREL_BLAST = 95, BARREL_FORCE = 700, BARREL_ST
 export const BARREL_PATCH_R = 40;                       // 爆後污染地板的小塊半徑(~1.3 tile)
 export const WILD_CONTAM = ['oil', 'water', 'poison'];  // 未充能=野生隨機污染(不含火,免整場失火)
 // 步驟 B:可推/撿/丟。丟出初速、滾動摩擦(快衰減=不永遠滾)、推力、撞擊引爆前的安全延遲。
-export const BARREL_THROW = 520, BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARREL_ARM_GRACE = 0.15;
+export const BARREL_THROW = BARREL_LOB.range / BARREL_LOB.T, BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARREL_ARM_GRACE = 0.15; // 丟桶水平初速=彈道導出(空中無摩擦;落地 ×LAND_SKID 變滾動)
 // 丟桶=排程動作:按下→播雙手過頂 heave 動畫(itemClip 'barrel_throw')→ release 幀才真的甩出。
 // **自動導出**:= clip 的 release tag 秒數(studio 移 release 幀→重貼 JSON 即對齊;舊值 22f fallback)。
 export const BARREL_THROW_DELAY = CLIPS.barrel_throw?.tags.release ?? 22 / 60;
 export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
-export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true }));
-export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; } }
+export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true, z: 0 }));
+export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; } }
 
 // --- 危險 #2:四角元素站洩漏 (docs/v2-element-floor-chemistry.md §10)。輪流噴發:預警 3s → 徑向脈衝 + 殘留元素地板。
 // 落點=可玩四角(§10.4);火/冰/毒 種地板,雷=無地板電擊擊暈(raw arc)。總開關(B 刀)arm 循環;A 刀先 always-on。
@@ -179,7 +186,7 @@ export function resetFighter(f) {
   f.pushWinT = 0; f.pushCd = 0; f.pushFrom = null; f._aiPushAt = 0; // 格擋推開:窗口/冷卻/攻擊者/AI排程
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
-  f._airY = 0;                       // 被拋飛的視覺高度(拋物線 A 案;v2.js 每幀算,render 疊在 actor 上)
+  f.z = 0;                           // 被拋飛的 sim 高度(B 案彈道;v2.js step 每幀由 lobZ 算,判定 gate+render 都讀它)
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)

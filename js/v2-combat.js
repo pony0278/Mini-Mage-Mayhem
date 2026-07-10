@@ -12,7 +12,7 @@ import {
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, FINISHER_KNOCK,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
-  THROW_FORCE, THROW_TUMBLE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
+  THROW_FORCE, THROW_TUMBLE, PERSON_LOB, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   ICE_ACCEL, ICE_FRICTION, STAGE_NAME, STAGE_BANNER,
   FIRE_STAB_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
@@ -41,10 +41,15 @@ export function readMove(pid) {
 }
 
 export function slideKnock(f, dt) { // apply lingering knockback velocity only (no self-control)
+  // 被拋飛空中段(B 案彈道):直線飛(無摩擦)、飛越對手(跳過身體阻擋);牆仍擋(空中撞牆=z 快落 0.1s 不懸空)。
+  const air = f._thrownT > 0 && game.time - f._thrownT < PERSON_LOB.T;
   const sx = f.vx * dt, sy = f.vy * dt;
-  if (!circleHitsSolid(f.x + sx, f.y, f.r) && !hitsFighter(f, f.x + sx, f.y)) f.x += sx; else f.vx = 0;
-  if (!circleHitsSolid(f.x, f.y + sy, f.r) && !hitsFighter(f, f.x, f.y + sy)) f.y += sy; else f.vy = 0;
+  let wall = false;
+  if (!circleHitsSolid(f.x + sx, f.y, f.r) && (air || !hitsFighter(f, f.x + sx, f.y))) f.x += sx; else { if (circleHitsSolid(f.x + sx, f.y, f.r)) wall = true; f.vx = 0; }
+  if (!circleHitsSolid(f.x, f.y + sy, f.r) && (air || !hitsFighter(f, f.x, f.y + sy))) f.y += sy; else { if (circleHitsSolid(f.x, f.y + sy, f.r)) wall = true; f.vy = 0; }
+  if (air && wall) f._thrownT = game.time - PERSON_LOB.T + 0.1;
   f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
+  if (air) return;                                                 // 空中:等速直線;落地幀(v2.js 偵測)×LAND_SKID 短滑
   const k = Math.pow(KNOCK_FRICTION, dt); f.vx *= k; f.vy *= k;
   if (KNOCK_CUTOFF && f.vx * f.vx + f.vy * f.vy < KNOCK_CUTOFF * KNOCK_CUTOFF) { f.vx = 0; f.vy = 0; }
 }
