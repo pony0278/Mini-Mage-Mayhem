@@ -70,6 +70,9 @@
 - **瀏覽器測**(puppeteer + SwiftShader flags,見根 CLAUDE.md;`python3 -m http.server 8099`):
   **⚠ headless rAF 會節流——`game.time` 只走實時的 4~36%**,`page.bringToFront()` 後仍要**以 game.time 輪詢**,
   等引信/冷卻類邏輯**直接呼叫**(如 `v2.explodeBarrel(b)`)別等它自然到時。
+  **凍結 clip 到某幀驗姿勢**(scratchpad `barrel_avatar.mjs` 範式):每輪「`itemFx=game.time-fr/60` 釘時鐘 +
+  把 `evalClip` 目標**直接寫進 `g.userData.pose`**(繞過節流下的慢 blend)→ 等 1-2 渲染幀(指骨/avatar 才消費)→
+  量測並**比對目標值**才放行」——只釘時鐘不寫 pose 會量到收斂中途的值;寫了 pose 不等渲染幀會量到舊骨。
 - hooks:`__v2`(game/fighters/barrels/stations/labSwitch/castX/punch/endMatch…)、`__lab`(labGroup/`floorFx()`)、
   `__hands`、`__avatars`、`__touch`、單機 `__game`。
 - 語法檢查:`cp js/x.js /tmp/_chk.mjs && node --check /tmp/_chk.mjs`(ESM 要 .mjs)。
