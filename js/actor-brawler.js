@@ -36,7 +36,7 @@ export const ANIM = {
   // 否則=滑步:掃程 ≈ 2×2×腿長14×sin(髖擺幅)——髖 ±60° ≈ 48px/循環。96 時滑步率 50%(看起來像溜冰,踩過的坑);
   // 60 ≈ 20% 滑步(可接受的風格化)。想要大步幅+慢步頻:studio 加大髖擺/觸地幀 lX_stretch 伸腿,再回調此值。
   // bob=踩地感彈跳(PS 單位 ×25px):循環相位驅動 root_py,觸地幀(key)低、過渡點高=每步一跳;0=關。
-  runClip: { stridePx: 60, bob: 0.12 },
+  runClip: { stridePx: 108, bob: 0.3 },
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
