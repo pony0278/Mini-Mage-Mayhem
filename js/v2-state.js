@@ -33,8 +33,9 @@ export const COMBO_STAB = [20, 20, 35], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WIND
 // 起手期間被打暈/被抓/被推開踉蹌 → 打擊取消(格擋推開從此是真反制)。
 export const STRIKE_DELAY = PUNCH_CLIPS.map((n, i) => CLIPS[n]?.impactT ?? [0.283, 0.233, 0.383][i]);
 // 終結技=打飛:命中後小拋物線(最後一擊→擊中→打飛→落地),取代舊滑行擊退(FINISHER_KNOCK 240)。
-// 與丟人同一條彈道管線(f._lob 記 profile),range 約丟人一半=標點符號,不取代丟技;h0=胸口高。
-export const PUNCH_LAUNCH_LOB = { range: 100, apex: 18, T: 0.35, h0: 30 };
+// 與丟人同一條彈道管線(f._lob 記 profile);調性=「挑空」:往前短、往上明顯(玩家指示:飛距更短、挑更高)。
+// 初版 range 100/apex 18(zmax≈34)→ 現值 zmax≈65、前飛約半;h0=胸口高。
+export const PUNCH_LAUNCH_LOB = { range: 55, apex: 50, T: 0.4, h0: 30 };
 export const PUNCH_LAUNCH = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;
 // 格擋推開:被打中後 PUSH_WIN 秒內按格擋鍵 → 把攻擊方推開+踉蹌,斷 combo;冷卻 PUSH_CDT
 export const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, PUSH_STAGGER = 0.45, AI_PUSH_CHANCE = 0.22;
