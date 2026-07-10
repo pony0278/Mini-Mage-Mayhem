@@ -129,6 +129,7 @@ BARREL_HIT_Z = 45          // 桶低於此高度才撞人引爆(≈頭高)
 |---|---|---|
 | 人:`slideKnock` 身體阻擋 | **跳過**(飛越對手) | v2-combat `air` gate |
 | 人:`slideKnock` 摩擦 | **跳過**(等速直線);落地幀 ×LAND_SKID 短滑 | 同上 + v2.js 落地偵測 |
+| 人:飛行姿態 | **打橫趴飛**(超人式:頭朝速度方向、面朝地+四肢亂踢)→ 落地滑行仍趴 → **滑停才平滑站起**(`f._lying` 旗=v2.js 算;actor-brawler `u.lie` 內插旋轉+`ANIM.thrown.lift` 抬半身厚) | v2.js `_lying` + actor-brawler 世界層 |
 | 人:撞牆 | **仍擋**(sim 為真相)→ `_thrownT` 夾成 0.1s z 快落,不懸空 | slideKnock |
 | 人:入艙(`thrown && inPod`) | **算**(空中灌籃,決策 B)——照舊掃過艙半徑即收容 | v2.js(零改動) |
 | 人:空中被拳打/風/元素站噴發 | **忽略 z**(0.6s 窗口極短;混亂是招牌) | 零改動 |

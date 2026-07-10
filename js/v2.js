@@ -17,7 +17,7 @@ import {
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
-  PERSON_LOB, LAND_SKID, lobZ,
+  PERSON_LOB, LAND_SKID, lobZ, THROW_TUMBLE,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
@@ -162,6 +162,8 @@ function step(dt) {
         const z = (f._thrownT > 0) ? lobZ(game.time - f._thrownT, PERSON_LOB) : 0;
         if (!z && f.z > 1) { f.vx *= LAND_SKID; f.vy *= LAND_SKID; addRing(f.x, f.y, 24, '#cbb9a2', 0.28, 3); game.sfx.push('thud'); }
         f.z = z;
+        // 被丟打橫旗:飛行中+落地滑行都趴著,滑停(fumbleT 歸零)才站起(render 讀,actor-brawler 平滑旋轉)
+        f._lying = !!(f._thrownT > 0 && game.time - f._thrownT < THROW_TUMBLE + 0.05 && (z > 0 || f.fumbleT > 0));
       }
       if (f.restunT > 0) f.restunT -= dt;
       if (f.invuln > 0) f.invuln -= dt;

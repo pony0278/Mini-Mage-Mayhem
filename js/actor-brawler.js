@@ -36,6 +36,7 @@ export const ANIM = {
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
   barrelHold: { sx: -157, syL: 71, syR: -70, szL: 61, szR: 52, ex: 2, wx: 73, stretch: 1.72 }, // 扛桶:雙臂舉過頭托住桶(對齊 barrel_throw grab_hold 幀 → 搬運↔丟桶無縫、桶恆在手上頭頂)
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
+  thrown:  { lift: 8, rate: 10 },                                                          // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下的平滑速率
   flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
 };
 
@@ -145,7 +146,7 @@ export function applyBrawlerPose(rig, p) {
   R.P.position.set(0, (hMax + S.foot.h - (Lu + Ll)) * sy + (p.root_py || 0) * S.PX, (p.root_pz || 0) * S.PX);
 }
 
-const _tip = new THREE.Vector3();
+const _tip = new THREE.Vector3(), _upAxis = new THREE.Vector3(0, 1, 0);
 const _zeroIdle = normalizePose(COMBAT_IDLE);
 
 // ===== 手部部件切換:扛人(carrying)=握拳手模、丟人放手瞬間=張開手模、其餘=方塊拳套 =====
@@ -256,7 +257,7 @@ export function updateBrawler(e, g) {
     u.amp = (u.amp || 0) + ((walking ? 1 : 0) - (u.amp || 0)) * A.walk.ampEase;
     u.ph = (u.ph || 0) + Math.min(disp, A.walk.maxDisp) * A.walk.phaseRate;
     const sw = Math.sin(u.ph) * u.amp;
-    if (e.carriedBy) {          // 被扛:四肢亂踢掙扎
+    if (e.carriedBy || (u.lie || 0) > 0.3) {   // 被扛/被丟趴飛中:四肢亂踢掙扎
       const C = A.carried, t = now * C.kickRate;
       pose.lL_hx = Math.sin(t) * C.legAmp; pose.lR_hx = -Math.sin(t) * C.legAmp;
       pose.lL_kx = 20; pose.lR_kx = 20; pose.squat = 0;
@@ -312,9 +313,18 @@ export function updateBrawler(e, g) {
 
   // --- 世界層:面向 + 暈眩搖晃 + flinch + 擠壓 ---
   const airY = e.z || 0;            // 被拋飛的 sim 彈道高度(B 案:v2.js step 由 lobZ 算,判定與視覺同一個數)
-  g.position.y = airY;              // root_py 已進姿勢層;airY 是世界層的疊加
-  if (u.shadow) u.shadow.position.y = 1.6 - airY;   // 影子留地面讀高度
-  g.rotation.set(0, yaw, wob);
+  // 被丟打橫(e._lying):飛行+落地滑行趴著(超人式,頭朝速度方向、面朝地),滑停才平滑站起
+  const lieTgt = e._lying ? 1 : 0;
+  u.lie = (u.lie || 0) + (lieTgt - (u.lie || 0)) * (1 - Math.exp(-A.thrown.rate * dt));
+  if (u.lie < 0.01) u.lie = 0;
+  const lift = airY + u.lie * A.thrown.lift;        // 趴姿抬半個身厚,免沉進地板
+  g.position.y = lift;              // root_py 已進姿勢層;airY/lift 是世界層的疊加
+  if (u.shadow) u.shadow.position.y = 1.6 - lift;   // 影子留地面讀高度
+  if (u.lie > 0.01) {
+    const va = (Math.hypot(e.vx || 0, e.vy || 0) > 20) ? Math.atan2(e.vy, e.vx) : (e.facing || 0);
+    g.quaternion.setFromAxisAngle(_upAxis, Math.atan2(Math.cos(va), Math.sin(va)));
+    g.rotateX(Math.PI / 2 * u.lie);                 // 頭前腳後、面朝地;u.lie 內插=起身動畫
+  } else g.rotation.set(0, yaw, wob);
   const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
