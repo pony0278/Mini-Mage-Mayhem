@@ -110,6 +110,19 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 
 **`carry_tilt/yaw/o*` = 非骨姿勢軸**:在 POSE_KEYS 裡(所以隨 clip 內插、blend),但 `applyBrawlerPose` 忽略(它們不是扛者的骨)。消費者是 render(positionCarried 讀扛者 `g.userData.pose.carry_*`)與 punch-studio 幽靈。
 
+### 5.2 拋物線(A 案:render-only 視覺高度)
+
+**sim 落點/撞牆/撞人判定全不變**(headless 不變式),飛行期間 render 疊一條高度曲線、**影子留地面**(高度的閱讀線索):
+
+- 公式:`h(p) = h0·(1-p) + peak·4p(1-p)`,`p = (game.time − 起飛時間戳)/T`;調參 `THROW_ARC = { h0, peak, tBarrel }`(v2-state)。
+- **人**:`launchCarried` 已有 `_thrownT`;T=`THROW_TUMBLE` → **落地=翻滾結束能自走**(視覺與規則同步)。v2.js 每幀算 `f._airY` → actor-brawler 世界層 `g.position.y = airY` + `u.shadow` 反向補償;落地幀 v2.js 撒塵土 ring+thud。
+- **桶**:`launchBarrel` 記 `b.flyT0`;T=`tBarrel`(< 摩擦自然停的時間)→ **落地後剩餘速度=滾動收尾**(飛→落地滾→停,updateBarrels 落地幀撒塵土)。props 橋接帶 `fly` 欄位,syncProps 的 `lift` 吃它(飛行中加速翻滾)。
+- **中斷同步(sim 為真相)**:飛行中撞牆 → sim 停(`vx=0`),`flyT0` 夾成剩 0.1s 快落,不懸空;撞人引爆 → 桶消失無所謂。
+- **studio 幽靈同款**:`GHOST_THROW.flyFrames`(carried 42f / barrel 30f)+ `peak`,release 後照同一條拋物線飛——**改遊戲 `THROW_TUMBLE`/`THROW_ARC` 要同步 GHOST_THROW**(同 GHOST_ANCHOR 規則)。
+- 已知簡化:人被丟正撞牆時 sim 原地停、視覺仍照 0.7s 拋——極端貼牆丟會看到「貼著牆升降」;要修=偵測 slideKnock 撞牆時夾 `_thrownT`(目前不值得)。
+
+若未來要「拋過障礙/頭頂」的**玩法**(B 案:sim 真 z+重力、z 高不觸發碰撞),A 案的時間戳與曲線直接沿用。
+
 ### 5.1 手部切換(抓握才換 rigged 手)
 
 **設計通則(對齊舊 `actor-hands.js`):一般/戰鬥用預設手,只有抓握物品才換成握持手模。** 兩條路各自的「預設手」不同:

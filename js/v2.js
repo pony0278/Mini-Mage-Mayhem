@@ -8,7 +8,7 @@
 // 已移除,要考古看 git 歷史。
 import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
-import { updateDeathTheater, addText, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
+import { updateDeathTheater, addText, addRing, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
 import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
@@ -17,6 +17,7 @@ import {
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
+  THROW_TUMBLE, THROW_ARC,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
@@ -230,9 +231,17 @@ function step(dt) {
   }
   // present live fighters for the renderer
   game.enemies = fighters.filter(f => f.state !== 'down');
+  // 拋物線(A 案,render-only):sim 落點/判定不變,飛行期間算視覺高度(影子留地面讀高度)。
+  // 人:_airY(actor-brawler 疊在 g 上;T=THROW_TUMBLE → 落地=翻滾結束能自走);桶:props 的 fly 欄位。
+  const arcY = (t, T) => { if (!(t >= 0) || t >= T) return 0; const p = t / T; return THROW_ARC.h0 * (1 - p) + THROW_ARC.peak * 4 * p * (1 - p); };
+  for (const f of fighters) {
+    const a = (f.fumbleT > 0 && f._thrownT > 0) ? arcY(game.time - f._thrownT, THROW_TUMBLE) : 0;
+    if (!a && (f._airY || 0) > 1) { addRing(f.x, f.y, 24, '#cbb9a2', 0.28, 3); game.sfx.push('thud'); } // 落地幀:塵土
+    f._airY = a;
+  }
   // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
   // 被扛的桶(b.held)由 actor-brawler 畫在雙手上(舉過頭頂/丟桶 heave),這裡略過免雙重繪
-  game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false }));
+  game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false, fly: arcY(game.time - b.flyT0, THROW_ARC.tBarrel) }));
   game.props.push({ x: labSwitch.x, y: labSwitch.y, r: labSwitch.r, charge: 'lightning', hp: 1, maxHp: 1, held: false }); // 中央緊急控制台(佔位=藍色發光箱)
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);

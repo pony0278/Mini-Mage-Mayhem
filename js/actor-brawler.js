@@ -311,7 +311,9 @@ export function updateBrawler(e, g) {
   }
 
   // --- 世界層:面向 + 暈眩搖晃 + flinch + 擠壓 ---
-  g.position.y = 0; // root_py 已進姿勢層
+  const airY = e._airY || 0;        // 被拋飛的拋物線視覺高度(v2.js 每幀算;sim 落點/判定不變)
+  g.position.y = airY;              // root_py 已進姿勢層;airY 是世界層的疊加
+  if (u.shadow) u.shadow.position.y = 1.6 - airY;   // 影子留地面讀高度
   g.rotation.set(0, yaw, wob);
   const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }

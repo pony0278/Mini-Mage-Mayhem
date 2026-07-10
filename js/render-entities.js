@@ -22,10 +22,10 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
       const col = burning ? 0xff7a3a : charged ? 0x6fb8d8 : ice ? 0x9fd8e8 : earth ? 0x8a8276 : (cracked ? 0x9c7038 : 0xb98a52);
       const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : (ice ? 0x2a6a88 : 0x000000);
       const s = pr.r * 1.9;
-      const lift = pr.held ? pr.r * 2.0 : 0;          // a carried crate floats above the mage
+      const lift = (pr.held ? pr.r * 2.0 : 0) + (pr.fly || 0);   // held=浮在頭上;fly=被丟的拋物線視覺高度(v2.js 算;影子留地面讀高度)
       const box = makeBox(s, s, s, col, emis, (charged || burning || ice) ? 0.6 : 0);
       box.position.set(pr.x, pr.r * 0.95 + lift, pr.y);
-      box.rotation.y = (pr.x + pr.y) * 0.01 + (pr.held ? game.time * 1.5 : 0);
+      box.rotation.y = (pr.x + pr.y) * 0.01 + (pr.held ? game.time * 1.5 : 0) + (pr.fly ? game.time * 5 : 0);   // 飛行中快速翻滾
       propGroup.add(box);
       const cap = makeBox(s * 1.04, 3, s * 1.04, burning ? 0x9c4422 : charged ? 0x3a7a90 : ice ? 0x6aa8c0 : earth ? 0x5a564e : 0x7a5a32);
       cap.position.set(pr.x, pr.r * 1.9 + lift, pr.y); cap.rotation.y = box.rotation.y; propGroup.add(cap);

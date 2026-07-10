@@ -643,7 +643,10 @@ const GHOST_FOLLOW_KEY = 'PS_GHOST_FOLLOW_V1';
 (function loadGhostFollow(){ try{ const s=localStorage.getItem(GHOST_FOLLOW_KEY); if(s){ const j=JSON.parse(s);
   for(const k of ['carried','barrel']) if(j[k]){ GHOST_FOLLOW[k].anchor=j[k].anchor||GHOST_FOLLOW[k].anchor; if(j[k].grip) GHOST_FOLLOW[k].grip=j[k].grip; Object.assign(GHOST_FOLLOW[k].off, j[k].off||{}); } } }catch(e){} })();
 function saveGhostFollow(){ try{ localStorage.setItem(GHOST_FOLLOW_KEY, JSON.stringify(GHOST_FOLLOW)); }catch(e){} }
-const GHOST_THROW = { speed: (780 / 25) / 60, dropFrames: 12 };   // 速度=js/v2-state THROW_FORCE 換算;墜地過渡幀
+// 速度=js/v2-state THROW_FORCE 換算;拋物線=遊戲 A 案同款(y(p)=離手高·(1-p)+peak·4p(1-p));
+// 飛行幀=遊戲時長×60:carried 42f=THROW_TUMBLE 0.7s、barrel 30f=THROW_ARC.tBarrel 0.5s、peak=THROW_ARC.peak 26px。
+// **改遊戲 THROW_TUMBLE/THROW_ARC 要同步這裡**(同 GHOST_ANCHOR 規則)。
+const GHOST_THROW = { speed: (780 / 25) / 60, flyFrames: { carried: 42, barrel: 30 }, peak: 26 / 25 };
 function ghostTagFrames(){
   let gf = null, rf = null;
   try{ for(const k of (SEQ || [])){ if(k.tag === 'grab' && gf === null) gf = k.frame; if(k.tag === 'release' && rf === null) rf = k.frame; } }catch(e){}
@@ -718,8 +721,10 @@ function updateGhostFollow(){
       ud.rel = { x: m.x, y: m.y, z: m.z };
     }
     const df = cur - rf;
-    const drop = Math.min(1, df / GHOST_THROW.dropFrames);
-    ghost.position.set(ud.rel.x, ud.rel.y * (1 - drop) + ud.home.y * drop, ud.rel.z + df * GHOST_THROW.speed);
+    const fly = GHOST_THROW.flyFrames[key] || 40;
+    const p = Math.min(1, df / fly);                       // 拋物線:離手高滑落 + 弧頂(同遊戲 arcY)
+    const arcY = ud.home.y + (ud.rel.y - ud.home.y) * (1 - p) + GHOST_THROW.peak * 4 * p * (1 - p);
+    ghost.position.set(ud.rel.x, arcY, ud.rel.z + df * GHOST_THROW.speed);
   }
 }
 

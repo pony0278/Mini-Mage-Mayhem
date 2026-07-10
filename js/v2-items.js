@@ -10,7 +10,7 @@ import {
   pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
-  BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
+  BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE, THROW_ARC,
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
@@ -160,6 +160,7 @@ export function launchBarrel(f) {
   const a = f.facing;
   b.x = f.x + Math.cos(a) * (f.r + b.r); b.y = f.y + Math.sin(a) * (f.r + b.r);
   b.vx = Math.cos(a) * BARREL_THROW; b.vy = Math.sin(a) * BARREL_THROW;
+  b.flyT0 = game.time; b.landed = false;                      // 拋物線視覺:空中 tBarrel 秒(v2.js 算高度,落地後剩餘速度=滾動收尾)
   b.thrownBy = f.pid; b.armGrace = BARREL_ARM_GRACE;
   pressurizeBarrel(b);                                        // 被丟 → 升壓(1s 引信;飛行中/落地/撞人爆)
   addShake(4); game.sfx.push('dash'); addText(b.x, b.y - 26, '丟桶！', barrelChargeColor(b.charge));
@@ -190,16 +191,23 @@ export function explodeBarrel(b) {
 }
 export function updateBarrels(dt) {
   for (const b of barrels) {
-    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; } continue; }
+    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; } continue; }
     if (b.armGrace > 0) b.armGrace -= dt;
     if (!b.held) {                                                      // 被扛的桶由 carry loop 定位;其餘走物理
       if (b.vx || b.vy) {                                              // 推/丟:速度整合 + 牆碰撞 + 摩擦
         const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt;
-        if (!circleHitsSolid(nx, b.y, b.r)) b.x = nx; else b.vx = 0;
-        if (!circleHitsSolid(b.x, ny, b.r)) b.y = ny; else b.vy = 0;
+        let wall = false;
+        if (!circleHitsSolid(nx, b.y, b.r)) b.x = nx; else { b.vx = 0; wall = true; }
+        if (!circleHitsSolid(b.x, ny, b.r)) b.y = ny; else { b.vy = 0; wall = true; }
+        // 飛行中撞牆:sim 已停(視 sim 為真相),拋物線視覺提前快落(0.1s 掉地),免得桶懸空
+        if (wall && game.time - b.flyT0 < THROW_ARC.tBarrel) b.flyT0 = game.time - THROW_ARC.tBarrel + 0.1;
         b.x = clamp(b.x, b.r, W - b.r); b.y = clamp(b.y, b.r, H - b.r);
         const k = Math.pow(BARREL_FRICTION, dt); b.vx *= k; b.vy *= k;
         if (b.vx * b.vx + b.vy * b.vy < 400) { b.vx = 0; b.vy = 0; }
+      }
+      if (!b.landed && game.time - b.flyT0 >= THROW_ARC.tBarrel) {     // 拋物線落地幀:塵土圈(之後剩餘速度=滾動)
+        b.landed = true;
+        addRing(b.x, b.y, 22, '#cbb9a2', 0.28, 3); game.sfx.push('thud');
       }
       for (const f of fighters) {                                      // 碰到人:丟出中的活桶→撞擊引爆;否則推開
         if (f.state !== 'alive' || f.carryObj === b || f.invuln > 0) continue;

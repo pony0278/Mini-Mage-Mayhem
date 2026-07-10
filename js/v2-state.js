@@ -44,6 +44,10 @@ export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 // 投擲:扛人時左鍵朝面向丟出。翻滾(不能自走)中進艙=遠距收容;翻滾結束落地=恢復(丟歪的代價)。
 // 有效射程 ≈ FORCE/3(KNOCK_FRICTION 0.05 積分) + 艙半徑 ≈ 270px。
 export const THROW_FORCE = 780, THROW_TUMBLE = 0.7;
+// 拋物線(A 案,render-only):sim 落點/判定不變,飛行期間 render 疊視覺高度、影子留地面。
+// h(p)=h0·(1-p)+peak·4p(1-p):從離手的手高(h0,過頂丟)起、弧頂 +peak、落地歸 0。
+// 人的飛行時長=THROW_TUMBLE(落地=翻滾結束能自走,視覺與規則同步);桶=tBarrel(落地後剩餘速度=滾動收尾)。
+export const THROW_ARC = { h0: 58, peak: 26, tBarrel: 0.5 };
 // 扛/丟人動畫時序(person_throw clip):抓起就播「reach→grab→lift→翻橫」(0→hold 幀)然後**定格在 hold 幀**
 // (舉過頭頂+打橫)扛著走;按丟才續播 hold→release 甩飛。
 // **自動導出**:hold=clip 的 'hold' tag(缺席退回最後一個 grab tag)、release='release' tag。
@@ -72,8 +76,8 @@ export const BARREL_THROW = 520, BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARR
 // **自動導出**:= clip 的 release tag 秒數(studio 移 release 幀→重貼 JSON 即對齊;舊值 22f fallback)。
 export const BARREL_THROW_DELAY = CLIPS.barrel_throw?.tags.release ?? 22 / 60;
 export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
-export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0 }));
-export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; } }
+export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true }));
+export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; } }
 
 // --- 危險 #2:四角元素站洩漏 (docs/v2-element-floor-chemistry.md §10)。輪流噴發:預警 3s → 徑向脈衝 + 殘留元素地板。
 // 落點=可玩四角(§10.4);火/冰/毒 種地板,雷=無地板電擊擊暈(raw arc)。總開關(B 刀)arm 循環;A 刀先 always-on。
@@ -175,6 +179,7 @@ export function resetFighter(f) {
   f.pushWinT = 0; f.pushCd = 0; f.pushFrom = null; f._aiPushAt = 0; // 格擋推開:窗口/冷卻/攻擊者/AI排程
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
+  f._airY = 0;                       // 被拋飛的視覺高度(拋物線 A 案;v2.js 每幀算,render 疊在 actor 上)
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
