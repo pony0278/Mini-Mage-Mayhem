@@ -644,11 +644,11 @@ const GHOST_FOLLOW_KEY = 'PS_GHOST_FOLLOW_V1';
   for(const k of ['carried','barrel']) if(j[k]){ GHOST_FOLLOW[k].anchor=j[k].anchor||GHOST_FOLLOW[k].anchor; if(j[k].grip) GHOST_FOLLOW[k].grip=j[k].grip; Object.assign(GHOST_FOLLOW[k].off, j[k].off||{}); } } }catch(e){} })();
 function saveGhostFollow(){ try{ localStorage.setItem(GHOST_FOLLOW_KEY, JSON.stringify(GHOST_FOLLOW)); }catch(e){} }
 // 拋物線=遊戲 B 案彈道同款(y(p)=離手高·(1-p)+apex·4p(1-p);js/v2-state lobZ):
-// carried=PERSON_LOB{range260,apex32,T0.55→33f}、barrel=BARREL_LOB{range180,apex34,T0.5→30f};
+// carried=PERSON_LOB{range200,apex32,T0.5→30f}、barrel=BARREL_LOB{range180,apex34,T0.5→30f};
 // speed=水平速度 range/T 換算 PS 單位/幀。**改遊戲 PERSON_LOB/BARREL_LOB 要同步這裡**(同 GHOST_ANCHOR 規則)。
 const GHOST_THROW = {
-  speed: { carried: (260 / 0.55 / 25) / 60, barrel: (180 / 0.5 / 25) / 60 },
-  flyFrames: { carried: 33, barrel: 30 },
+  speed: { carried: (200 / 0.5 / 25) / 60, barrel: (180 / 0.5 / 25) / 60 },
+  flyFrames: { carried: 30, barrel: 30 },
   peak: { carried: 32 / 25, barrel: 34 / 25 },
 };
 function ghostTagFrames(){

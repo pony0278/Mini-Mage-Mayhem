@@ -46,7 +46,7 @@ export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 //   水平速度 vh=range/T(空中無摩擦=直線飛);z 走閉式曲線 lobZ(免積分飄移、回放安全)。
 // z 感知規則(全稽核表在 docs/v2-carry-throw-system.md §5.2):空中=人飛越對手(跳過身體阻擋)、
 //   桶低於 BARREL_HIT_Z 才撞人引爆;牆仍擋(撞牆=z 快落 0.1s);飛越艙口=入艙(空中灌籃)。
-export const PERSON_LOB = { range: 260, apex: 32, T: 0.55, h0: 58 };
+export const PERSON_LOB = { range: 200, apex: 32, T: 0.5, h0: 58 };
 export const BARREL_LOB = { range: 180, apex: 34, T: 0.5, h0: 58 };
 export const LAND_SKID = 0.25;      // 落地保留的水平速度比(人=短滑/桶=滾動收尾)
 export const WALL_BOUNCE = 0.35;    // 空中撞牆的反彈係數(法向速度反轉×此值:彈一小下就快落,不硬停懸空)
@@ -60,9 +60,9 @@ export const BARREL_BONK_STAB = 15, BARREL_DROP_T = 0.15;
 export const BARREL_LAND_FUSE = 1.0;
 // 閉式彈道高度:t 秒(相對起飛)→ z(px)。t<0 或 ≥T 回 0(未起飛/已落地)。
 export function lobZ(t, lob) { if (!(t >= 0) || t >= lob.T) return 0; const p = t / lob.T; return lob.h0 * (1 - p) + lob.apex * 4 * p * (1 - p); }
-// 衍生(舊名沿用,消費端不用改):丟人水平初速 / 翻滾總時長(滯空+落地短滑=0.2s;結束才能自走)
+// 衍生(舊名沿用,消費端不用改):丟人水平初速 / 翻滾總時長(滯空+落地短滑=0.1s;結束才能自走)
 export const THROW_FORCE = PERSON_LOB.range / PERSON_LOB.T;
-export const THROW_TUMBLE = PERSON_LOB.T + 0.2;
+export const THROW_TUMBLE = PERSON_LOB.T + 0.1;
 // 扛/丟人動畫時序(person_throw clip):抓起就播「reach→grab→lift→翻橫」(0→hold 幀)然後**定格在 hold 幀**
 // (舉過頭頂+打橫)扛著走;按丟才續播 hold→release 甩飛。
 // **自動導出**:hold=clip 的 'hold' tag(缺席退回最後一個 grab tag)、release='release' tag。

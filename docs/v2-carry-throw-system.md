@@ -116,21 +116,21 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 
 **三參數語言**(v2-state;人/桶/未來道具同一套,加投擲物=加一行):
 ```js
-PERSON_LOB = { range: 260, apex: 32, T: 0.55, h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
+PERSON_LOB = { range: 200, apex: 32, T: 0.5,  h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
 BARREL_LOB = { range: 180, apex: 34, T: 0.5,  h0: 58 }
 WALL_BOUNCE = 0.35         // 空中撞牆反彈係數(彈一小下→快落,不硬停懸空、不貼牆滑)
 LAND_SKID  = 0.25          // 落地保留的水平速度比(人=短滑 0.2s / 桶=滾動收尾)
 BARREL_BONK_STAB = 15      // 桶砸中的第一拍穩定傷;BARREL_DROP_T = 0.15 快落秒
 BARREL_LAND_FUSE = 1.0     // 被丟的桶落地閃 1s 才爆(反制窗)
 ```
-水平速度 `vh = range/T`(空中無摩擦=直線飛);`THROW_FORCE`/`BARREL_THROW`/`THROW_TUMBLE`(=T+0.2 短滑)都是**衍生值**,消費端沿用舊名。
+水平速度 `vh = range/T`(空中無摩擦=直線飛);`THROW_FORCE`/`BARREL_THROW`/`THROW_TUMBLE`(=T+0.1 短滑)都是**衍生值**,消費端沿用舊名。
 
 **z 感知稽核表**(每個判定點的空中語義——**加新互動先查這張表照答**):
 
 | 判定點 | 空中語義 | 落點 |
 |---|---|---|
 | 人:`slideKnock` 身體阻擋 | **跳過**(飛越對手) | v2-combat `air` gate |
-| 人:`slideKnock` 摩擦 | **跳過**(等速直線);落地幀 ×LAND_SKID 短滑 | 同上 + v2.js 落地偵測 |
+| 人:`slideKnock` 摩擦 | **跳過**(等速直線);落地幀 ×LAND_SKID 短滑 0.1s(實測 ~8px) | 同上 + v2.js 落地偵測 |
 | 人:飛行姿態 | **打橫趴飛**(超人式:頭朝速度方向、面朝地+四肢亂踢)→ 落地滑行仍趴 → **滑停才平滑站起**(`f._lying` 旗=v2.js 算;actor-brawler `u.lie` 內插旋轉+`ANIM.thrown.lift` 抬半身厚)。**趴姿朝向凍結在起飛瞬間**(`u.lieYaw`)——撞牆反彈/滑行速度突變時身體不亂轉 | v2.js `_lying` + actor-brawler 世界層 |
 | 人:撞牆 | **小反彈**(法向速度 ×−WALL_BOUNCE)→ `_thrownT` 夾成 0.1s z 快落 → 落地 LAND_SKID+摩擦=很快停。⚠ 夾出的時戳開場可為小負數 → **`_thrownT` 哨兵一律用 `> -5`**(-9=未被丟),用 `> 0` 會把有效時戳當沒被丟(踩過) | slideKnock |
 | 人:入艙(`thrown && inPod`) | **算**(空中灌籃,決策 B)——照舊掃過艙半徑即收容 | v2.js(零改動) |
@@ -145,7 +145,7 @@ BARREL_LAND_FUSE = 1.0     // 被丟的桶落地閃 1s 才爆(反制窗)
 
 **studio 幽靈同款**:`GHOST_THROW = { speed/flyFrames/peak 各分 carried/barrel }`,release 後照 lobZ 同曲線飛、落點停——**改遊戲 PERSON_LOB/BARREL_LOB 要同步 GHOST_THROW**(同 GHOST_ANCHOR 規則)。
 
-**射程重調記錄**:初版 B 案人 320/桶 220(玩家反饋太遠)→ 現值**人 260(T 0.55)/桶 180(T 0.5)**,`AI_THROW_DIST` 220。丟人入艙/炸人平衡如有異樣先查這裡。
+**射程重調記錄**:B 案初版人 320/桶 220 → 二調 260/180(太遠)→ 現值**人 200(T 0.5,滑 0.1s)/桶 180(T 0.5)**,`AI_THROW_DIST` 220(range 200 丟向艙:落點差 20px 仍在艙半徑 46 內 ✓)。丟人入艙/炸人平衡如有異樣先查這裡。
 
 ### 5.1 手部切換(抓握才換 rigged 手)
 
