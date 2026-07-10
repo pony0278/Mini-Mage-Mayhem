@@ -458,7 +458,7 @@ function lerpPose(a,b,t,lags){
     else if(k.startsWith('lL_')) lag=lags.lL;
     else if(k.startsWith('lR_')) lag=lags.lR;
     const lt = lag>0 ? Math.max(0,Math.min(1,(t-lag)/Math.max(1-lag,0.001))) : t;
-    const defV = k.endsWith('_scale') ? 1 : 0;
+    const defV = defaultPoseValue(k);   // 缺席軸的預設(pose-data 單一真相;舊寫法漏 _stretch → 內插到 0 而非 1)
     const av = (a[k] !== undefined) ? a[k] : defV;
     const bv = (b[k] !== undefined) ? b[k] : defV;
     out[k] = av + (bv-av) * lt;

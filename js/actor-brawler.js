@@ -213,7 +213,13 @@ function updateHeldBarrel(e, g, R) {
     g.add(bm); g.userData.throwBarrel = bm;
   }
   bm.visible = true;
-  R.armL.wr.getWorldPosition(_wlp); R.armR.wr.getWorldPosition(_wrp);  // getWorldPosition 會更新 g 及祖鏈 matrixWorld
+  // 手中點:avatar 模式取「可見的」avatar 手(rigged Fingers 骨優先,退回 avatar 手骨)——box 腕是隱形
+  // driver,重定向+放大後 avatar 手在別處,貼 box 腕會脫手(同扛人病 3)。box 模式維持 box 腕。
+  const av = g.userData.avatar;
+  const bl = av && ((av.handRig && av.handRig.L && av.handRig.L.fingers) || (av.by.hand_l && av.by.hand_l.bone));
+  const br = av && ((av.handRig && av.handRig.R && av.handRig.R.fingers) || (av.by.hand_r && av.by.hand_r.bone));
+  if (bl && br) { bl.getWorldPosition(_wlp); br.getWorldPosition(_wrp); }
+  else { R.armL.wr.getWorldPosition(_wlp); R.armR.wr.getWorldPosition(_wrp); }  // getWorldPosition 會更新 g 及祖鏈 matrixWorld
   _wlp.add(_wrp).multiplyScalar(0.5);
   g.worldToLocal(_wlp); bm.position.copy(_wlp);                       // 世界中點 → g 局部(g 的位移/朝向/擠壓已在本幀套好)
   bm.rotation.y = game.time * 1.2;

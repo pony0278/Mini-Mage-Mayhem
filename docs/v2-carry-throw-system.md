@@ -97,7 +97,7 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 
 ## 5. render 貼手模式(3D 定位)
 
-**桶**(`updateHeldBarrel`,actor-brawler):桶 mesh 是**扛者 g 的 child**,每幀貼到**雙腕中點**;`b.held` 的桶 v2.js **略過 ground prop**(免雙重繪),甩出後交還飛行 prop。
+**桶**(`updateHeldBarrel`,actor-brawler):桶 mesh 是**扛者 g 的 child**,每幀貼到**雙手中點**——box 模式=box 腕中點;**avatar 模式=avatar 手中點(rigged `Fingers` 骨優先,退回 avatar 手骨)**,因為 box 腕是隱形 driver,重定向+放大後 avatar 手在別處,貼 box 腕會脫手 ~19px(同扛人病 7 掛錯手)。`b.held` 的桶 v2.js **略過 ground prop**(免雙重繪),甩出後交還飛行 prop。
 
 **人**(`positionCarried`,render-actors,**syncActors 後處理**):被扛者是**另一個完整 actor**,把它的 g **覆蓋**成——**忠實鏡射 punch-studio `ghostHoldWorld`/`ghostAnchorWorld`**(`GHOST_FOLLOW.carried = anchor:'R', grip:'head'`):
 - 掛點骨 = 扛者**右 rigged 手 `Fingers` 骨**(掌指抓握面;`carryAnchorBone`,無 rigged 手→退回`右手腕`)。**不是左手、不是手腕**——studio 的 `carry_o*` 是喬在右手 Fingers 骨局部的,掛錯手/錯骨連偏移都跑掉。
