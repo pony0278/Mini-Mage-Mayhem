@@ -108,9 +108,13 @@
 
 `barrel_pickup` 編排注意:桶從第 0 幀就貼在雙手中點(`updateHeldBarrel`),所以**起始幀雙手往下
 往前撈**(幽靈桶位,前方 ~31px 近地)桶才會從地上被撈起、跟著手升到頭頂;**結尾幀對齊
-`barrel_throw` 的 `grab_hold` 幀**(= `ANIM.barrelHold`:sx −157 / syL 71 / syR −70 / szL 61 /
-szR 52 / wx 73 / stretch 1.72)→ 播完落回程序扛桶姿勢無縫。不需要 tag。建議短(0.3~0.5s,
-撿桶是輕承諾拍,見 `docs/v2-combat-rhythm.md`)。
+`ANIM.barrelHold`(actor-brawler)= 使用者 studio 定稿的過頂 hold 姿勢**(aL:sx −79/sy 64/sz 105/
+wx 50/stretch 1.91/fbase −49;aR:sx −79/sy −65/sz 101/wx 63/wy 10/stretch 1.91/fbase −48)→
+播完落回程序扛桶姿勢無縫。不需要 tag。建議短(0.3~0.5s,撿桶是輕承諾拍,見 `docs/v2-combat-rhythm.md`)。
+> `barrelHold` 是**軸名→值**的平鋪覆蓋表(Object.assign 蓋在站姿上,含腕/手指)——之後重定稿舉桶姿勢,
+> 直接把 studio 匯出該幀的**非零軸**抄進去即可。注意 `barrel_throw` 的 grab_hold 幀(13f)仍是舊姿勢,
+> 起手丟桶時會先過渡到 clip 自己的姿勢(blend 平滑);要完全無縫可在 studio 把 barrel_throw 的
+> grab/grab_hold 幀更新成同一姿勢再重匯。
 
 新招式=新 entry + 掛上觸發頻道(punch 三槽 `PUNCH_CLIPS` / 道具 `ITEM_SPEC.clip` / 扛人 `carryClip`)。
 **先驗後接**:`v2.html?clip=名字` 任意 clip 循環試播(對手 AI 凍結),或 `__v2.playClip(名字)` 播一次——

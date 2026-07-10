@@ -34,7 +34,12 @@ export const ANIM = {
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
-  barrelHold: { sx: -157, syL: 71, syR: -70, szL: 61, szR: 52, ex: 2, wx: 73, stretch: 1.72 }, // 扛桶:雙臂舉過頭托住桶(對齊 barrel_throw grab_hold 幀 → 搬運↔丟桶無縫、桶恆在手上頭頂)
+  barrelHold: { // 扛桶:雙臂舉過頭托住桶(使用者 studio 定稿的過頂 hold 姿勢;軸名→值直接蓋在站姿上,含腕/手指)
+    aL_sx: -79, aL_sy: 64, aL_sz: 105, aL_ex: 0, aL_wx: 50, aL_wy: 0, aL_stretch: 1.91,
+    aR_sx: -79, aR_sy: -65, aR_sz: 101, aR_ex: 0, aR_wx: 63, aR_wy: 10, aR_stretch: 1.91,
+    aL_fbase: -49, aL_fmid: 0, aL_ftip: 0, aL_fthumb: 0,
+    aR_fbase: -48, aR_fmid: 0, aR_ftip: 0, aR_fthumb: 0,
+  },
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
   thrown:  { lift: 8, rate: 10 },                                                          // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下的平滑速率
   flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
@@ -270,10 +275,7 @@ export function updateBrawler(e, g) {
       pose.aL_ex = A.carry.armEx; pose.aR_ex = A.carry.armEx;
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
     } else if (e.carryObj) {    // 扛桶:雙臂舉過頭頂托住桶(桶由 updateHeldBarrel 貼在雙腕中點;丟桶時改由 clip 驅動)
-      const C = A.barrelHold;
-      pose.aL_sx = C.sx; pose.aR_sx = C.sx; pose.aL_sy = C.syL; pose.aR_sy = C.syR;
-      pose.aL_sz = C.szL; pose.aR_sz = C.szR; pose.aL_ex = C.ex; pose.aR_ex = C.ex;
-      pose.aL_wx = C.wx; pose.aR_wx = C.wx; pose.aL_stretch = C.stretch; pose.aR_stretch = C.stretch;
+      Object.assign(pose, A.barrelHold);
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
     } else {                    // 走路:髖膝擺動+手臂反相(疊在戰鬥站姿上)
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
