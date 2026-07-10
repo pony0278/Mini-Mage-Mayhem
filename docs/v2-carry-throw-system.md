@@ -103,6 +103,23 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 
 **`carry_tilt/yaw/o*` = 非骨姿勢軸**:在 POSE_KEYS 裡(所以隨 clip 內插、blend),但 `applyBrawlerPose` 忽略(它們不是扛者的骨)。消費者是 render(positionCarried 讀扛者 `g.userData.pose.carry_*`)與 punch-studio 幽靈。
 
+### 5.1 手部切換(抓握才換 rigged 手)
+
+**設計通則(對齊舊 `actor-hands.js`):一般/戰鬥用預設手,只有抓握物品才換成握持手模。** 兩條路各自的「預設手」不同:
+
+| 模式 | 一般/戰鬥 | 抓握物品(扛人/扛桶)| 切換點 |
+|---|---|---|---|
+| **方塊人**(預設)| 方塊拳套(`arm.fist`)| 舊 chibi 手模 `chibi-hands.glb`(grip/open 兩態)| `updateHands`(actor-brawler)`e.carrying`→grip、丟出開手窗口→open |
+| **avatar**(`?avatar=1`)| avatar 原生手(`av.handNative`)| **rigged 手** `chibi-hands-rigged.glb`(逐關鍵格手指軸)| `updateHands` avatar 分支 → `setRiggedHandsVisible(av,on)` |
+
+**avatar rigged 手**(`actor-hands-rigged.js`,與 punch-studio 同一份 GLB+同軸,測試一致):
+- `mountRiggedHands(av)`:掛到 `av.by.hand_l/hand_r.bone`(identity;同出 base rig 故手骨已帶 rest)。**掛載後預設藏**(rigged 藏、原生手顯)。
+- `setRiggedHandsVisible(av,on)`:切 rigged↔原生手(旗 `av.handShowingRigged`)。**顯條件**=`e.carrying || e.carryObj`,**放/丟後多留 0.3s**(`u.hand.rigT = now+0.3`)讓手指張開的收招跟隨播完,再切回原生手。
+- `applyFingerPose(av,pose)`:**只在顯示 rigged 時**每幀跑,從 clip 手指軸 `aL_/aR_ f{base,mid,tip,thumb}`(骨局部 X、負=往掌心捲)驅動指骨。抓握 clip(person_throw/barrel_throw)帶捲指→放手張開,自然演出握持。
+- **順序**:`updateHands`(切可見)在 `updateBrawler` 內**先於** `retargetAvatar`(驅指骨)跑 → 先定顯示、再驅動。首幀 `u.avatar` 尚未建 → 略過,不炸。
+
+**為何不常駐掛 rigged 手**:曾一版常駐顯 rigged、常駐藏原生手,不符原設計(戰鬥時手指全張的 rigged 手不如原生手自然),且 clip 手指軸在非抓握狀態=0(平張)無意義。改成只在抓握切換。
+
 ---
 
 ## 6. 踩過的坑(病因庫)
