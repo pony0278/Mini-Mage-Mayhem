@@ -16,6 +16,7 @@ import {
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
 import { flinch, camKick, dropCarry, stunFighter } from './v2-combat.js';
+import { CLIPS } from './brawler-clips.js';
 import { stampElement, stateAtPixel, FL } from './v2-floor.js';
 import { circleHitsSolid } from './fx.js';
 
@@ -138,6 +139,9 @@ export function grabbableBarrel(f) { // 範圍內最近的可撿 idle 桶
 export function pickUpBarrel(f, b) {
   if (f.carrying || f.carryObj || !b || !b.alive || b.held) return;
   f.carryObj = b; b.held = true; b.vx = 0; b.vy = 0; b.z = 0; b.flyT0 = -9; b.landed = true; b.dropT0 = -9;
+  // 撿桶動畫(可選 clip:CLIPS 有 barrel_pickup 就播;桶從第 0 幀起貼在雙手中點,手往下撈→舉起=桶跟著走。
+  // clip 播完落回程序 barrelHold 姿勢 → 結尾幀請對齊 barrel_throw 的 grab_hold 幀(= ANIM.barrelHold)才無縫)
+  if (CLIPS.barrel_pickup) { f.itemFx = game.time; f.itemClip = 'barrel_pickup'; }
   addText(f.x, f.y - 30, '抓起桶！', barrelChargeColor(b.charge)); addRing(f.x, f.y, 30, barrelChargeColor(b.charge), 0.3, 4); game.sfx.push('upgrade');
 }
 export function dropBarrel(f) {

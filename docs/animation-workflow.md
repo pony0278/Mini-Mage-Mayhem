@@ -104,6 +104,13 @@
 | `overhand` | 三連擊第 3 段(過頂重擊=終結技) | ✅ 使用者定稿(impact @23f) |
 | `barrel_throw` | 丟桶(itemClip 頻道;release 幀甩出) | ✅ 使用者定稿(release@22f;含手指軸) |
 | `person_throw` | 扛人/丟人(carryClip 頻道;抓起播 0→hold 定格,丟續播→release 甩飛) | ✅ 使用者定稿 v2(hold@16f/release@22f;含手指軸,抓時捲、收招放開) |
+| `barrel_pickup` | 撿桶(itemClip 頻道;**可選槽**——CLIPS 有就播,沒有=瞬間抓起) | 🕳 空槽,遊戲端已接線等 studio 匯出 |
+
+`barrel_pickup` 編排注意:桶從第 0 幀就貼在雙手中點(`updateHeldBarrel`),所以**起始幀雙手往下
+往前撈**(幽靈桶位,前方 ~31px 近地)桶才會從地上被撈起、跟著手升到頭頂;**結尾幀對齊
+`barrel_throw` 的 `grab_hold` 幀**(= `ANIM.barrelHold`:sx −157 / syL 71 / syR −70 / szL 61 /
+szR 52 / wx 73 / stretch 1.72)→ 播完落回程序扛桶姿勢無縫。不需要 tag。建議短(0.3~0.5s,
+撿桶是輕承諾拍,見 `docs/v2-combat-rhythm.md`)。
 
 新招式=新 entry + 掛上觸發頻道(punch 三槽 `PUNCH_CLIPS` / 道具 `ITEM_SPEC.clip` / 扛人 `carryClip`)。
 **先驗後接**:`v2.html?clip=名字` 任意 clip 循環試播(對手 AI 凍結),或 `__v2.playClip(名字)` 播一次——
