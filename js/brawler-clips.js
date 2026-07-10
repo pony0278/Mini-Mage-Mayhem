@@ -75,11 +75,15 @@ export function prepClip(snap) {
   const rf = Math.max(1, Math.round((snap.seq && snap.seq[0] && (snap.seq[0].returnFrames ?? snap.seq[0].frames)) || 10));
   if (last && last.name !== 'idle') segs.push({ from: last.name, to: 'idle', start: last.frame, end: last.frame + rf, ease: 'out', impact: false });
   const dur = segs.length ? segs[segs.length - 1].end / REF_FPS : 0;
-  // tags:B 層(排程抓/丟)的零風險準備——保留 grab/release 等 tag 的幀時刻(秒),目前無人消費。
-  // 未來遊戲端:grabAt=播 grab clip 後掛上被扛物的時刻、releaseAt=丟出給速度的時刻(鏡像 STRIKE_DELAY 模式)。
-  const tags = {};
-  for (const k of seq) if (k.tag && !(k.tag in tags)) tags[k.tag] = k.frame / REF_FPS;
-  return { segs, phases, lags, dur, tags };
+  // tags:判定時刻的單一真相——v2-state 的時序常數(STRIKE_DELAY/BARREL_THROW_DELAY/PERSON_HOLD_T/
+  // PERSON_THROW_DELAY)由這裡導出。在 studio 移動 impact/release/hold 幀 → 重貼 JSON 即自動對齊,
+  // 不再手動同步兩邊。tags=各 tag 第一次出現的秒數;tagsLast=最後一次(hold 缺席時退回最後一個 grab)。
+  const tags = {}, tagsLast = {};
+  for (const k of seq) if (k.tag) { if (!(k.tag in tags)) tags[k.tag] = k.frame / REF_FPS; tagsLast[k.tag] = k.frame / REF_FPS; }
+  // impactT:第一個 impact key 的秒數(= STRIKE_DELAY 的來源;無 impact key 為 null)
+  let impactT = null;
+  for (const k of seq) if (k.impact) { impactT = k.frame / REF_FPS; break; }
+  return { segs, phases, lags, dur, tags, tagsLast, impactT };
 }
 const NO_LAGS = { aL: 0, aR: 0, lL: 0, lR: 0 };
 export function evalClip(clip, tSec) { // t 秒 → 47 軸姿勢;超出長度回 null(caller 落回 idle)
@@ -202,7 +206,7 @@ export const CLIPS = {
       { name: "windup", frame: 4, ease: "out", tag: "anti" },
       { name: "grab", frame: 10, ease: "out", tag: "grab" },
       { name: "grab_windup", frame: 13, ease: "out", tag: "grab" },
-      { name: "grab_windup_2", frame: 16, ease: "out", tag: "grab" },
+      { name: "grab_windup_2", frame: 16, ease: "out", tag: "hold" },   // 定格幀(翻橫完成→扛著走):tag 'hold' = PERSON_HOLD_T 的來源(studio 匯出後手動標;studio 幽靈只認第一個 grab/release,中段 tag 改名無副作用)
       { name: "ready_throw", frame: 19, ease: "out", tag: "grab" },
       { name: "throw_2", frame: 22, ease: "out", tag: "release" },
       { name: "throw_2_hold", frame: 25, ease: "out", tag: "release" },

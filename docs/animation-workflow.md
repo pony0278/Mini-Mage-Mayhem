@@ -60,43 +60,56 @@
 2. 「JSON」匯出 → 複製整份 snapshot
 3. 貼進 `js/brawler-clips.js` 對應的 `CLIPS` entry:`prepClip({ ...貼這裡... })`
    (或直接把 JSON 貼給 Claude 並說明是哪個招式)
-4. 若 **impact key 的 frame 位置變了** → 同步改 `js/v2-state.js` 的 `STRIKE_DELAY`(§4)
-5. 重新整理 v2.html 驗證(或跑 headless 姿勢截圖)
+4. **判定時刻自動同步**:`STRIKE_DELAY`/`BARREL_THROW_DELAY`/`PERSON_HOLD_T`/`PERSON_THROW_DELAY` 由
+   clip 的 impact key / `release`/`hold` tag **自動導出**(v2-state import CLIPS)——移動影格重貼 JSON 即對齊,
+   **不再手動改常數**。扛人 clip 記得把定格幀標 tag `hold`、甩出幀標 `release`(§4)
+5. 重新整理 `v2.html?clip=招式名` 驗證(任意 clip 循環試播,不用綁玩法;或跑 headless 姿勢截圖)
 
 ## 3. 資料格式(編排器 JSON snapshot)
 
 ```
-{ seq:   [{ name, frame, ease, impact, cancel }...],   // 時間軸(frame @60fps;seq[0]=idle,frame 0)
-  phases:{ name: { 47 軸姿勢... } },                    // 每個 key 的姿勢
+{ seq:   [{ name, frame, ease, impact, cancel, tag }...],   // 時間軸(frame @60fps;seq[0]=idle,frame 0)
+  phases:{ name: { 64 軸姿勢... } },                    // 每個 key 的姿勢(含手指 aX_f*、被扛者 carry_*)
   lags:  { aL, aR, lL, lR } }                           // per-limb 跟隨延遲(0..1;impact 段自動歸零)
 ```
 - 每個 key = 一段「前一 key → 此 key」的過渡;`ease` = `in`/`out`/`lin`。
 - 播放完最後一個 key 後,自動用 `seq[0].frames` 的時長收回 idle(戰鬥站姿)。
-- `poseKeys`/`dim`/`version` 等其餘欄位遊戲端忽略(DIM 角色比例由遊戲的 `BRAWLER_SPEC` 決定)。
+- `poseKeys`/`dim`/`version`/`cancel` 遊戲端忽略(DIM 角色比例由遊戲的 `BRAWLER_SPEC` 決定;
+  cancel 接招取消點目前遊戲用自己的 combo 常數,尚未消費)。
 
-## 4. ⚠ impact 影格 ↔ STRIKE_DELAY 對齊(唯一要記的規則)
+## 4. 判定時刻自動同步(impact / release / hold tag)
 
 傷害判定在**模擬層**(`v2-combat.js`):點擊=起手,`STRIKE_DELAY[段數]` 秒後才判定命中;
-動作在**渲染層**播 clip。兩邊靠「約定」對齊,不靠 import(sim 保持 headless):
+動作在**渲染層**播 clip。兩邊由 **clip 資料自動對齊**(v2-state import CLIPS——brawler-clips 是
+純資料模組,sim headless 不破):
 
-```
-STRIKE_DELAY[段] ≈ clip impact key 的 frame ÷ 60
-```
-- 現值(使用者自編三連擊):`rhook` 0.283(@17f)、`lhook` 0.333(@20f)、`overhand` 0.383(@23f)。
-- 你把 impact key 拖到別的 frame → `js/v2-state.js` 的 `STRIKE_DELAY` 跟著改,否則「看到打中」和「實際掉血」會脫節。
+| v2-state 常數 | 來源(prepClip 導出) | fallback |
+|---|---|---|
+| `STRIKE_DELAY[段]` | 該 punch clip 第一個 **impact key** 的 frame÷60(`clip.impactT`) | 17f/14f/23f |
+| `BARREL_THROW_DELAY` | `barrel_throw` 的 **`release` tag** 秒數 | 22f |
+| `PERSON_HOLD_T` | `person_throw` 的 **`hold` tag**(缺席退回最後一個 `grab` tag) | 16f |
+| `PERSON_THROW_DELAY` | `release` tag − hold | 6f |
+
+- **studio 匯出後的慣例**:扛人/丟物 clip 的「定格幀」(舉著走的姿勢)標 tag `hold`、
+  「甩出幀」標 `release`——studio 幽靈只認第一個 `grab`/`release`,中段 key 改標 `hold` 無副作用。
+- 移動影格 → 重貼 JSON → 常數自動跟,**不再手動同步**。
 - 起手中被打暈/被抓/被推開踉蹌 → 打擊取消(格擋推開=真反制),這由模擬層守衛,動作資料不用管。
 
 ## 5. 招式插槽(現有 CLIPS)
 
 | CLIPS key | 遊戲觸發 | 狀態 |
 |---|---|---|
-| `rhook` | 三連擊第 1 段(右鉤拳) | ✅ 使用者 PUNCH STUDIO 定稿(impact @17f=0.283s) |
-| `lhook` | 三連擊第 2 段(左鉤拳) | ✅ 使用者定稿(impact @20f=0.333s) |
-| `overhand` | 三連擊第 3 段(過頂重擊=終結技);**投擲暫借用** | ✅ 使用者定稿(impact @23f=0.383s);投擲仍待專屬過肩摔 clip |
+| `rhook` | 三連擊第 1 段(右鉤拳) | ✅ 使用者 PUNCH STUDIO 定稿(impact @17f) |
+| `lhook` | 三連擊第 2 段(左鉤拳) | ✅ 使用者定稿(impact @14f) |
+| `overhand` | 三連擊第 3 段(過頂重擊=終結技) | ✅ 使用者定稿(impact @23f) |
+| `barrel_throw` | 丟桶(itemClip 頻道;release 幀甩出) | ✅ 使用者定稿(release@22f;含手指軸) |
+| `person_throw` | 扛人/丟人(carryClip 頻道;抓起播 0→hold 定格,丟續播→release 甩飛) | ✅ 使用者定稿(hold@16f/release@22f;**待重匯出補手指軸**) |
 
-新招式=新 entry + 在 `actor-brawler.js` 的 `PUNCH_CLIPS` / 狀態機掛上觸發。
+新招式=新 entry + 掛上觸發頻道(punch 三槽 `PUNCH_CLIPS` / 道具 `ITEM_SPEC.clip` / 扛人 `carryClip`)。
+**先驗後接**:`v2.html?clip=名字` 任意 clip 循環試播(對手 AI 凍結),或 `__v2.playClip(名字)` 播一次——
+編完貼進 CLIPS 立刻看,不用先綁玩法。
 
-## 6. 軸支援表(47 軸在遊戲端的落地)
+## 6. 軸支援表(64 軸在遊戲端的落地)
 
 | 軸 | 遊戲端 |
 |---|---|
@@ -104,13 +117,15 @@ STRIKE_DELAY[段] ≈ clip impact key 的 frame ÷ 60
 | `spine_x/y`、`pelvis_y`、`head_x/y/pz` | ✅ |
 | 肩 `sx/sy/sz`、肘 `ex`、腕 `wx/wy`、`aX_idle`、`aX_scale`(命中放大:前臂+拳,繞肘) | ✅ box+avatar 皆生效 |
 | 髖 `hx/hy/hz`、膝 `kx`、`lX_idle`、`lX_scale`(命中放大:小腿+腳,繞膝) | ✅ box+avatar 皆生效 |
+| 踝 `lX_ax`(微調)、腳尖 `lX_ty`(踝 Y,正=外八) | ✅ box(踝節點+腳掌,含自動壓平)+avatar(foot driver) |
 | `aX_stretch`/`lX_stretch`(整肢從肩/髖等比伸展;遠鏡頭伸手更明顯,1=原長) | ✅ box+avatar 皆生效(踩地自動補償腿長) |
-| `lX_contact`(接觸鎖) | ✅ 吃進自動踩地(2=該腿不當地面錨點) |
-| 踝 `ax`、腳尖 `ty` | ❌ 忽略(遊戲小人沒有腳掌;編動作時不用調) |
+| `lX_contact`(接觸鎖) | ✅ 自動踩地(2=該腿不當地面錨點)+ **1=墊腳**(踝抬跟 55°,同編排器) |
+| 手指 `aX_f{base,mid,tip,thumb}`(骨局部 X 度,負=握) | ✅ `?avatar=1` 抓握時驅動 rigged 指骨;box/原生手忽略 |
+| 被扛者 `carry_tilt/yaw/o{x,y,z}` | ✅ render `positionCarried` 消費(非扛者骨軸,applyBrawlerPose 忽略) |
 
 ## 7. 驗證協定
 
-- 快看:本地 `python3 -m http.server 8099` → `v2.html?fx=low` 實際出拳。
+- 快看:本地 `python3 -m http.server 8099` → `v2.html?clip=招式名&fx=low` 循環試播(或不帶 `clip` 實際出拳)。
 - headless 姿勢截圖:scratchpad 的 `animclose.mjs` 模式(拉近鏡頭,分別截 anti/impact/stun)。
 - 判定時序:`anim.mjs` 模式(按下不掉血 → impact 掉血;起手被暈=取消)。
 - 改了 clip 後至少跑三連擊回歸(`combo.mjs` 模式;注意 SwiftShader ≈4 倍慢動作,等待要抓 impact 之後)。

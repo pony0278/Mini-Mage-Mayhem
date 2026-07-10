@@ -29,7 +29,7 @@ export function preloadAvatar() {
     .catch(e => { loadState = 3; console.warn('[avatar] 載入失敗:', e); });
 }
 
-// box rig 骨頭 → 角色骨頭型別。side:-1=世界 −X(左),+1=右。box rig 無踝關節 → 腳併入小腿。
+// box rig 骨頭 → 角色骨頭型別。side:-1=世界 −X(左),+1=右。
 const NODE_OF = {
   root:     (R) => R.P,
   torso:    (R) => R.spine,
@@ -40,7 +40,7 @@ const NODE_OF = {
   hand:     (R, s) => s < 0 ? R.armL.wr : R.armR.wr,
   thigh:    (R, s) => s < 0 ? R.legL.hp : R.legR.hp,
   shin:     (R, s) => s < 0 ? R.legL.kn : R.legR.kn,
-  // foot：box 無踝 → 讓腳的世界差量跟隨小腿(shin),不獨立驅動
+  foot:     (R, s) => s < 0 ? R.legL.ankle : R.legR.ankle,   // 踝節點=腳的 driver(lL_ax/lL_ty/自動壓平/墊腳 → 角色腳掌)
 };
 const PAIRED = ['upperarm', 'forearm', 'hand', 'thigh', 'shin', 'foot'];
 const TOKENS = ['upperarm', 'forearm', 'hand', 'thigh', 'shin', 'calf', 'foot', 'torso', 'neck', 'head', 'root'];
@@ -166,6 +166,8 @@ function boxRigHeight(R) {
 }
 function boxFootWorldY(R) {
   const v = new THREE.Vector3(); let y = Infinity;
+  [R.legL.ankle, R.legR.ankle].forEach(n => { if (n) { n.getWorldPosition(v); y = Math.min(y, v.y); } });
+  if (isFinite(y)) return y - 2.6;                  // 踝再往下一個腳掌高(BRAWLER_SPEC.foot.h)
   [R.legL.kn, R.legR.kn].forEach(n => { if (n) { n.getWorldPosition(v); y = Math.min(y, v.y); } });
-  return isFinite(y) ? y - 6 : 0;                   // 小腿末端再往下一個腳掌高
+  return isFinite(y) ? y - 6 : 0;                   // 舊 fallback:小腿末端估
 }

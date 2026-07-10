@@ -25,12 +25,25 @@ import { updatePads, updateIce, updateBarrels, updateStations, useItem, resolveI
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
+import { CLIPS } from './brawler-clips.js';   // ?clip= 試播入口用(clip 名單+時長)
 
 let prevLocalSolid = true; // track when YOU step off solid ground (isles diagnostics)
 
 // 測試旗 ?grabany=1:免「對手被擊暈」前提,隨時可舉起對手(測扛/丟動畫+avatar rigged 手用)。
 // 正常玩法要先揍暈才抓;開這旗只放寬本機玩家的抓取條件,其餘(冷卻/被抓/範圍)照舊。
 const GRAB_ANY = new URLSearchParams(location.search).get('grabany') === '1';
+
+// 測試旗 ?clip=名字:任意動作 clip 在本機角色上循環試播(WYSIWYG 驗證:studio 編完貼進 CLIPS 直接看,
+// 不用先綁玩法頻道)。走 itemClip 頻道(free 時生效;扛人/被扛時讓位給 carry 動畫);對手 AI 凍結免干擾。
+// 程式亦可 __v2.playClip(name) 播一次(回傳 clip 秒長,查無名字回 0)。
+const TEST_CLIP = new URLSearchParams(location.search).get('clip');
+let _clipNextT = 0;
+function playClip(name, f = fighters[LOCAL]) {
+  const c = CLIPS[name];
+  if (!c) { console.warn('[v2] playClip: 無此 clip「' + name + '」;可用:', Object.keys(CLIPS).join(', ')); return 0; }
+  f.itemFx = game.time; f.itemClip = name;
+  return c.dur;
+}
 
 // --- round / match orchestration ---
 function resetRound() {
@@ -131,6 +144,10 @@ function step(dt) {
   else {
     pollAction(); pollItem(); pollGuard(); pollContext();
     pollTouchButtons(); pollTouchGuard();
+    if (TEST_CLIP) {                                   // ?clip= 試播:循環播放 + 凍結對手 AI
+      fighters[1 - LOCAL].ai = false;
+      if (game.time >= _clipNextT) _clipNextT = game.time + (playClip(TEST_CLIP) || 1) + 0.5;
+    }
     stepFloor(dt); // 地板化學:火沿油滾動 + 每格衰退/預警 + 電水雙計時器(注入=道具/站;cut 3 接)
     for (const f of fighters) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
@@ -281,7 +298,7 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
-  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel,
+  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   punch, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),

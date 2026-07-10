@@ -15,6 +15,7 @@ export const BRAWLER_SPEC = {
   colors: { limbShade: 0.68, paleLighten: 0.42, eye: 0x17101c, glow: 0.06 },
   hipY: 14, hipX: 5.4,
   thigh: { w: 7, h: 7.5, d: 8 }, shin: { w: 6.2, h: 6.5, d: 7.2 },      // Lu=7.5, Ll=6.5
+  foot: { w: 6.6, h: 2.6, d: 8.6, fwd: 1.4, shade: 0.45 },               // 腳掌(踝下小靴,略前伸;shade=底色暗度)。站高因此 +h(applyBrawlerPose 抬 root)
   torso: { w: 22, h: 18, d: 13, cy: 9 },                                 // spine-local 中心(世界 y23)
   shoulderPad: { x: 13.2, y: 16.5, w: 7, h: 5.5, d: 9 },                 // 裝飾肩甲(spine-local)
   armX: 14, armY: 15,                                                    // 肩軸(spine-local;世界 y29)
@@ -59,8 +60,11 @@ export function buildBrawler(g, tints, tintable, base) {
     const hp = grp(pelvis, side * S.hipX, 0);
     const th = makeBox(S.thigh.w, S.thigh.h, S.thigh.d, limb); th.position.y = -S.thigh.h / 2; hp.add(th);
     const kn = grp(hp, 0, -S.thigh.h);
-    const sh = makeBox(S.shin.w, S.shin.h, S.shin.d, limb); sh.position.y = -S.shin.h / 2; kn.add(sh);
-    return { hp, kn, side };
+    const lm = grp(kn, 0, 0);                                            // 小腿+腳的放大群組(命中放大,對齊編排器 legL.lm → lL_scale)
+    const sh = makeBox(S.shin.w, S.shin.h, S.shin.d, limb); sh.position.y = -S.shin.h / 2; lm.add(sh);
+    const ankle = grp(lm, 0, -S.shin.h);                                 // 踝關節(lL_ax/lL_ty + 自動壓平/墊腳;avatar foot driver 也吃這節點)
+    const foot = makeBox(S.foot.w, S.foot.h, S.foot.d, shadeHex(base, S.foot.shade)); foot.position.set(0, -S.foot.h / 2, S.foot.fwd); ankle.add(foot);
+    return { hp, kn, lm, ankle, side };
   };
   const legL = mkLeg(-1), legR = mkLeg(1);
   const spine = grp(P, 0, S.hipY);
@@ -85,6 +89,7 @@ export function buildBrawler(g, tints, tintable, base) {
 }
 
 const D2R = Math.PI / 180;
+const HEEL_LIFT = 55 * D2R;   // contact=1 墊腳抬跟量(正 ankle.x=趾下跟上;同編排器)
 // 47 軸姿勢 → 骨架(編排器 applyPose 的移植;度→弧度、編排器單位→px)。
 // 自動踩地:用髖/膝有效角算腿的垂直壓縮,root 跟著下沉(contact=2 的腿不當錨點)。
 export function applyBrawlerPose(rig, p) {
@@ -116,20 +121,28 @@ export function applyBrawlerPose(rig, p) {
   R.legL.kn.rotation.x = kxL * lLw * D2R;
   R.legR.hp.rotation.set(hxR * lRw * D2R, (p.lR_hy || 0) * lRw * R.legR.side * D2R, (p.lR_hz || 0) * lRw * R.legR.side * D2R);
   R.legR.kn.rotation.x = kxR * lRw * D2R;
+  // 踝(鏡射編排器):自動壓平(抵消髖+膝,腳掌保持水平)+ lL_ax 額外微調;lL_ty=腳尖朝向(踝 Y,×side 正=外八)
+  R.legL.ankle.rotation.set((-(hxL + kxL) + (p.lL_ax || 0)) * lLw * D2R, (p.lL_ty || 0) * lLw * R.legL.side * D2R, 0);
+  R.legR.ankle.rotation.set((-(hxR + kxR) + (p.lR_ax || 0)) * lRw * D2R, (p.lR_ty || 0) * lRw * R.legR.side * D2R, 0);
+  const cL = Math.round(p.lL_contact || 0), cR = Math.round(p.lR_contact || 0);
+  if (cL === 1) R.legL.ankle.rotation.x += HEEL_LIFT * lLw;             // contact=1:墊腳(跟上趾下,同編排器)
+  if (cR === 1) R.legR.ankle.rotation.x += HEEL_LIFT * lRw;
   R.armL.lm.scale.setScalar(p.aL_scale || 1);
   R.armR.lm.scale.setScalar(p.aR_scale || 1);
+  R.legL.lm.scale.setScalar(p.lL_scale || 1);                           // 小腿/腳掌命中放大(對齊編排器 legL.lm)
+  R.legR.lm.scale.setScalar(p.lR_scale || 1);
   // 整肢伸展:肩/髖節點等比放大 → 整條手臂/腿從近端關節變長變大(遠鏡頭下伸手更明顯)
   const asL = p.aL_stretch || 1, asR = p.aR_stretch || 1, lsL = p.lL_stretch || 1, lsR = p.lR_stretch || 1;
   R.armL.sh.scale.setScalar(asL); R.armR.sh.scale.setScalar(asR);
   R.legL.hp.scale.setScalar(lsL); R.legR.hp.scale.setScalar(lsR);
-  // 自動踩地:支撐腿(contact≠2)的垂直高度 = 伸展×(Lu·cos(髖)+Ll·cos(髖+膝)) → root 下沉差值
+  // 自動踩地:支撐腿(contact≠2)的垂直高度 = 伸展×(Lu·cos(髖)+Ll·cos(髖+膝)) → root 下沉差值。
+  // +S.foot.h:踝下有腳掌,root 整體抬一個腳掌高讓鞋底貼地(踝=離地 foot.h)。
   const legH = (hx, kx, st) => st * (Lu * Math.max(0.25, Math.cos(hx * D2R)) + Ll * Math.max(0.25, Math.cos((hx + kx) * D2R)));
-  const cL = Math.round(p.lL_contact || 0), cR = Math.round(p.lR_contact || 0);
   let hMax = 0, any = false;
   if (cL !== 2) { hMax = Math.max(hMax, legH(hxL * lLw, kxL * lLw, lsL)); any = true; }
   if (cR !== 2) { hMax = Math.max(hMax, legH(hxR * lRw, kxR * lRw, lsR)); any = true; }
   if (!any) hMax = Math.max(legH(hxL * lLw, kxL * lLw, lsL), legH(hxR * lRw, kxR * lRw, lsR));
-  R.P.position.set(0, (hMax - (Lu + Ll)) * sy + (p.root_py || 0) * S.PX, (p.root_pz || 0) * S.PX);
+  R.P.position.set(0, (hMax + S.foot.h - (Lu + Ll)) * sy + (p.root_py || 0) * S.PX, (p.root_pz || 0) * S.PX);
 }
 
 const _tip = new THREE.Vector3();

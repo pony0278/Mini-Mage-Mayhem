@@ -76,7 +76,8 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 
 | studio 匯出 | 遊戲端落點 | 對齊規則 |
 |---|---|---|
-| 動作 clip JSON | `js/brawler-clips.js` CLIPS | impact 幀÷60 = `v2-state.js STRIKE_DELAY` / `ITEM_SPEC.delay` |
-| clip 內手指軸 `aL_/aR_ f*` | 隨 clip 姿勢一起(遊戲端播 clip 即驅動指骨)| 骨局部 X 角度(度),負=握;逐關鍵格內插(無獨立匯出) |
+| 動作 clip JSON | `js/brawler-clips.js` CLIPS | **判定時刻自動導出**:v2-state 讀 `clip.impactT`(第一個 impact key)→ `STRIKE_DELAY`;移影格重貼 JSON 即對齊,不再手動同步 |
+| clip 內手指軸 `aL_/aR_ f*` | 隨 clip 姿勢一起(?avatar=1 抓握時驅動 rigged 指骨)| 骨局部 X 角度(度),負=握;逐關鍵格內插(無獨立匯出) |
 | 對位 JSON(`#partExportCfg`)| 裝備 `EQUIP_CAL`(遊戲掛載器用)| slot 同名;scale/位移/旋轉照搬 |
-| clip 內 `grab`/`release` tag | `brawler-clips prepClip` → `clip.tags.grab/.release`(秒)| B 層排程抓/丟的觸發時刻(鏡像 impact÷60;目前遊戲端保留未消費)|
+| clip 內 `grab`/`release`/`hold` tag | `prepClip` → `clip.tags`(第一次)/`tagsLast`(最後一次)| **已消費**:`BARREL_THROW_DELAY`=barrel_throw release、`PERSON_HOLD_T`=person_throw **hold**(缺席退最後一個 grab)、`PERSON_THROW_DELAY`=release−hold。**匯出後慣例:定格幀改標 tag `hold`**(studio 幽靈只認第一個 grab/release,中段改名無副作用)|
+| (驗證)| `v2.html?clip=名字` / `__v2.playClip(名字)` | 任意 clip 遊戲內循環試播(對手 AI 凍結),編完先驗再綁玩法 |

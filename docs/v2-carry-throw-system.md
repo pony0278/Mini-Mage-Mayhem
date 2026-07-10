@@ -18,7 +18,7 @@
 
 | 檔 | 桶(barrel) | 人(carrying) |
 |---|---|---|
-| `v2-state.js` | `BARREL_THROW_DELAY=22/60`、桶常數、`resetFighter` 的 `carryObj`/`_barrelThrowAt` | `PERSON_HOLD_T=16/60`、`PERSON_THROW_DELAY=(22-16)/60`、`carrying`/`_carryThrowAt`/`carryClip`/`carryFx`/`carryHold` |
+| `v2-state.js` | `BARREL_THROW_DELAY`(自動導出=clip release tag)、桶常數、`resetFighter` 的 `carryObj`/`_barrelThrowAt` | `PERSON_HOLD_T`/`PERSON_THROW_DELAY`(自動導出=clip hold/release tag)、`carrying`/`_carryThrowAt`/`carryClip`/`carryFx`/`carryHold` |
 | `v2-combat.js` | — | `startCarry`(播 clip+定格)、`throwCarried`(解定格+排程)、`launchCarried`(甩飛物理)、`dropCarry`/`breakFree`/`containByCarry`(取消) |
 | `v2-items.js` | `pickUpBarrel`/`throwBarrel`(排程)/`launchBarrel`(甩飛)/`dropBarrel`、`updateBarrels` | — |
 | `v2.js` step | 幀尾 resolve `_barrelThrowAt`→`launchBarrel`;`b.held` 的桶**略過 ground prop** | 幀尾 resolve `_carryThrowAt`→`launchCarried`;搬人 loop(跟隨/掙脫/拖艙) |
@@ -56,10 +56,15 @@
 
 | | clip 從哪幀開始播 | launch 延遲常數 |
 |---|---|---|
-| **桶** | 從 0 幀整段播(按下即從頭) | `BARREL_THROW_DELAY = release/60 = 22/60` |
-| **人** | **抓起就播 0→hold(16),定格;按丟才從 16 續播** | `PERSON_THROW_DELAY = (release-hold)/60 = (22-16)/60` |
+| **桶** | 從 0 幀整段播(按下即從頭) | `BARREL_THROW_DELAY = release/60`(現 22/60) |
+| **人** | **抓起就播 0→hold(16),定格;按丟才從 16 續播** | `PERSON_THROW_DELAY = (release-hold)/60`(現 6/60) |
 
-> ⚠ **移動 clip 的 release/hold 幀 = 同步改 v2-state 的常數**。人的是 `(release-hold)/60`,不是 `release/60`——因為按丟時時鐘已經在 hold 幀(`throwCarried` 把 `carryFx` 對到 `game.time - PERSON_HOLD_T`,cpt 從 hold 續走)。
+> ✅ **常數已自動導出**(v2-state import CLIPS):`BARREL_THROW_DELAY`=barrel_throw 的 `release` tag、
+> `PERSON_HOLD_T`=person_throw 的 **`hold` tag**(缺席退回最後一個 grab tag)、`PERSON_THROW_DELAY`=release−hold。
+> **在 studio 移動幀 → 重貼 JSON 即對齊,不再手動改常數**;唯一慣例:重匯出後把定格幀的 tag 改標 `hold`
+> (studio 幽靈只認第一個 grab/release,中段 key 改名無副作用)。
+> 人的延遲是 `(release-hold)`,不是 `release`——因為按丟時時鐘已經在 hold 幀(`throwCarried` 把 `carryFx`
+> 對到 `game.time - PERSON_HOLD_T`,cpt 從 hold 續走)。
 
 ---
 
@@ -129,7 +134,7 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 1. **「抓起沒打橫、站旁邊」(本次病因)**:`startCarry` 曾把 `carryClip` 清成 null,只有**按丟**才播 clip → 平常扛人沒動畫,被扛者 `carry_tilt=0` 直吊,看起來像站旁邊。
    **修**:`startCarry` 就播 clip 並**定格在 hold 幀**(舉過頭頂+打橫)。**通則**:「持有狀態」的視覺要**持續**驅動,不能只在「動作瞬間」驅動——桶同理(扛桶時就 `ANIM.barrelHold`+`updateHeldBarrel`,不是丟才貼)。
 2. **launch 幀誤清 carryClip** → 收招(release 後的 22→38)不播,動作戛然而止。只在抓起/打斷清。
-3. **兩時鐘同步**:人的 `PERSON_THROW_DELAY=(release-hold)/60` 不是 `release/60`(桶才是)。搞錯 → 甩出時機跟動畫對不上。
+3. **兩時鐘同步(已自動化)**:人的 `PERSON_THROW_DELAY=(release-hold)` 不是 `release`(桶才是)。常數現由 clip tag 自動導出——剩下的坑只有「重匯出忘了標 `hold` tag」(會退回最後一個 grab tag,定格點可能偏)。
 4. **render 貼手 1 幀延遲**:被扛者定位沒放後處理 → 頭脫手。放 syncActors 後處理。
 5. **頭「貼手」其實是貼 hand+`carry_o*` 偏移**:驗證「頭在哪」要算上手局部偏移(×PX),不是裸手位置。
 6. **尺標校準(studio↔game)**:`carry_o*` 是 PS 單位,遊戲 ×`PX=25`;`CARRY_HEAD=44` 是遊戲小人頭高。studio 幽靈身高(~60px)≠ 遊戲小人(~44px),所以 studio 喬好的偏移到遊戲會有幾 px 誤差 → **實機眼睛微調**這兩個數。
@@ -157,7 +162,7 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 | 想調 | 改哪裡 |
 |---|---|
 | 甩飛初速 / 翻滾時長 | `v2-state` `THROW_FORCE` / `THROW_TUMBLE`(人)、`BARREL_THROW`/`BARREL_FRICTION`(桶) |
-| 丟人「按下→甩飛」時機 | clip 的 hold/release 幀 + `PERSON_HOLD_T`/`PERSON_THROW_DELAY`(一起改) |
+| 丟人「按下→甩飛」時機 | clip 的 hold/release 幀(tag `hold`/`release`;常數自動導出,重貼 JSON 即對齊) |
 | 被扛者打橫/轉向角度 | clip 的 `carry_tilt`/`carry_yaw`(punch-studio 逐關鍵格) |
 | 被扛者貼手位置 | clip 的 `carry_o{x,y,z}`(studio)+ render `CARRY_HEAD`/`PX`(遊戲尺標微調) |
 | 扛哪隻手 | `positionCarried` 的 `armL`↔`armR` |
