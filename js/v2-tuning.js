@@ -109,7 +109,9 @@ copyButton('複製 彈道', () =>
 header('跑步(即時)');
 // 邊跑邊拖:雙擊方向鍵開跑後直接調,差異立刻看得到
 slider('彈跳 bob(踩地感)', 0, 0.3, 0.01, ANIM.runClip.bob, (x) => ANIM.runClip.bob = x);
-slider('步幅 stridePx(滑步率)', 40, 120, 2, ANIM.runClip.stridePx, (x) => ANIM.runClip.stridePx = x);
+// stridePx=播放速度本體(位移驅動:擺動頻率=移速269÷stridePx 圈/秒)。大=擺動慢,但滑步率↑
+// (腳觸地掃程固定~48px:60→20% 滑步、96→50%、144→67%)。要「慢+踩實」得回 studio 加大實際步幅。
+slider('stridePx(大=擺動慢/滑步↑)', 40, 200, 2, ANIM.runClip.stridePx, (x) => ANIM.runClip.stridePx = x);
 copyButton('複製 跑步', () => `runClip: { stridePx: ${ANIM.runClip.stridePx}, bob: ${ANIM.runClip.bob} },`);
 
 
