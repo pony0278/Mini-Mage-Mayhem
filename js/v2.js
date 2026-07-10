@@ -17,7 +17,7 @@ import {
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
-  PERSON_LOB, LAND_SKID, lobZ, THROW_TUMBLE,
+  PERSON_LOB, LAND_SKID, lobZ,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
@@ -160,11 +160,12 @@ function step(dt) {
       // B 案彈道:被拋飛的 sim 高度(判定 gate + render 都讀 f.z);落地幀 ×LAND_SKID 短滑 + 塵土
       {
         // 哨兵用 > -5(-9=未被丟):撞牆快落會把 _thrownT 夾成 game.time-T+0.1,開場 game.time 小時是小負數,仍屬有效時戳
-        const z = (f._thrownT > -5) ? lobZ(game.time - f._thrownT, PERSON_LOB) : 0;
+        const lob = f._lob || PERSON_LOB;   // 丟人=PERSON_LOB / 終結技打飛=PUNCH_LAUNCH_LOB(同一條管線)
+        const z = (f._thrownT > -5) ? lobZ(game.time - f._thrownT, lob) : 0;
         if (!z && f.z > 1) { f.vx *= LAND_SKID; f.vy *= LAND_SKID; addRing(f.x, f.y, 24, '#cbb9a2', 0.28, 3); game.sfx.push('thud'); }
         f.z = z;
         // 被丟打橫旗:飛行中+落地滑行都趴著,滑停(fumbleT 歸零)才站起(render 讀,actor-brawler 平滑旋轉)
-        f._lying = !!(f._thrownT > -5 && game.time - f._thrownT < THROW_TUMBLE + 0.05 && (z > 0 || f.fumbleT > 0));
+        f._lying = !!(f._thrownT > -5 && game.time - f._thrownT < lob.T + 0.15 && (z > 0 || f.fumbleT > 0));
       }
       if (f.restunT > 0) f.restunT -= dt;
       if (f.invuln > 0) f.invuln -= dt;
@@ -214,10 +215,10 @@ function step(dt) {
       }
       if (o.escape >= CARRY_ESCAPE_NEED) breakFree(o);
     }
-    // 扛桶(§12.1 步驟 B):桶跟在面前;暈/死 → 掉桶(在手上爆已由 explodeBarrel 放開持有者)
+    // 扛桶(§12.1 步驟 B):桶跟在面前;暈/死/被打飛(fumbleT) → 掉桶(在手上爆已由 explodeBarrel 放開持有者)
     for (const f of fighters) {
       const b = f.carryObj; if (!b) continue;
-      if (f.state !== 'alive' || f.stunned || !b.alive) { if (b.alive) dropBarrel(f); else { f.carryObj = null; f._barrelThrowAt = 0; } continue; }
+      if (f.state !== 'alive' || f.stunned || f.fumbleT > 0 || !b.alive) { if (b.alive) dropBarrel(f); else { f.carryObj = null; f._barrelThrowAt = 0; } continue; }
       b.x = f.x + Math.cos(f.facing) * (f.r + b.r * 0.9); b.y = f.y + Math.sin(f.facing) * (f.r + b.r * 0.9); b.vx = 0; b.vy = 0;
     }
     // 失控入艙: 被擊退/打滑(速度夠快)、暈眩者、或被拋出翻滾中進到艙半徑 → 收容(對手勝)。無敵中免疫。

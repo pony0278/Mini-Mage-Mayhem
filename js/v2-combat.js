@@ -9,7 +9,7 @@ import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } fro
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   SPEED, POD, inPod, iceAt, resetFighter, applyStage, barrels, labSwitch,
-  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, FINISHER_KNOCK,
+  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   THROW_FORCE, THROW_TUMBLE, PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
@@ -43,14 +43,15 @@ export function readMove(pid) {
 export function slideKnock(f, dt) { // apply lingering knockback velocity only (no self-control)
   // 被拋飛空中段(B 案彈道):直線飛(無摩擦)、飛越對手(跳過身體阻擋);
   // 空中撞牆=小反彈(法向速度反轉 ×WALL_BOUNCE)+ z 快落 0.1s——彈一下掉地,不硬停懸空、不貼牆滑行。
-  const air = f._thrownT > -5 && game.time - f._thrownT < PERSON_LOB.T;   // 哨兵 > -5:快落夾出的小負時戳仍有效(-9=未被丟)
+  const lob = f._lob || PERSON_LOB;                                       // 這次拋飛的彈道 profile(丟人/終結技打飛共用管線)
+  const air = f._thrownT > -5 && game.time - f._thrownT < lob.T;          // 哨兵 > -5:快落夾出的小負時戳仍有效(-9=未被丟)
   const sx = f.vx * dt, sy = f.vy * dt;
   let wall = false;
   if (!circleHitsSolid(f.x + sx, f.y, f.r) && (air || !hitsFighter(f, f.x + sx, f.y))) f.x += sx;
   else { if (circleHitsSolid(f.x + sx, f.y, f.r)) { wall = true; f.vx = air ? -f.vx * WALL_BOUNCE : 0; } else f.vx = 0; }
   if (!circleHitsSolid(f.x, f.y + sy, f.r) && (air || !hitsFighter(f, f.x, f.y + sy))) f.y += sy;
   else { if (circleHitsSolid(f.x, f.y + sy, f.r)) { wall = true; f.vy = air ? -f.vy * WALL_BOUNCE : 0; } else f.vy = 0; }
-  if (air && wall) f._thrownT = game.time - PERSON_LOB.T + 0.1;    // 反彈後快落;落地再吃 LAND_SKID+摩擦 → 很快停
+  if (air && wall) f._thrownT = game.time - lob.T + 0.1;           // 反彈後快落;落地再吃 LAND_SKID+摩擦 → 很快停
   f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
   if (air) return;                                                 // 空中:等速直線;落地幀(v2.js 偵測)×LAND_SKID 短滑
   const k = Math.pow(KNOCK_FRICTION, dt); f.vx *= k; f.vy *= k;
@@ -208,8 +209,6 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > PUNCH_CONE) continue;
     hit = true;
-    // 鉤拳不位移(受擊=純踉蹌);終結技是「指定攻擊」→ 小擊退拉開距離,結束這一套
-    if (fin) { o.vx += Math.cos(a) * FINISHER_KNOCK; o.vy += Math.sin(a) * FINISHER_KNOCK; }
     o.faceT = 0.2; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     o.stability = Math.max(0, o.stability - COMBO_STAB[stage]); o.stabCd = 0.8;
     flinch(o, a, fin ? 0.32 : 0.22);
@@ -222,6 +221,13 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
       if (o.ai && o.pushCd <= 0 && !o._aiPushAt && Math.random() < AI_PUSH_CHANCE) o._aiPushAt = game.time + 0.15 + Math.random() * 0.3;
     }
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈
+    // 鉤拳不位移(受擊=純踉蹌);終結技=打飛:小拋物線(擊中→打飛→落地),與丟人同管線、lob 較小。
+    // 放在擊暈判定之後:stunFighter 會把速度×0.4,打崩+打飛要同時成立(落地時還暈著)。
+    if (fin) {
+      o.vx = Math.cos(a) * PUNCH_LAUNCH; o.vy = Math.sin(a) * PUNCH_LAUNCH;
+      o._thrownT = game.time; o._lob = PUNCH_LAUNCH_LOB; o.fumbleT = PUNCH_LAUNCH_LOB.T + 0.1;
+      if (o.carrying) dropCarry(o);                                     // 飛行中不可能繼續扛人(扛桶由 v2.js 扛桶 loop 的 fumbleT 條件掉)
+    }
     if (o.pid === LOCAL) v2s.localFlash = 0.2;
   }
   for (const b of barrels) { // 揍到廢料桶 → 升壓(不需命中對手;charge 已由 idle 吸收,telegraph 在地面標記)
@@ -288,7 +294,7 @@ export function launchCarried(f) {
   const a = f.facing;
   o.x = f.x + Math.cos(a) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(a) * (f.r + o.r * 0.7);
   o.vx = Math.cos(a) * THROW_FORCE; o.vy = Math.sin(a) * THROW_FORCE;
-  o.fumbleT = THROW_TUMBLE; o._thrownT = game.time;            // 翻滾:moveFighter 只走 slideKnock
+  o.fumbleT = THROW_TUMBLE; o._thrownT = game.time; o._lob = PERSON_LOB; // 翻滾:moveFighter 只走 slideKnock(_lob 蓋掉先前打飛殘值)
   o.lastHitBy = f.pid; o.lastHitT = game.time; o.faceT = 0.3;
   o.stability = Math.max(o.stability, 30);                     // 同放下:落地不至於原地再被打暈
   f.punchCd = 0.5;                                             // 投擲後恢復:丟完不能立刻接拳(動畫由 carryClip 收招)
@@ -297,7 +303,7 @@ export function launchCarried(f) {
   addText(o.x, o.y - 32, '拋出！', COLORS[f.pid]); addRing(f.x, f.y, 30, COLORS[f.pid], 0.3, 4);
   dlog('THROW', NAMES[f.pid], '→', NAMES[o.pid]);
 }
-export function inThrowFlight(f) { return f.fumbleT > 0 && game.time - (f._thrownT ?? -9) < THROW_TUMBLE + 0.05; } // 翻滾中(入艙判定用)
+export function inThrowFlight(f) { return f.fumbleT > 0 && game.time - (f._thrownT ?? -9) < (f._lob || PERSON_LOB).T + 0.15; } // 翻滾中(入艙判定用;T+0.15=舊 THROW_TUMBLE+0.05)
 export function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
   const f = o.carriedBy; o.carriedBy = null; o.escape = 0; o.stability = ESCAPE_STAB; inc.struggleEscapes++;
   if (f) { f.carrying = null; f._carryThrowAt = 0; f.carryClip = null; f.carryHold = 0; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; f.wasCarryingT = game.time; if (f.pid === LOCAL) v2s.localFlash = 0.28; }

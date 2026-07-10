@@ -119,12 +119,20 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 ```js
 PERSON_LOB = { range: 200, apex: 32, T: 0.5,  h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
 BARREL_LOB = { range: 180, apex: 34, T: 0.5,  h0: 58 }
+PUNCH_LAUNCH_LOB = { range: 100, apex: 18, T: 0.35, h0: 30 } // 終結技打飛(丟人一半=標點符號;h0=胸口高)
 WALL_BOUNCE = 0.35         // 空中撞牆反彈係數(彈一小下→快落,不硬停懸空、不貼牆滑)
 LAND_SKID  = 0.25          // 落地保留的水平速度比(人=短滑 0.1s / 桶=滾動收尾)
 BARREL_BONK_STAB = 15      // 桶砸中的第一拍穩定傷;BARREL_DROP_T = 0.15 快落秒
 BARREL_LAND_FUSE = 1.0     // 被丟的桶落地閃 1s 才爆(反制窗)
 ```
 水平速度 `vh = range/T`(空中無摩擦=直線飛);`THROW_FORCE`/`BARREL_THROW`/`THROW_TUMBLE`(=T+0.1 短滑)都是**衍生值**,消費端沿用舊名。
+
+**profile 分派:`f._lob`**——被拋飛時在 fighter 上記這次用的 lob(丟人=`launchCarried` 蓋 `PERSON_LOB`、
+終結技=`resolveStrike` 蓋 `PUNCH_LAUNCH_LOB`;null 退回 PERSON_LOB)。slideKnock 空中 gate、v2.js z 計算/
+`_lying`、`inThrowFlight` 全讀它 → 打橫/牆彈/落地滑/空中灌籃**整條管線自動繼承**。加新拋飛來源=
+設 `vx,vy = 朝向×range/T` + `_thrownT=now` + `_lob=新 LOB` + `fumbleT=T+0.1`,別的都不用碰。
+⚠ 終結技的打飛要放在 `stunFighter` 判定**之後**設速度(stunFighter 會 ×0.4,打崩+打飛要同時成立);
+⚠ 扛桶者被打飛 → v2.js 扛桶 loop 的 `fumbleT > 0` 條件掉桶(暈/死之外的第三個掉桶因)。
 
 **z 感知稽核表**(每個判定點的空中語義——**加新互動先查這張表照答**):
 
