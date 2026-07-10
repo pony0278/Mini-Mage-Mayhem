@@ -11,7 +11,7 @@ import {
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
-  BARREL_LOB, BARREL_HIT_Z, LAND_SKID, lobZ,
+  BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, LAND_SKID, lobZ,
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
@@ -137,7 +137,7 @@ export function grabbableBarrel(f) { // 範圍內最近的可撿 idle 桶
 }
 export function pickUpBarrel(f, b) {
   if (f.carrying || f.carryObj || !b || !b.alive || b.held) return;
-  f.carryObj = b; b.held = true; b.vx = 0; b.vy = 0; b.z = 0; b.flyT0 = -9; b.landed = true;
+  f.carryObj = b; b.held = true; b.vx = 0; b.vy = 0; b.z = 0; b.flyT0 = -9; b.landed = true; b.dropT0 = -9; b.dropBoom = false;
   addText(f.x, f.y - 30, '抓起桶！', barrelChargeColor(b.charge)); addRing(f.x, f.y, 30, barrelChargeColor(b.charge), 0.3, 4); game.sfx.push('upgrade');
 }
 export function dropBarrel(f) {
@@ -161,7 +161,7 @@ export function launchBarrel(f) {
   const a = f.facing;
   b.x = f.x + Math.cos(a) * (f.r + b.r); b.y = f.y + Math.sin(a) * (f.r + b.r);
   b.vx = Math.cos(a) * BARREL_THROW; b.vy = Math.sin(a) * BARREL_THROW;
-  b.flyT0 = game.time; b.landed = false;                      // 拋物線視覺:空中 tBarrel 秒(v2.js 算高度,落地後剩餘速度=滾動收尾)
+  b.flyT0 = game.time; b.landed = false; b.dropT0 = -9; b.dropBoom = false;   // 起飛(彈道 BARREL_LOB;砸中人→快落引爆走 dropT0)
   b.thrownBy = f.pid; b.armGrace = BARREL_ARM_GRACE;
   pressurizeBarrel(b);                                        // 被丟 → 升壓(1s 引信;飛行中/落地/撞人爆)
   addShake(4); game.sfx.push('dash'); addText(b.x, b.y - 26, '丟桶！', barrelChargeColor(b.charge));
@@ -192,35 +192,53 @@ export function explodeBarrel(b) {
 }
 export function updateBarrels(dt) {
   for (const b of barrels) {
-    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; } continue; }
+    if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; b.dropT0 = -9; b.dropBoom = false; } continue; }
     if (b.armGrace > 0) b.armGrace -= dt;
     if (!b.held) {                                                      // 被扛的桶由 carry loop 定位;其餘走物理
-      b.z = lobZ(game.time - b.flyT0, BARREL_LOB);                     // B 案彈道:sim 真高度(判定 gate + render 都讀它)
+      // B 案彈道:sim 真高度(判定 gate + render 都讀它)。dropT0>0 = 快落段(砸中人/空中撞牆後垂直墜地)
+      if (b.dropT0 > 0) {
+        const u = (game.time - b.dropT0) / BARREL_DROP_T;
+        if (u >= 1) {                                                  // 落地:砸中人的桶=第二拍引爆;撞牆掉落=普通落地
+          b.z = 0; b.dropT0 = -9;
+          if (b.dropBoom) { b.dropBoom = false; explodeBarrel(b); continue; }
+          addRing(b.x, b.y, 22, '#cbb9a2', 0.28, 3); game.sfx.push('thud');
+        } else b.z = b.dropZ0 * (1 - u) * (1 - u);                     // 加速墜落(二次曲線)
+      } else b.z = lobZ(game.time - b.flyT0, BARREL_LOB);
       const air = b.z > 0;
       if (b.vx || b.vy) {                                              // 推/丟:速度整合 + 牆碰撞;空中無摩擦=直線飛
         const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt;
         let wall = false;
         if (!circleHitsSolid(nx, b.y, b.r)) b.x = nx; else { b.vx = 0; wall = true; }
         if (!circleHitsSolid(b.x, ny, b.r)) b.y = ny; else { b.vy = 0; wall = true; }
-        // 空中撞牆:sim 停(視 sim 為真相)→ z 快落 0.1s 不懸空
-        if (wall && air) b.flyT0 = game.time - BARREL_LOB.T + 0.1;
+        // 空中撞牆:sim 停(視 sim 為真相)→ 垂直快落不懸空(不引爆,引信照走)
+        if (wall && air && b.dropT0 < 0) { b.dropZ0 = b.z; b.dropT0 = game.time; b.dropBoom = false; b.flyT0 = -9; b.landed = true; }
         b.x = clamp(b.x, b.r, W - b.r); b.y = clamp(b.y, b.r, H - b.r);
         if (!air) {
           const k = Math.pow(BARREL_FRICTION, dt); b.vx *= k; b.vy *= k;
           if (b.vx * b.vx + b.vy * b.vy < 400) { b.vx = 0; b.vy = 0; }
         }
       }
-      if (!b.landed && game.time - b.flyT0 >= BARREL_LOB.T) {          // 落地幀:剩餘速度 ×LAND_SKID=滾動收尾 + 塵土
+      if (!b.landed && game.time - b.flyT0 >= BARREL_LOB.T) {          // 彈道自然落地幀:剩餘速度 ×LAND_SKID=滾動收尾 + 塵土
         b.landed = true; b.z = 0;
         b.vx *= LAND_SKID; b.vy *= LAND_SKID;
         addRing(b.x, b.y, 22, '#cbb9a2', 0.28, 3); game.sfx.push('thud');
       }
-      for (const f of fighters) {                                      // 碰到人:丟出中的活桶→低於頭高才撞擊引爆(z 感知直擊);否則推開
+      for (const f of fighters) {                                      // 碰到人:丟出中的活桶→兩拍(砸中→墜地→爆);否則推開
         if (f.state !== 'alive' || f.carryObj === b || f.invuln > 0) continue;
         const dx = b.x - f.x, dy = b.y - f.y, d = Math.hypot(dx, dy) || 1;
         if (d > f.r + b.r) continue;
-        if (b.state === 'fuse' && (b.vx || b.vy) && b.armGrace <= 0 && f.pid !== b.thrownBy && b.z < BARREL_HIT_Z) { explodeBarrel(b); break; } // 撞人引爆(弧頂飛過頭不炸)
-        if (air) continue;                                             // 空中(高於人)不推不擋
+        if (b.state === 'fuse' && (b.vx || b.vy) && b.armGrace <= 0 && f.pid !== b.thrownBy) {
+          if (air && b.dropT0 < 0) {                                   // 空中砸中(任何高度都算——45° 視角讀不出弧高,規則綁看得見的碰撞):
+            f.stability = Math.max(0, f.stability - BARREL_BONK_STAB); // 第一拍 bonk:小傷+踉蹌
+            f.stabCd = 0.8; f.faceT = 0.3; f.lastHitBy = b.thrownBy; f.lastHitT = game.time;
+            flinch(f, Math.atan2(dy, dx) + Math.PI, 0.26);
+            addText(f.x, f.y - 34, '砸中!', barrelChargeColor(b.charge)); game.sfx.push('thud'); addShake(3);
+            b.vx = 0; b.vy = 0;                                        // 桶停在被砸者頭上 → 垂直快落 → 落地=第二拍引爆
+            b.dropZ0 = b.z; b.dropT0 = game.time; b.dropBoom = true; b.flyT0 = -9; b.landed = true;
+          } else if (!air) explodeBarrel(b);                           // 地面滾動撞人:直接爆(原行為)
+          break;
+        }
+        if (air) continue;                                             // 空中不推不擋
         b.vx += dx / d * BARREL_PUSH; b.vy += dy / d * BARREL_PUSH;    // 走進 idle 桶 → 推開
         b.x = f.x + dx / d * (f.r + b.r); b.y = f.y + dy / d * (f.r + b.r);
       }
