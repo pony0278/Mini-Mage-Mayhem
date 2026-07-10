@@ -207,7 +207,9 @@ const DEFAULT_SEQ = [
 const EASES = ['out','in','lin'];
 // grab=附著幀(扛人/扛桶:這幀起被扛物跟手)、release=脫手幀(丟出:這幀起沿面向飛出)。
 // PS 對照幽靈的跟手預覽 + 遊戲端未來的排程抓/丟(鏡像 impact÷60 模式)都讀這兩個 tag。
-const KEY_TAGS = ['idle','anti','strike','impact','follow','recover','grab','release','custom'];
+// hold=扛著走的定格幀(遊戲端 PERSON_HOLD_T;幽靈不讀)、run=跑步循環起點(run_cycle:0→run 起跑段
+// 播一次,run→結尾無縫繞圈;幽靈不讀)。⚠ 不在此清單的 tag 匯入時會被消毒改寫——新 tag 要先入列。
+const KEY_TAGS = ['idle','anti','strike','impact','follow','recover','grab','release','hold','run','custom'];
 const DEFAULT_RETURN_FRAMES = 10;
 
 /** @param {*} name @param {string} [fallback] @returns {string} 合法識別字(去非字元、避免數字開頭) */
