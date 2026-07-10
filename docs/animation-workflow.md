@@ -120,7 +120,7 @@
 | 踝 `lX_ax`(微調)、腳尖 `lX_ty`(踝 Y,正=外八) | ✅ box(踝節點+腳掌,含自動壓平)+avatar(foot driver) |
 | `aX_stretch`/`lX_stretch`(整肢從肩/髖等比伸展;遠鏡頭伸手更明顯,1=原長) | ✅ box+avatar 皆生效(踩地自動補償腿長) |
 | `lX_contact`(接觸鎖) | ✅ 自動踩地(2=該腿不當地面錨點)+ **1=墊腳**(踝抬跟 55°,同編排器) |
-| 手指 `aX_f{base,mid,tip,thumb}`(骨局部 X 度,負=握) | ✅ `?avatar=1` 抓握時驅動 rigged 指骨;box/原生手忽略 |
+| 手指 `aX_f{base,mid,tip,thumb}`(骨局部 X 度,負=握) | ✅ avatar(**預設**)抓握時驅動 rigged 指骨;box(?avatar=0)忽略 |
 | 被扛者 `carry_tilt/yaw/o{x,y,z}` | ✅ render `positionCarried` 消費(非扛者骨軸,applyBrawlerPose 忽略) |
 
 ## 7. 驗證協定

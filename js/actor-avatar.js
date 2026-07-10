@@ -3,7 +3,7 @@
 // 姿勢驅動(當隱形 driver),每幀把各關節「相對 T-pose 的世界旋轉差量」轉寫到 GLB 角色骨頭。
 //   Δ = q_now · q_T⁻¹(box 關節)   →   角色骨頭目標世界 = Δ · bQ_T(角色骨頭 rest)
 // 好處:box rig 的走路/出拳/踩地全部自動繼承,角色跟著動;WYSIWYG——編排器裡調的姿勢 = 遊戲裡的姿勢。
-// 純 render 層:不 import sim,不影響玩法/多人。以 ?avatar=1 開啟(Phase 1 驗證用)。
+// 純 render 層:不 import sim,不影響玩法/多人。**預設開啟(正式產品外觀)**;?avatar=0 退回方塊人(除錯用)。
 //
 // 需求:vendor/GLTFLoader.js(全域 THREE.GLTFLoader)已在 v2.html 載入。
 import { game } from './state.js';
@@ -15,7 +15,8 @@ const AVATAR_URL = 'assets/rigs/base-avatar.glb';
 const AVATAR_SCALE = (() => { const v = parseFloat(new URLSearchParams(location.search).get('avscale')); return Number.isFinite(v) ? Math.max(0.5, Math.min(3, v)) : 1.3; })();
 let TEMPLATE = null;          // 載入一次的 GLB 場景(每個 fighter clone 一份)
 let loadState = 0;            // 0 未載 / 1 載入中 / 2 成功 / 3 失敗
-export function avatarEnabled() { return new URLSearchParams(location.search).get('avatar') === '1'; }
+// avatar=正式產品外觀,**預設開啟**;?avatar=0 退回方塊人(box driver 除錯/低配比對用)。
+export function avatarEnabled() { return new URLSearchParams(location.search).get('avatar') !== '0'; }
 export function avatarReady() { return loadState === 2; }
 
 export function preloadAvatar() {
