@@ -50,8 +50,13 @@ export const PERSON_LOB = { range: 320, apex: 32, T: 0.6, h0: 58 };
 export const BARREL_LOB = { range: 220, apex: 34, T: 0.55, h0: 58 };
 export const LAND_SKID = 0.25;      // 落地保留的水平速度比(人=短滑/桶=滾動收尾)
 // 桶撞人=兩拍(可讀性:45° 視角讀不出弧高,任何高度碰到都算——取代舊 z 門檻直擊):
-// 第一拍 bonk(砸中:-BONK 穩定+踉蹌)→ 桶水平歸零、DROP_T 秒快落 → 第二拍落地即爆(爆心=被砸者腳邊)。
+// 第一拍 bonk(砸中:-BONK 穩定+踉蹌)→ 桶水平歸零、DROP_T 秒快落 → 落地重置引信。
 export const BARREL_BONK_STAB = 15, BARREL_DROP_T = 0.15;
+// 心智模型一句話:「被丟的桶=落地閃 LAND_FUSE 秒才爆」(玩家反饋:落地即爆太快,沒有反制窗口)。
+// 任何落地(自然/砸中快落/撞牆快落)都把引信重置成 LAND_FUSE → telegraph 閃圈自動有(fuse 狀態)。
+// 博弈:爆風 95px、速度 168px/s → 1s 剛好逃得出去;被砸暈眩=跑不掉 → 先暈再丟=真連段。
+// 地面滾動中碰到人維持直接爆(滾動接觸看得見,即爆可讀)。揍桶升壓(原地 BARREL_FUSE 爆)不受影響。
+export const BARREL_LAND_FUSE = 1.0;
 // 閉式彈道高度:t 秒(相對起飛)→ z(px)。t<0 或 ≥T 回 0(未起飛/已落地)。
 export function lobZ(t, lob) { if (!(t >= 0) || t >= lob.T) return 0; const p = t / lob.T; return lob.h0 * (1 - p) + lob.apex * 4 * p * (1 - p); }
 // 衍生(舊名沿用,消費端不用改):丟人水平初速 / 翻滾總時長(滯空+落地短滑=0.2s;結束才能自走)
@@ -85,8 +90,8 @@ export const BARREL_THROW = BARREL_LOB.range / BARREL_LOB.T, BARREL_FRICTION = 0
 // **自動導出**:= clip 的 release tag 秒數(studio 移 release 幀→重貼 JSON 即對齊;舊值 22f fallback)。
 export const BARREL_THROW_DELAY = CLIPS.barrel_throw?.tags.release ?? 22 / 60;
 export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
-export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true, z: 0, dropT0: -9, dropZ0: 0, dropBoom: false }));
-export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; b.dropT0 = -9; b.dropZ0 = 0; b.dropBoom = false; } }
+export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true, z: 0, dropT0: -9, dropZ0: 0 }));
+export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; b.dropT0 = -9; b.dropZ0 = 0; } }
 
 // --- 危險 #2:四角元素站洩漏 (docs/v2-element-floor-chemistry.md §10)。輪流噴發:預警 3s → 徑向脈衝 + 殘留元素地板。
 // 落點=可玩四角(§10.4);火/冰/毒 種地板,雷=無地板電擊擊暈(raw arc)。總開關(B 刀)arm 循環;A 刀先 always-on。

@@ -132,11 +132,11 @@ BARREL_HIT_Z = 45          // 桶低於此高度才撞人引爆(≈頭高)
 | 人:撞牆 | **仍擋**(sim 為真相)→ `_thrownT` 夾成 0.1s z 快落,不懸空 | slideKnock |
 | 人:入艙(`thrown && inPod`) | **算**(空中灌籃,決策 B)——照舊掃過艙半徑即收容 | v2.js(零改動) |
 | 人:空中被拳打/風/元素站噴發 | **忽略 z**(0.6s 窗口極短;混亂是招牌) | 零改動 |
-| 桶:撞人引爆 | **兩拍(任何高度碰到都算)**:空中砸中=第一拍 bonk(`BARREL_BONK_STAB` 穩定傷+踉蹌)→ 桶水平歸零、`BARREL_DROP_T` 秒垂直快落 → 落地=第二拍引爆(爆心=被砸者腳邊);地面滾動撞人=直接爆。**為何不用 z 門檻直擊**:45° 視角讀不出弧高,「飛過頭不炸」會被讀成 bug——規則要綁玩家看得見的事件(碰撞),不綁看不見的高度(舊 `BARREL_HIT_Z` 已退役) | updateBarrels |
+| 桶:撞人引爆 | **兩拍(任何高度碰到都算)**:空中砸中=第一拍 bonk(`BARREL_BONK_STAB` 穩定傷+踉蹌)→ 桶水平歸零、`BARREL_DROP_T` 秒垂直快落 → **落地重置引信 `BARREL_LAND_FUSE`(1s)才爆**(玩家反饋:即爆太快無反制;1s=爆風 95px÷速度 168px/s 剛好逃得出去——清醒可逃、被暈必中=先暈再丟成真連段);地面滾動撞人=直接爆(滾動接觸看得見)。**為何不用 z 門檻直擊**:45° 視角讀不出弧高,「飛過頭不炸」會被讀成 bug——規則要綁玩家看得見的事件(碰撞),不綁看不見的高度(舊 `BARREL_HIT_Z` 已退役) | updateBarrels |
 | 桶:走路推桶 | 空中跳過(高於人) | updateBarrels `air` gate |
 | 桶:撞牆 | 仍擋 → `flyT0` 夾成 0.1s 快落 | updateBarrels |
 | 桶:引信空中到期 | **空中爆**(視覺在高度上,爆風仍 2D 圓) | 零改動 |
-| 桶:落地 | ×LAND_SKID 滾動收尾 + 塵土 ring + thud | updateBarrels |
+| 桶:落地 | ×LAND_SKID 滾動收尾 + **引信重置 `BARREL_LAND_FUSE`(所有落地:自然/砸中快落/撞牆快落——心智模型一句話:「被丟的桶=落地閃 1s 才爆」)** + 塵土 ring + thud | updateBarrels |
 
 **render**:直接讀 sim z——人=`e.z`(actor-brawler 世界層 `g.position.y` + `u.shadow` 反向補償留地面)、桶=props 橋接 `fly: b.z`(syncProps lift+飛行翻滾)。**影子留地面=高度閱讀線索**。
 
