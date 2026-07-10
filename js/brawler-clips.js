@@ -83,7 +83,10 @@ export function prepClip(snap) {
   // impactT:第一個 impact key 的秒數(= STRIKE_DELAY 的來源;無 impact key 為 null)
   let impactT = null;
   for (const k of seq) if (k.impact) { impactT = k.frame / REF_FPS; break; }
-  return { segs, phases, lags, dur, tags, tagsLast, impactT };
+  // lastKeyT=最後一個實排 key 的秒數(dur 含自動補的回-idle 收尾段;循環 clip 的循環終點要用這個,
+  // 否則收尾段混進循環=每圈垮回站姿再跳回)
+  const lastKeyT = last ? last.frame / REF_FPS : 0;
+  return { segs, phases, lags, dur, tags, tagsLast, impactT, lastKeyT };
 }
 const NO_LAGS = { aL: 0, aR: 0, lL: 0, lR: 0 };
 export function evalClip(clip, tSec) { // t 秒 → 47 軸姿勢;超出長度回 null(caller 落回 idle)
@@ -228,6 +231,24 @@ export const CLIPS = {
       recovery: { spine_x: -2, pelvis_y: -6, head_x: 4, aL_sx: 63, aL_sy: 66, aL_sz: 87, aL_ex: -3, aR_sx: 156, aR_sy: -25, aR_sz: 163, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lR_hx: -15, lR_hy: 8, aL_wx: 7, aL_wy: 30, aR_wx: 22, aR_wy: 66, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
     },
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
+  }),
+  // 跑步循環(雙擊跑;actor-brawler 循環頻道:0→run_1 起跑段播一次,[run_1..run_3] 位移驅動繞圈)。
+  // 使用者 PUNCH STUDIO 初稿 + 接入時的節奏修正:①run_3=run_1 完全一致(原殘差 kx 0↔42 → 接縫跳)
+  // ②循環段 ease lin(原全 out=每步頓一下)③lags 全 0(原 lR 0.1≈整圈相位,繞回點會取樣到起跑段)。
+  // idle 略去 → COMBAT_IDLE 起跑。
+  run_cycle: prepClip({
+    seq: [
+      { name: 'idle', frame: 0, frames: 10, ease: 'out', tag: 'idle' },
+      { name: 'run_1', frame: 4, ease: 'out', tag: 'run' },
+      { name: 'run_2', frame: 7, ease: 'lin', tag: 'run' },
+      { name: 'run_3', frame: 10, ease: 'lin', tag: 'run' },
+    ],
+    phases: {
+      run_1: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lR_hx: -60, lR_kx: 44 },
+      run_2: { aL_sx: 120, aL_sz: 26, aL_ex: 68, aR_sx: -45, aR_sz: 25, aR_ex: 74, lL_hx: -60, lL_kx: 42, lR_hx: 60, lR_kx: 44 },
+      run_3: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lR_hx: -60, lR_kx: 44 },
+    },
+    lags: { aL: 0, aR: 0, lL: 0, lR: 0 },
   }),
 };
 export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand']; // punchKind 0/1/2 → clip(使用者自編三連擊)

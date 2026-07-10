@@ -273,11 +273,13 @@ export function updateBrawler(e, g) {
   else if (free && iclip && ipt >= 0 && ipt < iclip.dur) pose = evalClip(iclip, ipt);
   else if (free && pt >= 0 && clip && pt < clip.dur) pose = evalClip(clip, pt);
   else if (free && e.running && CLIPS.run_cycle && u.amp > 0.3) {   // 跑步循環(可選槽,studio 排)
-    // tag 'run'=循環起點:0→run 是「起跑」過渡段只播一次,之後在 [run..結尾] 無縫繞圈
-    // (run 幀與結尾幀姿勢要一致;沒標 tag → 整條循環=首尾幀一致)。位移驅動:一循環=stridePx px。
-    const cyc = CLIPS.run_cycle, ls = cyc.tags.run ?? 0, ll = Math.max(cyc.dur - ls, 0.01);
+    // tag 'run'=循環起點:0→run 是「起跑」過渡段只播一次,之後在 [run..最後實排 key] 無縫繞圈
+    // (run 幀與最後 key 姿勢要一致;沒標 tag → 整條循環)。循環終點=lastKeyT,**不含**
+    // prepClip 自動補的回-idle 收尾段(混進去=每圈垮回站姿)。位移驅動:一循環=stridePx px。
+    const cyc = CLIPS.run_cycle, le = cyc.lastKeyT ?? cyc.dur;
+    const ls = cyc.tags.run ?? 0, ll = Math.max(le - ls, 0.01);
     u.runT = (u.runT || 0) + disp / A.runClip.stridePx * ll;
-    pose = evalClip(cyc, u.runT < cyc.dur ? u.runT : ls + ((u.runT - ls) % ll));
+    pose = evalClip(cyc, u.runT < le ? u.runT : ls + ((u.runT - ls) % ll));
   }
   if (!e.running) u.runT = 0;                                       // 停跑 → 下次從起跑段重來(跑中出拳不重置,收招接回循環)
   const usingClip = pose != null;    // clip 播放 → 用高 blend 檔,別把浮誇關鍵幀壓扁
