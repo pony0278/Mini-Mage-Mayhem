@@ -9,10 +9,10 @@ import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } fro
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   SPEED, POD, inPod, iceAt, resetFighter, applyStage, barrels, labSwitch,
-  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH, PUNCH_LAUNCH_LOB,
+  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
-  THROW_FORCE, THROW_TUMBLE, PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
+  PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   ICE_ACCEL, ICE_FRICTION, STAGE_NAME, STAGE_BANNER,
   FIRE_STAB_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
@@ -224,7 +224,8 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     // 鉤拳不位移(受擊=純踉蹌);終結技=打飛:小拋物線(擊中→打飛→落地),與丟人同管線、lob 較小。
     // 放在擊暈判定之後:stunFighter 會把速度×0.4,打崩+打飛要同時成立(落地時還暈著)。
     if (fin) {
-      o.vx = Math.cos(a) * PUNCH_LAUNCH; o.vy = Math.sin(a) * PUNCH_LAUNCH;
+      const F = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;            // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
+      o.vx = Math.cos(a) * F; o.vy = Math.sin(a) * F;
       o._thrownT = game.time; o._lob = PUNCH_LAUNCH_LOB; o.fumbleT = PUNCH_LAUNCH_LOB.T + 0.1;
       if (o.carrying) dropCarry(o);                                     // 飛行中不可能繼續扛人(扛桶由 v2.js 扛桶 loop 的 fumbleT 條件掉)
     }
@@ -293,8 +294,9 @@ export function launchCarried(f) {
   f.carrying = null; o.carriedBy = null; o.escape = 0; o.mashSide = 0; f.regrabCd = REGRAB_CD;
   const a = f.facing;
   o.x = f.x + Math.cos(a) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(a) * (f.r + o.r * 0.7);
-  o.vx = Math.cos(a) * THROW_FORCE; o.vy = Math.sin(a) * THROW_FORCE;
-  o.fumbleT = THROW_TUMBLE; o._thrownT = game.time; o._lob = PERSON_LOB; // 翻滾:moveFighter 只走 slideKnock(_lob 蓋掉先前打飛殘值)
+  const F = PERSON_LOB.range / PERSON_LOB.T;                    // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
+  o.vx = Math.cos(a) * F; o.vy = Math.sin(a) * F;
+  o.fumbleT = PERSON_LOB.T + 0.1; o._thrownT = game.time; o._lob = PERSON_LOB; // 翻滾:moveFighter 只走 slideKnock(_lob 蓋掉先前打飛殘值)
   o.lastHitBy = f.pid; o.lastHitT = game.time; o.faceT = 0.3;
   o.stability = Math.max(o.stability, 30);                     // 同放下:落地不至於原地再被打暈
   f.punchCd = 0.5;                                             // 投擲後恢復:丟完不能立刻接拳(動畫由 carryClip 收招)

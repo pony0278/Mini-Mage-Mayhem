@@ -10,7 +10,7 @@ import {
   pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
-  BARREL_THROW, BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
+  BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, LAND_SKID, WALL_BOUNCE, lobZ,
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
@@ -164,7 +164,8 @@ export function launchBarrel(f) {
   f.carryObj = null; b.held = false; f.regrabCd = REGRAB_CD;
   const a = f.facing;
   b.x = f.x + Math.cos(a) * (f.r + b.r); b.y = f.y + Math.sin(a) * (f.r + b.r);
-  b.vx = Math.cos(a) * BARREL_THROW; b.vy = Math.sin(a) * BARREL_THROW;
+  const F = BARREL_LOB.range / BARREL_LOB.T;                  // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
+  b.vx = Math.cos(a) * F; b.vy = Math.sin(a) * F;
   b.flyT0 = game.time; b.landed = false; b.dropT0 = -9;   // 起飛(彈道 BARREL_LOB;砸中人→快落引爆走 dropT0)
   b.thrownBy = f.pid; b.armGrace = BARREL_ARM_GRACE;
   pressurizeBarrel(b);                                        // 被丟 → 升壓(1s 引信;飛行中/落地/撞人爆)

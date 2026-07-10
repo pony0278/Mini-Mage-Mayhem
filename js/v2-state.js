@@ -36,7 +36,6 @@ export const STRIKE_DELAY = PUNCH_CLIPS.map((n, i) => CLIPS[n]?.impactT ?? [0.28
 // 與丟人同一條彈道管線(f._lob 記 profile);調性=「挑空」:往前短、往上明顯(玩家指示:飛距更短、挑更高)。
 // 初版 range 100/apex 18(zmax≈34)→ 現值 zmax≈65、前飛約半;h0=胸口高。
 export const PUNCH_LAUNCH_LOB = { range: 55, apex: 50, T: 0.4, h0: 30 };
-export const PUNCH_LAUNCH = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;
 // 格擋推開:被打中後 PUSH_WIN 秒內按格擋鍵 → 把攻擊方推開+踉蹌,斷 combo;冷卻 PUSH_CDT
 export const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, PUSH_STAGGER = 0.45, AI_PUSH_CHANCE = 0.22;
 // 精準格擋(節奏遊戲反擊):對手出拳預測會命中且你格擋可用 → 黃金窗口=對方起手期(STRIKE_DELAY),
@@ -64,9 +63,8 @@ export const BARREL_BONK_STAB = 15, BARREL_DROP_T = 0.15;
 export const BARREL_LAND_FUSE = 1.0;
 // 閉式彈道高度:t 秒(相對起飛)→ z(px)。t<0 或 ≥T 回 0(未起飛/已落地)。
 export function lobZ(t, lob) { if (!(t >= 0) || t >= lob.T) return 0; const p = t / lob.T; return lob.h0 * (1 - p) + lob.apex * 4 * p * (1 - p); }
-// 衍生(舊名沿用,消費端不用改):丟人水平初速 / 翻滾總時長(滯空+落地短滑=0.1s;結束才能自走)
-export const THROW_FORCE = PERSON_LOB.range / PERSON_LOB.T;
-export const THROW_TUMBLE = PERSON_LOB.T + 0.1;
+// 出手速度(range/T)與翻滾時長(T+0.1)不再是衍生常數——各 launch 點出手當下由 LOB 現算,
+// 所以 ?tune=1 滑桿 / 控制台改 `__v2.PERSON_LOB.range = …` 即時生效(LOB 物件=唯一真相)。
 // 扛/丟人動畫時序(person_throw clip):抓起就播「reach→grab→lift→翻橫」(0→hold 幀)然後**定格在 hold 幀**
 // (舉過頭頂+打橫)扛著走;按丟才續播 hold→release 甩飛。
 // **自動導出**:hold=clip 的 'hold' tag(缺席退回最後一個 grab tag)、release='release' tag。
@@ -90,7 +88,7 @@ export const BARREL_FUSE = 1.0, BARREL_BLAST = 95, BARREL_FORCE = 700, BARREL_ST
 export const BARREL_PATCH_R = 40;                       // 爆後污染地板的小塊半徑(~1.3 tile)
 export const WILD_CONTAM = ['oil', 'water', 'poison'];  // 未充能=野生隨機污染(不含火,免整場失火)
 // 步驟 B:可推/撿/丟。丟出初速、滾動摩擦(快衰減=不永遠滾)、推力、撞擊引爆前的安全延遲。
-export const BARREL_THROW = BARREL_LOB.range / BARREL_LOB.T, BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARREL_ARM_GRACE = 0.15; // 丟桶水平初速=彈道導出(空中無摩擦;落地 ×LAND_SKID 變滾動)
+export const BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARREL_ARM_GRACE = 0.15; // 丟桶水平初速=launchBarrel 由 BARREL_LOB 現算(空中無摩擦;落地 ×LAND_SKID 變滾動)
 // 丟桶=排程動作:按下→播雙手過頂 heave 動畫(itemClip 'barrel_throw')→ release 幀才真的甩出。
 // **自動導出**:= clip 的 release tag 秒數(studio 移 release 幀→重貼 JSON 即對齊;舊值 22f fallback)。
 export const BARREL_THROW_DELAY = CLIPS.barrel_throw?.tags.release ?? 22 / 60;

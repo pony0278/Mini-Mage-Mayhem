@@ -90,6 +90,22 @@ copyButton('複製 角色+地板', () => {
     + `floor = { gridAlpha:${(+f.gridAlpha).toFixed(2)}, motes:${f.motes}, floorA:'${f.floorA}', floorB:'${f.floorB}', floorEdge:'${f.floorEdge}' }`;
 });
 
+header('彈道(即時)');
+// LOB 物件是 live tuning 真相:出手速度=range/T 在出手當下現算,拖滑桿後下一次出手就生效。
+// 手感口訣:apex=挑/拋多高、range=往前多遠、T=滯空多久(也影響水平速度)。
+const PL = v2.PUNCH_LAUNCH_LOB, PE = v2.PERSON_LOB, BA = v2.BARREL_LOB;
+slider('挑空 range(前飛)', 10, 200, 5, PL.range, (x) => PL.range = x);
+slider('挑空 apex(挑高)', 5, 100, 5, PL.apex, (x) => PL.apex = x);
+slider('挑空 T(滯空秒)', 0.2, 0.8, 0.05, PL.T, (x) => PL.T = x);
+slider('丟人 range', 80, 360, 10, PE.range, (x) => PE.range = x);
+slider('丟人 apex', 10, 90, 2, PE.apex, (x) => PE.apex = x);
+slider('丟桶 range', 80, 360, 10, BA.range, (x) => BA.range = x);
+slider('丟桶 apex', 10, 90, 2, BA.apex, (x) => BA.apex = x);
+copyButton('複製 彈道', () =>
+  `export const PERSON_LOB = { range: ${PE.range}, apex: ${PE.apex}, T: ${PE.T}, h0: ${PE.h0} };\n`
+  + `export const BARREL_LOB = { range: ${BA.range}, apex: ${BA.apex}, T: ${BA.T}, h0: ${BA.h0} };\n`
+  + `export const PUNCH_LAUNCH_LOB = { range: ${PL.range}, apex: ${PL.apex}, T: ${PL.T}, h0: ${PL.h0} };`);
+
 header('攝影機');
 slider('fov', 20, 60, 1, CAM.fov, (v) => CAM.fov = v);
 slider('angle', 10, 70, 1, CAM.angle, (v) => CAM.angle = v);

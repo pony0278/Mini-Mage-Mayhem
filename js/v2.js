@@ -17,7 +17,7 @@ import {
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
-  PERSON_LOB, LAND_SKID, lobZ,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, LAND_SKID, lobZ,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
@@ -311,6 +311,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, // 彈道 tuning(物件可變:控制台 __v2.PUNCH_LAUNCH_LOB.apex=70 即時生效;?tune=1 滑桿同源)
   punch, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
