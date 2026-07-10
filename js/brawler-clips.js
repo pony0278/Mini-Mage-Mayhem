@@ -177,25 +177,27 @@ export const CLIPS = {
   // idle 略去 → prepClip 補 COMBAT_IDLE(與遊戲站姿無縫接)。手指軸(aL_/aR_ f*)已進 POSE_KEYS,?avatar=1 掛 rigged 手時驅動指骨。
   barrel_throw: prepClip({
     seq: [
-      { name: 'idle', frame: 0, frames: 10, ease: 'out' },
-      { name: 'anti', frame: 4, ease: 'out' },
+      { name: 'idle', frame: 0, frames: 10, ease: 'out', tag: 'idle' },
+      { name: 'anti', frame: 4, ease: 'out', tag: 'anti' },
       { name: 'windup', frame: 7, ease: 'out', tag: 'grab' },
       { name: 'grab', frame: 10, ease: 'out', tag: 'grab' },
       { name: 'grab_hold', frame: 13, ease: 'out', tag: 'grab' },
       { name: 'ready_to_release', frame: 16, ease: 'out', tag: 'grab' },
-      { name: 'ready_to_release_hold', frame: 19, ease: 'out', tag: 'grab' },
-      { name: 'release', frame: 22, ease: 'out', tag: 'release' },
+      { name: 'ready_to_release_2', frame: 19, ease: 'out', tag: 'grab' },   // 裝填定格(移動式定格;tag 修正 release→grab,手指仍握緊)
+      { name: 'ready_to_release_2_hold', frame: 22, ease: 'out', tag: 'release' },   // 甩出幀(=BARREL_THROW_DELAY 的來源;tag 修正:裝填定格後的揮擺起點)
+      { name: 'release', frame: 25, ease: 'out', tag: 'recover' },
     ],
     phases: {
       anti: { squat: 35, spine_x: 27, aL_sz: 55, aR_sz: 55 },
-      windup: { squat: 35, spine_x: 27, aL_sx: -19, aL_sy: 69, aL_sz: 55, aL_ex: -10, aR_sx: -19, aR_sy: -58, aR_sz: 55, aL_stretch: 1.46, aR_stretch: 1.45 },
+      windup: { squat: 35, spine_x: 27, aL_sx: -19, aL_sy: 69, aL_sz: 55, aL_ex: -10, aR_sx: -19, aR_sy: -58, aR_sz: 55, aL_stretch: 1.46, aR_stretch: 1.45, aL_fbase: -32, aL_fmid: -26, aR_fbase: -20, aR_fmid: -29 },
       grab: { squat: 35, spine_x: 27, aL_sx: -157, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -157, aR_sy: -70, aR_sz: 52, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
       grab_hold: { squat: 35, spine_x: 27, aL_sx: -157, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -157, aR_sy: -70, aR_sz: 52, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
       ready_to_release: { squat: 35, spine_x: -36, head_x: -36, aL_sx: -190, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -187, aR_sy: -70, aR_sz: 52, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
-      ready_to_release_hold: { squat: 35, spine_x: 50, head_x: -36, aL_sx: -119, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -135, aR_sy: -70, aR_sz: 52, lL_hx: -60, lR_hx: -60, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
-      release: { squat: 35, spine_x: 7, aL_sx: 16, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: 0, aR_sy: -70, aR_sz: 52, aL_wy: 7 },
+      ready_to_release_2: { squat: 35, spine_x: 50, head_x: -36, aL_sx: -119, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -135, aR_sy: -70, aR_sz: 52, lL_hx: -60, lR_hx: -60, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
+      ready_to_release_2_hold: { squat: 35, spine_x: 50, head_x: -36, aL_sx: -119, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sx: -135, aR_sy: -70, aR_sz: 52, lL_hx: -60, lR_hx: -60, aL_wx: 76, aL_wy: 7, aR_wx: 70, aL_stretch: 1.78, aR_stretch: 1.72, aL_fbase: -55, aL_fmid: -28, aL_ftip: -21, aL_fthumb: -21, aR_fbase: -67, aR_fmid: -11, aR_ftip: -13, aR_fthumb: -2 },
+      release: { squat: 35, spine_x: 7, aL_sx: 16, aL_sy: 71, aL_sz: 61, aL_ex: 2, aR_sy: -70, aR_sz: 52, aL_wy: 7 },
     },
-    lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },   // 雙手對稱 heave → aR lag 歸零(兩手同步,不錯開)
+    lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },
   }),
   // 拎頭過頂丟人(carryClip 頻道播,扛人期間覆蓋程序姿勢)。使用者 PUNCH STUDIO 定稿(v2:含手指彎曲軸)。
   // grab@10=抓頭、hold@16=定格扛著走、release@22=甩飛——PERSON_HOLD_T/PERSON_THROW_DELAY 由這些 tag 自動導出,
