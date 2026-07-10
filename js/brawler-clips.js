@@ -197,16 +197,17 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },   // 雙手對稱 heave → aR lag 歸零(兩手同步,不錯開)
   }),
-  // 拎頭過頂丟人(carryClip 頻道播,扛人期間覆蓋程序姿勢)。使用者 PUNCH STUDIO 定稿。
-  // grab@10=抓頭、release@22=甩飛(= v2-state PERSON_THROW_DELAY,移動要同步)。被扛者靠 carry_tilt(-85 打橫)/
-  // carry_yaw(-100 轉向)/carry_o*(掛點微調)由 render-actors 定位+旋轉。idle 略去→補 COMBAT_IDLE。
+  // 拎頭過頂丟人(carryClip 頻道播,扛人期間覆蓋程序姿勢)。使用者 PUNCH STUDIO 定稿(v2:含手指彎曲軸)。
+  // grab@10=抓頭、hold@16=定格扛著走、release@22=甩飛——PERSON_HOLD_T/PERSON_THROW_DELAY 由這些 tag 自動導出,
+  // 移幀重貼即對齊。被扛者靠 carry_tilt(-85 打橫)/carry_yaw(-100 轉向)/carry_o*(掛點微調)由 render-actors
+  // 定位+旋轉;手指軸(抓時捲、收招放開)由 avatar rigged 手消費。idle 略去→補 COMBAT_IDLE。
   person_throw: prepClip({
     seq: [
       { name: "idle", frame: 0, frames: 10, ease: "out", tag: "idle" },
       { name: "windup", frame: 4, ease: "out", tag: "anti" },
       { name: "grab", frame: 10, ease: "out", tag: "grab" },
       { name: "grab_windup", frame: 13, ease: "out", tag: "grab" },
-      { name: "grab_windup_2", frame: 16, ease: "out", tag: "hold" },   // 定格幀(翻橫完成→扛著走):tag 'hold' = PERSON_HOLD_T 的來源(studio 匯出後手動標;studio 幽靈只認第一個 grab/release,中段 tag 改名無副作用)
+      { name: "grab_windup_2", frame: 16, ease: "out", tag: "hold" },   // 定格幀(翻橫完成→扛著走):tag hold = PERSON_HOLD_T 的來源
       { name: "ready_throw", frame: 19, ease: "out", tag: "grab" },
       { name: "throw_2", frame: 22, ease: "out", tag: "release" },
       { name: "throw_2_hold", frame: 25, ease: "out", tag: "release" },
@@ -214,14 +215,14 @@ export const CLIPS = {
       { name: "recovery", frame: 38, ease: "out", tag: "recover" },
     ],
     phases: {
-      windup: { spine_x: -6, spine_y: -63, pelvis_y: -6, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: 2, aR_sy: -18, aR_sz: 130, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wx: -13, aR_wy: -49, aR_stretch: 2.02 },
-      grab: { spine_x: -6, spine_y: -63, pelvis_y: -6, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: -1, aR_sy: -28, aR_sz: 119, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wy: -97, aR_stretch: 1.95 },
-      grab_windup: { spine_x: -28, spine_y: -63, pelvis_y: -6, head_x: 4, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: -34, aR_sy: -28, aR_sz: 119, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wy: -97, aR_stretch: 1.95 },
-      grab_windup_2: { pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -6, lL_kx: 8, lR_hx: -15, lR_hy: 8, lR_kx: 11, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
-      ready_throw: { spine_x: -55, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -6, lL_kx: 8, lR_hx: -15, lR_hy: 8, lR_kx: 11, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
-      throw_2: { spine_x: 33, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lL_kx: -20, lR_hx: -15, lR_hy: 8, lR_kx: -20, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
-      throw_2_hold: { spine_x: 33, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lL_kx: -20, lR_hx: -15, lR_hy: 8, lR_kx: -20, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
-      throw_finsh: { spine_x: -2, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lR_hx: -15, lR_hy: 8, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      windup: { spine_x: -6, spine_y: -63, pelvis_y: -6, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: 2, aR_sy: -18, aR_sz: 130, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wx: -13, aR_wy: -49, aR_stretch: 2.02, aL_fbase: -96, aL_fmid: -65, aL_ftip: -92, aL_fthumb: -76, aR_fbase: -42, aR_fmid: -28, aR_ftip: -55, aR_fthumb: -16 },
+      grab: { spine_x: -6, spine_y: -63, pelvis_y: -6, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: -1, aR_sy: -28, aR_sz: 119, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wy: -97, aR_stretch: 1.95, aL_fbase: -96, aL_fmid: -65, aL_ftip: -92, aL_fthumb: -76, aR_fbase: -42, aR_fmid: -28, aR_ftip: -55, aR_fthumb: -16 },
+      grab_windup: { spine_x: -28, spine_y: -63, pelvis_y: -6, head_x: 4, aL_sx: 19, aL_sy: -21, aL_sz: 45, aL_ex: 95, aR_sx: -34, aR_sy: -28, aR_sz: 119, lL_hx: 16, lL_hy: 45, lL_kx: 22, lR_hx: -15, lR_hy: 8, lR_kx: 11, aR_wy: -97, aR_stretch: 1.95, aL_fbase: -96, aL_fmid: -65, aL_ftip: -92, aL_fthumb: -76, aR_fbase: -42, aR_fmid: -28, aR_ftip: -55, aR_fthumb: -16 },
+      grab_windup_2: { pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -6, lL_kx: 8, lR_hx: -15, lR_hy: 8, lR_kx: 11, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, aL_fbase: -35, aL_fmid: -27, aL_ftip: -48, aL_fthumb: -13, aR_fbase: -42, aR_fmid: 3, aR_ftip: -45, aR_fthumb: -16, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      ready_throw: { spine_x: -55, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -6, lL_kx: 8, lR_hx: -15, lR_hy: 8, lR_kx: 11, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, aL_fbase: -35, aL_fmid: -27, aL_ftip: -48, aL_fthumb: -13, aR_fbase: -42, aR_fmid: 3, aR_ftip: -45, aR_fthumb: -16, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      throw_2: { spine_x: 33, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lL_kx: -20, lR_hx: -15, lR_hy: 8, lR_kx: -20, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, aL_fbase: -35, aL_fmid: -27, aL_ftip: -48, aL_fthumb: -13, aR_fbase: -42, aR_fmid: 3, aR_ftip: -45, aR_fthumb: -16, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      throw_2_hold: { spine_x: 33, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lL_kx: -20, lR_hx: -15, lR_hy: 8, lR_kx: -20, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, aL_fbase: -35, aL_fmid: -27, aL_ftip: -48, aL_fthumb: -13, aR_fbase: -42, aR_fmid: 3, aR_ftip: -45, aR_fthumb: -16, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
+      throw_finsh: { spine_x: -2, pelvis_y: -6, head_x: 4, aL_sx: -124, aL_sy: 47, aL_sz: 68, aL_ex: -3, aR_sx: -34, aR_sy: -28, aR_sz: 119, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lR_hx: -15, lR_hy: 8, aL_wx: 7, aL_wy: 30, aR_wx: -18, aR_wy: 48, aL_stretch: 1.81, aR_stretch: 1.95, aL_fbase: -35, aL_fmid: -27, aL_ftip: -48, aL_fthumb: -13, aR_fbase: -42, aR_fmid: 3, aR_ftip: -45, aR_fthumb: -16, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
       recovery: { spine_x: -2, pelvis_y: -6, head_x: 4, aL_sx: 63, aL_sy: 66, aL_sz: 87, aL_ex: -3, aR_sx: 156, aR_sy: -25, aR_sz: 163, aR_scale: 0.9, lL_hx: -16, lL_hy: -7, lR_hx: -15, lR_hy: 8, aL_wx: 7, aL_wy: 30, aR_wx: 22, aR_wy: 66, carry_tilt: -85, carry_yaw: -100, carry_ox: -0.2, carry_oy: 0.48, carry_oz: 0.18 },
     },
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },

@@ -141,7 +141,7 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 7. **~~左手固定~~ 掛錯手(已修)**:`positionCarried` 曾寫死掛在**左手腕**,但 studio `GHOST_FOLLOW.carried.anchor='R'` 是**右手 Fingers 骨**。掛錯手→動作全錯、`carry_o*` 偏移也跑掉。修:`carryAnchorBone` 取右 rigged 手 Fingers 骨(退回右手腕)。
 8. **十字:身體朝向沒疊扛者 facing(已修)**:被扛身體朝向只吃 `carry_yaw/tilt`,但掛點(手)會隨扛者 facing 轉→頭繞著手轉、身體世界朝向不變=十字。修:`R = cg.rotation.y ∘ carry_yaw ∘ carry_tilt`。**通則**:studio 角色固定朝前,任何「相對扛者」的世界量搬到遊戲都要疊扛者 facing。
 9. **橫身太短:身長寫死(已修)**:`CARRY_HEAD=44` 寫死→橫身只剩真實站高(~75)的 ~58%,看起來沒真的打橫過頂。修:`h = av.standH`(buildAvatar 存渲染後真實站高)。
-10. **扛人手指不捲**:`person_throw` clip **沒有手指軸**(對照 `barrel_throw` 有)→ rigged 抓握手維持張開,跟 studio 不一致。**這是資料缺,不是程式**:要在 punch-studio **重匯出 person_throw**(帶 `aL_/aR_ f*`)。遊戲端消費路徑(avatar `applyFingerPose`)已就緒,貼新 clip 即生效。
+10. **扛人手指不捲(已修=重匯出)**:`person_throw` 舊版沒有手指軸 → rigged 抓握手張開。使用者重匯出 v2(抓時捲、收招放開)後貼回即生效——**通則:clip 缺軸=該功能靜默不動,先 grep 資料再查程式**。
 11. **桶/人互斥**:`carryObj`(桶)與 `carrying`(人)互斥;都會讓移動變 `CARRY_SLOW`。
 
 ---

@@ -103,7 +103,7 @@
 | `lhook` | 三連擊第 2 段(左鉤拳) | ✅ 使用者定稿(impact @14f) |
 | `overhand` | 三連擊第 3 段(過頂重擊=終結技) | ✅ 使用者定稿(impact @23f) |
 | `barrel_throw` | 丟桶(itemClip 頻道;release 幀甩出) | ✅ 使用者定稿(release@22f;含手指軸) |
-| `person_throw` | 扛人/丟人(carryClip 頻道;抓起播 0→hold 定格,丟續播→release 甩飛) | ✅ 使用者定稿(hold@16f/release@22f;**待重匯出補手指軸**) |
+| `person_throw` | 扛人/丟人(carryClip 頻道;抓起播 0→hold 定格,丟續播→release 甩飛) | ✅ 使用者定稿 v2(hold@16f/release@22f;含手指軸,抓時捲、收招放開) |
 
 新招式=新 entry + 掛上觸發頻道(punch 三槽 `PUNCH_CLIPS` / 道具 `ITEM_SPEC.clip` / 扛人 `carryClip`)。
 **先驗後接**:`v2.html?clip=名字` 任意 clip 循環試播(對手 AI 凍結),或 `__v2.playClip(名字)` 播一次——
