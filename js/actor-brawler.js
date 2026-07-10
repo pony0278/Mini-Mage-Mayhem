@@ -32,7 +32,10 @@ export const ANIM = {
   blend:   { rate: 14, clipRate: 40 },                                                     // 姿勢平滑:每秒收斂速率(消除狀態切換瞬跳)。clip 播放用高檔(clip 內插已滑,低通會削掉快速關鍵幀=浮誇動作被壓扁;頭尾皆 COMBAT_IDLE 故無接縫風險)
   walk:    { minDisp: 0.25, maxDisp: 6, phaseRate: 0.18, ampEase: 0.2, legSwing: 34, armSwing: 22, kneeAdd: 18, bob: 1.6 }, // 度
   run:     { lean: 16, swingMul: 1.5, armMul: 1.7, kneeMul: 1.45, bobMul: 1.4, elbow: 78 }, // 程序跑姿(無 run_cycle clip 時):前傾+擺幅放大+屈肘泵臂(elbow=跑步手肘彎曲度,直臂甩=走路感的元兇);步頻吃位移自動變快
-  runClip: { stridePx: 96 },                                                                // CLIPS.run_cycle 循環槽:一個循環=幾 px 位移(位移驅動相位,跑快動作自然變快)
+  // CLIPS.run_cycle 循環槽:一個循環=幾 px 位移(位移驅動相位)。**stridePx 要對齊腳的實際觸地掃程**,
+  // 否則=滑步:掃程 ≈ 2×2×腿長14×sin(髖擺幅)——髖 ±60° ≈ 48px/循環。96 時滑步率 50%(看起來像溜冰,踩過的坑);
+  // 60 ≈ 20% 滑步(可接受的風格化)。想要大步幅+慢步頻:studio 加大髖擺/觸地幀 lX_stretch 伸腿,再回調此值。
+  runClip: { stridePx: 60 },
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭

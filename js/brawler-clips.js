@@ -243,10 +243,10 @@ export const CLIPS = {
       { name: 'run_2', frame: 7, ease: 'lin', tag: 'run' },
       { name: 'run_3', frame: 10, ease: 'lin', tag: 'run' },
     ],
-    phases: {
-      run_1: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lR_hx: -60, lR_kx: 44 },
-      run_2: { aL_sx: 120, aL_sz: 26, aL_ex: 68, aR_sx: -45, aR_sz: 25, aR_ex: 74, lL_hx: -60, lL_kx: 42, lR_hx: 60, lR_kx: 44 },
-      run_3: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lR_hx: -60, lR_kx: 44 },
+    phases: { // 腿部 v2(使用者:擺幅加大+踝角);run_3=run_1 完全複製(接縫規則)
+      run_1: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lL_kx: 24, lL_ax: 60, lR_hx: -60, lR_kx: 26, lR_ax: -41 },
+      run_2: { aL_sx: 120, aL_sz: 26, aL_ex: 68, aR_sx: -45, aR_sz: 25, aR_ex: 74, lL_hx: -60, lL_kx: 19, lL_ax: -46, lR_hx: 60, lR_kx: 44, lR_ax: 60 },
+      run_3: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lL_kx: 24, lL_ax: 60, lR_hx: -60, lR_kx: 26, lR_ax: -41 },
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0 },
   }),
