@@ -116,8 +116,9 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 
 **三參數語言**(v2-state;人/桶/未來道具同一套,加投擲物=加一行):
 ```js
-PERSON_LOB = { range: 320, apex: 32, T: 0.6,  h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
-BARREL_LOB = { range: 220, apex: 34, T: 0.55, h0: 58 }
+PERSON_LOB = { range: 260, apex: 32, T: 0.55, h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
+BARREL_LOB = { range: 180, apex: 34, T: 0.5,  h0: 58 }
+WALL_BOUNCE = 0.35         // 空中撞牆反彈係數(彈一小下→快落,不硬停懸空、不貼牆滑)
 LAND_SKID  = 0.25          // 落地保留的水平速度比(人=短滑 0.2s / 桶=滾動收尾)
 BARREL_HIT_Z = 45          // 桶低於此高度才撞人引爆(≈頭高)
 ```
@@ -129,13 +130,13 @@ BARREL_HIT_Z = 45          // 桶低於此高度才撞人引爆(≈頭高)
 |---|---|---|
 | 人:`slideKnock` 身體阻擋 | **跳過**(飛越對手) | v2-combat `air` gate |
 | 人:`slideKnock` 摩擦 | **跳過**(等速直線);落地幀 ×LAND_SKID 短滑 | 同上 + v2.js 落地偵測 |
-| 人:飛行姿態 | **打橫趴飛**(超人式:頭朝速度方向、面朝地+四肢亂踢)→ 落地滑行仍趴 → **滑停才平滑站起**(`f._lying` 旗=v2.js 算;actor-brawler `u.lie` 內插旋轉+`ANIM.thrown.lift` 抬半身厚) | v2.js `_lying` + actor-brawler 世界層 |
-| 人:撞牆 | **仍擋**(sim 為真相)→ `_thrownT` 夾成 0.1s z 快落,不懸空 | slideKnock |
+| 人:飛行姿態 | **打橫趴飛**(超人式:頭朝速度方向、面朝地+四肢亂踢)→ 落地滑行仍趴 → **滑停才平滑站起**(`f._lying` 旗=v2.js 算;actor-brawler `u.lie` 內插旋轉+`ANIM.thrown.lift` 抬半身厚)。**趴姿朝向凍結在起飛瞬間**(`u.lieYaw`)——撞牆反彈/滑行速度突變時身體不亂轉 | v2.js `_lying` + actor-brawler 世界層 |
+| 人:撞牆 | **小反彈**(法向速度 ×−WALL_BOUNCE)→ `_thrownT` 夾成 0.1s z 快落 → 落地 LAND_SKID+摩擦=很快停。⚠ 夾出的時戳開場可為小負數 → **`_thrownT` 哨兵一律用 `> -5`**(-9=未被丟),用 `> 0` 會把有效時戳當沒被丟(踩過) | slideKnock |
 | 人:入艙(`thrown && inPod`) | **算**(空中灌籃,決策 B)——照舊掃過艙半徑即收容 | v2.js(零改動) |
 | 人:空中被拳打/風/元素站噴發 | **忽略 z**(0.6s 窗口極短;混亂是招牌) | 零改動 |
 | 桶:撞人引爆 | **兩拍(任何高度碰到都算)**:空中砸中=第一拍 bonk(`BARREL_BONK_STAB` 穩定傷+踉蹌)→ 桶水平歸零、`BARREL_DROP_T` 秒垂直快落 → **落地重置引信 `BARREL_LAND_FUSE`(1s)才爆**(玩家反饋:即爆太快無反制;1s=爆風 95px÷速度 168px/s 剛好逃得出去——清醒可逃、被暈必中=先暈再丟成真連段);地面滾動撞人=直接爆(滾動接觸看得見)。**為何不用 z 門檻直擊**:45° 視角讀不出弧高,「飛過頭不炸」會被讀成 bug——規則要綁玩家看得見的事件(碰撞),不綁看不見的高度(舊 `BARREL_HIT_Z` 已退役) | updateBarrels |
 | 桶:走路推桶 | 空中跳過(高於人) | updateBarrels `air` gate |
-| 桶:撞牆 | 仍擋 → `flyT0` 夾成 0.1s 快落 | updateBarrels |
+| 桶:撞牆 | **小反彈**(×−WALL_BOUNCE)→ dropT0 垂直快落(落地重置引信) | updateBarrels |
 | 桶:引信空中到期 | **空中爆**(視覺在高度上,爆風仍 2D 圓) | 零改動 |
 | 桶:落地 | ×LAND_SKID 滾動收尾 + **引信重置 `BARREL_LAND_FUSE`(所有落地:自然/砸中快落/撞牆快落——心智模型一句話:「被丟的桶=落地閃 1s 才爆」)** + 塵土 ring + thud | updateBarrels |
 
@@ -143,7 +144,7 @@ BARREL_HIT_Z = 45          // 桶低於此高度才撞人引爆(≈頭高)
 
 **studio 幽靈同款**:`GHOST_THROW = { speed/flyFrames/peak 各分 carried/barrel }`,release 後照 lobZ 同曲線飛、落點停——**改遊戲 PERSON_LOB/BARREL_LOB 要同步 GHOST_THROW**(同 GHOST_ANCHOR 規則)。
 
-**射程重調記錄**(決策 C):人 ~270→**320px**(`AI_THROW_DIST` 200→260 跟進)、桶 ~133+滾→**220px**+滾。丟人入艙/炸人平衡如有異樣先查這裡。
+**射程重調記錄**:初版 B 案人 320/桶 220(玩家反饋太遠)→ 現值**人 260(T 0.55)/桶 180(T 0.5)**,`AI_THROW_DIST` 220。丟人入艙/炸人平衡如有異樣先查這裡。
 
 ### 5.1 手部切換(抓握才換 rigged 手)
 

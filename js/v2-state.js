@@ -46,9 +46,10 @@ export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 //   水平速度 vh=range/T(空中無摩擦=直線飛);z 走閉式曲線 lobZ(免積分飄移、回放安全)。
 // z 感知規則(全稽核表在 docs/v2-carry-throw-system.md §5.2):空中=人飛越對手(跳過身體阻擋)、
 //   桶低於 BARREL_HIT_Z 才撞人引爆;牆仍擋(撞牆=z 快落 0.1s);飛越艙口=入艙(空中灌籃)。
-export const PERSON_LOB = { range: 320, apex: 32, T: 0.6, h0: 58 };
-export const BARREL_LOB = { range: 220, apex: 34, T: 0.55, h0: 58 };
+export const PERSON_LOB = { range: 260, apex: 32, T: 0.55, h0: 58 };
+export const BARREL_LOB = { range: 180, apex: 34, T: 0.5, h0: 58 };
 export const LAND_SKID = 0.25;      // 落地保留的水平速度比(人=短滑/桶=滾動收尾)
+export const WALL_BOUNCE = 0.35;    // 空中撞牆的反彈係數(法向速度反轉×此值:彈一小下就快落,不硬停懸空)
 // 桶撞人=兩拍(可讀性:45° 視角讀不出弧高,任何高度碰到都算——取代舊 z 門檻直擊):
 // 第一拍 bonk(砸中:-BONK 穩定+踉蹌)→ 桶水平歸零、DROP_T 秒快落 → 落地重置引信。
 export const BARREL_BONK_STAB = 15, BARREL_DROP_T = 0.15;
@@ -69,7 +70,7 @@ export const THROW_TUMBLE = PERSON_LOB.T + 0.2;
 const _pt = CLIPS.person_throw;
 export const PERSON_HOLD_T = _pt?.tags.hold ?? _pt?.tagsLast.grab ?? 16 / 60;
 export const PERSON_THROW_DELAY = (_pt?.tags.release ?? 22 / 60) - PERSON_HOLD_T;
-export const AI_THROW_DIST = 260, AI_THROW_PANIC = 60, AI_THROW_DELAY = 0.3; // AI:近艙穩丟/掙脫快滿恐慌丟(可能丟歪),帶反應延遲(彈道射程 320 → 拉遠)
+export const AI_THROW_DIST = 220, AI_THROW_PANIC = 60, AI_THROW_DELAY = 0.3; // AI:近艙穩丟/掙脫快滿恐慌丟(可能丟歪),帶反應延遲(≈彈道射程 260 內留裕度)
 export const CARRY_ESCAPE_NEED = 100, CARRY_MASH_AI = 30, CARRY_MASH_TAP = 8; // AI 掙脫≈3.3s(玩家反饋:AI 太強,45→30);人類左右交替每下+8
 // AI 人味缺陷(玩家反饋「AI 太強」:人類贏不了零反應延遲的機器):
 export const AI_PUNCH_CHANCE = 0.6;   // 進範圍時每次機會只有 6 成真的出拳(否則猶豫 0.3s 再說)

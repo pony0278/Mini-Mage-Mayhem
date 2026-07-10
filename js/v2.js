@@ -159,11 +159,12 @@ function step(dt) {
       if (f.fumbleT > 0) f.fumbleT -= dt;
       // B 案彈道:被拋飛的 sim 高度(判定 gate + render 都讀 f.z);落地幀 ×LAND_SKID 短滑 + 塵土
       {
-        const z = (f._thrownT > 0) ? lobZ(game.time - f._thrownT, PERSON_LOB) : 0;
+        // 哨兵用 > -5(-9=未被丟):撞牆快落會把 _thrownT 夾成 game.time-T+0.1,開場 game.time 小時是小負數,仍屬有效時戳
+        const z = (f._thrownT > -5) ? lobZ(game.time - f._thrownT, PERSON_LOB) : 0;
         if (!z && f.z > 1) { f.vx *= LAND_SKID; f.vy *= LAND_SKID; addRing(f.x, f.y, 24, '#cbb9a2', 0.28, 3); game.sfx.push('thud'); }
         f.z = z;
         // 被丟打橫旗:飛行中+落地滑行都趴著,滑停(fumbleT 歸零)才站起(render 讀,actor-brawler 平滑旋轉)
-        f._lying = !!(f._thrownT > 0 && game.time - f._thrownT < THROW_TUMBLE + 0.05 && (z > 0 || f.fumbleT > 0));
+        f._lying = !!(f._thrownT > -5 && game.time - f._thrownT < THROW_TUMBLE + 0.05 && (z > 0 || f.fumbleT > 0));
       }
       if (f.restunT > 0) f.restunT -= dt;
       if (f.invuln > 0) f.invuln -= dt;

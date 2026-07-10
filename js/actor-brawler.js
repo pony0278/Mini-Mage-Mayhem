@@ -321,10 +321,13 @@ export function updateBrawler(e, g) {
   g.position.y = lift;              // root_py 已進姿勢層;airY/lift 是世界層的疊加
   if (u.shadow) u.shadow.position.y = 1.6 - lift;   // 影子留地面讀高度
   if (u.lie > 0.01) {
-    const va = (Math.hypot(e.vx || 0, e.vy || 0) > 20) ? Math.atan2(e.vy, e.vx) : (e.facing || 0);
-    g.quaternion.setFromAxisAngle(_upAxis, Math.atan2(Math.cos(va), Math.sin(va)));
+    if (u.lieYaw === undefined) {                   // 起飛瞬間鎖定朝向:撞牆反彈/落地滑行速度突變時身體不亂轉
+      const va = (Math.hypot(e.vx || 0, e.vy || 0) > 20) ? Math.atan2(e.vy, e.vx) : (e.facing || 0);
+      u.lieYaw = Math.atan2(Math.cos(va), Math.sin(va));
+    }
+    g.quaternion.setFromAxisAngle(_upAxis, u.lieYaw);
     g.rotateX(Math.PI / 2 * u.lie);                 // 頭前腳後、面朝地;u.lie 內插=起身動畫
-  } else g.rotation.set(0, yaw, wob);
+  } else { u.lieYaw = undefined; g.rotation.set(0, yaw, wob); }
   const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
