@@ -28,6 +28,10 @@ import { drawHud } from './v2-hud.js';
 
 let prevLocalSolid = true; // track when YOU step off solid ground (isles diagnostics)
 
+// 測試旗 ?grabany=1:免「對手被擊暈」前提,隨時可舉起對手(測扛/丟動畫+avatar rigged 手用)。
+// 正常玩法要先揍暈才抓;開這旗只放寬本機玩家的抓取條件,其餘(冷卻/被抓/範圍)照舊。
+const GRAB_ANY = new URLSearchParams(location.search).get('grabany') === '1';
+
 // --- round / match orchestration ---
 function resetRound() {
   resetBarrels(); resetPads(); resetStations(); iceZones.length = 0; resetFloor();
@@ -63,7 +67,7 @@ function mouseRight(f) {                                                        
   if (f.carrying) { dropCarry(f); return; }                                    // 搬運中 → 放下
   if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {        // 空手且可動作 → 優先抓近處被擊暈的對手
     const o = fighters[1 - f.pid];
-    if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
+    if (o.state === 'alive' && (o.stunned || GRAB_ANY) && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
     const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }        // 沒有可抓的暈眩對手 → 撿桶
   }
   useItem(f); // 否則放技能(useItem 自帶守衛:無道具直接略過;被抓/暈時只有傳送可用)
@@ -173,7 +177,7 @@ function step(dt) {
       if (o.state !== 'alive' || f.state !== 'alive' || f.stunned) { dropCarry(f); continue; }
       o.x = f.x + Math.cos(f.facing) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(f.facing) * (f.r + o.r * 0.7); o.vx = 0; o.vy = 0;
       if (inPod(o.x, o.y)) { containByCarry(f, o); continue; }                 // 失控入艙 → 收容
-      if (o.ai || o.pid !== LOCAL) o.escape += CARRY_MASH_AI * dt;              // AI / 被動假人:固定填速(不吃玩家的 A/D 移動鍵)
+      if ((o.ai || o.pid !== LOCAL) && !GRAB_ANY) o.escape += CARRY_MASH_AI * dt; // AI / 被動假人:固定填速(不吃玩家的 A/D 移動鍵);?grabany=1 測試時不自動掙脫,好舉著慢慢看
       else {                                                                    // 本機玩家被扛: 左右交替點按 A/D 掙脫(按指示)
         const aDown = keys.has('a'), dDown = keys.has('d');
         const aEdge = aDown && !o._aPrev, dEdge = dDown && !o._dPrev;
