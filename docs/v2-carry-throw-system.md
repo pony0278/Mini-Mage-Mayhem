@@ -119,7 +119,7 @@ release 幀 launchCarried(f)(v2.js step 判定 _carryThrowAt 到):
 ```js
 PERSON_LOB = { range: 200, apex: 32, T: 0.5,  h0: 58 }   // 落點距離 / 弧頂追加高 / 滯空秒 / 離手高
 BARREL_LOB = { range: 180, apex: 34, T: 0.5,  h0: 58 }
-PUNCH_LAUNCH_LOB = { range: 55, apex: 50, T: 0.4, h0: 30 } // 終結技挑空(前飛短、挑高明顯 zmax≈65;h0=胸口高。初版 100/18 玩家嫌飛太遠不夠高)
+PUNCH_LAUNCH_LOB = { range: 80, apex: 100, T: 0.6, h0: 30 } // 終結技挑空(zmax≈115、滯空 0.6s 掛空中;h0=胸口高。使用者 ?tune 實測定稿;史:100/18→55/50→現值)
 WALL_BOUNCE = 0.35         // 空中撞牆反彈係數(彈一小下→快落,不硬停懸空、不貼牆滑)
 LAND_SKID  = 0.25          // 落地保留的水平速度比(人=短滑 0.1s / 桶=滾動收尾)
 BARREL_BONK_STAB = 15      // 桶砸中的第一拍穩定傷;BARREL_DROP_T = 0.15 快落秒
