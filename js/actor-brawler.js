@@ -247,6 +247,11 @@ export function updateBrawler(e, g) {
   // --- 目標姿勢 ---
   let pose = null, wob = 0;
   const free = !e.carriedBy && !e.carrying;
+  // 走路振盪器(clip 定格與程序分支共用:扛人 hold 定格時腿也要走)
+  const walking = disp > A.walk.minDisp && !e.stunned && !e.carriedBy;
+  u.amp = (u.amp || 0) + ((walking ? 1 : 0) - (u.amp || 0)) * A.walk.ampEase;
+  u.ph = (u.ph || 0) + Math.min(disp, A.walk.maxDisp) * A.walk.phaseRate;
+  const sw = Math.sin(u.ph) * u.amp;
   const cclip = e.carryClip ? CLIPS[e.carryClip] : null;           // 丟人 heave clip:扛人期間覆蓋程序姿勢(跨 free,最優先)
   let cpt = now - (e.carryFx != null ? e.carryFx : -9);
   if (e.carryHold && cpt > e.carryHold) cpt = e.carryHold;         // 扛著走:定格在 hold 幀(抓起播完 0→hold 後停);按丟解除 → 續播
@@ -254,16 +259,20 @@ export function updateBrawler(e, g) {
   const ipt = now - (e.itemFx != null ? e.itemFx : -9);
   const pt = now - (e.punchFx != null ? e.punchFx : -9);
   const clip = CLIPS[PUNCH_CLIPS[e.punchKind || 0]];
-  if (cclip && cpt >= 0 && cpt < cclip.dur) pose = evalClip(cclip, cpt);
+  if (cclip && cpt >= 0 && cpt < cclip.dur) {
+    pose = evalClip(cclip, cpt);
+    if (e.carrying && e.carryHold && cpt >= e.carryHold) {         // 定格扛著走:腿部疊走路(上身/手臂維持 studio hold 幀;丟出後時鐘解凍不再疊)
+      pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
+      pose.lL_kx += Math.max(0, Math.sin(u.ph)) * A.walk.kneeAdd * u.amp;
+      pose.lR_kx += Math.max(0, -Math.sin(u.ph)) * A.walk.kneeAdd * u.amp;
+      pose.root_py += Math.abs(Math.sin(u.ph)) * A.walk.bob * u.amp / BRAWLER_SPEC.PX;
+    }
+  }
   else if (free && iclip && ipt >= 0 && ipt < iclip.dur) pose = evalClip(iclip, ipt);
   else if (free && pt >= 0 && clip && pt < clip.dur) pose = evalClip(clip, pt);
   const usingClip = pose != null;    // clip 播放 → 用高 blend 檔,別把浮誇關鍵幀壓扁
   if (!pose) {
     pose = { ..._zeroIdle };
-    const walking = disp > A.walk.minDisp && !e.stunned && !e.carriedBy;
-    u.amp = (u.amp || 0) + ((walking ? 1 : 0) - (u.amp || 0)) * A.walk.ampEase;
-    u.ph = (u.ph || 0) + Math.min(disp, A.walk.maxDisp) * A.walk.phaseRate;
-    const sw = Math.sin(u.ph) * u.amp;
     if (e.carriedBy || (u.lie || 0) > 0.3) {   // 被扛/被丟趴飛中:四肢亂踢掙扎
       const C = A.carried, t = now * C.kickRate;
       pose.lL_hx = Math.sin(t) * C.legAmp; pose.lR_hx = -Math.sin(t) * C.legAmp;

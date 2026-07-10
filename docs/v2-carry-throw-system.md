@@ -41,6 +41,7 @@
 **桶與人為何用不同動畫頻道(關鍵差異):**
 - **桶走 `itemClip` 頻道**:扛桶時 `carrying`(扛人)=null → `free=true` → itemClip 頻道生效。扛著走的姿勢是**程序** `ANIM.barrelHold`(不是 clip)。
 - **人走 `carryClip` 頻道**:扛人時 `carrying` 有值 → `free=false`,itemClip/punch 頻道都不播 → 需要一條**跨 free、最優先**的 `carryClip` 頻道。扛著走的姿勢是 **clip 定格**在 hold 幀(不是程序)。
+- **hold 定格時腿部疊走路**(actor-brawler,`cpt >= carryHold` 且 `e.carrying` 才疊):clip 定格會連腿一起凍住(對比扛桶=程序姿勢腿照走),所以定格狀態下把程序走路的腿軸(髖擺/膝/bob)**加在** hold 幀的腿姿勢上;上身/手臂維持 studio 定格,按丟後時鐘解凍(carryHold=0)即停疊、heave 編排不受影響。
 
 > 加新「可扛物」時先問:扛它的時候 `free` 是不是 false?是 → 得走 carryClip 式的跨-free 頻道;否 → 可沿用 itemClip。
 
