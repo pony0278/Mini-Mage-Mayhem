@@ -14,6 +14,9 @@ export const dlog = (...a) => { if (DEBUG) console.log('[v2]', ...a); };
 
 // --- 基礎調參 ---
 export const SPEED = 168;      // walk speed (px/s)
+// 跑步:同方向鍵(WASD)在 RUN_TAP 秒內連按 2 次 → 按住期間 ×RUN_MULT(放開/扛人/扛桶/暈=停)。
+// RUN_TAP=0.28 對齊準拍脈衝格(docs/v2-combat-rhythm.md);桌面鍵盤限定(觸控搖桿無雙擊語意,先不做)。
+export const RUN_MULT = 1.6, RUN_TAP = 0.28;
 export const RESPAWN = 1.3;    // delay before a fallen fighter pops back in (isles)
 export const FRICTION = 0.25;  // isles 長滑行的每秒速度乘數(平台場改用 KNOCK_FRICTION, 見 v2-terrain)
 
@@ -196,6 +199,7 @@ export function resetFighter(f) {
   f.pushWinT = 0; f.pushCd = 0; f.pushFrom = null; f._aiPushAt = 0; // 格擋推開:窗口/冷卻/攻擊者/AI排程
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
+  f.running = false; f._runKey = null; f._tapKey = ''; f._tapT = -9; // 跑步:同鍵連按2次觸發(v2.js keydown 記 tap、step 每幀裁定)
   f._lob = null;                     // 這次被拋飛用的彈道 profile(丟人=PERSON_LOB/終結技=PUNCH_LAUNCH_LOB;null 退回 PERSON_LOB)
   f.z = 0;                           // 被拋飛的 sim 高度(B 案彈道;v2.js step 每幀由 lobZ 算,判定 gate+render 都讀它)
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)

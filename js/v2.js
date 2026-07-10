@@ -17,7 +17,7 @@ import {
   POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, LAND_SKID, lobZ,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
@@ -194,6 +194,9 @@ function step(dt) {
         }
         continue;
       }
+      // 跑步裁定:雙擊鍵放開即停;扛人/扛桶/暈眩/踉蹌不能跑(搬運要有重量感)
+      if (f._runKey && !keys.has(f._runKey)) f._runKey = null;
+      f.running = !!(f._runKey && !f.carrying && !f.carryObj && !f.stunned && f.fumbleT <= 0);
       floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
       if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
     }
@@ -351,6 +354,15 @@ function toggleFlicker() {
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   const k = e.key.toLowerCase();
+  // 跑步雙擊偵測:同方向鍵 RUN_TAP 秒內連按 2 次 → 記 _runKey(step 每幀裁定 running;按住期間持續)。
+  // e.repeat 擋鍵盤自動重複(按住不是連按)。
+  if (!e.repeat && (k === 'w' || k === 'a' || k === 's' || k === 'd')) {
+    const me = fighters[LOCAL];
+    if (me && !me.ai) {
+      if (me._tapKey === k && game.time - me._tapT < RUN_TAP) me._runKey = k;
+      me._tapKey = k; me._tapT = game.time;
+    }
+  }
   keys.add(k);
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(k)) e.preventDefault();
   if (k === 'b') toggleAI(); // 切換 AI / 練習模式

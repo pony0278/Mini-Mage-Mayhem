@@ -31,6 +31,7 @@ export const BRAWLER_SPEC = {
 export const ANIM = {
   blend:   { rate: 14, clipRate: 40 },                                                     // 姿勢平滑:每秒收斂速率(消除狀態切換瞬跳)。clip 播放用高檔(clip 內插已滑,低通會削掉快速關鍵幀=浮誇動作被壓扁;頭尾皆 COMBAT_IDLE 故無接縫風險)
   walk:    { minDisp: 0.25, maxDisp: 6, phaseRate: 0.18, ampEase: 0.2, legSwing: 34, armSwing: 22, kneeAdd: 18, bob: 1.6 }, // 度
+  run:     { lean: 13, swingMul: 1.4, armMul: 1.55, kneeMul: 1.3, bobMul: 1.3 },            // 跑步(e.running,雙擊觸發):前傾+擺幅放大;步頻不用調——相位吃位移,跑快自動變快
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
@@ -288,12 +289,16 @@ export function updateBrawler(e, g) {
     } else if (e.carryObj) {    // 扛桶:雙臂舉過頭頂托住桶(桶由 updateHeldBarrel 貼在雙腕中點;丟桶時改由 clip 驅動)
       Object.assign(pose, A.barrelHold);
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
-    } else {                    // 走路:髖膝擺動+手臂反相(疊在戰鬥站姿上)
-      pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
-      pose.lL_kx += Math.max(0, Math.sin(u.ph)) * A.walk.kneeAdd * u.amp;
-      pose.lR_kx += Math.max(0, -Math.sin(u.ph)) * A.walk.kneeAdd * u.amp;
-      pose.aL_sx += sw * A.walk.armSwing; pose.aR_sx -= sw * A.walk.armSwing;
-      pose.root_py = Math.abs(Math.sin(u.ph)) * A.walk.bob * u.amp / BRAWLER_SPEC.PX;
+    } else {                    // 走路/跑步:髖膝擺動+手臂反相(疊在戰鬥站姿上;跑=擺幅放大+前傾,u.runK 平滑進出)
+      u.runK = (u.runK || 0) + ((e.running ? 1 : 0) - (u.runK || 0)) * A.walk.ampEase;
+      const rswing = 1 + (A.run.swingMul - 1) * u.runK, rarm = 1 + (A.run.armMul - 1) * u.runK;
+      const rknee = 1 + (A.run.kneeMul - 1) * u.runK, rbob = 1 + (A.run.bobMul - 1) * u.runK;
+      pose.lL_hx += sw * A.walk.legSwing * rswing; pose.lR_hx -= sw * A.walk.legSwing * rswing;
+      pose.lL_kx += Math.max(0, Math.sin(u.ph)) * A.walk.kneeAdd * rknee * u.amp;
+      pose.lR_kx += Math.max(0, -Math.sin(u.ph)) * A.walk.kneeAdd * rknee * u.amp;
+      pose.aL_sx += sw * A.walk.armSwing * rarm; pose.aR_sx -= sw * A.walk.armSwing * rarm;
+      pose.root_py = Math.abs(Math.sin(u.ph)) * A.walk.bob * rbob * u.amp / BRAWLER_SPEC.PX;
+      pose.spine_x += A.run.lean * u.runK; pose.head_x -= A.run.lean * 0.4 * u.runK;   // 前傾衝刺感(頭回抬看前方)
       // 待機呼吸:站著不走(rest 大)時膝蓋微彎↔伸直的慢正弦(auto 踩地→身體隨之起伏);走路(amp 大)時淡出。
       const rest = 1 - u.amp;
       if (rest > 0.01 && !e.stunned) {

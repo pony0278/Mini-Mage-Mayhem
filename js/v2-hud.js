@@ -220,7 +220,7 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動 · 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／放技能 · 扛人左鍵拋擲 · 空白鍵格擋（出拳瞬間＝反暈／挨打後＝推開）　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／放技能 · 扛人左鍵拋擲 · 空白鍵格擋（出拳瞬間＝反暈／挨打後＝推開）　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';

@@ -8,7 +8,7 @@ import { game, keys, mouse, CAM, touchInput } from './state.js';
 import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  SPEED, POD, inPod, iceAt, resetFighter, applyStage, barrels, labSwitch,
+  SPEED, RUN_MULT, POD, inPod, iceAt, resetFighter, applyStage, barrels, labSwitch,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
@@ -116,7 +116,7 @@ export function moveFighter(f, dt) {
     if (touchInput.enabled) { if (m.x || m.y) f.facing = Math.atan2(m.y, m.x); } // 手機:移動=面向;放開搖桿保留最後方向(可推向魔法陣→放開→按投擲)
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
   } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
-  const sp = SPEED * ((f.carrying || f.carryObj) ? CARRY_SLOW : 1); // 搬運人/扛桶時變慢
+  const sp = SPEED * ((f.carrying || f.carryObj) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;跑步(雙擊)加速
   if (onSlipperyIce(f.x, f.y)) { // 冰面:打滑(走路變成加速度,低摩擦保留動量 → 滑行,可滑進艙)
     f.vx += m.x * sp * ICE_ACCEL * dt; f.vy += m.y * sp * ICE_ACCEL * dt;
     const vv = Math.hypot(f.vx, f.vy), vmax = sp * 1.4; if (vv > vmax) { f.vx *= vmax / vv; f.vy *= vmax / vv; }
