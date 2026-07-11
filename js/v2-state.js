@@ -135,7 +135,11 @@ export const PAD_SPOTS = [[480, 140], [480, 500]]; // 補給座:上下中線(避
 export const PAD_RESPAWN = 5, PICKUP_R = 26;
 export const WIND_RANGE = 150, WIND_CONE = 1.0, WIND_FORCE = 620, WIND_SELF = 180; // 貼臉(<50)發射自身反彈=風壓過載
 export const TP_BLINK = 150, TP_JITTER = 20;
-export const ICE_R = 60, ICE_ACCEL = 7, ICE_FRICTION = 0.6; // 冰面壽命=FLOOR_LIFE.ice(地板化學);ICE_THROW(舊固定前放距離)已由 ICE_LOB 拋物線取代
+export const ICE_R = 90;             // 冰面半徑(玩家反饋 2026-07:加大=溜冰場);壽命=FLOOR_LIFE.ice;ICE_THROW(舊固定前放距離)已由 ICE_LOB 拋物線取代
+// 鎖滑(玩家反饋 2026-07):帶動量踩冰=鎖直線滑到撞牆暈(舊 ICE_ACCEL/ICE_FRICTION 低摩擦模型退場)
+export const SLIDE_MIN = 220;        // 鎖滑最低速度(> SLIDE_CONTAIN_V 200 → 滑進艙自動符合失控收容)
+export const SLIDE_KNOCK_V = 120;    // 冰上擊退速度超過此值 → 也觸發鎖滑(被打上冰/冰上挨打/摔落冰面)
+export const ICE_WALK = 0.4;         // 靜止站上冰(如冰凍醒來)的小心走速度倍率=逃生口,不觸發鎖滑
 // 冰瓶拋物線(B 案三參數;同 LOB 語言,?tune=1/控制台可即時調)。瓶=脆:落地/撞牆即碎(桶=悶,落地閃 1s 才爆——材質對比)。
 export const ICE_LOB = { range: 180, apex: 34, T: 0.5, h0: 58 };
 export const itemProjectiles = []; // 拋擲道具投擲物(冰瓶;{ x,y,vx,vy,flyT0,z,elem,alive });round reset 清空
@@ -205,6 +209,7 @@ export function resetFighter(f) {
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
   f.running = false; f._runKey = null; f._tapKey = ''; f._tapT = -9; // 跑步:同鍵連按2次觸發(v2.js keydown 記 tap、step 每幀裁定)
   f.frozen = false;                  // 冰凍皮(=暈的視覺變體:render 冰塊+不搖晃;stun 醒來時清)
+  f._slideVx = 0; f._slideVy = 0; f._onIce = false; f._slideT = -9; // 鎖滑:滑行向量(≠0=鎖定中)/上幀在冰上/滑行起始戳(收容歸因)
   f._lob = null;                     // 這次被拋飛用的彈道 profile(丟人=PERSON_LOB/終結技=PUNCH_LAUNCH_LOB;null 退回 PERSON_LOB)
   f.z = 0;                           // 被拋飛的 sim 高度(B 案彈道;v2.js step 每幀由 lobZ 算,判定 gate+render 都讀它)
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)

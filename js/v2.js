@@ -229,7 +229,7 @@ function step(dt) {
       if (f.state !== 'alive' || f.carriedBy || f.carrying || f.invuln > 0) continue;
       const thrown = inThrowFlight(f);
       if ((f.stunned || thrown || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
-        const cause = thrown ? 'throw' : onSlipperyIce(f.x, f.y) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind');
+        const cause = thrown ? 'throw' : (onSlipperyIce(f.x, f.y) || game.time - (f._slideT || -9) < 0.5) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind'); // 剛滑出冰面衝進艙也算 ice
         containByEnviron(f, cause); break;
       }
     }

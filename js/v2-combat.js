@@ -13,7 +13,7 @@ import {
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
-  ICE_ACCEL, ICE_FRICTION, STAGE_NAME, STAGE_BANNER,
+  SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER,
   FIRE_STAB_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
 import { FREEFORM, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
@@ -117,16 +117,48 @@ export function moveFighter(f, dt) {
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
   } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
   const sp = SPEED * ((f.carrying || f.carryObj) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;跑步(雙擊)加速
-  if (onSlipperyIce(f.x, f.y)) { // 冰面:打滑(走路變成加速度,低摩擦保留動量 → 滑行,可滑進艙)
-    f.vx += m.x * sp * ICE_ACCEL * dt; f.vy += m.y * sp * ICE_ACCEL * dt;
-    const vv = Math.hypot(f.vx, f.vy), vmax = sp * 1.4; if (vv > vmax) { f.vx *= vmax / vv; f.vy *= vmax / vv; }
-    const isx = f.vx * dt, isy = f.vy * dt;
-    if (!circleHitsSolid(f.x + isx, f.y, f.r) && !hitsFighter(f, f.x + isx, f.y)) f.x += isx; else f.vx = 0;
-    if (!circleHitsSolid(f.x, f.y + isy, f.r) && !hitsFighter(f, f.x, f.y + isy)) f.y += isy; else f.vy = 0;
+  // --- 冰面=鎖滑(玩家反饋 2026-07):帶動量踩上 → 鎖原始方向直線滑行,直到撞牆(暈)/撞人/滑出冰面。
+  //     滑行中無操控;速度 ≥ SLIDE_MIN(> 失控收容門檻)→ 滑進艙=收容(cause 'ice')。
+  //     靜止站上冰(冰凍醒來/瓶在腳下碎)= 小心走 ICE_WALK,不觸發鎖滑=逃生口。
+  if (onSlipperyIce(f.x, f.y)) {
+    if (!(f._slideVx || f._slideVy)) { // 未鎖:判定要不要開始滑
+      const vv = Math.hypot(f.vx, f.vy);
+      const enterMoving = !f._onIce && (m.x || m.y);   // 走著/跑著踩進冰
+      const knocked = vv > SLIDE_KNOCK_V;              // 被打上冰/冰上挨打/摔上冰(擊退速度)
+      if (enterMoving || knocked) {
+        const a = knocked ? Math.atan2(f.vy, f.vx) : Math.atan2(m.y, m.x); // 原始路徑方向
+        const s = Math.max(vv, SLIDE_MIN, knocked ? 0 : sp);               // 跑著進場滑得更快
+        f._slideVx = Math.cos(a) * s; f._slideVy = Math.sin(a) * s; f._slideT = game.time;
+        addText(f.x, f.y - 34, '打滑！', '#bfe6ff'); game.sfx.push('dash');
+      }
+    }
+    f._onIce = true;
+    if (f._slideVx || f._slideVy) { // 鎖定中:等速直線,操控無效
+      f.vx = f._slideVx; f.vy = f._slideVy;            // 餵給失控入艙判定(速度>門檻)
+      f._slideT = game.time;                           // 持續刷新=「最後滑行時刻」(出冰衝進艙的歸因窗)
+      const sx = f._slideVx * dt, sy = f._slideVy * dt;
+      const nx = clamp(f.x + sx, f.r, W - f.r), ny = clamp(f.y + sy, f.r, H - f.r);
+      if (circleHitsSolid(nx, ny, f.r) || nx !== f.x + sx || ny !== f.y + sy) { // 撞牆(含場邊)→ 停+暈
+        f._slideVx = 0; f._slideVy = 0; f.vx = 0; f.vy = 0;
+        addText(f.x, f.y - 44, '撞牆！', '#bfe6ff'); addShake(5);
+        if (!f.stunned && f.restunT <= 0) stunFighter(f);
+      } else if (hitsFighter(f, nx, ny)) {             // 撞到人:滑行止住(不暈,對方是肉墊)
+        f._slideVx = 0; f._slideVy = 0; f.vx = 0; f.vy = 0;
+      } else { f.x = nx; f.y = ny; }
+      return;
+    }
+    // 冰上無鎖(靜止進場/滑行已停):小心走
+    const wx = m.x * sp * ICE_WALK * dt, wy = m.y * sp * ICE_WALK * dt;
+    if (!circleHitsSolid(f.x + wx, f.y, f.r) && !hitsFighter(f, f.x + wx, f.y)) f.x += wx;
+    if (!circleHitsSolid(f.x, f.y + wy, f.r) && !hitsFighter(f, f.x, f.y + wy)) f.y += wy;
     f.x = clamp(f.x, f.r, W - f.r); f.y = clamp(f.y, f.r, H - f.r);
-    const ik = Math.pow(ICE_FRICTION, dt); f.vx *= ik; f.vy *= ik;
+    const ik = Math.pow(KNOCK_FRICTION, dt); f.vx *= ik; f.vy *= ik; // 殘餘擊退照常衰減
     return;
   }
+  if (f._slideVx || f._slideVy) { // 滑出冰面:動量交還一般擊退管線(草地自然減速)
+    f.vx = f._slideVx; f.vy = f._slideVy; f._slideVx = 0; f._slideVy = 0;
+  }
+  f._onIce = false;
   const stepX = (m.x * sp + f.vx) * dt;
   const stepY = (m.y * sp + f.vy) * dt;
   if (!circleHitsSolid(f.x + stepX, f.y, f.r) && !hitsFighter(f, f.x + stepX, f.y)) f.x += stepX; else f.vx = 0;
