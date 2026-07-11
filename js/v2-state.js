@@ -142,7 +142,9 @@ export const ITEM_SPEC = {
 export const ITEM_CAST_RECOVER = 0.18; // 排程施放後的恢復(承諾冷卻);瞬發道具(delay:0)不套用
 export const PAD_SPOTS = [[480, 140], [480, 500]]; // 補給座:上下中線(避開角落爆桶與中央實驗艙)
 export const PAD_RESPAWN = 5, PICKUP_R = 26;
-export const WIND_RANGE = 150, WIND_CONE = 1.0, WIND_FORCE = 620, WIND_SELF = 180; // 貼臉(<50)發射自身反彈=風壓過載
+// 風壓手套=遠距離扇形放射狀衝擊波(2026-07 重設計):錐內 → 力 = WIND_FORCE × 距離衰減(1−d/RANGE) × 角度衰減(1−|θ|/CONE),
+// 方向=從手心往外放射(正中往前全力、兩側斜著吹歪、遠處衰減)。近端窄遠端寬的扇形自動成立(錐從手心張開)。一發同時吹對手/桶/飛行冰瓶。
+export const WIND_RANGE = 320, WIND_CONE = 1.0, WIND_FORCE = 620; // RANGE=射程(遠程定位)/CONE=半張角±57°(夠寬才「整片」)/FORCE=中心近處峰值(>失控門檻→吹進艙)
 export const TP_BLINK = 150, TP_JITTER = 20;
 export const ICE_R = 90;             // 冰面半徑(玩家反饋 2026-07:加大=溜冰場);壽命=FLOOR_LIFE.ice;ICE_THROW(舊固定前放距離)已由 ICE_LOB 拋物線取代
 // 鎖滑(玩家反饋 2026-07):帶動量踩冰=鎖直線滑到撞牆暈(舊 ICE_ACCEL/ICE_FRICTION 低摩擦模型退場)
