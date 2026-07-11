@@ -8,7 +8,7 @@ import { addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
-  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_THROW,
+  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, itemProjectiles,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, LAND_SKID, WALL_BOUNCE, lobZ,
@@ -117,11 +117,38 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
   f.vx = 0; f.vy = 0; game.sfx.push('upgrade');
   dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
 }
-export function castIce(f) { // 前方丟出 → 地板冰面(cut 3:走地板化學 applyElement,格化、吃衰退、可被火熄成水)
-  const lx = clamp(f.x + Math.cos(f.facing) * ICE_THROW, 24, W - 24), ly = clamp(f.y + Math.sin(f.facing) * ICE_THROW, 24, H - 24);
-  const n = stampElement(lx, ly, ICE_R, 'ice'); // 地板化學:FL.ICE 格(壽命 FLOOR_LIFE.ice、可被火滅、視覺=updateFloorFx)
-  addRing(lx, ly, ICE_R, ITEM_INFO.ice.color, 0.4, 5); addText(lx, ly - 20, '冰面！', ITEM_INFO.ice.color); game.sfx.push('dash');
-  dlog('ICE @', Math.round(lx) + ',' + Math.round(ly), 'tiles', n);
+// 冰霜瓶:release 幀從頭頂甩出(useItem 播 barrel_throw 暫代動畫,resolveItemCast 在 delay=release 幀呼叫這裡)
+// → ICE_LOB 拋物線 → 落地/撞牆即碎 → 冰面。飛行中穿人不碰撞(瓶不傷人,殺傷=冰面滑行/接雷)。
+export function castIce(f) {
+  const a = f.facing, F = ICE_LOB.range / ICE_LOB.T;                 // 出手當下現算(改 LOB 即時生效)
+  itemProjectiles.push({ x: f.x + Math.cos(a) * (f.r + 8), y: f.y + Math.sin(a) * (f.r + 8), vx: Math.cos(a) * F, vy: Math.sin(a) * F, flyT0: game.time, z: ICE_LOB.h0, elem: 'ice', alive: true });
+  game.sfx.push('dash'); addText(f.x, f.y - 30, '拋瓶！', ITEM_INFO.ice.color);
+  dlog('ICE throw by', NAMES[f.pid]);
+}
+function shatterProjectile(pr) { // 瓶=脆:落地/撞牆即碎 → 蓋元素地板;無傷害脈衝(冰的殺傷=滑行/接雷)
+  pr.alive = false;
+  const n = stampElement(pr.x, pr.y, ICE_R, pr.elem);
+  addRing(pr.x, pr.y, ICE_R, ITEM_INFO.ice.color, 0.4, 5); hitSpark(pr.x, pr.y, ITEM_INFO.ice.color, 1.4);
+  addText(pr.x, pr.y - 20, '碎裂！', ITEM_INFO.ice.color); game.sfx.push('thud');
+  dlog('ICE shatter @', Math.round(pr.x) + ',' + Math.round(pr.y), 'tiles', n);
+}
+export function updateItemProjectiles(dt) {
+  for (let i = itemProjectiles.length - 1; i >= 0; i--) {
+    const pr = itemProjectiles[i];
+    const t = game.time - pr.flyT0;
+    pr.z = lobZ(t, ICE_LOB);
+    const nx = pr.x + pr.vx * dt, ny = pr.y + pr.vy * dt;
+    if (circleHitsSolid(nx, ny, 8)) shatterProjectile(pr);           // 撞牆即碎(在牆邊成冰面;不反彈——脆)
+    else {
+      pr.x = clamp(nx, 8, W - 8); pr.y = clamp(ny, 8, H - 8);
+      if (t >= ICE_LOB.T) {                                          // 自然落地幀:回推跨幀過衝(粗 dt 下 t 超過 T 的位移已加)→ 落點=精確 range
+        const over = t - ICE_LOB.T;
+        pr.x = clamp(pr.x - pr.vx * over, 8, W - 8); pr.y = clamp(pr.y - pr.vy * over, 8, H - 8);
+        shatterProjectile(pr);
+      }
+    }
+    if (!pr.alive) itemProjectiles.splice(i, 1);
+  }
 }
 
 // --- 危險 #1:爆桶。靠近→點燃→爆炸:炸飛+削弱穩定值 ---

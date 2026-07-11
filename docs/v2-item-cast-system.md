@@ -95,6 +95,13 @@ if (f._itemCastAt && game.time>=f._itemCastAt) resolveItemCast(f);
 
 `持有:風壓手套 ×3(右鍵 / E 使用)`;頭頂道具球旁標次數。觸控情境標籤沿用(`f.item` 仍是字串)。
 
+## 狀態更新(2026-07):排程施放管線啟用
+
+冰霜瓶拋擲版=**`ITEM_SPEC.clip/delay` 的第一個真實用戶**:`clip:'barrel_throw'`(暫代,之後換專屬拋瓶
+clip)、`delay:BARREL_THROW_DELAY`(release tag 自動導出)。按 E → 播舉頭上 heave → release 幀
+`resolveItemCast` → `castIce` 甩出 `ICE_LOB` 拋物線投擲物(`itemProjectiles`,v2-state)→ 落地/撞牆
+即碎 → `stampElement` 冰面。施法中被暈=取消(次數已扣不退)——排程/打斷語意與設計一致,已驗收。
+
 ## 已拍板的設計決策
 
 1. **次數**:風壓 3、冰霜 1、傳送 1。

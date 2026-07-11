@@ -239,6 +239,28 @@ function updateHeldBarrel(e, g, R) {
   bm.rotation.y = game.time * 1.2;
 }
 
+// 背後掛瓶(冰霜瓶 ×3 彈藥視覺化):持有 ice 道具時背上掛 itemUses 顆小瓶(桶模冰色縮小版佔位,
+// 使用者瓶模好了換 mesh)。掛在 g(世界層):跟朝向/被丟打橫一起轉;不跟脊椎彎(MVP 夠用)。
+function updateBackBottles(e, g) {
+  const want = (e.item === 'ice') ? Math.min(e.itemUses || 0, 3) : 0;
+  let bb = g.userData.backBottles;
+  if (!bb) {
+    if (!want) return;                                   // 沒拿冰瓶就不建(lazy)
+    bb = [];
+    for (let i = 0; i < 3; i++) {
+      const grp = new THREE.Group(); grp.name = 'BACK_BOTTLE';
+      const s = 6.5;
+      const body = makeBox(s, s * 1.3, s, 0x9fd8e8, 0x2a6a88, 0.5); grp.add(body);
+      const cap = makeBox(s * 0.55, 2.2, s * 0.55, 0x6aa8c0); cap.position.y = s * 0.78; grp.add(cap);
+      grp.position.set((i - 1) * 8.5, 25, -9);           // 背後一排(g 局部:臉=+z → 背=-z)
+      grp.rotation.x = 0.16;                             // 微傾貼背
+      g.add(grp); bb.push(grp);
+    }
+    g.userData.backBottles = bb;
+  }
+  for (let i = 0; i < bb.length; i++) bb[i].visible = i < want;
+}
+
 // 每幀:狀態 → 目標姿勢(clip 或程序)→ 平滑混合 → applyBrawlerPose;
 // 面向/暈眩搖晃/flinch/整體 squash 維持世界層(g)處理,與姿勢層(P)分離。
 export function updateBrawler(e, g) {
@@ -371,4 +393,5 @@ export function updateBrawler(e, g) {
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
   updateHeldBarrel(e, g, R);   // 扛桶:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
+  updateBackBottles(e, g);     // 冰霜瓶:背後掛 itemUses 顆(彈藥視覺化)
 }

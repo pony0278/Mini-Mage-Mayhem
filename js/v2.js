@@ -17,12 +17,12 @@ import {
   POD, inPod, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, LAND_SKID, lobZ, RUN_TAP,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, ICE_LOB, itemProjectiles, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateBarrels, updateStations, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
+import { updatePads, updateBarrels, updateStations, updateItemProjectiles, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -48,7 +48,7 @@ function playClip(name, f = fighters[LOCAL]) {
 
 // --- round / match orchestration ---
 function resetRound() {
-  resetBarrels(); resetPads(); resetStations(); resetFloor();
+  resetBarrels(); resetPads(); resetStations(); resetFloor(); itemProjectiles.length = 0;
   for (const f of fighters) resetFighter(f);
 }
 function restartMatch() {
@@ -233,7 +233,7 @@ function step(dt) {
         containByEnviron(f, cause); break;
       }
     }
-    updateBarrels(dt); updateStations(dt); updatePads(dt); // 廢料桶 / 元素站噴發 / 補給座重刷(冰面衰退=stepFloor 地板化學)
+    updateBarrels(dt); updateStations(dt); updatePads(dt); updateItemProjectiles(dt); // 廢料桶 / 元素站 / 補給座 / 拋擲道具(冰瓶;冰面衰退=stepFloor)
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment, isles)
   const lf = fighters[LOCAL];
@@ -249,6 +249,7 @@ function step(dt) {
   // fly = sim 真高度(B 案彈道 b.z,updateBarrels 算);人的高度=f.z(actor-brawler 直接讀)
   game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false, fly: b.z || 0 }));
   game.props.push({ x: labSwitch.x, y: labSwitch.y, r: labSwitch.r, charge: 'lightning', hp: 1, maxHp: 1, held: false }); // 中央緊急控制台(佔位=藍色發光箱)
+  for (const pr of itemProjectiles) game.props.push({ x: pr.x, y: pr.y, r: 8, wall: 'ice', hp: 1, maxHp: 1, held: false, fly: pr.z || 0 }); // 飛行中的冰瓶(桶模冰 tint 佔位,瓶模好了換 mesh)
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];
@@ -313,7 +314,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, // 彈道 tuning(物件可變:控制台 __v2.PUNCH_LAUNCH_LOB.apex=70 即時生效;?tune=1 滑桿同源)
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, ICE_LOB, itemProjectiles, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 拋擲道具(測試用)
   punch, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),

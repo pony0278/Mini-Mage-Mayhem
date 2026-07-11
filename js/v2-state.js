@@ -124,7 +124,10 @@ export const ITEM_INFO = { wind: { name: '風壓手套', color: '#bfeaff' }, tel
 //   aim=facing/self/target(未來瞄準用) · kind=純標籤(HUD/AI/文件分組;機制不靠它)
 export const ITEM_SPEC = {
   wind:     { uses: 3, clip: null, delay: 0, whileDisabled: false, aim: 'facing', kind: 'blast' },
-  ice:      { uses: 1, clip: null, delay: 0, whileDisabled: false, aim: 'facing', kind: 'hazard' },
+  // 冰霜瓶改版(使用者拍板 2026-07):舉頭上拋出(barrel_throw 暫代;之後換專屬拋瓶 clip)→ ICE_LOB
+  // 拋物線 → 落地/撞牆即碎 → 冰面。×3=技能彈(文件 §9.1.1 原 ×1;可拋瞄準後升 A 階用量,實測調)。
+  // 排程施放管線的第一個真實用戶:clip+delay 填表即接(delay=release tag 自動導出)。
+  ice:      { uses: 3, clip: 'barrel_throw', delay: BARREL_THROW_DELAY, whileDisabled: false, aim: 'facing', kind: 'hazard' },
   teleport: { uses: 1, clip: null, delay: 0, whileDisabled: true,  aim: 'self',   kind: 'mobility' },
 };
 export const ITEM_CAST_RECOVER = 0.18; // 排程施放後的恢復(承諾冷卻);瞬發道具(delay:0)不套用
@@ -132,7 +135,10 @@ export const PAD_SPOTS = [[480, 140], [480, 500]]; // 補給座:上下中線(避
 export const PAD_RESPAWN = 5, PICKUP_R = 26;
 export const WIND_RANGE = 150, WIND_CONE = 1.0, WIND_FORCE = 620, WIND_SELF = 180; // 貼臉(<50)發射自身反彈=風壓過載
 export const TP_BLINK = 150, TP_JITTER = 20;
-export const ICE_R = 60, ICE_THROW = 120, ICE_ACCEL = 7, ICE_FRICTION = 0.6; // 冰面壽命=FLOOR_LIFE.ice(地板化學),不再有獨立 ICE_DUR
+export const ICE_R = 60, ICE_ACCEL = 7, ICE_FRICTION = 0.6; // 冰面壽命=FLOOR_LIFE.ice(地板化學);ICE_THROW(舊固定前放距離)已由 ICE_LOB 拋物線取代
+// 冰瓶拋物線(B 案三參數;同 LOB 語言,?tune=1/控制台可即時調)。瓶=脆:落地/撞牆即碎(桶=悶,落地閃 1s 才爆——材質對比)。
+export const ICE_LOB = { range: 180, apex: 34, T: 0.5, h0: 58 };
+export const itemProjectiles = []; // 拋擲道具投擲物(冰瓶;{ x,y,vx,vy,flyT0,z,elem,alive });round reset 清空
 export const SLIDE_CONTAIN_V = 200; // 失控入艙:被擊退/打滑速度 > 此值且進艙半徑 = 收容(spec F §2.2)
 export function randItem() { return ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)]; }
 export const pads = PAD_SPOTS.map(([x, y]) => ({ x, y, r: 14, item: randItem(), respawn: 0 }));

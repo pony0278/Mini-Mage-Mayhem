@@ -31,7 +31,7 @@
 | `v2-terrain.js` | 103 | TERRAIN 旗標(flat/isles/grid)、建地、onSolid、橋導軌 |
 | `v2-floor.js` | 115 | **地板化學狀態機**:`FL` 狀態集、`FLOOR_RX` 反應表、**`applyElement`/`stampElement`=唯一注入 choke point**、`stepFloor`(火沿油滾動/衰退/電水雙計時器)、`floorEvents` 佇列(毒爆→combat drain,免循環)。只 import constants/utils/state/v2-state |
 | `v2-combat.js` | 379 | 移動(冰滑=`onSlipperyIce`)、三連擊(punch→`_strikeAt`→`resolveStrike`)、精準格擋/推開、抓-搬-掙脫-投擲、收容裁定(三階段)、**地板讀取 `floorHazards`+`drainFloorEvents`**、揍桶/揍總開關、AI |
-| `v2-items.js` | 245 | 補給座撿取、wind/teleport/ice cast、**排程施放**(`useItem`→`resolveItemCast`)、**廢料桶**(charge 吸地板/`pressurizeBarrel`/撿丟推/撞擊爆/`explodeBarrel`→種地板)、**元素站**(`updateStations`:輪替/3s 預警/`eruptStation` 脈衝+殘留;雷=電擊無地板)、`elemColor` |
+| `v2-items.js` | 275 | 補給座撿取、wind/teleport cast、**冰霜瓶=拋擲物**(`castIce` 甩 `ICE_LOB` 拋物線 → `updateItemProjectiles` 落地/撞牆即碎 → 冰面;背後掛瓶=actor-brawler `updateBackBottles`)、**排程施放**(`useItem`→`resolveItemCast`;冰瓶=第一個真實用戶 clip+delay)、**廢料桶**(charge 吸地板/`pressurizeBarrel`/撿丟推/撞擊爆/`explodeBarrel`→種地板)、**元素站**(`updateStations`:輪替/3s 預警/`eruptStation` 脈衝+殘留;雷=電擊無地板)、`elemColor` |
 | `v2-report.js` | 53 | 事故報告生成(吃 `inc` 計數器) |
 | `v2-hud.js` | 228 | 2D HUD(穩定條/道具次數/橫幅/報告) |
 | `v2-touch.js` | 185 | 手機:浮動搖桿+3 鈕+報告鈕(寫 `touchInput`;`__touch`) |
@@ -57,7 +57,7 @@
 → drainFloorEvents()                ← 毒爆 AoE
 → 搬人 loop(跟隨/掙脫/拖進艙=containByCarry)→ 扛桶 loop(跟隨/暈→掉桶)
 → 失控入艙判定(stunned/thrown/速度>門檻 + inPod → containByEnviron;cause: throw/ice/barrel(-3)/wind)
-→ updateBarrels → updateStations → updatePads(冰面衰退=stepFloor 地板化學,舊 updateIce/iceZones 已清除)
+→ updateBarrels → updateStations → updatePads → updateItemProjectiles(冰瓶飛行/碎裂;冰面衰退=stepFloor)
 幀尾(step 外):game.enemies=fighters、game.props 重建(桶+總開關)、setGroundMarkers(艙/桶危險環/站收縮環/冰/補給座)
 ```
 
