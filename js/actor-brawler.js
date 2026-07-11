@@ -50,6 +50,13 @@ export const ANIM = {
   thrown:  { lift: 8, rate: 10 },                                                          // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下的平滑速率
   heldBarrel: { liftK: 0.9 },                                                              // 扛桶:桶心抬高 = 桶邊長×此係數(0.5=桶底貼掌心;45° 俯視鏡頭下要再高些頭才不被蓋)
   heldBottle: { w: 12, h: 16, liftK: 0.6 },                                                // 施法舉瓶(冰霜瓶等拋擲道具):放大版瓶貼雙手中點;參數結構鏡像 heldBarrel
+  guard: { // 按住防禦:使用者 studio 定稿的舉防定格(guard 幀非零軸→值直接蓋在戰鬥站姿上;側身含胸、右臂高舉護頭、左臂護體、屈膝穩樁)
+    spine_x: -13, spine_y: -86, pelvis_y: -63,
+    aL_sx: 20, aL_sy: 8, aL_sz: 13, aL_ex: 96,
+    aR_sx: -66, aR_sy: 60, aR_sz: 68, aR_ex: 145, aR_wx: -5, aR_wy: 105, aR_stretch: 2.18,
+    lL_hy: 56, lL_hz: -30, lL_kx: 81, lL_ax: 60, lL_ty: -22, lL_scale: 1.09, lL_stretch: 1.09,
+    lR_hx: 27, lR_hy: -67, lR_hz: 9, lR_kx: -11, lR_ax: 32,
+  },
   flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
 };
 
@@ -396,6 +403,8 @@ export function updateBrawler(e, g) {
     } else if (e.carryObj) {    // 扛桶:雙臂舉過頭頂托住桶(桶由 updateHeldBarrel 貼在雙腕中點;丟桶時改由 clip 驅動)
       Object.assign(pose, A.barrelHold);
       pose.lL_hx += sw * A.walk.legSwing; pose.lR_hx -= sw * A.walk.legSwing;
+    } else if (e.guarding) {    // 按住防禦:使用者 studio 定稿的舉防定格(靜態蓋上,blend 自動補舉起/放下過渡)
+      Object.assign(pose, A.guard);
     } else {                    // 走路/跑步:髖膝擺動+手臂反相(疊在戰鬥站姿上;跑=擺幅放大+前傾,u.runK 平滑進出)
       u.runK = (u.runK || 0) + ((e.running ? 1 : 0) - (u.runK || 0)) * A.walk.ampEase;
       const rswing = 1 + (A.run.swingMul - 1) * u.runK, rarm = 1 + (A.run.armMul - 1) * u.runK;

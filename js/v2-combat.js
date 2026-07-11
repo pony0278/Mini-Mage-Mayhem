@@ -221,7 +221,7 @@ export function freezeFighter(o, byPid) {
 // 出拳=起手:播動作、鎖定方向,STRIKE_DELAY 秒後的 impact 影格才判定命中(resolveStrike)。
 // 起手中被打暈/被抓/被推開踉蹌 → resolveStrike 的守衛直接取消 = 格擋推開是能打斷出拳的真反制。
 export function punch(f) {
-  if (f.punchCd > 0 || f.stunned || f.carrying || f.carryObj || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return;
+  if (f.punchCd > 0 || f.stunned || f.carrying || f.carryObj || f.carriedBy || f.fumbleT > 0 || f.guarding || f.state !== 'alive') return; // 舉防中不能出拳(防禦=承諾架式,要攻擊先放防)
   if (f.comboT <= 0) f.comboN = 0;                        // 超窗 → 從第一段重來
   const stage = f.comboN;                                 // 0 左鉤 / 1 右鉤 / 2 浮誇直拳(終結技)
   f.punchCd = COMBO_CD[stage];
