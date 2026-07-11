@@ -9,9 +9,11 @@
 // 用法:cd build && npm install && npm run build   →   產出 ../dist/
 //
 // 邊界:
-//  - THREE 由 vendor/three.min.js 以全域載入,不進 bundle(external 全域)。
+//  - THREE + GLTFLoader 由 vendor/*.js 以全域載入,不進 bundle(external 全域)。
 //  - v2-tuning.js(?tune=1 開發面板)排除,不隨投稿包外流。
-//  - 遊戲全程序化,無 runtime 資產抓取,所以 dist/ 只需 html + bundle + vendor。
+//  - **執行時資產**:avatar 預設開 → 開局 fetch assets/rigs/*.glb(角色 + rigged 手)。
+//    dist/ 必須帶走 vendor/GLTFLoader.js + assets/rigs/,否則投稿包 avatar 404 退方塊人/報錯。
+//    (assets/raw、assets/parts 是建模來源檔,不進部署——同 .vercelignore。)
 
 import { build } from 'esbuild';
 import JavaScriptObfuscator from 'javascript-obfuscator';
@@ -77,8 +79,13 @@ const obf = JavaScriptObfuscator.obfuscate(bundled, {
 log(`  obfuscated ${(obf.length / 1024).toFixed(0)} KB`);
 writeFileSync(resolve(DIST, 'game.min.js'), obf, 'utf8');
 
-// ---- 3. vendor(three 已是 minified,原樣帶走) ----
+// ---- 3. vendor(three + GLTFLoader 已是 minified,原樣帶走;index.html 兩支都引用) ----
 cpSync(p('vendor/three.min.js'), resolve(DIST, 'vendor/three.min.js'));
+cpSync(p('vendor/GLTFLoader.js'), resolve(DIST, 'vendor/GLTFLoader.js'));
+
+// ---- 3.5. 執行時資產:assets/rigs/*.glb(avatar 角色 + rigged 手,開局 fetch)----
+// raw/parts 是建模來源,故只帶 rigs/(~600KB;Poki 8MB 門檻下無壓力)。
+cpSync(p('assets/rigs'), resolve(DIST, 'assets/rigs'), { recursive: true });
 
 // ---- 4. 改寫 v2.html:module 進入點 → 混淆過的 classic script ----
 let html = readFileSync(p('v2.html'), 'utf8');
@@ -89,5 +96,6 @@ html = html.replace(
 if (html.includes('js/v2.js')) throw new Error('v2.html 進入點替換失敗,請檢查 <script> 標籤');
 writeFileSync(resolve(DIST, 'index.html'), html, 'utf8');   // 投稿包的入口一律叫 index.html
 
-log('✅ dist/ 完成:index.html + game.min.js + vendor/three.min.js');
+log('✅ dist/ 完成:index.html + game.min.js + vendor/(three+GLTFLoader) + assets/rigs/');
 log('   投稿前用本地伺服器實測:python3 -m http.server 8100 --directory dist');
+log('   ⚠ 實測務必確認 avatar 載入(開 DevTools Network 看 base-avatar.glb 是 200 非 404)');

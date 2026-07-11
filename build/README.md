@@ -28,10 +28,16 @@ npm run build        # 產出 ../dist/
 
 ```
 dist/
-  index.html         # v2.html 改寫版,入口改叫 index.html、指向混淆檔
-  game.min.js        # bundle + 混淆後的整個 v2(~440KB)
-  vendor/three.min.js
+  index.html                          # v2.html 改寫版,入口改叫 index.html、指向混淆檔
+  game.min.js                         # bundle + 混淆後的整個 v2(~640KB;gz ~246KB)
+  vendor/three.min.js                 # THREE 全域
+  vendor/GLTFLoader.js                # avatar/rigged 手載入 GLB 需要
+  assets/rigs/base-avatar.glb         # 角色(avatar 預設開,開局 fetch)
+  assets/rigs/chibi-hands-rigged.glb  # rigged 手
+  assets/rigs/chibi-hands.glb         # 方塊人手(?avatar=0 才用;順帶帶走)
 ```
+
+**over-the-wire 總量 ~0.68 MB(gzip)——Poki 8MB 初始下載門檻下用不到 9%,餘裕極大。**
 
 投稿前本地實測:
 
@@ -43,8 +49,12 @@ python3 -m http.server 8100 --directory dist   # → http://localhost:8100/
 
 - **THREE** 由 `vendor/three.min.js` 全域載入,不進 bundle(esbuild `external`)。
 - **v2-tuning.js**(`?tune=1` 開發面板)排除,不隨投稿包外流。
-- 遊戲**全程序化、無 runtime 資產抓取**,所以 dist/ 只要 html + bundle + vendor。
-  日後若 v2 開始 `fetch` 外部資產,記得在 build 腳本補上複製那些檔案。
+- **執行時資產**:avatar 預設開 → 開局 `fetch('assets/rigs/*.glb')`(角色 + rigged 手 + 方塊人手)。
+  build 腳本已複製 `vendor/GLTFLoader.js` + `assets/rigs/`;`assets/raw`、`assets/parts`
+  是建模來源檔,**不進部署**(同 `.vercelignore`)。
+  ⚠ 日後 v2 再 `fetch` 新的外部資產(元素道具 GLB 等),記得在 build-portal.mjs §3.5 補複製,
+  否則投稿包 404。**每次改完務必 headless 實測 dist/**(scratchpad `dist_boot.mjs`:確認
+  avatar 建成 + GLB 皆 200,混淆器 selfDefending/debugProtection 只有實跑才驗得出)。
 
 ## 天花板(誠實話)
 
