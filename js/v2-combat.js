@@ -14,6 +14,8 @@ import {
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER,
+  GUARD_MOVE, GUARD_STAM_MAX, GUARD_DRAIN, GUARD_BLOCK_COST, GUARD_REGEN, GUARD_REGEN_DELAY,
+  GUARD_BLOCK_PUSH, GUARD_BLOCK_FLINCH, GUARD_BREAK_FUMBLE, GUARD_BREAK_LOCK,
   FIRE_STAB_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
 import { FREEFORM, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
@@ -117,6 +119,7 @@ export function moveFighter(f, dt) {
     if (touchInput.enabled) { if (m.x || m.y) f.facing = Math.atan2(m.y, m.x); } // 手機:移動=面向;放開搖桿保留最後方向(可推向魔法陣→放開→按投擲)
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
   } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
+  if (f.guarding) { m.x *= GUARD_MOVE; m.y *= GUARD_MOVE; }                       // 舉防=定身(GUARD_MOVE 0);想拉開就得放防。擊退/被推仍照 f.vx/vy 走
   const sp = SPEED * ((f.carrying || f.carryObj) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;跑步(雙擊)加速
   // --- 冰面=鎖滑(玩家反饋 2026-07):帶動量踩上 → 鎖原始方向直線滑行,直到撞牆(暈)/撞人/滑出冰面。
   //     滑行中無操控;速度 ≥ SLIDE_MIN(> 失控收容門檻)→ 滑進艙=收容(cause 'ice')。
@@ -237,15 +240,39 @@ export function punch(f) {
     }
   }
 }
-// 格擋鍵的三層分派(同一顆鍵,時機決定結果):
-// 黃金窗口內=精準格擋(反暈) → 挨打後短窗=普通推開 → 都不是=空按進冷卻(防無腦連打)
+// 格擋鍵「按下瞬間」的分派(edge):黃金窗口內=精準格擋(反暈) → 挨打後短窗=普通推開。
+// 都不是=不做事(按住本身=防禦架式,由 v2.js pollGuard 設 f.guarding、updateGuard 管耐力)。
+// 空按不再進冷卻——「隨時可舉防」,防呆改由耐力條(GUARD_STAM)承擔。
 export function doGuard(f) {
   if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0) return;
-  if (f.pushCd > 0) return;                    // 冷卻中:無事發生(不重複懲罰)
   if (f.parryWinT > 0) { doPerfectParry(f); return; }
-  if (f.pushWinT > 0) { doPushOff(f); return; }
-  f.pushCd = PUSH_CDT;                         // 空按:格擋資源被自己按掉
-  addText(f.x, f.y - 34, '格擋落空…', '#8fa8b8'); game.sfx.push('whiff');
+  if (f.pushWinT > 0 && f.pushCd <= 0) { doPushOff(f); return; }
+}
+// 能否舉防(按住防禦架式):活著、非暈/被扛/踉蹌、不在破防鎖定、不在鎖滑中、耐力>0。
+export function canGuard(f) {
+  return f.state === 'alive' && !f.stunned && !f.carriedBy && !f.carrying && !f.carryObj
+    && f.fumbleT <= 0 && f.guardLock <= 0 && f.guardStam > 0 && !(f._slideVx || f._slideVy);
+}
+// 每幀:耐力衰退/回充。舉防中純守衰退;放開後延遲才回充。v2.js step 於 pollGuard 設好 f.guarding 後呼叫。
+export function updateGuard(f, dt) {
+  if (f.guardLock > 0) f.guardLock = Math.max(0, f.guardLock - dt);
+  if (f.guarding && !canGuard(f)) f.guarding = false;  // 狀態中途改變(被暈/被抓/踉蹌)→ 立刻卸防
+  if (f.guarding) {
+    f.guardStam = Math.max(0, f.guardStam - GUARD_DRAIN * dt);
+    f.guardRegenT = GUARD_REGEN_DELAY;
+    if (f.guardStam <= 0) guardBreak(f);       // 純守耗盡也破防(逼你別無腦龜)
+  } else {
+    if (f.guardRegenT > 0) f.guardRegenT = Math.max(0, f.guardRegenT - dt);
+    else if (f.guardStam < GUARD_STAM_MAX) f.guardStam = Math.min(GUARD_STAM_MAX, f.guardStam + GUARD_REGEN * dt);
+  }
+}
+// 破防:被逼出架式、踉蹌、短時間不能再舉防(攻擊方的免費機會)。
+export function guardBreak(f) {
+  f.guarding = false; f.guardStam = 0; f.guardLock = GUARD_BREAK_LOCK;
+  f.fumbleT = Math.max(f.fumbleT, GUARD_BREAK_FUMBLE); f.guardRegenT = GUARD_REGEN_DELAY;
+  addText(f.x, f.y - 40, '破防！', '#ff9a6b'); addRing(f.x, f.y, 34, '#ff9a6b', 0.4, 5);
+  addShake(6); addHitstop(0.1); game.sfx.push('hurt');
+  if (f.pid === LOCAL) v2s.localFlash = 0.28;
 }
 export function doPerfectParry(d) { // 黃金窗口內按下:取消對方那拳+反暈(進入抓取回合的入場券)
   const a = d.parryFrom;
@@ -276,12 +303,24 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > PUNCH_CONE) continue;
     hit = true;
+    // 按住防禦架式:擋普通鉤拳(前兩段);終結技=浮誇直拳穿防(元素亦穿,見各 cast)。
+    if (o.guarding && !fin) {
+      o.guardStam -= GUARD_BLOCK_COST;                                   // 每擋一拳扣耐力
+      o.lastHitBy = f.pid; o.lastHitT = game.time; o.faceT = 0.2;
+      const bpx = o.x - Math.cos(a) * o.r * 0.7, bpy = o.y - Math.sin(a) * o.r * 0.7;
+      hitSpark(bpx, bpy, '#bfe0ff', 1.4); addRing(bpx, bpy, 22, '#8fd0ff', 0.22, 4);
+      o.vx += Math.cos(a) * GUARD_BLOCK_PUSH; o.vy += Math.sin(a) * GUARD_BLOCK_PUSH; // 防守方輕微後仰+被推一小步
+      flinch(o, a, GUARD_BLOCK_FLINCH);
+      addText(o.x, o.y - 34, '擋下！', '#9ecbff'); addShake(2); addHitstop(0.05); game.sfx.push('thud');
+      if (o.guardStam <= 0) guardBreak(o);                              // 這一擋耗盡=破防(攻擊方免費機會)
+      continue;                                                         // 擋掉:無穩定值傷害、不開推開窗、不打飛
+    }
     o.faceT = 0.2; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     o.stability = Math.max(0, o.stability - COMBO_STAB[stage]); o.stabCd = 0.8;
     flinch(o, a, fin ? 0.32 : 0.22);
     const cpx = o.x - Math.cos(a) * o.r * 0.7, cpy = o.y - Math.sin(a) * o.r * 0.7; // 火花開在拳頭接觸點
     hitSpark(cpx, cpy, '#ffe0a3', fin ? 2.2 : 1.5); addRing(cpx, cpy, fin ? 34 : 20, '#ffd36d', fin ? 0.32 : 0.22, fin ? 5 : 3);
-    if (fin) addText(o.x, o.y - 34, '重擊！', '#ffb14a');
+    if (fin) { addText(o.x, o.y - 34, o.guarding ? '穿防重擊！' : '重擊！', '#ffb14a'); o.guarding = false; } // 終結技穿防:破掉架式
     // 格擋窗口:被打中(還能動)→ 短窗內按格擋鍵可推開攻擊方;AI 有機率排程一次推開
     if (!o.stunned && !o.carriedBy) {
       o.pushWinT = PUSH_WIN; o.pushFrom = f;

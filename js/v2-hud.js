@@ -7,7 +7,7 @@ import { game } from './state.js';
 import { project } from './render.js';
 import {
   v2s, fighters, LOCAL, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, ITEM_INFO,
+  POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, ITEM_INFO, GUARD_STAM_MAX,
   STAGE_NAME, METHOD_COL, METHOD_ZH,
 } from './v2-state.js';
 
@@ -67,6 +67,12 @@ function drawContainHud() {
       hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw, 5);
       hctx.fillStyle = '#9affd0'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw * ep, 5);
       if (f.pid === LOCAL) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
+    }
+    // 防禦耐力條(本機玩家):舉防中或耐力未滿時顯示;破防鎖定=紅、正常=藍
+    if (f.pid === LOCAL && (f.guarding || f.guardStam < GUARD_STAM_MAX)) {
+      const gp = clamp(f.guardStam / GUARD_STAM_MAX, 0, 1), locked = f.guardLock > 0;
+      hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y - 20, bw, 4);
+      hctx.fillStyle = locked ? '#ff6b6b' : (f.guarding ? '#7fd0ff' : '#4a7fa0'); hctx.fillRect(s.x - bw / 2, s.y - 20, bw * gp, 4);
     }
     // 格擋推開提示:被打中的短窗內亮起(像掙脫指示),按對=把攻擊方推開(只對本機玩家顯示)
     if (f.pid === LOCAL && f.pushWinT > 0 && f.pushCd <= 0 && !f.stunned && !f.carriedBy) {
@@ -220,9 +226,9 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／放技能 · 扛人左鍵拋擲 · 空白鍵格擋（出拳瞬間＝反暈／挨打後＝推開）　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／放技能 · 扛人左鍵拋擲 · 空白鍵按住＝防禦（擋鉤拳/定身耗耐力·終結技與元素穿防）·起手瞬間點＝反暈　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: parry-2', VW - 10, VH - 4);
+  hctx.fillText('build: guard-1', VW - 10, VH - 4);
 }

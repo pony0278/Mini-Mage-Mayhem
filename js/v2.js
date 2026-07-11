@@ -21,7 +21,7 @@ import {
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
 import { updatePads, updateBarrels, updateStations, updateItemProjectiles, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
@@ -98,10 +98,13 @@ function pollItem() {
   const pressed = [keys.has('k'), keys.has('.')];
   for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
 }
-const guardPrev = [false, false]; // 格擋鍵=空白鍵(本機玩家)。doGuard 三層分派:黃金窗口=反暈/挨打後=推開/空按=進冷卻
+let guardPrev = false; // 格擋鍵=空白鍵(本機玩家)。按下瞬間 doGuard(黃金窗=反暈/挨打後=推開);按住=防禦架式(f.guarding)
 function pollGuard() {
-  const pressed = [keys.has(' '), keys.has('enter')];
-  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !guardPrev[i]) doGuard(fighters[i]); guardPrev[i] = pressed[i]; }
+  const pressed = keys.has(' ') || (touchInput.enabled && touchInput.guardHeld);
+  const f = fighters[LOCAL];
+  if (pressed && !guardPrev) doGuard(f);          // edge:精準格擋/推開分派
+  f.guarding = pressed && canGuard(f);            // 按住=舉防(耐力/破防由 updateGuard 管);loop 前設好→無 1 幀延遲擋 AI 拳
+  guardPrev = pressed;
 }
 const contextPrev = [false, false]; // E 鍵=右鍵情境動作(抓/放下/放技能)的鍵盤替身:Mac 觸控板/無滑鼠玩家不必用右鍵
 function pollContext() {
@@ -174,6 +177,7 @@ function step(dt) {
       if (f.pushCd > 0) f.pushCd -= dt;
       if (f.pushWinT > 0) { f.pushWinT -= dt; if (f.pushWinT <= 0) f._aiPushAt = 0; }
       if (f.parryWinT > 0) { f.parryWinT -= dt; if (f.parryWinT <= 0) f.parryFrom = null; } // 黃金窗口過期
+      updateGuard(f, dt); // 防禦架式:耐力衰退/回充/破防(guarding 由 pollGuard 設;AI 暫不舉防=只回充)
       if (f.ai && f._aiPushAt && game.time >= f._aiPushAt) { f._aiPushAt = 0; doPushOff(f); } // AI 的格擋反應
       if (f._strikeAt && game.time >= f._strikeAt) resolveStrike(f); // impact 影格到 → 判定命中(起手被打斷則取消)
       if (f._itemCastAt && game.time >= f._itemCastAt) resolveItemCast(f); // 道具施放 impact 幀到 → 發動效果(被打斷則取消)
@@ -315,7 +319,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, ICE_LOB, itemProjectiles, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 拋擲道具(測試用)
-  punch, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -329,6 +333,9 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
     itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses,
     throws: [inc.throws[0], inc.throws[1]], throwContains: inc.throwContains,
     fumble: [+fighters[0].fumbleT.toFixed(2), +fighters[1].fumbleT.toFixed(2)],
+    guarding: [fighters[0].guarding, fighters[1].guarding],
+    guardStam: [Math.round(fighters[0].guardStam), Math.round(fighters[1].guardStam)],
+    guardLock: [+fighters[0].guardLock.toFixed(2), +fighters[1].guardLock.toFixed(2)],
     strikePending: [fighters[0]._strikeAt > 0, fighters[1]._strikeAt > 0],
     parries: inc.parries, parryWin: [+fighters[0].parryWinT.toFixed(3), +fighters[1].parryWinT.toFixed(3)],
     pushCd: [+fighters[0].pushCd.toFixed(2), +fighters[1].pushCd.toFixed(2)] }) };

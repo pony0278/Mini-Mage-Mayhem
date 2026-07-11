@@ -45,6 +45,15 @@ export const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, P
 // 本機時間放慢 PARRY_SLOW 倍+灰屏,窗口內按格擋鍵=反暈對方;超時挨打後按=普通推開;空按=進冷卻。
 // 同一顆鍵三層結果,時機決定一切。AI 不會精準格擋(玩家專屬爽點;難度分級再說)。
 export const PARRY_SLOW = 0.3;
+// 按住防禦架式(2026-07):隨時可舉防、擋普通鉤拳(前兩段);終結技+元素穿防;耐力耗盡=破防。
+// 空按不再進冷卻(改由耐力當防呆閘門)。數值 ?tune=1 可調。
+export const GUARD_MOVE = 0;            // 舉防時移動倍率(0=定身;想拉開就得放防)
+export const GUARD_STAM_MAX = 100;
+export const GUARD_DRAIN = 10;          // 純守耐力衰退(/s);~10s 見底
+export const GUARD_BLOCK_COST = 20;     // 每擋一拳扣的耐力(~5 拳)
+export const GUARD_REGEN = 28, GUARD_REGEN_DELAY = 0.4; // 放開後 delay 才回充(/s)
+export const GUARD_BLOCK_PUSH = 130, GUARD_BLOCK_FLINCH = 0.14; // 擋下=防守方輕微後仰+被推一小步
+export const GUARD_BREAK_FUMBLE = 0.6, GUARD_BREAK_LOCK = 1.2;  // 破防:踉蹌 + 之後不能再舉防的鎖定
 export const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
 export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 // 投擲(B 案:sim 真高度彈道)。三參數語言(人/桶/未來道具同一套,加投擲物=加一行):
@@ -215,6 +224,7 @@ export function resetFighter(f) {
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
+  f.guarding = false; f.guardStam = GUARD_STAM_MAX; f.guardLock = 0; f.guardRegenT = 0; // 按住防禦架式:是否舉防/耐力/破防鎖定/回充延遲計時
   f.item = null; f.itemUses = 0;                        // 道具型別 + 剩餘次數
   f.carryObj = null;                                    // 扛著的物件(廢料桶;與 carrying=扛人 互斥)
   f._barrelThrowAt = 0;                                 // 排程丟桶(release 幀甩出;0=沒在丟)

@@ -85,8 +85,8 @@ function makeBtn(label, sizeVmin, right, bottom, bg, glow, key) {
     + `font:700 ${Math.round(sizeVmin * 0.28)}vmin system-ui,sans-serif;color:#eaf6ff;text-align:center;line-height:1.05;`
     + `border:2px solid ${glow};background:${bg};box-shadow:0 0 14px ${glow},inset 0 0 12px rgba(255,255,255,.06);`;
   const press = () => { b.style.transform = 'scale(0.9)'; b.style.filter = 'brightness(1.4)'; };
-  const release = () => { b.style.transform = ''; b.style.filter = ''; };
-  b.addEventListener('pointerdown', (e) => { touchInput.press[key] = true; press(); e.preventDefault(); e.stopPropagation(); });
+  const release = () => { b.style.transform = ''; b.style.filter = ''; if (key === 'guard') touchInput.guardHeld = false; }; // 格擋=按住(放開卸防)
+  b.addEventListener('pointerdown', (e) => { touchInput.press[key] = true; if (key === 'guard') touchInput.guardHeld = true; press(); e.preventDefault(); e.stopPropagation(); });
   b.addEventListener('pointerup', (e) => { release(); e.preventDefault(); });
   b.addEventListener('pointercancel', release);
   b.addEventListener('pointerleave', release);

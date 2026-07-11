@@ -309,6 +309,22 @@ function updateIceBlock(e, g) {
   }
   ib.visible = on;
 }
+// 防禦架式:舉防時身前半透明護盾弧(讀 e.guarding);破防鎖定變暖橘、正常冷藍。掛 g 世界層(面向由 g.rotation.y 帶)。
+function updateGuardShield(e, g) {
+  const on = !!e.guarding;
+  let sh = g.userData.guardShield;
+  if (!sh) {
+    if (!on) return;
+    sh = new THREE.Mesh(
+      new THREE.SphereGeometry(20, 14, 10, 0, Math.PI, 0, Math.PI),   // 半球罩(朝前的弧面)
+      new THREE.MeshStandardMaterial({ color: 0x9ecbff, transparent: true, opacity: 0.3, roughness: 0.2, metalness: 0, emissive: 0x2a5a88, emissiveIntensity: 0.4, depthWrite: false, side: THREE.DoubleSide })
+    );
+    sh.name = 'GUARD_SHIELD'; sh.position.set(0, 24, 13); sh.rotation.x = Math.PI / 2; // 罩在身前
+    g.add(sh); g.userData.guardShield = sh;
+  }
+  sh.visible = on;
+  if (on) { const lk = (e.guardLock || 0) > 0; sh.material.color.setHex(lk ? 0xff9a6b : 0x9ecbff); sh.material.emissive.setHex(lk ? 0x884433 : 0x2a5a88); }
+}
 
 // 每幀:狀態 → 目標姿勢(clip 或程序)→ 平滑混合 → applyBrawlerPose;
 // 面向/暈眩搖晃/flinch/整體 squash 維持世界層(g)處理,與姿勢層(P)分離。
@@ -444,5 +460,6 @@ export function updateBrawler(e, g) {
   updateHeldBarrel(e, g, R);   // 扛桶:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
   updateHeldBottle(e, g, R);   // 施法舉瓶:排程施放期間放大版瓶貼雙手中點(release 幀交棒給投擲物)
   updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
+  updateGuardShield(e, g);     // 防禦架式:舉防時身前半透明護盾弧
   updateBackBottles(e, g);     // 冰霜瓶:背後掛 itemUses 顆(彈藥視覺化)
 }
