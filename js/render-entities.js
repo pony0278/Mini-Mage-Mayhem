@@ -112,6 +112,46 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
     m.rotation.x = -Math.PI / 2; m.position.set(x, 1.5, y); m.scale.setScalar(Math.max(1, r));
     zoneGroup.add(m);
   }
+  // Tier B 假扭曲(無 post-process):程序噪點貼圖(空氣 shimmer)+ 軟邊壓力透鏡;?fx=low 剝除(額外半透明繪製)。
+  const WIND_FX_LOW = (typeof location !== 'undefined') && new URLSearchParams(location.search).get('fx') === 'low';
+  function makeNoiseTex() { // 柔化白噪=紊流狀 shimmer 底(一次性)
+    const s = 64, cv = document.createElement('canvas'); cv.width = cv.height = s;
+    const c = cv.getContext('2d'), img = c.createImageData(s, s);
+    for (let i = 0; i < s * s; i++) { const v = Math.random() * 255; img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; }
+    c.putImageData(img, 0, 0);
+    try { c.filter = 'blur(2.5px)'; c.drawImage(cv, 0, 0); c.filter = 'none'; } catch (e) {}
+    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+  }
+  function makeSoftTex() { // 徑向漸層軟點(壓力透鏡殼用)
+    const s = 64, cv = document.createElement('canvas'); cv.width = cv.height = s;
+    const c = cv.getContext('2d'), g = c.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.5, 'rgba(255,255,255,0.3)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g; c.fillRect(0, 0, s, s);
+    return new THREE.CanvasTexture(cv);
+  }
+  const windNoiseTex = (!WIND_FX_LOW && typeof document !== 'undefined') ? makeNoiseTex() : null;
+  const softTex = (!WIND_FX_LOW && typeof document !== 'undefined') ? makeSoftTex() : null;
+  function windHaze(cx, cy, a, cone, rOut, yy, op, scroll) { // 噪點扇形(往外滾=氣流 shimmer;加法混合)
+    const segs = 22, pos = [], uv = [], idx = [];
+    for (let i = 0; i <= segs; i++) {
+      const p = a - cone + 2 * cone * (i / segs), c = Math.cos(p), s = Math.sin(p), u = i / segs;
+      pos.push(cx, yy, cy, cx + c * rOut, yy, cy + s * rOut); uv.push(u, 0, u, 3);
+    }
+    for (let i = 0; i < segs; i++) { const b = i * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.__tmp = true;
+    windNoiseTex.offset.y = scroll;
+    const mat = new THREE.MeshBasicMaterial({ map: windNoiseTex, color: 0xbfeaff, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }); mat.__tmp = true;
+    zoneGroup.add(new THREE.Mesh(g, mat));
+  }
+  function softBloom(x, y, r, hex, op) { // 軟邊壓力透鏡殼(徑向漸層軟點,平鋪)
+    const g = new THREE.PlaneGeometry(1, 1); g.__tmp = true;
+    const mat = new THREE.MeshBasicMaterial({ map: softTex, color: hex, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }); mat.__tmp = true;
+    const m = new THREE.Mesh(g, mat); m.rotation.x = -Math.PI / 2; m.position.set(x, 5, y); m.scale.set(r * 2, r * 2, 1);
+    zoneGroup.add(m);
+  }
   // 風壓手套扇形:頂點在 (cx,cy)、朝世界角 a 張開 ±cone、內外半徑 rIn..rOut,平鋪地板(quad strip;rIn=0=派形填充)。
   function windSector(cx, cy, a, cone, rIn, rOut, yy, hex, op) {
     const segs = 22, pos = [], idx = [];
@@ -267,6 +307,10 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
         windStreak(wf.x, wf.y, p, fr * (0.12 + (i % 3) * 0.06), fr * (0.9 + (i % 2) * 0.12), 0xe5fcff, 0.5 * life * (0.55 + 0.45 * (((i * 7) % 5) / 4)));
       }
       disc(wf.x + Math.cos(wf.angle) * fr * 0.08, wf.y + Math.sin(wf.angle) * fr * 0.08, 22 * life + 6, 0xffffff, 0.45 * life * life); // 槍口閃核心
+      if (windNoiseTex) { // Tier B 假扭曲:氣流 shimmer + 前緣壓力透鏡殼(?fx=low 剝除)
+        windHaze(wf.x, wf.y, wf.angle, wf.cone, fr, 3, 0.22 * life, -game.time * 0.9);
+        softBloom(wf.x + Math.cos(wf.angle) * fr * 0.92, wf.y + Math.sin(wf.angle) * fr * 0.92, 55 + fr * 0.22, 0xdff3ff, 0.28 * life);
+      }
     }
     for (const bh of game.blackHoles) {
       disc(bh.x, bh.y, bh.r, 0x2a0f3a, 0.34);
