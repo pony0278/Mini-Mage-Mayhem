@@ -36,6 +36,8 @@ export const game = {
   particles: [],
   rings: [],
   slams: [],
+  windFans: [],   // 風壓手套發射閃:擴張扇形衝擊波(fx.addWindFan;render-entities 畫扇形+外緣射程弧+風絲)
+  windAims: [],   // 風壓手套起手預告:winding-up 時每幀重建的淡扇形(v2.js 幀尾;讀 fighter 面向即時跟)
   floatingTexts: [],
   upgrades: [],
   stats: null,

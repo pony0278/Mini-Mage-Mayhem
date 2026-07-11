@@ -112,6 +112,28 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
     m.rotation.x = -Math.PI / 2; m.position.set(x, 1.5, y); m.scale.setScalar(Math.max(1, r));
     zoneGroup.add(m);
   }
+  // 風壓手套扇形:頂點在 (cx,cy)、朝世界角 a 張開 ±cone、內外半徑 rIn..rOut,平鋪地板(quad strip;rIn=0=派形填充)。
+  function windSector(cx, cy, a, cone, rIn, rOut, yy, hex, op) {
+    const segs = 22, pos = [], idx = [];
+    for (let i = 0; i <= segs; i++) {
+      const p = a - cone + 2 * cone * (i / segs), c = Math.cos(p), s = Math.sin(p);
+      pos.push(cx + c * rIn, yy, cy + s * rIn, cx + c * rOut, yy, cy + s * rOut);   // 世界(x,y)→3D(x,高,z=y)
+    }
+    for (let i = 0; i < segs; i++) { const b = i * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx); g.__tmp = true;
+    const mat = tmpMat(hex, op, true); mat.depthWrite = false; mat.side = THREE.DoubleSide;
+    zoneGroup.add(new THREE.Mesh(g, mat));
+  }
+  function windStreak(cx, cy, p, r0, r1, hex, op) { // 放射狀風絲(手心往外一條線)
+    const g = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(cx + Math.cos(p) * r0, 6, cy + Math.sin(p) * r0),
+      new THREE.Vector3(cx + Math.cos(p) * r1, 6, cy + Math.sin(p) * r1)]);
+    g.__tmp = true;
+    const m = new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: op }); m.__tmp = true;
+    zoneGroup.add(new THREE.Line(g, m));
+  }
   function puff(x, y, r, hex, op, n = 5, height = 14) {
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2 + game.time * 0.25;
@@ -225,6 +247,21 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
         disc(s.x + Math.cos(s.angle) * d, s.y + Math.sin(s.angle) * d, dr, s.hex, 0.42 * k * (1 - i * 0.2));
       }
       puff(lx, ly, 26 * P, s.hex, 0.3 * k, 6, 14);
+    }
+    // 風壓手套起手預告:淡扇形 + 外緣射程弧(靜態、脈衝;讀範圍/多遠)
+    for (const wa of game.windAims) {
+      const pulse = 0.5 + 0.5 * Math.sin(game.time * 8);
+      windSector(wa.x, wa.y, wa.angle, wa.cone, 0, wa.range, 2, 0xbfeaff, 0.07 + 0.05 * pulse);
+      windSector(wa.x, wa.y, wa.angle, wa.cone, wa.range * 0.88, wa.range, 3, 0xdff3ff, 0.22 + 0.12 * pulse); // 外緣=射程邊界(讀「打多遠」)
+    }
+    // 風壓手套發射閃:扇形從頂點掃到滿射程(easeOut)+ 亮前緣 + 少量放射狀風絲,再淡出
+    for (const wf of game.windFans) {
+      const life = clamp(wf.life / wf.maxLife, 0, 1), t = 1 - life;                    // t 0→1
+      const sweep = Math.min(1, t / 0.45), eo = 1 - (1 - sweep) * (1 - sweep);          // 前 45% 生命掃到滿(easeOut)
+      const fr = wf.range * (0.12 + 0.88 * eo);
+      windSector(wf.x, wf.y, wf.angle, wf.cone, 0, fr, 2, 0xbfeaff, 0.30 * life);       // 填充
+      windSector(wf.x, wf.y, wf.angle, wf.cone, fr * 0.85, fr, 4, 0xffffff, 0.55 * life); // 亮掃描前緣
+      for (let i = 0; i < 5; i++) windStreak(wf.x, wf.y, wf.angle - wf.cone + 2 * wf.cone * ((i + 0.5) / 5), fr * 0.18, fr, 0xe5fcff, 0.5 * life); // 風絲
     }
     for (const bh of game.blackHoles) {
       disc(bh.x, bh.y, bh.r, 0x2a0f3a, 0.34);

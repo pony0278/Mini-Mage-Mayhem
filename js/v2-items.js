@@ -4,7 +4,7 @@
 import { W, H } from './constants.js';
 import { clamp } from './utils.js';
 import { game } from './state.js';
-import { addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
+import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
@@ -113,7 +113,7 @@ export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手
     b.vx += w.ux * w.force; b.vy += w.uy * w.force;                          // 吹飛(updateBarrels 走物理+摩擦)
     pressurizeBarrel(b); hit = true;
   }
-  addRing(f.x + Math.cos(a) * 40, f.y + Math.sin(a) * 40, WIND_RANGE * 0.55, '#dff3ff', 0.28, 6); addShake(hit ? 6 : 3); game.sfx.push('dash');
+  addWindFan(f.x, f.y, a, WIND_RANGE, WIND_CONE); addShake(hit ? 6 : 3); game.sfx.push('dash'); // 扇形衝擊波(取代舊地上一圈圓;render 畫扇形+外緣射程弧)
   dlog('WIND', NAMES[f.pid], hit ? 'hit' : 'miss');
 }
 export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困+搬運者踉蹌

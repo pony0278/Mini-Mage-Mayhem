@@ -15,7 +15,7 @@ import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
   resetFighter, resetBarrels, resetPads, resetStage, resetStations,
   POD, inPod, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
-  stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
+  stations, STATION_WARN, ERUPT_PATCH_R, labSwitch, WIND_RANGE, WIND_CONE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, ICE_LOB, itemProjectiles, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
@@ -254,6 +254,9 @@ function step(dt) {
   game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false, fly: b.z || 0 }));
   game.props.push({ x: labSwitch.x, y: labSwitch.y, r: labSwitch.r, charge: 'lightning', hp: 1, maxHp: 1, held: false }); // 中央緊急控制台(佔位=藍色發光箱)
   for (const pr of itemProjectiles) game.props.push({ x: pr.x, y: pr.y, r: 8, wall: 'ice', hp: 1, maxHp: 1, held: false, fly: pr.z || 0 }); // 飛行中的冰瓶(桶模冰 tint 佔位,瓶模好了換 mesh)
+  // 風壓手套起手預告:施法窗中(_itemCastAt 未到)每幀重建淡扇形,面向即時跟(教射程/範圍;對手也看得到=反應窗)
+  game.windAims.length = 0;
+  for (const f of fighters) if (f.state === 'alive' && f._itemCastType === 'wind' && f._itemCastAt > game.time) game.windAims.push({ x: f.x, y: f.y, angle: f.facing, range: WIND_RANGE, cone: WIND_CONE });
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];

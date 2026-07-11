@@ -62,11 +62,17 @@ export function updateParticles(dt) {
   }
   game.particles = game.particles.filter(p => p.life > 0);
 }
+// 風壓手套發射閃:扇形衝擊波(頂點在手、張到 range、半張角 cone),render 掃出去+淡出。
+export function addWindFan(x, y, angle, range, cone, life = 0.45) {
+  game.windFans.push({ x, y, angle, range, cone, life, maxLife: life });
+}
 export function updateRings(dt) {
   for (const r of game.rings) r.life -= dt;
   game.rings = game.rings.filter(r => r.life > 0);
   for (const s of game.slams) s.life -= dt;
   game.slams = game.slams.filter(s => s.life > 0);
+  for (const w of game.windFans) w.life -= dt;
+  game.windFans = game.windFans.filter(w => w.life > 0);
 }
 export function updateFloatingTexts(dt) {
   for (const t of game.floatingTexts) {
