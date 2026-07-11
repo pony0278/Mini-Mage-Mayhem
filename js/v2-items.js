@@ -113,7 +113,15 @@ export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手
     b.vx += w.ux * w.force; b.vy += w.uy * w.force;                          // 吹飛(updateBarrels 走物理+摩擦)
     pressurizeBarrel(b); hit = true;
   }
-  addWindFan(f.x, f.y, a, WIND_RANGE, WIND_CONE); addShake(hit ? 6 : 3); game.sfx.push('dash'); // 扇形衝擊波(取代舊地上一圈圓;render 畫扇形+外緣射程弧)
+  addWindFan(f.x, f.y, a, WIND_RANGE, WIND_CONE);                          // 扇形衝擊波(取代舊地上一圈圓;render 畫扇形+外緣射程弧+風絲)
+  // 爆風加料(Tier A,全平台):槍口白閃 + 沿扇形往外噴的飛塵 + 方向性鏡頭踹 + 加重震動
+  const mx = f.x + Math.cos(a) * (f.r + 10), my = f.y + Math.sin(a) * (f.r + 10);
+  hitSpark(mx, my, '#eaffff', 1.8); addRing(mx, my, 18, '#ffffff', 0.14, 3); // 槍口白閃
+  for (let i = 0; i < 16; i++) {                                            // 飛塵:沿扇形錐往外噴(近槍口;高摩擦=噴一小段就散)
+    const ang = a + (Math.random() * 2 - 1) * WIND_CONE, sp = 260 + Math.random() * 340;
+    game.particles.push({ x: mx, y: my, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 1.4 + Math.random() * 2.6, life: 0.22 + Math.random() * 0.22, maxLife: 0.44, color: '#dff3ff' });
+  }
+  camKick(a, 11); addShake(hit ? 9 : 5); game.sfx.push('dash');            // 方向性鏡頭踹 + 加重震動
   dlog('WIND', NAMES[f.pid], hit ? 'hit' : 'miss');
 }
 export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困+搬運者踉蹌

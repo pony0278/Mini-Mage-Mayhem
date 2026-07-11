@@ -193,8 +193,22 @@ function drawReport() {
   hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
   hctx.fillText('按 R 再來一場　·　按 C 複製分享文字', cx, py + ph - 18);
 }
+// 風壓爆風:發射中從兩側邊緣往內掃的速度線(爆風 whoosh;強度=windFan 剩餘壽命)
+function drawWindSpeedLines() {
+  let k = 0; for (const w of game.windFans) k = Math.max(k, w.life / w.maxLife);
+  if (k <= 0.02) return;
+  hctx.save(); hctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 12; i++) {
+    const edge = Math.random() < 0.5, y = Math.random() * VH, x0 = edge ? 0 : VW, dir = edge ? 1 : -1;
+    const len = (70 + Math.random() * 170) * k;
+    hctx.strokeStyle = `rgba(223,243,255,${(0.10 + Math.random() * 0.16) * k})`; hctx.lineWidth = 1 + Math.random() * 2.2;
+    hctx.beginPath(); hctx.moveTo(x0, y); hctx.lineTo(x0 + dir * len, y + (Math.random() - 0.5) * 22); hctx.stroke();
+  }
+  hctx.restore();
+}
 export function drawHud() {
   hctx.clearRect(0, 0, VW, VH);
+  drawWindSpeedLines();
   // red edge pulse when YOU get knocked — so a hit is never invisible
   if (v2s.localFlash > 0) {
     const g = hctx.createRadialGradient(VW / 2, VH / 2, VH * 0.3, VW / 2, VH / 2, VH * 0.75);

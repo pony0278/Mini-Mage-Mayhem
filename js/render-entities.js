@@ -261,7 +261,12 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
       const fr = wf.range * (0.12 + 0.88 * eo);
       windSector(wf.x, wf.y, wf.angle, wf.cone, 0, fr, 2, 0xbfeaff, 0.30 * life);       // 填充
       windSector(wf.x, wf.y, wf.angle, wf.cone, fr * 0.85, fr, 4, 0xffffff, 0.55 * life); // 亮掃描前緣
-      for (let i = 0; i < 5; i++) windStreak(wf.x, wf.y, wf.angle - wf.cone + 2 * wf.cone * ((i + 0.5) / 5), fr * 0.18, fr, 0xe5fcff, 0.5 * life); // 風絲
+      const NS = 12;                                                                     // 風絲加密加長=更爆(半徑/濃淡錯開=陣風感)
+      for (let i = 0; i < NS; i++) {
+        const p = wf.angle - wf.cone + 2 * wf.cone * ((i + 0.5) / NS);
+        windStreak(wf.x, wf.y, p, fr * (0.12 + (i % 3) * 0.06), fr * (0.9 + (i % 2) * 0.12), 0xe5fcff, 0.5 * life * (0.55 + 0.45 * (((i * 7) % 5) / 4)));
+      }
+      disc(wf.x + Math.cos(wf.angle) * fr * 0.08, wf.y + Math.sin(wf.angle) * fr * 0.08, 22 * life + 6, 0xffffff, 0.45 * life * life); // 槍口閃核心
     }
     for (const bh of game.blackHoles) {
       disc(bh.x, bh.y, bh.r, 0x2a0f3a, 0.34);
