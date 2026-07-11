@@ -132,7 +132,7 @@ export const ITEM_INFO = { wind: { name: '風壓手套', color: '#bfeaff' }, tel
 //   uses=次數 · clip/delay=施放動畫與 impact · whileDisabled=被抓/暈可用(取代寫死的 !=='teleport')
 //   aim=facing/self/target(未來瞄準用) · kind=純標籤(HUD/AI/文件分組;機制不靠它)
 export const ITEM_SPEC = {
-  wind:     { uses: 3, clip: null, delay: 0, whileDisabled: false, aim: 'facing', kind: 'blast' },
+  wind:     { uses: 3, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // rhook=出拳送氣浪暫代動畫(之後換專屬 item_wind);delay=前鉤 impact 幀=預告窗+可被打斷
   // 冰霜瓶改版(使用者拍板 2026-07):舉頭上拋出(barrel_throw 暫代;之後換專屬拋瓶 clip)→ ICE_LOB
   // 拋物線 → 落地/撞牆即碎 → 冰面。×3=技能彈(文件 §9.1.1 原 ×1;可拋瞄準後升 A 階用量,實測調)。
   // 排程施放管線的第一個真實用戶:clip+delay 填表即接(delay=release tag 自動導出)。

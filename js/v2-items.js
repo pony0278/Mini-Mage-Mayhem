@@ -91,6 +91,19 @@ export function castWind(f) { // 前方風錐強擊退; 貼臉發射自身反彈
     if (o.pid === LOCAL) v2s.localFlash = 0.25;
     if (d < 50) { f.vx -= Math.cos(a) * WIND_SELF; f.vy -= Math.sin(a) * WIND_SELF; inc.itemBackfires++; addText(f.x, f.y - 32, '過載反彈！', '#ff9a9a'); } // 風壓過載自反噬
   }
+  for (const pr of itemProjectiles) { // 反彈投射物(風剋冰投):錐內的飛行冰瓶 → 沿風向重拋+改歸風施放者
+    if (!pr.alive) continue;
+    const dx = pr.x - f.x, dy = pr.y - f.y, d = Math.hypot(dx, dy);
+    if (d > WIND_RANGE) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) > WIND_CONE) continue;
+    const spd = Math.hypot(pr.vx, pr.vy) || (ICE_LOB.range / ICE_LOB.T);
+    pr.vx = Math.cos(a) * spd; pr.vy = Math.sin(a) * spd;                     // 沿風向甩回去(面向對手=吹回原主)
+    pr.flyT0 = game.time; pr.z = ICE_LOB.h0;                                  // 重啟拋物弧(從當前位置起新的一段)
+    pr.owner = f.pid;                                                          // 改歸風施放者 → 命中原主=凍住原主、計功給風方
+    hit = true;
+    hitSpark(pr.x, pr.y, '#dff3ff', 1.5); addRing(pr.x, pr.y, 30, '#dff3ff', 0.32, 5); addText(pr.x, pr.y - 22, '反彈！', '#dff3ff');
+  }
   for (const b of barrels) { // 風也能引爆桶(遠距升壓)
     if (!b.alive || b.state !== 'idle') continue;
     const dx = b.x - f.x, dy = b.y - f.y, d = Math.hypot(dx, dy);
