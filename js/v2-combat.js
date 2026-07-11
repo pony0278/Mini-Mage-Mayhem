@@ -60,7 +60,7 @@ export function slideKnock(f, dt) { // apply lingering knockback velocity only (
 // --- 角色實心化:角色不能互相重疊,但也「不能推」——走進對方會被擋下(對方原地不動)。
 // 只擋「會讓兩人更靠近」的移動:已重疊時(換位傳送/出生點被蹲)永遠允許往外走,不會卡死。
 // 搬運對豁免(被扛者本來就貼在搬運者身前)。BODY_SEP<1 讓視覺上能貼近到體素肩碰肩才停。
-export function hitsFighter(f, nx, ny) {
+export function fighterBlocking(f, nx, ny) { // 擋住 f 往 (nx,ny) 的那名角色(沒有=null);hitsFighter/鎖滑保齡球共用
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.falling) continue;
     if (f.carrying === o || o.carrying === f) continue;
@@ -69,10 +69,11 @@ export function hitsFighter(f, nx, ny) {
     if (d2n >= rr * rr) continue;
     const dxc = f.x - o.x, dyc = f.y - o.y;
     if (d2n >= dxc * dxc + dyc * dyc) continue; // 正在遠離 → 放行(防重疊卡死)
-    return true;
+    return o;
   }
-  return false;
+  return null;
 }
+export function hitsFighter(f, nx, ny) { return !!fighterBlocking(f, nx, ny); }
 // --- 地板化學讀取 (docs/v2-floor-state-architecture.md 第二刀):踩冰滑 / 踩電水硬直 / 站火海·毒區削穩定值 ---
 // 冰面=地板化學 FL.ICE(舊 iceZones 圓區已退場——冰瓶走 stampElement 後無人寫入,2026-07 清除)。
 export function onSlipperyIce(x, y) { return stateAtPixel(x, y) === FL.ICE; }
@@ -142,9 +143,11 @@ export function moveFighter(f, dt) {
         f._slideVx = 0; f._slideVy = 0; f.vx = 0; f.vy = 0;
         addText(f.x, f.y - 44, '撞牆！', '#bfe6ff'); addShake(5);
         if (!f.stunned && f.restunT <= 0) stunFighter(f);
-      } else if (hitsFighter(f, nx, ny)) {             // 撞到人:滑行止住(不暈,對方是肉墊)
-        f._slideVx = 0; f._slideVy = 0; f.vx = 0; f.vy = 0;
-      } else { f.x = nx; f.y = ny; }
+      } else {
+        const victim = fighterBlocking(f, nx, ny);
+        if (victim) slideCollide(f, victim);           // 撞到人:保齡球——兩人一起摔出去跌倒
+        else { f.x = nx; f.y = ny; }
+      }
       return;
     }
     // 冰上無鎖(靜止進場/滑行已停):小心走
@@ -176,9 +179,28 @@ export function camKick(a, mag) { game.kickX = Math.cos(a) * mag; game.kickY = M
 // --- 基礎動詞 (spec F §2): 揮拳(削穩定值→擊暈) + 情境動作鍵(暈眩對手在近處→抓; 搬運中→放下; 否則→揮拳) ---
 export function stunFighter(o) {
   o.stunned = true; o.stunT = STUN_T; o.vx *= 0.4; o.vy *= 0.4;
+  o._slideVx = 0; o._slideVy = 0; // 任何擊暈都清鎖滑向量(否則兩滑行者對撞後,殘留向量會在醒來瞬間瞬移續滑)
   addText(o.x, o.y - 30, '暈！', '#ffd36d'); addRing(o.x, o.y, 30, '#ffd36d', 0.3, 4);
   addHitstop(0.12); addShake(6); game.sfx.push('hurt'); // 擊暈=大事件:更長定格+重音,把「打崩了」讀出來
   if (o.pid === LOCAL) v2s.localFlash = 0.3;
+}
+// 冰上保齡球(玩家反饋 2026-07):鎖滑者撞上另一名角色 → 兩人一起摔出去跌倒(同「滑行碰撞=跌倒」規則的對稱版)。
+// 被撞者順滑行方向飛(0.75×滑速)、滑撞者反彈(0.4×);雙方擊暈(restun 免疫則不重複暈但照樣被撞飛+踉蹌);
+// 速度在 stunFighter(×0.4 阻尼)之後才給,否則被吃掉。歸因互記(1v1 同時暈=中性重整,無免費反打)。
+export function slideCollide(f, o) {
+  const s = Math.hypot(f._slideVx, f._slideVy) || SLIDE_MIN;
+  const dx = f._slideVx / s, dy = f._slideVy / s, a = Math.atan2(dy, dx);
+  f._slideVx = 0; f._slideVy = 0;
+  if (!o.stunned && o.restunT <= 0) stunFighter(o);
+  if (!f.stunned && f.restunT <= 0) stunFighter(f);
+  o.vx = dx * s * 0.75; o.vy = dy * s * 0.75;   // 被撞飛(stun 後才設,免被 ×0.4 吃掉)
+  f.vx = -dx * s * 0.4; f.vy = -dy * s * 0.4;   // 滑撞者反彈
+  o.fumbleT = Math.max(o.fumbleT, FUMBLE_T); f.fumbleT = Math.max(f.fumbleT, FUMBLE_T); // 保證跌倒(免疫也踉蹌)
+  o.lastHitBy = f.pid; o.lastHitT = game.time; f.lastHitBy = o.pid; f.lastHitT = game.time;
+  flinch(o, a); flinch(f, a + Math.PI);
+  const mx = (f.x + o.x) / 2, my = (f.y + o.y) / 2;
+  addText(mx, my - 42, '保齡球！', '#bfe6ff'); addRing(mx, my, 40, '#bfe6ff', 0.4, 6);
+  addShake(7); addHitstop(0.1); game.sfx.push('hurt');
 }
 // 冰凍=擊暈的冰凍皮(同 STUN_T/restunT 一套規則,玩家學一次):frozen 旗給 render(冰塊+不搖晃),
 // stun 醒來時清(v2.js);被扛期間保留(扛冰雕=喜感本體),放下/丟出/掙脫才解凍(dropCarry/launchCarried/breakFree)。
