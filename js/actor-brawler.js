@@ -49,6 +49,7 @@ export const ANIM = {
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
   thrown:  { lift: 8, rate: 10 },                                                          // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下的平滑速率
   heldBarrel: { liftK: 0.9 },                                                              // 扛桶:桶心抬高 = 桶邊長×此係數(0.5=桶底貼掌心;45° 俯視鏡頭下要再高些頭才不被蓋)
+  heldBottle: { w: 12, h: 16, liftK: 0.6 },                                                // 施法舉瓶(冰霜瓶等拋擲道具):放大版瓶貼雙手中點;參數結構鏡像 heldBarrel
   flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
 };
 
@@ -193,7 +194,7 @@ function updateHands(e, R, u, now) {
     const av = u.avatar;
     if (av && av.handRig) {
       const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0, rigT: 0 });
-      if (e.carrying || e.carryObj) h.rigT = now + 0.3;              // 抓握中→續握;放/丟後多留 0.3s 收招(手指張開的跟隨)
+      if (e.carrying || e.carryObj || heldCastItem(e)) h.rigT = now + 0.3;  // 抓握/施法舉瓶中→續握;放/丟後多留 0.3s 收招(手指張開的跟隨)
       setRiggedHandsVisible(av, now < h.rigT);
     }
     return;
@@ -201,7 +202,7 @@ function updateHands(e, R, u, now) {
   if (!handsReady()) { R.armL.fist.visible = true; R.armR.fist.visible = true; return; }
   const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0 });
   let mode = 'glove';
-  if (e.carrying) mode = 'grip';                                    // 扛人:握住對手
+  if (e.carrying || heldCastItem(e)) mode = 'grip';                 // 扛人/施法舉瓶:握住
   else {
     // 剛結束搬運這幀:丟出(throwCarried 設 punchKind=2 且 punchFx≈now)→ 開手窗口;放下(dropCarry)→ 無
     if (h.wasCarry && e.punchKind === 2 && e.punchFx != null && (now - e.punchFx) < 0.12) h.releaseT = now + 0.28;
@@ -210,6 +211,11 @@ function updateHands(e, R, u, now) {
   h.wasCarry = !!e.carrying;
   setArmHand(R.armL, mode); setArmHand(R.armR, mode);
 }
+
+// 施法中舉著的拋擲道具(排程施放的持有窗:useItem 按下 → release 幀甩出投擲物)。
+// 回傳道具名或 null;rigged 手切換與 updateHeldBottle 都吃這個(未來油瓶等加進集合即繼承整套)。
+const THROWN_CAST_ITEMS = new Set(['ice']);
+function heldCastItem(e) { return (e._itemCastAt > 0 && THROWN_CAST_ITEMS.has(e._itemCastType)) ? e._itemCastType : null; }
 
 // ===== 扛桶:把桶畫在雙手腕中點(舉過頭頂;丟桶時隨 heave clip 走)。遊戲端 v2.js 對 held 桶略過 ground prop,
 // 交由這裡畫,甩出/放下瞬間(carryObj 清空)交還給地面/飛行 prop。桶=橘箱+蓋(比照 render-entities syncProps 外觀)。=====
@@ -259,6 +265,32 @@ function updateBackBottles(e, g) {
     g.userData.backBottles = bb;
   }
   for (let i = 0; i < bb.length; i++) bb[i].visible = i < want;
+}
+
+// ===== 施法舉瓶:排程施放期間把「放大版瓶」畫在雙手中點(錨定/抬升邏輯=updateHeldBarrel 鏡像)。
+// release 幀 _itemCastAt 歸零 → 瓶消失,無縫交棒給飛行投擲物(itemProjectiles/props 橋接)。
+// 佔位外觀=背後小瓶的放大版(桶模冰 tint;使用者瓶模好了換 mesh,錨定不用動)。
+function updateHeldBottle(e, g, R) {
+  const casting = !!heldCastItem(e);
+  let bt = g.userData.throwBottle;
+  if (!casting) { if (bt) bt.visible = false; return; }
+  if (!bt) {                                                          // lazy 建瓶
+    const C = ANIM.heldBottle;
+    bt = new THREE.Group(); bt.name = 'HELD_BOTTLE';
+    const body = makeBox(C.w, C.h, C.w, 0x9fd8e8, 0x2a6a88, 0.55); bt.add(body);
+    const cap = makeBox(C.w * 0.55, 2.6, C.w * 0.55, 0x6aa8c0); cap.position.y = C.h * 0.5 + 1.3; bt.add(cap);
+    g.add(bt); g.userData.throwBottle = bt;
+  }
+  bt.visible = true;
+  const av = g.userData.avatar;                                       // 手中點:avatar 取 rigged Fingers 骨優先(同扛桶)
+  const bl = av && ((av.handRig && av.handRig.L && av.handRig.L.fingers) || (av.by.hand_l && av.by.hand_l.bone));
+  const br = av && ((av.handRig && av.handRig.R && av.handRig.R.fingers) || (av.by.hand_r && av.by.hand_r.bone));
+  if (bl && br) { bl.getWorldPosition(_wlp); br.getWorldPosition(_wrp); }
+  else { R.armL.wr.getWorldPosition(_wlp); R.armR.wr.getWorldPosition(_wrp); }
+  _wlp.add(_wrp).multiplyScalar(0.5);
+  g.worldToLocal(_wlp); bt.position.copy(_wlp);
+  bt.position.y += ANIM.heldBottle.h * ANIM.heldBottle.liftK;         // 抬離手中點免蓋頭(同 heldBarrel liftK 設計)
+  bt.rotation.y = game.time * 1.2;
 }
 
 // 每幀:狀態 → 目標姿勢(clip 或程序)→ 平滑混合 → applyBrawlerPose;
@@ -393,5 +425,6 @@ export function updateBrawler(e, g) {
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
   updateHeldBarrel(e, g, R);   // 扛桶:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
+  updateHeldBottle(e, g, R);   // 施法舉瓶:排程施放期間放大版瓶貼雙手中點(release 幀交棒給投擲物)
   updateBackBottles(e, g);     // 冰霜瓶:背後掛 itemUses 顆(彈藥視覺化)
 }

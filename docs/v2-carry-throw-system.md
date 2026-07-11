@@ -161,6 +161,12 @@ BARREL_LAND_FUSE = 1.0     // 被丟的桶落地閃 1s 才爆(反制窗)
 
 ### 5.1 手部切換(抓握才換 rigged 手)
 
+> **2026-07 擴充:施法舉瓶也算抓握**。排程施放拋擲道具期間(`heldCastItem(e)`:`_itemCastAt > 0` 且
+> `_itemCastType ∈ THROWN_CAST_ITEMS`,目前={ice})→ rigged 手切換 + `updateHeldBottle` 把放大版瓶
+> 畫在雙手中點(錨定/liftK 抬升=updateHeldBarrel 鏡像;`ANIM.heldBottle`)。release 幀 `_itemCastAt`
+> 歸零 → 瓶消失無縫交棒給飛行投擲物;rigged 手走同一條 rigT 0.3s 收招。**加新拋擲道具(油瓶等)=
+> 把道具名加進 THROWN_CAST_ITEMS 即繼承整套。**
+
 **設計通則(對齊舊 `actor-hands.js`):一般/戰鬥用預設手,只有抓握物品才換成握持手模。** 兩條路各自的「預設手」不同:
 
 | 模式 | 一般/戰鬥 | 抓握物品(扛人/扛桶)| 切換點 |
