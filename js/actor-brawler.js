@@ -293,6 +293,23 @@ function updateHeldBottle(e, g, R) {
   bt.rotation.y = game.time * 1.2;
 }
 
+// 冰凍皮:半透明冰塊包住整個人(frozen=暈的冰凍變體;直擊冰凍=好抓,扛著冰雕去回收=喜感本體)。
+// 掛在 g(世界層):被扛時 positionCarried 蓋 g 變換 → 冰塊跟著人走。
+function updateIceBlock(e, g) {
+  const on = !!(e.frozen && (e.stunned || e.carriedBy)); // 被扛時仍是冰雕(startCarry 清 stunned)
+  let ib = g.userData.iceBlock;
+  if (!ib) {
+    if (!on) return;
+    ib = new THREE.Mesh(
+      new THREE.BoxGeometry(30, 52, 30),
+      new THREE.MeshStandardMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.42, roughness: 0.15, metalness: 0, emissive: 0x2a6a88, emissiveIntensity: 0.35, depthWrite: false })
+    );
+    ib.name = 'ICE_BLOCK'; ib.position.y = 26;
+    g.add(ib); g.userData.iceBlock = ib;
+  }
+  ib.visible = on;
+}
+
 // 每幀:狀態 → 目標姿勢(clip 或程序)→ 平滑混合 → applyBrawlerPose;
 // 面向/暈眩搖晃/flinch/整體 squash 維持世界層(g)處理,與姿勢層(P)分離。
 export function updateBrawler(e, g) {
@@ -386,7 +403,7 @@ export function updateBrawler(e, g) {
         pose.spine_x += br * A.breath.chest * rest;                                  // 下沉時含胸一點
       }
     }
-    if (e.stunned) { wob = Math.sin(now * A.stun.wobRate) * A.stun.wobAmp; pose.spine_x = A.stun.slump; pose.head_x = -A.stun.slump * 0.6; }
+    if (e.stunned) { wob = e.frozen ? 0 : Math.sin(now * A.stun.wobRate) * A.stun.wobAmp; pose.spine_x = A.stun.slump; pose.head_x = -A.stun.slump * 0.6; } // 冰凍=冰雕:不搖晃
   }
 
   // --- 平滑混合(狀態切換不瞬跳;clip 內插本身已平滑,這層只削接縫)---
@@ -426,5 +443,6 @@ export function updateBrawler(e, g) {
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
   updateHeldBarrel(e, g, R);   // 扛桶:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
   updateHeldBottle(e, g, R);   // 施法舉瓶:排程施放期間放大版瓶貼雙手中點(release 幀交棒給投擲物)
+  updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
   updateBackBottles(e, g);     // 冰霜瓶:背後掛 itemUses 顆(彈藥視覺化)
 }

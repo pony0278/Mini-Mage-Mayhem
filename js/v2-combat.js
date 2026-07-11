@@ -148,6 +148,19 @@ export function stunFighter(o) {
   addHitstop(0.12); addShake(6); game.sfx.push('hurt'); // 擊暈=大事件:更長定格+重音,把「打崩了」讀出來
   if (o.pid === LOCAL) v2s.localFlash = 0.3;
 }
+// 冰凍=擊暈的冰凍皮(同 STUN_T/restunT 一套規則,玩家學一次):frozen 旗給 render(冰塊+不搖晃),
+// stun 醒來時清(v2.js);被扛期間保留(扛冰雕=喜感本體),放下/丟出/掙脫才解凍(dropCarry/launchCarried/breakFree)。
+// 已暈/免疫中:不重複暈(restun 鐵則),只噴視覺。歸因給投擲者(收容 credit)。
+export function freezeFighter(o, byPid) {
+  o.lastHitBy = byPid; o.lastHitT = game.time; o.faceT = 0.4;
+  if (!o.stunned && o.restunT <= 0) {
+    stunFighter(o);
+    o.frozen = true;
+    addText(o.x, o.y - 46, '冰凍！', '#bfe6ff'); addRing(o.x, o.y, 34, '#bfe6ff', 0.4, 5);
+  } else {
+    addText(o.x, o.y - 46, '冰晶四濺！', '#bfe6ff');
+  }
+}
 // 出拳=起手:播動作、鎖定方向,STRIKE_DELAY 秒後的 impact 影格才判定命中(resolveStrike)。
 // 起手中被打暈/被抓/被推開踉蹌 → resolveStrike 的守衛直接取消 = 格擋推開是能打斷出拳的真反制。
 export function punch(f) {
@@ -276,7 +289,7 @@ export function startCarry(f, o) {
   addText(o.x, o.y - 30, '抓住！', COLORS[f.pid]); addRing(o.x, o.y, 34, COLORS[f.pid], 0.35, 4); addShake(4); game.sfx.push('upgrade');
   dlog('GRAB', NAMES[f.pid], '→', NAMES[o.pid]);
 }
-export function dropCarry(f) { const o = f.carrying; if (o) { o.carriedBy = null; o.stability = Math.max(o.stability, 30); } f.carrying = null; f._carryThrowAt = 0; f.carryClip = null; f.carryHold = 0; f.regrabCd = REGRAB_CD; }
+export function dropCarry(f) { const o = f.carrying; if (o) { o.carriedBy = null; o.frozen = false; o.stability = Math.max(o.stability, 30); } f.carrying = null; f._carryThrowAt = 0; f.carryClip = null; f.carryHold = 0; f.regrabCd = REGRAB_CD; }
 // 丟人=排程動作:按下 → 解除 hold 定格、clip 從 hold 幀續播(舉→後仰→前甩)→ release 幀才 launchCarried 甩飛。
 export function throwCarried(f) {
   const o = f.carrying;
@@ -291,7 +304,7 @@ export function launchCarried(f) {
   const o = f.carrying;
   if (!o || f.state !== 'alive') return;
   if (f.stunned) { dropCarry(f); f.carryClip = null; return; } // release 幀被打暈 → 掉人不甩(同原 throwCarried 守衛)
-  f.carrying = null; o.carriedBy = null; o.escape = 0; o.mashSide = 0; f.regrabCd = REGRAB_CD;
+  f.carrying = null; o.carriedBy = null; o.frozen = false; o.escape = 0; o.mashSide = 0; f.regrabCd = REGRAB_CD; // 出手即解凍(冰凍只活在暈/被扛期間)
   const a = f.facing;
   o.x = f.x + Math.cos(a) * (f.r + o.r * 0.7); o.y = f.y + Math.sin(a) * (f.r + o.r * 0.7);
   const F = PERSON_LOB.range / PERSON_LOB.T;                    // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
@@ -307,7 +320,7 @@ export function launchCarried(f) {
 }
 export function inThrowFlight(f) { return f.fumbleT > 0 && game.time - (f._thrownT ?? -9) < (f._lob || PERSON_LOB).T + 0.15; } // 翻滾中(入艙判定用;T+0.15=舊 THROW_TUMBLE+0.05)
 export function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
-  const f = o.carriedBy; o.carriedBy = null; o.escape = 0; o.stability = ESCAPE_STAB; inc.struggleEscapes++;
+  const f = o.carriedBy; o.carriedBy = null; o.frozen = false; o.escape = 0; o.stability = ESCAPE_STAB; inc.struggleEscapes++;
   if (f) { f.carrying = null; f._carryThrowAt = 0; f.carryClip = null; f.carryHold = 0; f.fumbleT = FUMBLE_T; f.regrabCd = REGRAB_CD; f.wasCarryingT = game.time; if (f.pid === LOCAL) v2s.localFlash = 0.28; }
   addText(o.x, o.y - 30, '掙脫！', COLORS[o.pid]); addRing(o.x, o.y, 32, COLORS[o.pid], 0.35, 4); addShake(5); game.sfx.push('dash');
   dlog('ESCAPE', NAMES[o.pid], 'from', f ? NAMES[f.pid] : '?');

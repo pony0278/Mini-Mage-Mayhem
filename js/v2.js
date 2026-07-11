@@ -182,7 +182,7 @@ function step(dt) {
       // stability regen (paused right after a hit; frozen while stunned/carried)
       if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
       // stun countdown → recover (ungrabbed)
-      if (f.stunned) { f.stunT -= dt; if (f.stunT <= 0) { f.stunned = false; f.stability = STUN_RECOVER; f.restunT = RESTUN_IMMUNE; } }
+      if (f.stunned) { f.stunT -= dt; if (f.stunT <= 0) { f.stunned = false; f.frozen = false; f.stability = STUN_RECOVER; f.restunT = RESTUN_IMMUNE; } } // 醒來同時解凍
       // death theatre (isles over-void fall; no-op on the flat arena)
       if (updateDeathTheater(f, dt)) {
         if (f.dead) {

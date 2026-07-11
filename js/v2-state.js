@@ -204,6 +204,7 @@ export function resetFighter(f) {
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
   f.running = false; f._runKey = null; f._tapKey = ''; f._tapT = -9; // 跑步:同鍵連按2次觸發(v2.js keydown 記 tap、step 每幀裁定)
+  f.frozen = false;                  // 冰凍皮(=暈的視覺變體:render 冰塊+不搖晃;stun 醒來時清)
   f._lob = null;                     // 這次被拋飛用的彈道 profile(丟人=PERSON_LOB/終結技=PUNCH_LAUNCH_LOB;null 退回 PERSON_LOB)
   f.z = 0;                           // 被拋飛的 sim 高度(B 案彈道;v2.js step 每幀由 lobZ 算,判定 gate+render 都讀它)
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)

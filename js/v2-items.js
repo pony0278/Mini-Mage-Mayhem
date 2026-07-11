@@ -15,7 +15,7 @@ import {
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
-import { flinch, camKick, dropCarry, stunFighter } from './v2-combat.js';
+import { flinch, camKick, dropCarry, stunFighter, freezeFighter } from './v2-combat.js';
 import { CLIPS } from './brawler-clips.js';
 import { stampElement, stateAtPixel, FL } from './v2-floor.js';
 import { circleHitsSolid } from './fx.js';
@@ -121,7 +121,7 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
 // → ICE_LOB 拋物線 → 落地/撞牆即碎 → 冰面。飛行中穿人不碰撞(瓶不傷人,殺傷=冰面滑行/接雷)。
 export function castIce(f) {
   const a = f.facing, F = ICE_LOB.range / ICE_LOB.T;                 // 出手當下現算(改 LOB 即時生效)
-  itemProjectiles.push({ x: f.x + Math.cos(a) * (f.r + 8), y: f.y + Math.sin(a) * (f.r + 8), vx: Math.cos(a) * F, vy: Math.sin(a) * F, flyT0: game.time, z: ICE_LOB.h0, elem: 'ice', alive: true });
+  itemProjectiles.push({ x: f.x + Math.cos(a) * (f.r + 8), y: f.y + Math.sin(a) * (f.r + 8), vx: Math.cos(a) * F, vy: Math.sin(a) * F, flyT0: game.time, z: ICE_LOB.h0, elem: 'ice', alive: true, owner: f.pid });
   game.sfx.push('dash'); addText(f.x, f.y - 30, '拋瓶！', ITEM_INFO.ice.color);
   dlog('ICE throw by', NAMES[f.pid]);
 }
@@ -137,6 +137,17 @@ export function updateItemProjectiles(dt) {
     const pr = itemProjectiles[i];
     const t = game.time - pr.flyT0;
     pr.z = lobZ(t, ICE_LOB);
+    // 直擊冰凍(玩家反饋定案):任何高度碰到人都算(桶教訓:規則綁看得見的碰撞,不綁看不見的弧高)。
+    // 砸中 → 冰凍(=暈+冰凍皮)+ 瓶在他腳下碎 → 冰面(雙效,同一顆瓶)。不打自己(owner)。
+    for (const o of fighters) {
+      if (o.state !== 'alive' || o.pid === pr.owner || o.carriedBy || o.invuln > 0) continue;
+      if (Math.hypot(pr.x - o.x, pr.y - o.y) > o.r + 8) continue;
+      freezeFighter(o, pr.owner);
+      pr.x = o.x; pr.y = o.y;                                        // 在被凍者腳下碎 → 冰面置中
+      shatterProjectile(pr);
+      break;
+    }
+    if (!pr.alive) { itemProjectiles.splice(i, 1); continue; }
     const nx = pr.x + pr.vx * dt, ny = pr.y + pr.vy * dt;
     if (circleHitsSolid(nx, ny, 8)) shatterProjectile(pr);           // 撞牆即碎(在牆邊成冰面;不反彈——脆)
     else {
