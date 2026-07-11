@@ -14,7 +14,7 @@ import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
   resetFighter, resetBarrels, resetPads, resetStage, resetStations,
-  POD, inPod, iceAt, iceZones, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
+  POD, inPod, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, LAND_SKID, lobZ, RUN_TAP,
@@ -22,7 +22,7 @@ import {
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateIce, updateBarrels, updateStations, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
+import { updatePads, updateBarrels, updateStations, useItem, resolveItemCast, castWind, castTeleport, castIce, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -48,7 +48,7 @@ function playClip(name, f = fighters[LOCAL]) {
 
 // --- round / match orchestration ---
 function resetRound() {
-  resetBarrels(); resetPads(); resetStations(); iceZones.length = 0; resetFloor();
+  resetBarrels(); resetPads(); resetStations(); resetFloor();
   for (const f of fighters) resetFighter(f);
 }
 function restartMatch() {
@@ -233,7 +233,7 @@ function step(dt) {
         containByEnviron(f, cause); break;
       }
     }
-    updateBarrels(dt); updateStations(dt); updatePads(dt); updateIce(dt); // 廢料桶 / 元素站噴發 / 補給座重刷 / 冰面消退
+    updateBarrels(dt); updateStations(dt); updatePads(dt); // 廢料桶 / 元素站噴發 / 補給座重刷(冰面衰退=stepFloor 地板化學)
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment, isles)
   const lf = fighters[LOCAL];
@@ -263,7 +263,6 @@ function step(dt) {
     marks.push({ x: s.x, y: s.y, r: ERUPT_PATCH_R, color: col, pulse: false, op: 0.36, fill: 0.16 });
     marks.push({ x: s.x, y: s.y, r: ERUPT_PATCH_R + prog * ERUPT_PATCH_R * 1.7, color: col, pulse: true, op: 0.92, fill: 0, speed: 6 + (1 - prog) * 16 });
   }
-  for (const z of iceZones) marks.push({ x: z.x, y: z.y, r: z.r, color: '#bfe9ff', pulse: false, op: 0.4, fill: 0.28 }); // 冰面
   for (const p of pads) if (p.item) marks.push({ x: p.x, y: p.y, r: 24, color: ITEM_INFO[p.item].color, pulse: true, op: 0.5, fill: 0.12, speed: 4 }); // 補給座光圈
   if (v2s.lowFlicker) for (const m of marks) m.pulse = false; // 減閃爍:標記全改常亮
   setGroundMarkers(marks);
@@ -315,7 +314,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, // 彈道 tuning(物件可變:控制台 __v2.PUNCH_LAUNCH_LOB.apex=70 即時生效;?tune=1 滑桿同源)
-  punch, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, iceZones, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
+  punch, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, useItem, castWind, castTeleport, castIce, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -323,7 +322,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
     stunned: [fighters[0].stunned, fighters[1].stunned],
     carrying: [fighters[0].carrying ? fighters[0].carrying.pid : -1, fighters[1].carrying ? fighters[1].carrying.pid : -1],
     escape: [Math.round(fighters[0].escape || 0), Math.round(fighters[1].escape || 0)],
-    items: [fighters[0].item, fighters[1].item], pads: pads.map(p => p.item), iceZones: iceZones.length,
+    items: [fighters[0].item, fighters[1].item], pads: pads.map(p => p.item),
     contains: [inc.contains[0], inc.contains[1]], carries: inc.carries, accidentContains: inc.accidentContains,
     reverseContains: inc.reverseContains, teleportEscapes: inc.teleportEscapes, struggleEscapes: inc.struggleEscapes,
     itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses,

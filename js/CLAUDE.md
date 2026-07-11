@@ -57,7 +57,7 @@
 → drainFloorEvents()                ← 毒爆 AoE
 → 搬人 loop(跟隨/掙脫/拖進艙=containByCarry)→ 扛桶 loop(跟隨/暈→掉桶)
 → 失控入艙判定(stunned/thrown/速度>門檻 + inPod → containByEnviron;cause: throw/ice/barrel(-3)/wind)
-→ updateBarrels → updateStations → updatePads → updateIce
+→ updateBarrels → updateStations → updatePads(冰面衰退=stepFloor 地板化學,舊 updateIce/iceZones 已清除)
 幀尾(step 外):game.enemies=fighters、game.props 重建(桶+總開關)、setGroundMarkers(艙/桶危險環/站收縮環/冰/補給座)
 ```
 

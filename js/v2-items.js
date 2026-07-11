@@ -7,8 +7,8 @@ import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
-  pads, iceZones, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
-  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_DUR, ICE_THROW,
+  pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
+  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_SELF, TP_BLINK, TP_JITTER, ICE_R, ICE_THROW,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, LAND_SKID, WALL_BOUNCE, lobZ,
@@ -48,7 +48,6 @@ export function updatePads(dt) {
     }
   }
 }
-export function updateIce(dt) { for (let i = iceZones.length - 1; i >= 0; i--) { iceZones[i].life -= dt; if (iceZones[i].life <= 0) iceZones.splice(i, 1); } }
 export function useItem(f) {
   if (!f.item || f.state !== 'alive' || f.carrying) return;                 // 搬運中兩手全滿,不能用道具
   const spec = ITEM_SPEC[f.item];
@@ -120,7 +119,7 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
 }
 export function castIce(f) { // 前方丟出 → 地板冰面(cut 3:走地板化學 applyElement,格化、吃衰退、可被火熄成水)
   const lx = clamp(f.x + Math.cos(f.facing) * ICE_THROW, 24, W - 24), ly = clamp(f.y + Math.sin(f.facing) * ICE_THROW, 24, H - 24);
-  const n = stampElement(lx, ly, ICE_R, 'ice'); // 舊 iceZones 圓區退場(onSlipperyIce 仍相容);視覺待 cut 4 動態 tile
+  const n = stampElement(lx, ly, ICE_R, 'ice'); // 地板化學:FL.ICE 格(壽命 FLOOR_LIFE.ice、可被火滅、視覺=updateFloorFx)
   addRing(lx, ly, ICE_R, ITEM_INFO.ice.color, 0.4, 5); addText(lx, ly - 20, '冰面！', ITEM_INFO.ice.color); game.sfx.push('dash');
   dlog('ICE @', Math.round(lx) + ',' + Math.round(ly), 'tiles', n);
 }

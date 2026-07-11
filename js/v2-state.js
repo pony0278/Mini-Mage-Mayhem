@@ -1,6 +1,6 @@
 // v2 的狀態與調參中心 (docs/v2-module-boundaries.md §3/§4)。
 // - 全部 tuning 常數與資料表都住這裡:改手感數值永遠只開這個檔案。
-// - 共享可變單例(fighters/inc/pads/barrels/iceZones/containLog/roundWins/camRig)
+// - 共享可變單例(fighters/inc/pads/barrels/containLog/roundWins/camRig)
 //   沿用「原地變異、永不重新賦值」(同 state.js 的 game)。
 // - 跨模組可重賦值純量集中在 v2s 物件(唯一的純量容器;模組頂層不 export let)。
 import { W, H, TILE } from './constants.js';
@@ -132,13 +132,11 @@ export const PAD_SPOTS = [[480, 140], [480, 500]]; // 補給座:上下中線(避
 export const PAD_RESPAWN = 5, PICKUP_R = 26;
 export const WIND_RANGE = 150, WIND_CONE = 1.0, WIND_FORCE = 620, WIND_SELF = 180; // 貼臉(<50)發射自身反彈=風壓過載
 export const TP_BLINK = 150, TP_JITTER = 20;
-export const ICE_R = 60, ICE_DUR = 5, ICE_THROW = 120, ICE_ACCEL = 7, ICE_FRICTION = 0.6;
+export const ICE_R = 60, ICE_THROW = 120, ICE_ACCEL = 7, ICE_FRICTION = 0.6; // 冰面壽命=FLOOR_LIFE.ice(地板化學),不再有獨立 ICE_DUR
 export const SLIDE_CONTAIN_V = 200; // 失控入艙:被擊退/打滑速度 > 此值且進艙半徑 = 收容(spec F §2.2)
 export function randItem() { return ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)]; }
 export const pads = PAD_SPOTS.map(([x, y]) => ({ x, y, r: 14, item: randItem(), respawn: 0 }));
 export function resetPads() { for (const p of pads) { p.item = randItem(); p.respawn = 0; } }
-export const iceZones = []; // { x, y, r, life }
-export function iceAt(x, y) { for (const z of iceZones) if (Math.hypot(x - z.x, y - z.y) <= z.r) return true; return false; }
 
 // --- 地板化學壽命 (docs/v2-floor-state-architecture.md §3.1;危險度↔壽命反比:鋪陳長/佈場中/主動殺傷短) ---
 // key 對齊 v2-floor.js 的 FL.* 狀態字串;charged_water = 電荷壽命(到期退回水,不重置水的底料時鐘)。

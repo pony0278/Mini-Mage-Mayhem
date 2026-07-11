@@ -8,7 +8,7 @@ import { game, keys, mouse, CAM, touchInput } from './state.js';
 import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  SPEED, RUN_MULT, POD, inPod, iceAt, resetFighter, applyStage, barrels, labSwitch,
+  SPEED, RUN_MULT, POD, inPod, resetFighter, applyStage, barrels, labSwitch,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
@@ -74,8 +74,8 @@ export function hitsFighter(f, nx, ny) {
   return false;
 }
 // --- 地板化學讀取 (docs/v2-floor-state-architecture.md 第二刀):踩冰滑 / 踩電水硬直 / 站火海·毒區削穩定值 ---
-// 冰面:item 冰(iceZones 圓區)或 地板狀態 FL.ICE 都打滑 → 統一入口(cut 3 冰道具改走地板後 iceZones 退場)。
-export function onSlipperyIce(x, y) { return iceAt(x, y) || stateAtPixel(x, y) === FL.ICE; }
+// 冰面=地板化學 FL.ICE(舊 iceZones 圓區已退場——冰瓶走 stampElement 後無人寫入,2026-07 清除)。
+export function onSlipperyIce(x, y) { return stateAtPixel(x, y) === FL.ICE; }
 // 每幀(移動前)呼叫:電水=自電硬直(restunT 節流,避免每幀重暈);火海/毒區=削穩定值 → 歸零擊暈(好抓=收容路徑)。
 export function floorHazards(f, dt) {
   if (f.state !== 'alive' || f.carriedBy || f.invuln > 0) return;
