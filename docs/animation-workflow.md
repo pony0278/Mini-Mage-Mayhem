@@ -137,6 +137,14 @@ wx 50/stretch 1.91/fbase −49;aR:sx −79/sy −65/sz 101/wx 63/wy 10/stretch 1
 > 起手丟桶時會先過渡到 clip 自己的姿勢(blend 平滑);要完全無縫可在 studio 把 barrel_throw 的
 > grab/grab_hold 幀更新成同一姿勢再重匯。
 
+`guard`(按住防禦)編排注意:`guard` tag 已入 `KEY_TAGS`(studio 「tag:」下拉可選、匯入不被消毒)。兩條整合路:
+- **A案 · 靜態定格姿勢**(=`ANIM.barrelHold` 那套,最省):studio 擺**一個**舉防定格(舉手護頭/含胸),
+  匯出後把**非零軸**抄進 actor-brawler `ANIM.guard`(軸名→值平鋪表);`f.guarding` 時 `Object.assign` 蓋在站姿上,
+  blend(rate 14 ≈ 0.3s)自動補舉防/收防過渡。**不需要 clip channel、tag 選配**(靜態抄軸不讀 tag)。
+- **B案 · 動作 clip**(=`person_throw` hold 那套):做一段「舉防起手→定格→(可選)擋下 react」,
+  把**定格幀標 tag `guard`**;遊戲端開 guard clip channel、`f.guarding` 時定格在 `clip.tags.guard` 幀、放開播出
+  (可導出 `GUARD_RAISE_T` 給舉防起手成本)。目前防禦是即時舉起(無起手成本),先走 A案;要起手感/擋下 react 再升 B案。
+
 新招式=新 entry + 掛上觸發頻道(punch 三槽 `PUNCH_CLIPS` / 道具 `ITEM_SPEC.clip` / 扛人 `carryClip`)。
 **先驗後接**:`v2.html?clip=名字` 任意 clip 循環試播(對手 AI 凍結),或 `__v2.playClip(名字)` 播一次——
 編完貼進 CLIPS 立刻看,不用先綁玩法。
