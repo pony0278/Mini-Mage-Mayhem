@@ -49,7 +49,7 @@ export const PARRY_SLOW = 0.3;
 // 空按不再進冷卻(改由耐力當防呆閘門)。數值 ?tune=1 可調。
 export const GUARD_MOVE = 0;            // 舉防時移動倍率(0=定身;想拉開就得放防)
 export const GUARD_STAM_MAX = 100;
-export const GUARD_DRAIN = 10;          // 純守耐力衰退(/s);~10s 見底
+export const GUARD_DRAIN = 67;          // 純守耐力衰退(/s);滿值 100÷67 ≈ 1.5s 見底(玩家反饋:別太長)
 export const GUARD_BLOCK_COST = 20;     // 每擋一拳扣的耐力(~5 拳)
 export const GUARD_REGEN = 28, GUARD_REGEN_DELAY = 0.4; // 放開後 delay 才回充(/s)
 export const GUARD_BLOCK_PUSH = 130, GUARD_BLOCK_FLINCH = 0.14; // 擋下=防守方輕微後仰+被推一小步
