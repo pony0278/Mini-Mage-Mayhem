@@ -1,6 +1,11 @@
-# v2 扛/丟系統維護分析(桶 + 人)
+# v2 扛/丟系統維護分析(桶 + 瓶 + 人)
 
-> **目的**:「拿起一個東西 → 舉著 → 排程甩出去」這套機制現在有**兩個消費者**——**廢料桶**(`barrel`)和**扛人**(`carrying`)——
+> **狀態更新(2026-07)**:第三個消費者上線——**投擲瓶**(冰/油,`bottles`,`kind:'bottle'`)。走 `carryObj` 桶管線
+> (grabbableBarrel/pickUpBarrel/throwBarrel/launchBarrel **桶瓶共用**,同一顆 barrel_throw clip),差異:瓶=輕
+> (扛著全速+可跑,moveFighter/running 各有 `kind!=='bottle'` 分支)、丟出用 `BOTTLE_LOB`、不升壓、
+> 落地/硬撞**即碎**(`updateBottles`/`shatterBottle`,v2-items)。「加新可扛物」的活範例。
+>
+> **目的**:「拿起一個東西 → 舉著 → 排程甩出去」這套機制原有**兩個消費者**——**廢料桶**(`barrel`)和**扛人**(`carrying`)——
 > 共用同一套架構(動畫頻道 + 排程 launch + render 把物件貼到手上),但**細節有差**,散落 7 個檔。
 > 這份文件是**避免每次都重查**的單一真相:狀態機、三個時鐘與同步鐵則、render 貼手模式、踩過的坑(含「站旁邊沒打橫」病因)、headless 測試陷阱、加新可扛物的食譜。
 > 程式碼細節在各檔;這裡只講「為什麼這樣、改哪裡會連鎖、坑在哪」。維護手冊速查在 `js/CLAUDE.md`。

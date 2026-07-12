@@ -14,15 +14,15 @@ import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
-  POD, inPod, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
+  POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch, WIND_RANGE, WIND_CONE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, ICE_LOB, itemProjectiles, LAND_SKID, lobZ, RUN_TAP,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateBarrels, updateStations, updateItemProjectiles, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castIce, castOil, castFire, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
+import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -48,7 +48,7 @@ function playClip(name, f = fighters[LOCAL]) {
 
 // --- round / match orchestration ---
 function resetRound() {
-  resetBarrels(); resetPads(); resetGroundItems(); resetStations(); resetFloor(); itemProjectiles.length = 0;
+  resetBarrels(); resetBottles(); resetPads(); resetGroundItems(); resetStations(); resetFloor();
   for (const f of fighters) resetFighter(f);
 }
 function restartMatch() {
@@ -128,8 +128,9 @@ let touchMod = null;
 function syncTouchLabels() {
   if (!touchMod || !touchInput.enabled) return;
   const f = fighters[LOCAL];
-  const punch = f.carryObj ? '丟桶' : f.carrying ? '投擲' : '揮拳';
-  const context = f.carryObj ? '放下桶' : f.carrying ? '放下' : (f.item ? '技能' : '抓');
+  const bottle = f.carryObj && f.carryObj.kind === 'bottle';
+  const punch = f.carryObj ? (bottle ? '丟瓶' : '丟桶') : f.carrying ? '投擲' : '揮拳';
+  const context = f.carryObj ? (bottle ? '放下瓶' : '放下桶') : f.carrying ? '放下' : (f.item ? '技能' : '抓');
   touchMod.syncLabels(punch, context);
 }
 
@@ -200,9 +201,9 @@ function step(dt) {
         }
         continue;
       }
-      // 跑步裁定:雙擊鍵放開即停;扛人/扛桶/暈眩/踉蹌不能跑(搬運要有重量感)
+      // 跑步裁定:雙擊鍵放開即停;扛人/扛桶/暈眩/踉蹌不能跑(搬運要有重量感);瓶=輕,拿著照樣跑
       if (f._runKey && !keys.has(f._runKey)) f._runKey = null;
-      f.running = !!(f._runKey && !f.carrying && !f.carryObj && !f.stunned && f.fumbleT <= 0);
+      f.running = !!(f._runKey && !f.carrying && !(f.carryObj && f.carryObj.kind !== 'bottle') && !f.stunned && f.fumbleT <= 0);
       floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
       if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
     }
@@ -239,7 +240,7 @@ function step(dt) {
         containByEnviron(f, cause); break;
       }
     }
-    updateBarrels(dt); updateStations(dt); updatePads(dt); updateGroundItems(dt); updateItemProjectiles(dt); // 廢料桶 / 元素站 / 補給座重刷 / 掉落道具 TTL / 拋擲道具
+    updateBarrels(dt); updateBottles(dt); updateStations(dt); updatePads(dt); updateGroundItems(dt); // 廢料桶 / 投擲瓶 / 元素站 / 補給座重刷 / 掉落道具 TTL
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment, isles)
   const lf = fighters[LOCAL];
@@ -255,7 +256,7 @@ function step(dt) {
   // fly = sim 真高度(B 案彈道 b.z,updateBarrels 算);人的高度=f.z(actor-brawler 直接讀)
   game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false, fly: b.z || 0, vx: b.vx, vy: b.vy, roll: b.roll })); // vx/vy/roll → render 桶翻滾(繞運動法向水平軸)
   game.props.push({ x: labSwitch.x, y: labSwitch.y, r: labSwitch.r, charge: 'lightning', hp: 1, maxHp: 1, held: false }); // 中央緊急控制台(佔位=藍色發光箱)
-  for (const pr of itemProjectiles) game.props.push({ x: pr.x, y: pr.y, r: 8, wall: pr.elem === 'oil' ? 'oil' : 'ice', hp: 1, maxHp: 1, held: false, fly: pr.z || 0 }); // 飛行中的冰/油瓶(桶模 tint 佔位,瓶模好了換 mesh)
+  for (const t of bottles) if (t.alive && !t.held) game.props.push({ x: t.x, y: t.y, r: t.r, wall: t.elem, hp: 1, maxHp: 1, held: false, fly: t.z || 0, vx: t.vx, vy: t.vy, roll: t.roll }); // 場上投擲瓶(桶模 tint 佔位,瓶模好了換 mesh;vx/vy/roll → 翻滾)
   // 風壓手套起手預告:施法窗中(_itemCastAt 未到)每幀重建淡扇形,面向即時跟(教射程/範圍;對手也看得到=反應窗)
   game.windAims.length = 0;
   for (const f of fighters) if (f.state === 'alive' && f._itemCastType === 'wind' && f._itemCastAt > game.time) game.windAims.push({ x: f.x, y: f.y, angle: f.facing, range: WIND_RANGE, cone: WIND_CONE });
@@ -274,6 +275,7 @@ function step(dt) {
     marks.push({ x: s.x, y: s.y, r: ERUPT_PATCH_R + prog * ERUPT_PATCH_R * 1.7, color: col, pulse: true, op: 0.92, fill: 0, speed: 6 + (1 - prog) * 16 });
   }
   for (const p of pads) if (p.item) marks.push({ x: p.x, y: p.y, r: 24, color: ITEM_INFO[p.item].color, pulse: true, op: 0.5, fill: 0.12, speed: 4 }); // 補給座光圈
+  for (const t of bottles) if (t.alive && !t.held && t.z <= 0) marks.push({ x: t.x, y: t.y, r: t.r + 10, color: elemColor(t.elem), pulse: true, op: 0.5, fill: 0.14, speed: 4 }); // 場上瓶(可撿=元素色小圈)
   for (const g of groundItems) marks.push({ x: g.x, y: g.y, r: 18, color: ITEM_INFO[g.type].color, pulse: true, op: 0.72, fill: 0.18, speed: 7 }); // 地上掉落道具(可撿/搶)
   if (v2s.lowFlicker) for (const m of marks) m.pulse = false; // 減閃爍:標記全改常亮
   setGroundMarkers(marks);
@@ -324,8 +326,8 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, ICE_LOB, itemProjectiles, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 拋擲道具(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, castWind, castTeleport, castIce, castOil, castFire, inc, generateReport, endMatch,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, castWind, castTeleport, castFire, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],

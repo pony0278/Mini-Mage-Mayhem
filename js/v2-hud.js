@@ -7,7 +7,7 @@ import { game } from './state.js';
 import { project } from './render.js';
 import {
   v2s, fighters, LOCAL, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, ITEM_INFO, GUARD_STAM_MAX,
+  POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   STAGE_NAME, METHOD_COL, METHOD_ZH,
 } from './v2-state.js';
 
@@ -105,9 +105,13 @@ function drawParryPrompt() {
 }
 // 教練提示線(玩家反饋:「指示要更明顯地告訴我現在該做什麼」):
 // 按優先序只顯示一條,大字置中脈動,告訴本機玩家當下最重要的行動。
-function nearPickup(f) { // 附近有可撿的補給座道具或地上掉落道具(手動撿提示用)
+function nearPickup(f) { // 附近有可撿的補給座道具或地上掉落道具(手動撿提示用;空手才撿得到)
   for (const p of pads) if (p.item && Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r + 6) return true;
   for (const g of groundItems) if (Math.hypot(f.x - g.x, f.y - g.y) < PICKUP_R + f.r + 6) return true;
+  return false;
+}
+function nearBottle(f) { // 附近有場上投擲瓶(撿了丟提示用;有裝備也能撿,只要雙手沒扛東西)
+  for (const t of bottles) if (t.alive && !t.held && t.z <= 0 && Math.hypot(f.x - t.x, f.y - t.y) < GRAB_RANGE + t.r + 6) return true;
   return false;
 }
 function drawCoachLine() {
@@ -119,6 +123,7 @@ function drawCoachLine() {
   else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
   else if (!me.item && !me.carryObj && nearPickup(me)) { msg = '右鍵 / E 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
+  else if (!me.carryObj && nearBottle(me)) { msg = '右鍵 / E 撿瓶丟他'; col = '#9ee6ff'; } // 場上投擲瓶:撿了丟(碎=蓋元素地板)
   if (!msg) return;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
@@ -246,9 +251,9 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／撿道具（走到補給座/掉落物按）／放技能 · 扛人左鍵拋擲 · 空白鍵按住＝防禦 ·起手瞬間點＝反暈　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／撿（裝備·瓶·桶）／放技能 · 扛著左鍵＝丟 · 空白鍵按住＝防禦 ·起手瞬間點＝反暈　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: guard-1', VW - 10, VH - 4);
+  hctx.fillText('build: bottles-1', VW - 10, VH - 4);
 }

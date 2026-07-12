@@ -48,8 +48,7 @@ export const ANIM = {
   },
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
   thrown:  { lift: 8, rate: 10 },                                                          // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下的平滑速率
-  heldBarrel: { liftK: 0.9 },                                                              // 扛桶:桶心抬高 = 桶邊長×此係數(0.5=桶底貼掌心;45° 俯視鏡頭下要再高些頭才不被蓋)
-  heldBottle: { w: 12, h: 16, liftK: 0.6 },                                                // 施法舉瓶(冰霜瓶等拋擲道具):放大版瓶貼雙手中點;參數結構鏡像 heldBarrel
+  heldBarrel: { liftK: 0.9 },                                                              // 扛桶/瓶:物心抬高 = 邊長×此係數(0.5=底貼掌心;45° 俯視鏡頭下要再高些頭才不被蓋)
   guard: { // 按住防禦:使用者 studio 定稿的舉防定格(guard 幀非零軸→值直接蓋在戰鬥站姿上;側身含胸、右臂高舉護頭、左臂護體、屈膝穩樁)
     spine_x: -13, spine_y: -86, pelvis_y: -63,
     aL_sx: 20, aL_sy: 8, aL_sz: 13, aL_ex: 96,
@@ -201,7 +200,7 @@ function updateHands(e, R, u, now) {
     const av = u.avatar;
     if (av && av.handRig) {
       const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0, rigT: 0 });
-      if (e.carrying || e.carryObj || heldCastItem(e)) h.rigT = now + 0.3;  // 抓握/施法舉瓶中→續握;放/丟後多留 0.3s 收招(手指張開的跟隨)
+      if (e.carrying || e.carryObj) h.rigT = now + 0.3;  // 抓握中→續握;放/丟後多留 0.3s 收招(手指張開的跟隨)
       setRiggedHandsVisible(av, now < h.rigT);
     }
     return;
@@ -209,7 +208,7 @@ function updateHands(e, R, u, now) {
   if (!handsReady()) { R.armL.fist.visible = true; R.armR.fist.visible = true; return; }
   const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0 });
   let mode = 'glove';
-  if (e.carrying || heldCastItem(e)) mode = 'grip';                 // 扛人/施法舉瓶:握住
+  if (e.carrying) mode = 'grip';                                    // 扛人:握住
   else {
     // 剛結束搬運這幀:丟出(throwCarried 設 punchKind=2 且 punchFx≈now)→ 開手窗口;放下(dropCarry)→ 無
     if (h.wasCarry && e.punchKind === 2 && e.punchFx != null && (now - e.punchFx) < 0.12) h.releaseT = now + 0.28;
@@ -219,25 +218,24 @@ function updateHands(e, R, u, now) {
   setArmHand(R.armL, mode); setArmHand(R.armR, mode);
 }
 
-// 施法中舉著的拋擲道具(排程施放的持有窗:useItem 按下 → release 幀甩出投擲物)。
-// 回傳道具名或 null;rigged 手切換與 updateHeldBottle 都吃這個(未來油瓶等加進集合即繼承整套)。
-const THROWN_CAST_ITEMS = new Set(['ice', 'oil']);
-function heldCastItem(e) { return (e._itemCastAt > 0 && THROWN_CAST_ITEMS.has(e._itemCastType)) ? e._itemCastType : null; }
-// 瓶身色(背瓶/舉瓶佔位;桶模縮小版,使用者瓶模好了換 mesh):冰=藍、油=暗金。[body, emissive, cap]
+// 瓶身色(扛瓶佔位;桶模縮小版,使用者瓶模好了換 mesh):冰=藍、油=暗金。[body, emissive, cap]
 const BOTTLE_TINT = { ice: [0x9fd8e8, 0x2a6a88, 0x6aa8c0], oil: [0x9a8a5a, 0x2a2008, 0x6a5a32] };
 
-// ===== 扛桶:把桶畫在雙手腕中點(舉過頭頂;丟桶時隨 heave clip 走)。遊戲端 v2.js 對 held 桶略過 ground prop,
-// 交由這裡畫,甩出/放下瞬間(carryObj 清空)交還給地面/飛行 prop。桶=橘箱+蓋(比照 render-entities syncProps 外觀)。=====
+// ===== 扛投擲物(桶/瓶共用):畫在雙手腕中點(舉過頭頂;丟時隨 heave clip 走)。遊戲端 v2.js 對 held 物略過 ground prop,
+// 交由這裡畫,甩出/放下瞬間(carryObj 清空)交還給地面/飛行 prop。桶=橘箱+蓋、瓶=元素 tint 縮小版(換扛物種類時重建)。=====
 const _wlp = new THREE.Vector3(), _wrp = new THREE.Vector3();
 function updateHeldBarrel(e, g, R) {
   const holding = !!e.carryObj;
   let bm = g.userData.throwBarrel;
   if (!holding) { if (bm) bm.visible = false; return; }
-  if (!bm) {                                                        // lazy 建桶
+  const kindKey = e.carryObj.kind === 'bottle' ? 'bottle:' + e.carryObj.elem : 'barrel';
+  if (bm && bm.userData.kindKey !== kindKey) { g.remove(bm); bm = null; g.userData.throwBarrel = null; } // 桶↔瓶切換 → 重建
+  if (!bm) {                                                        // lazy 建(桶=橘;瓶=BOTTLE_TINT)
     const s = (e.carryObj.r || 13) * 2;
-    bm = new THREE.Group(); bm.name = 'HELD_BARREL';
-    const box = makeBox(s, s, s, 0xff7a3a, 0xff5a20, 0.5); bm.add(box);
-    const cap = makeBox(s * 1.04, 3, s * 1.04, 0x9c4422); cap.position.y = s * 0.5 + 1.5; bm.add(cap);
+    const tint = e.carryObj.kind === 'bottle' ? (BOTTLE_TINT[e.carryObj.elem] || BOTTLE_TINT.ice) : [0xff7a3a, 0xff5a20, 0x9c4422];
+    bm = new THREE.Group(); bm.name = 'HELD_BARREL'; bm.userData.kindKey = kindKey;
+    const box = makeBox(s, s, s, tint[0], tint[1], 0.5); bm.add(box);
+    const cap = makeBox(s * 1.04, 3, s * 1.04, tint[2]); cap.position.y = s * 0.5 + 1.5; bm.add(cap);
     g.add(bm); g.userData.throwBarrel = bm;
   }
   bm.visible = true;
@@ -252,63 +250,6 @@ function updateHeldBarrel(e, g, R) {
   g.worldToLocal(_wlp); bm.position.copy(_wlp);                       // 世界中點 → g 局部(g 的位移/朝向/擠壓已在本幀套好)
   bm.position.y += (e.carryObj.r || 13) * 2 * ANIM.heldBarrel.liftK;  // 桶心=手中點會蓋住頭 → 抬半桶高+餘裕,桶底貼掌心
   bm.rotation.y = game.time * 1.2;
-}
-
-// 背後掛瓶(冰霜瓶 ×3 彈藥視覺化):持有 ice 道具時背上掛 itemUses 顆小瓶(桶模冰色縮小版佔位,
-// 使用者瓶模好了換 mesh)。掛在 g(世界層):跟朝向/被丟打橫一起轉;不跟脊椎彎(MVP 夠用)。
-function updateBackBottles(e, g) {
-  const thrown = THROWN_CAST_ITEMS.has(e.item);                   // 冰/油瓶=背上掛剩餘次數(彈藥視覺)
-  const want = thrown ? Math.min(e.itemUses || 0, 3) : 0;
-  let bb = g.userData.backBottles;
-  if (!bb) {
-    if (!want) return;                                   // 沒拿瓶就不建(lazy)
-    bb = [];
-    for (let i = 0; i < 3; i++) {
-      const grp = new THREE.Group(); grp.name = 'BACK_BOTTLE';
-      const s = 6.5;
-      const body = makeBox(s, s * 1.3, s, 0x9fd8e8, 0x2a6a88, 0.5); grp.add(body);
-      const cap = makeBox(s * 0.55, 2.2, s * 0.55, 0x6aa8c0); cap.position.y = s * 0.78; grp.add(cap);
-      grp.position.set((i - 1) * 8.5, 25, -9);           // 背後一排(g 局部:臉=+z → 背=-z)
-      grp.rotation.x = 0.16;                             // 微傾貼背
-      grp.userData.body = body; grp.userData.cap = cap;
-      g.add(grp); bb.push(grp);
-    }
-    g.userData.backBottles = bb;
-  }
-  const tint = BOTTLE_TINT[e.item] || BOTTLE_TINT.ice;           // 依道具染色(冰藍/油金)
-  for (let i = 0; i < bb.length; i++) {
-    bb[i].visible = i < want;
-    if (bb[i].visible) { bb[i].userData.body.material.color.setHex(tint[0]); bb[i].userData.body.material.emissive.setHex(tint[1]); bb[i].userData.cap.material.color.setHex(tint[2]); }
-  }
-}
-
-// ===== 施法舉瓶:排程施放期間把「放大版瓶」畫在雙手中點(錨定/抬升邏輯=updateHeldBarrel 鏡像)。
-// release 幀 _itemCastAt 歸零 → 瓶消失,無縫交棒給飛行投擲物(itemProjectiles/props 橋接)。
-// 佔位外觀=背後小瓶的放大版(桶模冰 tint;使用者瓶模好了換 mesh,錨定不用動)。
-function updateHeldBottle(e, g, R) {
-  const casting = !!heldCastItem(e);
-  let bt = g.userData.throwBottle;
-  if (!casting) { if (bt) bt.visible = false; return; }
-  if (!bt) {                                                          // lazy 建瓶
-    const C = ANIM.heldBottle;
-    bt = new THREE.Group(); bt.name = 'HELD_BOTTLE';
-    const body = makeBox(C.w, C.h, C.w, 0x9fd8e8, 0x2a6a88, 0.55); bt.add(body);
-    const cap = makeBox(C.w * 0.55, 2.6, C.w * 0.55, 0x6aa8c0); cap.position.y = C.h * 0.5 + 1.3; bt.add(cap);
-    bt.userData.body = body; bt.userData.cap = cap;
-    g.add(bt); g.userData.throwBottle = bt;
-  }
-  bt.visible = true;
-  const tint = BOTTLE_TINT[heldCastItem(e)] || BOTTLE_TINT.ice;      // 施法舉瓶依道具染色(冰藍/油金)
-  bt.userData.body.material.color.setHex(tint[0]); bt.userData.body.material.emissive.setHex(tint[1]); bt.userData.cap.material.color.setHex(tint[2]);
-  const av = g.userData.avatar;                                       // 手中點:avatar 取 rigged Fingers 骨優先(同扛桶)
-  const bl = av && ((av.handRig && av.handRig.L && av.handRig.L.fingers) || (av.by.hand_l && av.by.hand_l.bone));
-  const br = av && ((av.handRig && av.handRig.R && av.handRig.R.fingers) || (av.by.hand_r && av.by.hand_r.bone));
-  if (bl && br) { bl.getWorldPosition(_wlp); br.getWorldPosition(_wrp); }
-  else { R.armL.wr.getWorldPosition(_wlp); R.armR.wr.getWorldPosition(_wrp); }
-  _wlp.add(_wrp).multiplyScalar(0.5);
-  g.worldToLocal(_wlp); bt.position.copy(_wlp);
-  bt.position.y += ANIM.heldBottle.h * ANIM.heldBottle.liftK;         // 抬離手中點免蓋頭(同 heldBarrel liftK 設計)
-  bt.rotation.y = game.time * 1.2;
 }
 
 // 冰凍皮:半透明冰塊包住整個人(frozen=暈的冰凍變體;直擊冰凍=好抓,扛著冰雕去回收=喜感本體)。
@@ -477,9 +418,7 @@ export function updateBrawler(e, g) {
   const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
-  updateHeldBarrel(e, g, R);   // 扛桶:桶貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
-  updateHeldBottle(e, g, R);   // 施法舉瓶:排程施放期間放大版瓶貼雙手中點(release 幀交棒給投擲物)
+  updateHeldBarrel(e, g, R);   // 扛投擲物(桶/瓶):貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
   updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
   updateGuardShield(e, g);     // 防禦架式:舉防時身前半透明護盾弧
-  updateBackBottles(e, g);     // 冰霜瓶:背後掛 itemUses 顆(彈藥視覺化)
 }

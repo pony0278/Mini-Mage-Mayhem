@@ -8,7 +8,7 @@ import { game, keys, mouse, CAM, touchInput } from './state.js';
 import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  SPEED, RUN_MULT, POD, inPod, resetFighter, applyStage, barrels, labSwitch,
+  SPEED, RUN_MULT, POD, inPod, resetFighter, applyStage, barrels, bottles, labSwitch,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
@@ -120,7 +120,7 @@ export function moveFighter(f, dt) {
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
   } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
   if (f.guarding) { m.x *= GUARD_MOVE; m.y *= GUARD_MOVE; }                       // 舉防=定身(GUARD_MOVE 0);想拉開就得放防。擊退/被推仍照 f.vx/vy 走
-  const sp = SPEED * ((f.carrying || f.carryObj) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;跑步(雙擊)加速
+  const sp = SPEED * ((f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;瓶=輕(全速);跑步(雙擊)加速
   // --- 冰面=鎖滑(玩家反饋 2026-07):帶動量踩上 → 鎖原始方向直線滑行,直到撞牆(暈)/撞人/滑出冰面。
   //     滑行中無操控;速度 ≥ SLIDE_MIN(> 失控收容門檻)→ 滑進艙=收容(cause 'ice')。
   //     靜止站上冰(冰凍醒來/瓶在腳下碎)= 小心走 ICE_WALK,不觸發鎖滑=逃生口。
@@ -343,6 +343,13 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     if (d > PUNCH_RANGE + b.r) continue;
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) <= PUNCH_CONE) { b.state = 'fuse'; b.fuse = v2s.barrelFuseCur; addText(b.x, b.y - 26, '升壓！', '#ffd36d'); hit = true; }
+  }
+  for (const t of bottles) { // 揍到場上瓶 → 立 _smash 旗,下一 tick updateBottles 碎裂蓋地板(DAG:combat 不能 import v2-items 的 shatterBottle)
+    if (!t.alive || t.held || t._smash || t.z > 0) continue;
+    const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy);
+    if (d > PUNCH_RANGE + t.r) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) <= PUNCH_CONE) { t._smash = true; hitSpark(t.x, t.y, '#eaffff', 1.1); hit = true; }
   }
   if (!labSwitch.armed) { // 揍中央緊急控制台 → arm 四站洩漏循環(單向不可關;§10.1)
     const dx = labSwitch.x - f.x, dy = labSwitch.y - f.y, d = Math.hypot(dx, dy);

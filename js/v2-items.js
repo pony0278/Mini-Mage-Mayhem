@@ -1,5 +1,5 @@
 // v2 道具與危險物 (spec F §3/§4;docs/v2-module-boundaries.md §3):
-// 補給座撿取、風壓手套/傳送符/冰霜瓶三道具、爆桶點燃→爆炸。
+// 裝備類道具(風壓手套/傳送符/噴火帽,補給座手動撿)、投擲瓶(冰/油=場上物件,撿了丟)、爆桶點燃→爆炸。
 // 新法術/道具的 cast 加在這裡;數值常數與資料表進 v2-state.js;報告欄位進 inc + v2-report.js。
 import { W, H } from './constants.js';
 import { clamp } from './utils.js';
@@ -8,8 +8,9 @@ import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan } from './
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
-  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, OIL_LOB, OIL_R,
-  FIRE_RANGE, FIRE_CONE, FIRE_R, FIRE_STAMPS, FIRE_MIN, FIRE_HIT_STAB, itemProjectiles,
+  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
+  FIRE_RANGE, FIRE_CONE, FIRE_R, FIRE_STAMPS, FIRE_MIN, FIRE_HIT_STAB,
+  bottles, BOTTLE_LOB, BOTTLE_BREAK_V, BOTTLE_RESPAWN,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, BARREL_WALL_HOP, LAND_SKID, WALL_BOUNCE, lobZ,
@@ -75,8 +76,6 @@ export function useItem(f) {
 function castItem(type, f) {
   if (type === 'wind') castWind(f);
   else if (type === 'teleport') castTeleport(f);
-  else if (type === 'ice') castIce(f);
-  else if (type === 'oil') castOil(f);
   else if (type === 'fire') castFire(f);
 }
 // step 在 impact 幀呼叫:施法中被打斷(暈/被抓)→ 取消(次數已扣、不退);否則發動效果
@@ -121,15 +120,20 @@ export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手
     camKick(a, 6); hitSpark(o.x, o.y, '#dff3ff', 1.3); addRing(o.x, o.y, 32, '#dff3ff', 0.3, 4);
     if (o.pid === LOCAL) v2s.localFlash = 0.25;
   }
-  for (const pr of itemProjectiles) { // 反彈投射物(風剋冰投):錐內飛行冰瓶 → 放射狀甩回+改歸風施放者
-    if (!pr.alive) continue;
-    const w = windBlast(f, a, pr.x, pr.y); if (!w) continue;
-    const spd = Math.hypot(pr.vx, pr.vy) || (ICE_LOB.range / ICE_LOB.T);
-    pr.vx = w.ux * spd; pr.vy = w.uy * spd;                                   // 沿放射狀方向甩回(在手心正前=吹回原主)
-    pr.flyT0 = game.time; pr.z = ICE_LOB.h0;                                  // 重啟拋物弧(從當前位置起新的一段)
-    pr.owner = f.pid;                                                          // 改歸風施放者 → 命中原主=凍住原主、計功給風方
-    hit = true;
-    hitSpark(pr.x, pr.y, '#dff3ff', 1.5); addRing(pr.x, pr.y, 30, '#dff3ff', 0.32, 5); addText(pr.x, pr.y - 22, '反彈！', '#dff3ff');
+  for (const t of bottles) { // 吹瓶:飛行中=整支甩回放射方向(風剋冰投,改歸風方=命中原主凍原主);地上=吹走(夠快→砸牆/砸人碎)
+    if (!t.alive || t.held) continue;
+    const w = windBlast(f, a, t.x, t.y); if (!w) continue;
+    if (!t.landed) {                                                           // 飛行瓶 → 反彈(判 landed 旗,不判 t.z:z 是 updateBottles 每幀重算的快取,同幀內剛出手的瓶還是舊值 0 → 誤走地上分支=方向被亂數擾動吹歪)
+      const spd = Math.hypot(t.vx, t.vy) || (BOTTLE_LOB.range / BOTTLE_LOB.T);
+      t.vx = w.ux * spd; t.vy = w.uy * spd;
+      t.flyT0 = game.time;                                                     // 重啟拋物弧(從當前位置起新的一段)
+      addText(t.x, t.y - 22, '反彈！', '#dff3ff'); addRing(t.x, t.y, 30, '#dff3ff', 0.32, 5);
+    } else {                                                                   // 地上瓶 → 放射狀+亂數擾動吹走(滑行硬撞即碎)
+      const [bx, by] = windScatter(w.ux, w.uy);
+      t.vx += bx * w.force * 1.4; t.vy += by * w.force * 1.4;
+    }
+    t.thrownBy = f.pid;                                                        // 改歸風施放者(碎裂凍人/計功歸風方)
+    hit = true; hitSpark(t.x, t.y, '#dff3ff', 1.3);
   }
   for (const b of barrels) { // 吹動桶:錐內 idle 桶 → 放射狀+亂數擾動推走(被吹亂的活炸彈)+ 升壓
     if (!b.alive || b.state !== 'idle') continue;
@@ -165,17 +169,6 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
   f.vx = 0; f.vy = 0; game.sfx.push('upgrade');
   dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
 }
-// 丟擲瓶(冰/油共用管線):release 幀甩出 → LOB 拋物線 → 落地/撞牆即碎 → 種元素地板。
-// 冰=直擊凍人;油=不凍(純鋪面)。飛行中穿人碰撞在 updateItemProjectiles(分元素)。
-const THROW_R = { ice: ICE_R, oil: OIL_R };
-function castBottle(f, elem, lob) {
-  const a = f.facing, F = lob.range / lob.T;                          // 出手當下現算(改 LOB 即時生效)
-  itemProjectiles.push({ x: f.x + Math.cos(a) * (f.r + 8), y: f.y + Math.sin(a) * (f.r + 8), vx: Math.cos(a) * F, vy: Math.sin(a) * F, flyT0: game.time, z: lob.h0, elem, lob, alive: true, owner: f.pid });
-  game.sfx.push('dash'); addText(f.x, f.y - 30, '拋瓶！', elemColor(elem));
-  dlog(elem.toUpperCase() + ' throw by', NAMES[f.pid]);
-}
-export function castIce(f) { castBottle(f, 'ice', ICE_LOB); }
-export function castOil(f) { castBottle(f, 'oil', OIL_LOB); }
 // 噴火帽=前方噴流錐:沿中軸種幾塊火地板(點燃腳下油=R1 火海,stampElement 自動走反應)+ 錐內對手削穩定值+flinch(踩到火海後 floorHazards 續燒)。
 export function castFire(f) {
   const a = f.facing; let hit = false;
@@ -206,62 +199,73 @@ export function castFire(f) {
   camKick(a, 7); addShake(hit ? 7 : 4); game.sfx.push('dash');
   dlog('FIRE spray by', NAMES[f.pid], hit ? 'hit' : 'miss');
 }
-function shatterProjectile(pr) { // 瓶=脆:落地/撞牆即碎 → 蓋元素地板(冰面/油膜);無傷害脈衝(殺傷=地板化學)
-  pr.alive = false;
-  const col = elemColor(pr.elem), r = THROW_R[pr.elem] || ICE_R;
-  const n = stampElement(pr.x, pr.y, r, pr.elem);
-  addRing(pr.x, pr.y, r, col, 0.4, 5); hitSpark(pr.x, pr.y, col, 1.4);
-  addText(pr.x, pr.y - 20, '碎裂！', col); game.sfx.push('thud');
-  dlog(pr.elem.toUpperCase() + ' shatter @', Math.round(pr.x) + ',' + Math.round(pr.y), 'tiles', n);
+// --- 投擲瓶=場上物件(朋友反饋定案:投擲類全走爆桶動詞——撿了丟、一次性、高頻刷新)。
+// 物理共用桶語言(carryObj 撿丟/風吹/翻滾);瓶=脆:丟出落地/硬撞牆/硬撞人/被拳打(_smash)/被爆炸波及 全都碎。
+// 碎裂=蓋元素地板(冰面/油膜);冰瓶硬砸中人=直擊冰凍(hitFighter,歸因 thrownBy)。
+export function shatterBottle(t, hitFighter) {
+  if (!t.alive) return;
+  t.alive = false; t.respawn = BOTTLE_RESPAWN; t.held = false; t._smash = false;
+  for (const f of fighters) if (f.carryObj === t) { f.carryObj = null; f._barrelThrowAt = 0; } // 在手上碎(爆炸波及)→ 放開持有者
+  const col = elemColor(t.elem), r = t.elem === 'oil' ? OIL_R : ICE_R;
+  const n = stampElement(t.x, t.y, r, t.elem);
+  addRing(t.x, t.y, r, col, 0.4, 5); hitSpark(t.x, t.y, col, 1.4);
+  addText(t.x, t.y - 20, '碎裂！', col); game.sfx.push('thud');
+  if (hitFighter && t.elem === 'ice') freezeFighter(hitFighter, t.thrownBy); // 直擊冰凍(任何高度碰到都算,同舊瓶規則)
+  dlog('BOTTLE', t.elem, 'shatter @', Math.round(t.x) + ',' + Math.round(t.y), 'tiles', n);
 }
-export function updateItemProjectiles(dt) {
-  for (let i = itemProjectiles.length - 1; i >= 0; i--) {
-    const pr = itemProjectiles[i], lob = pr.lob || ICE_LOB;
-    const t = game.time - pr.flyT0;
-    pr.z = lobZ(t, lob);
-    // 直擊碰撞(玩家反饋定案):任何高度碰到人都算(桶教訓:規則綁看得見的碰撞,不綁看不見的弧高)。不打自己(owner)。
-    // 冰=砸中凍人(暈+冰凍皮);油=不凍,只在腳下潑油膜。皆在目標腳下碎(雙效同一顆瓶)。
-    for (const o of fighters) {
-      if (o.state !== 'alive' || o.pid === pr.owner || o.carriedBy || o.invuln > 0) continue;
-      if (Math.hypot(pr.x - o.x, pr.y - o.y) > o.r + 8) continue;
-      if (pr.elem === 'ice') freezeFighter(o, pr.owner);
-      pr.x = o.x; pr.y = o.y;                                        // 在目標腳下碎 → 地板置中
-      shatterProjectile(pr);
-      break;
-    }
-    if (!pr.alive) { itemProjectiles.splice(i, 1); continue; }
-    const nx = pr.x + pr.vx * dt, ny = pr.y + pr.vy * dt;
-    if (circleHitsSolid(nx, ny, 8)) shatterProjectile(pr);           // 撞牆即碎(牆邊種地板;不反彈——脆)
-    else {
-      pr.x = clamp(nx, 8, W - 8); pr.y = clamp(ny, 8, H - 8);
-      if (t >= lob.T) {                                              // 自然落地幀:回推跨幀過衝(粗 dt 下 t 超過 T 的位移已加)→ 落點=精確 range
-        const over = t - lob.T;
-        pr.x = clamp(pr.x - pr.vx * over, 8, W - 8); pr.y = clamp(pr.y - pr.vy * over, 8, H - 8);
-        shatterProjectile(pr);
+export function updateBottles(dt) {
+  for (const t of bottles) {
+    if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; }
+    if (t._smash) { shatterBottle(t); continue; }                    // 被拳打碎(v2-combat 只立旗,免 DAG 反向 import)
+    if (t.held) continue;                                            // 被扛的瓶由 carry loop 定位
+    t.z = lobZ(game.time - t.flyT0, BOTTLE_LOB);
+    const air = t.z > 0;
+    if (t.vx || t.vy) {
+      const spd = Math.hypot(t.vx, t.vy);
+      const nx = t.x + t.vx * dt, ny = t.y + t.vy * dt;
+      if (circleHitsSolid(nx, ny, t.r)) {                            // 撞牆:硬撞(飛行中/風吹滑行夠快)=碎;慢滑=停
+        if (air || spd > BOTTLE_BREAK_V) { shatterBottle(t); continue; }
+        t.vx = 0; t.vy = 0;
+      } else { t.x = clamp(nx, t.r, W - t.r); t.y = clamp(ny, t.r, H - t.r); }
+      if (!air) {
+        const k = Math.pow(BARREL_FRICTION, dt); t.vx *= k; t.vy *= k; // 地面滑行=桶同款滾動摩擦
+        if (t.vx * t.vx + t.vy * t.vy < 400) { t.vx = 0; t.vy = 0; }
       }
+      t.roll += spd / Math.max(t.r, 1) * dt;                          // 翻滾角(render 繞運動法向軸)
+      for (const f of fighters) {                                     // 碰到人:硬撞(丟出/風吹快滑)=腳下碎+冰凍;慢滑=推開
+        if (f.state !== 'alive' || f.carryObj === t || f.invuln > 0) continue;
+        const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy) || 1;
+        if (d > f.r + t.r) continue;
+        if ((air || spd > BOTTLE_BREAK_V) && f.pid !== t.thrownBy) { t.x = f.x; t.y = f.y; shatterBottle(t, f); break; } // 任何高度碰到都算(同舊直擊規則)
+        if (!air) { t.vx += dx / d * BARREL_PUSH; t.vy += dy / d * BARREL_PUSH; t.x = f.x + dx / d * (f.r + t.r); t.y = f.y + dy / d * (f.r + t.r); }
+      }
+      if (!t.alive) continue;
     }
-    if (!pr.alive) itemProjectiles.splice(i, 1);
+    if (!t.landed && game.time - t.flyT0 >= BOTTLE_LOB.T) {          // 自然落地即碎(脆;桶=悶,落地閃 1s 才爆——材質對比)
+      const over = game.time - t.flyT0 - BOTTLE_LOB.T;               // 回推跨幀過衝 → 落點=精確 range(同舊瓶管線)
+      t.x = clamp(t.x - t.vx * over, t.r, W - t.r); t.y = clamp(t.y - t.vy * over, t.r, H - t.r);
+      shatterBottle(t);
+    }
   }
 }
 
 // --- 危險 #1:爆桶。靠近→點燃→爆炸:炸飛+削弱穩定值 ---
 // --- 步驟 B:桶可推 / 撿 / 丟(接 carry/throw §12.1)。桶非 fighter → 走 f.carryObj 平行結構,與扛人(carrying)互斥。 ---
-export function grabbableBarrel(f) { // 範圍內最近的可撿 idle 桶
+export function grabbableBarrel(f) { // 範圍內最近的可撿投擲物(idle 桶/地上瓶——同一動詞:撿了丟)
   let best = null, bd = GRAB_RANGE + 20;
-  for (const b of barrels) {
-    if (!b.alive || b.held || b.state !== 'idle') continue;
-    const d = Math.hypot(b.x - f.x, b.y - f.y);
-    if (d < bd + b.r) { bd = d; best = b; }
-  }
+  const scan = (b, ok) => { if (!b.alive || b.held || !ok) return; const d = Math.hypot(b.x - f.x, b.y - f.y); if (d < bd + b.r) { bd = d; best = b; } };
+  for (const b of barrels) scan(b, b.state === 'idle');
+  for (const t of bottles) scan(t, t.z <= 0);   // 飛行中的瓶抓不到
   return best;
 }
-export function pickUpBarrel(f, b) {
+export function pickUpBarrel(f, b) { // 桶/瓶共用(kind:'bottle' 只差浮字顏色;動畫同一套雙手過頂)
   if (f.carrying || f.carryObj || !b || !b.alive || b.held) return;
   f.carryObj = b; b.held = true; b.vx = 0; b.vy = 0; b.z = 0; b.flyT0 = -9; b.landed = true; b.dropT0 = -9;
   // 撿桶動畫(可選 clip:CLIPS 有 barrel_pickup 就播;桶從第 0 幀起貼在雙手中點,手往下撈→舉起=桶跟著走。
   // clip 播完落回程序 barrelHold 姿勢 → 結尾幀請對齊 barrel_throw 的 grab_hold 幀(= ANIM.barrelHold)才無縫)
   if (CLIPS.barrel_pickup) { f.itemFx = game.time; f.itemClip = 'barrel_pickup'; }
-  addText(f.x, f.y - 30, '抓起桶！', barrelChargeColor(b.charge)); addRing(f.x, f.y, 30, barrelChargeColor(b.charge), 0.3, 4); game.sfx.push('upgrade');
+  const bottle = b.kind === 'bottle', col = bottle ? elemColor(b.elem) : barrelChargeColor(b.charge);
+  addText(f.x, f.y - 30, bottle ? '抓起' + ITEM_INFO[b.elem].name + '！' : '抓起桶！', col); addRing(f.x, f.y, 30, col, 0.3, 4); game.sfx.push('upgrade');
 }
 export function dropBarrel(f) {
   const b = f.carryObj; if (!b) return;
@@ -270,25 +274,31 @@ export function dropBarrel(f) {
   b.vx = 0; b.vy = 0;
 }
 // 丟桶=排程動作:按下 → 播雙手過頂 heave clip、桶仍握在手(carry loop 定位)→ release 幀才 launchBarrel 甩出。
-export function throwBarrel(f) {
+export function throwBarrel(f) { // 桶/瓶共用(同一顆 heave clip=同一條學習曲線)
   const b = f.carryObj; if (!b || f.state !== 'alive' || f._barrelThrowAt > 0) return; // 已在 heave 中 → 不重複
   f.itemFx = game.time; f.itemClip = 'barrel_throw';         // 播動畫(itemClip 頻道;free 時生效)
   f._barrelThrowAt = game.time + BARREL_THROW_DELAY;         // release 幀甩出(v2.js step 判定)
-  game.sfx.push('dash'); addText(f.x, f.y - 32, '舉桶！', barrelChargeColor(b.charge));
+  const bottle = b.kind === 'bottle';
+  game.sfx.push('dash'); addText(f.x, f.y - 32, bottle ? '舉瓶！' : '舉桶！', bottle ? elemColor(b.elem) : barrelChargeColor(b.charge));
 }
-// release 幀到:真的把桶甩出去(舊 throwBarrel 的物理段)。中途被打斷/掉桶 → carryObj 沒了 → 取消。
+// release 幀到:真的把桶/瓶甩出去。中途被打斷/掉了 → carryObj 沒了 → 取消。
 export function launchBarrel(f) {
   f._barrelThrowAt = 0;
   const b = f.carryObj; if (!b || f.state !== 'alive') return;
   f.carryObj = null; b.held = false; f.regrabCd = REGRAB_CD;
-  const a = f.facing;
+  const a = f.facing, bottle = b.kind === 'bottle';
   b.x = f.x + Math.cos(a) * (f.r + b.r); b.y = f.y + Math.sin(a) * (f.r + b.r);
-  const F = BARREL_LOB.range / BARREL_LOB.T;                  // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
+  const lob = bottle ? BOTTLE_LOB : BARREL_LOB;
+  const F = lob.range / lob.T;                                // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
   b.vx = Math.cos(a) * F; b.vy = Math.sin(a) * F;
-  b.flyT0 = game.time; b.landed = false; b.dropT0 = -9;   // 起飛(彈道 BARREL_LOB;砸中人→快落引爆走 dropT0)
-  b.thrownBy = f.pid; b.armGrace = BARREL_ARM_GRACE;
-  pressurizeBarrel(b);                                        // 被丟 → 升壓(1s 引信;飛行中/落地/撞人爆)
-  addShake(4); game.sfx.push('dash'); addText(b.x, b.y - 26, '丟桶！', barrelChargeColor(b.charge));
+  b.flyT0 = game.time; b.landed = false; b.thrownBy = f.pid;
+  if (bottle) { addText(b.x, b.y - 26, '拋瓶！', elemColor(b.elem)); } // 瓶:落地/撞牆/砸人即碎(updateBottles)
+  else {
+    b.dropT0 = -9; b.armGrace = BARREL_ARM_GRACE;             // 桶:砸中人→快落引爆走 dropT0
+    pressurizeBarrel(b);                                      // 被丟 → 升壓(1s 引信;飛行中/落地/撞人爆)
+    addText(b.x, b.y - 26, '丟桶！', barrelChargeColor(b.charge));
+  }
+  addShake(4); game.sfx.push('dash');
 }
 export function explodeBarrel(b) {
   for (const f of fighters) if (f.carryObj === b) { f.carryObj = null; f._barrelThrowAt = 0; } // 在手上爆 → 放開持有者(取消排程丟)
@@ -301,6 +311,7 @@ export function explodeBarrel(b) {
   hitSpark(b.x, b.y, col, 2); addShake(8); addHitstop(0.1); game.sfx.push('explosion');
   addText(b.x, b.y - 30, '爆！', col);
   stampElement(b.x, b.y, BARREL_PATCH_R, elem); // 留一塊污染地板 → 接地板化學連段
+  for (const t of bottles) if (t.alive && Math.hypot(t.x - b.x, t.y - b.y) <= BARREL_BLAST + t.r) shatterBottle(t); // 爆炸波及=瓶連環碎(在手上也碎,shatterBottle 放開持有者)
   for (const f of fighters) {
     if (f.state !== 'alive' || f.invuln > 0) continue;
     const dx = f.x - b.x, dy = f.y - b.y, d = Math.hypot(dx, dy) || 1;

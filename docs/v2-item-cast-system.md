@@ -97,10 +97,17 @@ if (f._itemCastAt && game.time>=f._itemCastAt) resolveItemCast(f);
 
 ## 狀態更新(2026-07):排程施放管線啟用
 
-冰霜瓶拋擲版=**`ITEM_SPEC.clip/delay` 的第一個真實用戶**:`clip:'barrel_throw'`(暫代,之後換專屬拋瓶
-clip)、`delay:BARREL_THROW_DELAY`(release tag 自動導出)。按 E → 播舉頭上 heave → release 幀
-`resolveItemCast` → `castIce` 甩出 `ICE_LOB` 拋物線投擲物(`itemProjectiles`,v2-state)→ 落地/撞牆
-即碎 → `stampElement` 冰面。施法中被暈=取消(次數已扣不退)——排程/打斷語意與設計一致,已驗收。
+冰霜瓶拋擲版曾是**`ITEM_SPEC.clip/delay` 的第一個真實用戶**(barrel_throw 暫代 clip + release tag delay),
+驗證了整條排程/打斷語意。**後續(同月)投擲瓶退出道具系統改場上物件**(朋友反饋:跟爆桶同特性,見
+[v2-element-floor-chemistry.md](v2-element-floor-chemistry.md) §9)——丟瓶不再走 useItem/排程施放,
+改走桶的 carryObj 撿丟管線(`throwBarrel`/`launchBarrel` 桶瓶共用,同一顆 heave clip)。
+排程施放管線仍服務裝備類(風壓手套/噴火帽=rhook impact;傳送 delay:0 瞬發)。
+
+## 狀態更新(2026-07):手動撿+掉落(C 案)+ 投擲瓶退出
+
+補給座改**手動撿**(右鍵/E、空手才撿);被暈=手上道具噴地上(`groundItems`,帶剩餘次數、可搶、TTL 8s;
+逃脫類 `whileDisabled` 不掉)。道具池瘦身為**裝備類三件**:風壓手套/噴火帽/傳送符(`ITEM_WEIGHT` 2:2:1);
+冰/油瓶=場上物件(`bottles`,v2-state),不佔道具欄。
 
 ## 已拍板的設計決策
 
