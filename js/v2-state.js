@@ -124,8 +124,13 @@ export const stations = [
   { x: 810, y: 490, elem: 'lightning', state: 'idle', warnT: 0 }, // 東南
 ];
 // 總開關(§10.1):貼近清運口的緊急控制台,揍它一下 arm 四站循環,單向不可關;開局平靜。
-export const labSwitch = { x: 480, y: 250, r: 16, armed: false };
-export function resetStations() { for (const s of stations) { s.state = 'idle'; s.warnT = 0; } labSwitch.armed = false; v2s.stationsArmed = false; }
+// 總開關(§10.1):緊急拉桿控制台。玩家反饋 2026-07:原本埋在中央回收艙圓環內違反場景直覺 → 移到場地左右兩側牆邊。
+// 左右各一支拉桿,揍任一支都 arm 四站洩漏循環(armed 真相=v2s.stationsArmed,單向不可關);開局平靜。避開東西中線的爆桶(200/760)。
+export const labSwitches = [
+  { x: 80, y: 320, r: 16 },   // 左側牆邊
+  { x: 880, y: 320, r: 16 },  // 右側牆邊
+];
+export function resetStations() { for (const s of stations) { s.state = 'idle'; s.warnT = 0; } v2s.stationsArmed = false; }
 
 // --- 道具系統 (spec F §3/§4): 補給座=裝備類(拿在手上按右鍵發動);投擲類(冰/油瓶)改場上物件,見下方 bottles ---
 export const ITEM_TYPES = ['wind', 'teleport', 'fire', 'water', 'lightning'];
@@ -217,7 +222,7 @@ export const v2s = {
   barrelRespawnCur: BARREL_RESPAWN, barrelFuseCur: BARREL_FUSE, // 階段升級後的現值(*Cur)
   padRespawnCur: PAD_RESPAWN, slideContainCur: SLIDE_CONTAIN_V,
   stationTimer: STATION_INTERVAL, stationIntervalCur: STATION_INTERVAL, lastStationIdx: -1, // 元素站輪替(隨機不連續)
-  stationsArmed: false,                       // 總開關:開局平靜,揍中央控制台(labSwitch)才 arm 四站循環(單向)
+  stationsArmed: false,                       // 總開關:開局平靜,揍左右任一緊急拉桿(labSwitches)才 arm 四站循環(單向)
   matchOver: false, report: null,            // 對局結束旗標 + 事故報告物件
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝

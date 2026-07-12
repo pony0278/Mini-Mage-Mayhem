@@ -183,14 +183,14 @@ function makeCircleTexture(){
     {a:Math.PI/2,c:colors[3]},  // slime / south
     {a:Math.PI,c:colors[0]},    // fire / west
   ];
-  dirs.forEach((d,i)=>{
+  dirs.forEach((d)=>{
     const x1=cx+Math.cos(d.a)*150, y1=cy+Math.sin(d.a)*150;
     const x2=cx+Math.cos(d.a)*410, y2=cy+Math.sin(d.a)*410;
     g.strokeStyle=d.c; g.lineWidth=20; g.globalAlpha=0.18;
     g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
     g.globalAlpha=0.9;
-    // arrow head
-    g.save(); g.translate(x2,y2); g.rotate(d.a);
+    // arrow head 指向中央(內端 x1,朝 −d;對齊「送進回收艙」方向)
+    g.save(); g.translate(x1,y1); g.rotate(d.a+Math.PI);
     g.fillStyle=d.c; g.beginPath();
     g.moveTo(26,0); g.lineTo(-20,-18); g.lineTo(-8,0); g.lineTo(-20,18); g.closePath(); g.fill();
     g.restore();
@@ -1081,18 +1081,29 @@ function buildCentralScannerDeck() {
   labGroup.add(g);
 }
 
-/* 四色元素分揀導軌(從中央陣連向四方向處理站的發光軌) */
+/* 四色地面箭頭:指向中央回收艙(玩家反饋 2026-07:原四色導軌是往外的脈動發光線,違反直覺+閃眼睛
+   → 改成朝內的靜態箭頭,引導樣本「送進艙」的方向)。不脈動、不加法發光、不進 labAnimated。 */
 function buildSortingRoutes() {
-  const routes = [
-    { x: 0, z: -7.5, w: 0.55, d: 5.0, c: 0x78ddff },
-    { x: 11.0, z: 0, w: 5.0, d: 0.55, c: 0xa87cff },
-    { x: 0, z: 7.5, w: 0.55, d: 5.0, c: 0x78ff9b },
-    { x: -11.0, z: 0, w: 5.0, d: 0.55, c: 0xff914d },
+  const dirs = [
+    { ux: 0, uz: -1, c: 0x78ddff }, // 北 frost
+    { ux: 1, uz: 0, c: 0xa87cff },  // 東 electric
+    { ux: 0, uz: 1, c: 0x78ff9b },  // 南 slime
+    { ux: -1, uz: 0, c: 0xff914d }, // 西 fire
   ];
-  routes.forEach((r, i) => {
-    const p = mesh(new THREE.BoxGeometry(r.w, 0.028, r.d), new THREE.MeshBasicMaterial({ color: r.c, transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false }), r.x, 0.07, r.z, false);
-    labGroup.add(p);
-    labAnimated.push({ update: t => { p.material.opacity = 0.34 + Math.max(0, Math.sin(t * 1.9 + i * 1.6)) * 0.30; } });
+  const rIn = 5.4, rOut = 10.2, headLen = 2.0, headR = 1.15, barW = 0.5; // rIn=箭尖近艙、rOut=桿外端
+  dirs.forEach(d => {
+    const alongX = d.ux !== 0;
+    const mat = new THREE.MeshBasicMaterial({ color: d.c, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }); // 靜態、不脈動、不發光;toneMapped=false 免 ACES 洗掉元素色
+    // 桿(rIn+headLen → rOut)
+    const shaftLen = rOut - (rIn + headLen), shaftMid = (rIn + headLen + rOut) / 2;
+    const shaft = new THREE.Mesh(alongX ? new THREE.BoxGeometry(shaftLen, 0.03, barW) : new THREE.BoxGeometry(barW, 0.03, shaftLen), mat);
+    shaft.position.set(d.ux * shaftMid, 0.07, d.uz * shaftMid); labGroup.add(shaft);
+    // 箭頭(四面錐躺平指向中央 −d)
+    const head = new THREE.Mesh(new THREE.ConeGeometry(headR, headLen, 4), mat);
+    head.position.set(d.ux * (rIn + headLen / 2), 0.1, d.uz * (rIn + headLen / 2));
+    if (alongX) head.rotation.z = d.ux * Math.PI / 2;   // E:−x / W:+x
+    else head.rotation.x = -d.uz * Math.PI / 2;         // N:+z / S:−z
+    labGroup.add(head);
   });
 }
 

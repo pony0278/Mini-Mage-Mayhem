@@ -16,6 +16,21 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
         const sh = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false }));
         sh.rotation.x = -Math.PI / 2; sh.position.set(pr.x, 1.5, pr.y); sh.scale.set(pr.r * 1.6, pr.r * 1.15, 1); propGroup.add(sh);
       }
+      if (pr.sw) { // 緊急拉桿(總開關):底座+拉桿。未啟動=琥珀立起(邀請揍)、啟動=壓下前傾變暗
+        const armed = pr.armed;
+        const base = makeBox(pr.r * 1.7, pr.r * 0.8, pr.r * 1.3, 0x4b4640, 0x000000, 0); base.position.set(pr.x, pr.r * 0.4, pr.y); propGroup.add(base);
+        const slot = makeBox(pr.r * 0.5, pr.r * 0.5, pr.r * 1.4, 0x2a2622, 0x000000, 0); slot.position.set(pr.x, pr.r * 0.82, pr.y); propGroup.add(slot); // 拉桿槽
+        // 桿/旋鈕:未啟動=不受光純琥珀(toneMapped:false 免 ACES 洗白=醒目「可開啟」),啟動=受光灰金屬(死掉的樣子)
+        const rodMat = armed ? matLambert(0x8a8276, 0x000000, 0) : new THREE.MeshBasicMaterial({ color: 0xffab26, toneMapped: false });
+        const knobMat = armed ? matLambert(0x9a9088, 0x000000, 0) : new THREE.MeshBasicMaterial({ color: 0xffd257, toneMapped: false });
+        const rod = new THREE.Group();
+        const stick = new THREE.Mesh(boxGeo, rodMat); stick.scale.set(4.2, pr.r * 1.95, 4.2); stick.position.y = pr.r * 0.97; rod.add(stick);
+        const knob = new THREE.Mesh(boxGeo, knobMat); knob.scale.set(10, 10, 10); knob.position.y = pr.r * 1.95; rod.add(knob);
+        rod.position.set(pr.x, pr.r * 0.7, pr.y); rod.rotation.x = armed ? 0.95 : -0.32; // 壓下 vs 立起(繞 x 前後傾)
+        propGroup.add(rod);
+        if (!armed) { const g = makeGlowSphere(pr.r * 1.7, 0xffce6a, 0.34); g.position.set(pr.x, pr.r * 1.8, pr.y); propGroup.add(g); } // 未啟動=琥珀光暈(邀請揍)
+        continue;
+      }
       const charged = pr.charge === 'lightning', burning = pr.charge === 'fire';
       const cracked = pr.hp < pr.maxHp;
       const ice = pr.wall === 'ice', earth = pr.wall === 'earth', oil = pr.wall === 'oil'; // 冰=藍/土=石灰/油=暗金(飛行瓶佔位)
