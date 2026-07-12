@@ -1135,12 +1135,77 @@ function loadPodGlb() {
       const FACE_Z = 0.167;                                      // 盤面高(原始單位,頂點分佈 p90 實測)
       root.position.set(0, 0.125 - FACE_Z * (5.44 / 1.9), 0);
       labGroup.add(root);
-      if (_oldPodDecal) { _oldPodDecal.removeFromParent(); _oldPodDecal = null; } // 拆分揀陣列貼圖
-      if (_oldPodDeck) { _oldPodDeck.removeFromParent(); _oldPodDeck = null; }    // 拆環甲板/液壓鎖/掃描柱
+      if (_oldPodDecal) { _oldPodDecal.removeFromParent(); _oldPodDecal = null; } // 拆分揀陣列貼圖(被輪盤蓋住)
+      // 舊環甲板保留(使用者反饋 2026-07:加回更立體)——輪盤 r2.72 / 甲板 r4.56-4.95 不重疊,分層:輪盤嵌件→符文環帶→金屬甲板
+      buildRuneRing();                                                            // 符文環帶填輪盤與甲板之間的地面
       _podGlbReady = true;
       console.log('[lab] 回收艙 GLB 底座就位');
     })
     .catch(e => console.warn('[lab] 回收艙 GLB 載入失敗,保留程序化底座', e));
+}
+
+/* ---------- 符文環帶(使用者反饋 2026-07:回收艙地面要更多魔法符文感) ----------
+   填 GLB 輪盤(r≈2.72 units)與舊環甲板(內緣 r≈4.56)之間的地面:程序化符文(索引種子=確定性,
+   免每次載入長不同)+ 雙層反向緩轉(轉動=魔法陣活著;非閃爍,不違背減閃爍方向)。additive+
+   toneMapped:false 保色。 */
+function makeRuneRingTexture() {
+  const S = 1024, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d'), cx = S / 2, cy = S / 2;
+  const rand = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 索引種子
+  // 內外細圈
+  g.strokeStyle = 'rgba(236,198,94,0.9)'; g.lineWidth = 4;
+  g.beginPath(); g.arc(cx, cy, 490, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = 'rgba(178,124,255,0.7)'; g.lineWidth = 3;
+  g.beginPath(); g.arc(cx, cy, 345, 0, Math.PI * 2); g.stroke();
+  // 24 格符文(每格 2-4 筆程序化筆畫,朝外站立;琥珀/紫交替)
+  const N = 24;
+  for (let i = 0; i < N; i++) {
+    const a = i / N * Math.PI * 2;
+    g.save(); g.translate(cx + Math.cos(a) * 418, cy + Math.sin(a) * 418); g.rotate(a + Math.PI / 2);
+    g.strokeStyle = i % 2 ? 'rgba(255,190,80,0.95)' : 'rgba(190,140,255,0.95)';
+    g.lineWidth = 7; g.lineCap = 'round';
+    const strokes = 2 + Math.floor(rand(i, 0) * 3);
+    for (let k = 0; k < strokes; k++) {
+      g.beginPath();
+      g.moveTo((rand(i, k * 4 + 1) - 0.5) * 44, (rand(i, k * 4 + 2) - 0.5) * 60);
+      g.lineTo((rand(i, k * 4 + 3) - 0.5) * 44, (rand(i, k * 4 + 4) - 0.5) * 60);
+      if (rand(i, k * 4 + 5) > 0.5) g.lineTo((rand(i, k * 4 + 6) - 0.5) * 44, (rand(i, k * 4 + 7) - 0.5) * 60);
+      g.stroke();
+    }
+    g.restore();
+    // 格間徑向刻度
+    const ta = (i + 0.5) / N * Math.PI * 2;
+    g.strokeStyle = 'rgba(232,220,181,0.6)'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(cx + Math.cos(ta) * 358, cy + Math.sin(ta) * 358);
+    g.lineTo(cx + Math.cos(ta) * 386, cy + Math.sin(ta) * 386); g.stroke();
+  }
+  // 錨點小圓(雙色交替,呼應舊儀式錨點語彙)
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2 + Math.PI / 8;
+    const px = cx + Math.cos(a) * 470, py = cy + Math.sin(a) * 470;
+    g.fillStyle = i % 2 ? 'rgba(255,149,38,0.95)' : 'rgba(168,124,255,0.95)';
+    g.beginPath(); g.arc(px, py, 8, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(242,228,186,0.8)'; g.lineWidth = 2.5;
+    g.beginPath(); g.arc(px, py, 14, 0, Math.PI * 2); g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; return tex;
+}
+function makeDashRingTexture() { // 內側虛線圈(反向轉,做出雙層深度)
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.strokeStyle = 'rgba(158,100,230,0.85)'; g.lineWidth = 7; g.setLineDash([26, 20]);
+  g.beginPath(); g.arc(S / 2, S / 2, 226, 0, Math.PI * 2); g.stroke();
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; return tex;
+}
+function buildRuneRing() {
+  const mkPlane = (tex, size, y) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85, toneMapped: false }));
+    m.rotation.x = -Math.PI / 2; m.position.set(CX, y, CZ); scene.add(m); return m;
+  };
+  const runes = mkPlane(makeRuneRingTexture(), 9.2 * LAB_SCALE, 1.6);          // 符文帶(外)
+  const dashes = mkPlane(makeDashRingTexture(), 6.4 * LAB_SCALE, 1.3);         // 虛線圈(內)
+  labAnimated.push({ update: (t) => { runes.rotation.z = t * 0.05; dashes.rotation.z = -t * 0.085; } }); // 雙層反向緩轉(魔法陣活著;非閃爍)
 }
 
 /* 四色地面箭頭:指向中央回收艙(玩家反饋 2026-07:原四色導軌是往外的脈動發光線,違反直覺+閃眼睛
