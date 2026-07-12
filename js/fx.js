@@ -66,6 +66,10 @@ export function updateParticles(dt) {
 export function addWindFan(x, y, angle, range, cone, life = 0.45) {
   game.windFans.push({ x, y, angle, range, cone, life, maxLife: life });
 }
+// 魔導電鞭發射閃:直線電擊亮束(頂點在手、直線打到 range),render 畫亮束+淡出。
+export function addBolt(x, y, angle, range, life = 0.22) {
+  game.bolts.push({ x, y, angle, range, life, maxLife: life });
+}
 export function updateRings(dt) {
   for (const r of game.rings) r.life -= dt;
   game.rings = game.rings.filter(r => r.life > 0);
@@ -73,6 +77,8 @@ export function updateRings(dt) {
   game.slams = game.slams.filter(s => s.life > 0);
   for (const w of game.windFans) w.life -= dt;
   game.windFans = game.windFans.filter(w => w.life > 0);
+  for (const b of game.bolts) b.life -= dt;
+  game.bolts = game.bolts.filter(b => b.life > 0);
 }
 export function updateFloatingTexts(dt) {
   for (const t of game.floatingTexts) {

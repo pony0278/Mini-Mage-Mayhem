@@ -304,6 +304,24 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
       windSector(fa.x, fa.y, fa.angle, fa.cone, 0, fa.range, 2, 0xff7a3a, 0.12 + 0.07 * pulse);
       windSector(fa.x, fa.y, fa.angle, fa.cone, fa.range * 0.78, fa.range, 3, 0xffce6a, 0.38 + 0.2 * pulse); // 外緣=射程邊界(讀「多短、貼臉」;稍厚稍亮=好記範圍)
     }
+    // 魔導電鞭起手預告:直線束(三條平行=有厚度)+ 末端點(教「直線、多長」;對手看得到=閃避窗)
+    for (const ba of game.boltAims) {
+      const pulse = 0.5 + 0.5 * Math.sin(game.time * 12);
+      const ox = -Math.sin(ba.angle), oy = Math.cos(ba.angle);                            // 垂直偏移單位(線加厚)
+      windStreak(ba.x, ba.y, ba.angle, 12, ba.range, 0x9fd0ff, 0.20 + 0.14 * pulse);
+      windStreak(ba.x + ox * 6, ba.y + oy * 6, ba.angle, 12, ba.range, 0x9fd0ff, 0.09 + 0.06 * pulse);
+      windStreak(ba.x - ox * 6, ba.y - oy * 6, ba.angle, 12, ba.range, 0x9fd0ff, 0.09 + 0.06 * pulse);
+      disc(ba.x + Math.cos(ba.angle) * ba.range, ba.y + Math.sin(ba.angle) * ba.range, 10, 0x9fd0ff, 0.22 + 0.16 * pulse); // 末端=射程邊界
+    }
+    // 魔導電鞭發射閃:亮束(白核+藍側)+ 末端爆,再淡出
+    for (const bf of game.bolts) {
+      const life = clamp(bf.life / bf.maxLife, 0, 1);
+      const ox = -Math.sin(bf.angle), oy = Math.cos(bf.angle);
+      windStreak(bf.x, bf.y, bf.angle, 10, bf.range, 0xffffff, 0.9 * life);               // 白核
+      windStreak(bf.x + ox * 5, bf.y + oy * 5, bf.angle, 10, bf.range, 0x9fd0ff, 0.6 * life);
+      windStreak(bf.x - ox * 5, bf.y - oy * 5, bf.angle, 10, bf.range, 0x9fd0ff, 0.6 * life);
+      disc(bf.x + Math.cos(bf.angle) * bf.range, bf.y + Math.sin(bf.angle) * bf.range, 20 * life + 6, 0xeaffff, 0.5 * life); // 末端爆
+    }
     // 風壓手套發射閃:扇形從頂點掃到滿射程(easeOut)+ 亮前緣 + 少量放射狀風絲,再淡出
     for (const wf of game.windFans) {
       const life = clamp(wf.life / wf.maxLife, 0, 1), t = 1 - life;                    // t 0→1

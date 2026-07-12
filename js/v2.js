@@ -15,14 +15,14 @@ import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
-  stations, STATION_WARN, ERUPT_PATCH_R, labSwitch, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R,
+  stations, STATION_WARN, ERUPT_PATCH_R, labSwitch, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
+import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -263,6 +263,9 @@ function step(dt) {
   // 噴火帽起手預告:施法窗中每幀重建短扇形(教攻擊範圍——外緣弧=射程邊界;對手也看得到=反應窗)
   game.fireAims.length = 0;
   for (const f of fighters) if (f.state === 'alive' && f._itemCastType === 'fire' && f._itemCastAt > game.time) game.fireAims.push({ x: f.x, y: f.y, angle: f.facing, range: FIRE_RANGE, cone: FIRE_CONE });
+  // 魔導電鞭起手預告:施法窗中每幀重建直線(教直線射程;對手也看得到=閃避窗)
+  game.boltAims.length = 0;
+  for (const f of fighters) if (f.state === 'alive' && f._itemCastType === 'lightning' && f._itemCastAt > game.time) game.boltAims.push({ x: f.x, y: f.y, angle: f.facing, range: LIGHTNING_RANGE });
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];
@@ -335,7 +338,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, castWind, castTeleport, castFire, castWater, inc, generateReport, endMatch,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],

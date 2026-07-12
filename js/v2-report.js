@@ -4,9 +4,9 @@
 import { inc, NAMES } from './v2-state.js';
 
 export function mostUsedItem() {
-  const u = inc.itemUses, max = Math.max(u.wind, u.teleport, u.fire, u.water); // 裝備類道具(投擲瓶改場上物件後退出道具統計)
+  const u = inc.itemUses, max = Math.max(u.wind, u.teleport, u.fire, u.water, u.lightning); // 裝備類道具(投擲瓶改場上物件後退出道具統計)
   if (max === 0) return inc.barrelBooms > 0 ? '爆桶' : '（徒手)';
-  return u.teleport === max ? '傳送符' : u.water === max ? '工業重錘' : u.fire === max ? '噴火帽' : '風壓手套';
+  return u.teleport === max ? '傳送符' : u.lightning === max ? '魔導電鞭' : u.water === max ? '工業重錘' : u.fire === max ? '噴火帽' : '風壓手套';
 }
 export function pickComment() {
   if (inc.reverseContains >= 1) return '技術上來說，有人被成功收容了。只是收錯人。';

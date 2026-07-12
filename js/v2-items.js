@@ -4,13 +4,14 @@
 import { W, H, TILE } from './constants.js';
 import { clamp } from './utils.js';
 import { game } from './state.js';
-import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan } from './fx.js';
+import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
   WATER_SLAM_DIST, WATER_R, WATER_KNOCK, WATER_STAB,
+  LIGHTNING_RANGE, LIGHTNING_WIDTH, LIGHTNING_KNOCK,
   bottles, BOTTLE_LOB, BOTTLE_BREAK_V, BOTTLE_RESPAWN,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
@@ -79,6 +80,7 @@ function castItem(type, f) {
   else if (type === 'teleport') castTeleport(f);
   else if (type === 'fire') castFire(f);
   else if (type === 'water') castWater(f);
+  else if (type === 'lightning') castLightning(f);
 }
 // step 在 impact 幀呼叫:施法中被打斷(暈/被抓)→ 取消(次數已扣、不退);否則發動效果
 export function resolveItemCast(f) {
@@ -248,6 +250,45 @@ export function castWater(f) {
   }
   camKick(a, 8);
   dlog('WATER slam by', NAMES[f.pid], hit ? 'hit' : 'miss');
+}
+// 魔導電鞭=直線電擊(使用者 2026-07:攻擊範圍只能直線)。沿面向一條窄長線:
+// 命中線內對手=電擊擊暈(元素穿防)+ 小擊退;沿線給水地板充電(R2 水→電水;乾地/其他 no-op=留下電水陷阱)。
+export function castLightning(f) {
+  const a = f.facing, ca = Math.cos(a), sa = Math.sin(a); let hit = false;
+  // 沿線逐 tile 給水充電(applyElement:水→charged、非水 no-op;不誤觸乾淨地板)
+  const steps = Math.ceil(LIGHTNING_RANGE / (TILE * 0.5)), seen = new Set();
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps, px = f.x + ca * LIGHTNING_RANGE * t, py = f.y + sa * LIGHTNING_RANGE * t;
+    const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE), key = tx + ',' + ty;
+    if (seen.has(key)) continue; seen.add(key);
+    applyElement(tx, ty, 'lightning');
+  }
+  for (const o of fighters) {                                               // 命中線內對手:電擊擊暈 + 沿線小擊退
+    if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
+    const dx = o.x - f.x, dy = o.y - f.y;
+    const along = dx * ca + dy * sa;                                        // 沿線投影(0..RANGE 才在線上)
+    if (along < 0 || along > LIGHTNING_RANGE) continue;
+    const perp = Math.abs(-dx * sa + dy * ca);                             // 垂直距離(窄=直線)
+    if (perp > LIGHTNING_WIDTH + o.r) continue;
+    hit = true;
+    o.vx += ca * LIGHTNING_KNOCK; o.vy += sa * LIGHTNING_KNOCK;
+    o.stabCd = 0.8; o.hurt = 0.14; o.faceT = 0.4; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    if (o.carrying) dropCarry(o);
+    if (!o.stunned && o.restunT <= 0) stunFighter(o);                       // 電擊=直接擊暈(同元素站雷;元素穿防)
+    flinch(o, a, 0.28);
+    addText(o.x, o.y - 34, '電擊！', '#9fd0ff'); hitSpark(o.x, o.y, '#dff3ff', 1.8);
+    if (o.pid === LOCAL) v2s.localFlash = 0.3;
+  }
+  addBolt(f.x, f.y, a, LIGHTNING_RANGE);                                    // 直線電擊亮束(render-entities)
+  const ex = f.x + ca * LIGHTNING_RANGE, ey = f.y + sa * LIGHTNING_RANGE;   // 線末端爆點
+  hitSpark(ex, ey, '#dff3ff', 1.6); addRing(ex, ey, 22, '#9fd0ff', 0.3, 5);
+  for (let i = 0; i < 14; i++) {                                            // 沿線電火花粒子
+    const t = Math.random(), px = f.x + ca * LIGHTNING_RANGE * t, py = f.y + sa * LIGHTNING_RANGE * t;
+    const ang = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 160;
+    game.particles.push({ x: px, y: py, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 1.4 + Math.random() * 2.2, life: 0.14 + Math.random() * 0.18, maxLife: 0.32, color: Math.random() < 0.5 ? '#9fd0ff' : '#eaffff' });
+  }
+  camKick(a, 7); addShake(hit ? 7 : 4); game.sfx.push('dash');
+  dlog('LIGHTNING bolt by', NAMES[f.pid], hit ? 'hit' : 'miss');
 }
 // --- 投擲瓶=場上物件(朋友反饋定案:投擲類全走爆桶動詞——撿了丟、一次性、高頻刷新)。
 // 物理共用桶語言(carryObj 撿丟/風吹/翻滾);瓶=脆:丟出落地/硬撞牆/硬撞人/被拳打(_smash)/被爆炸波及 全都碎。
