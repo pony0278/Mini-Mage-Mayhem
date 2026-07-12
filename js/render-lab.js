@@ -408,6 +408,7 @@ export function initLabScene() {
   const magicCircle = new THREE.Mesh(new THREE.PlaneGeometry(8 * CENTER_SCALE * LAB_SCALE, 8 * CENTER_SCALE * LAB_SCALE), circleMat); // 原型 13 units;鏡頭近縮到 8,再乘 CENTER_SCALE
   magicCircle.rotation.x = -Math.PI / 2; magicCircle.position.set(CX, 1, CZ);
   scene.add(magicCircle);
+  _oldPodDecal = magicCircle;                                    // GLB 底座載成後拆(留 circleGlow 點光照亮新底座)
   const circleGlow = new THREE.PointLight(0xffb43a, 1.85, 15 * LAB_SCALE, 2); // v2_10 琥珀(原紫 0x9a5cff)
   circleGlow.position.set(CX, 1.4 * LAB_SCALE, CZ); scene.add(circleGlow);
   scene.add(labGroup);
@@ -417,6 +418,7 @@ export function initLabScene() {
   buildLabDust();
   // Phase 2:中央結構(收容平台包住分揀陣列)+ 地面物流圖 + 淨戰區導引
   buildCentralScannerDeck();
+  loadPodGlb();                                             // 中央底座 GLB(async;載成後換掉上面兩件程序化中央件)
   buildSortingRoutes();
   buildIndustrialFloorMarkings();
   buildCoreCombatGuide();
@@ -1110,6 +1112,35 @@ function buildCentralScannerDeck() {
   }
   g.scale.setScalar(CENTER_SCALE); // 整體縮小(順帶壓低掃描柱高度,減少擋視線)
   labGroup.add(g);
+  _oldPodDeck = g;                                               // GLB 底座載成後拆
+}
+
+/* ---------- 中央回收艙底座 GLB(使用者資產 assets/scene/recycling-pod.glb;2026-07 換掉程序化底座) ----------
+   Cosmic Recycling Wheel:直立輪 → 轉平沉入地面近齊平(微凸 ~4px=地板嵌件,玩家走進艙不穿模;
+   使用者拍板)。載入成功=移除舊程序化件(分揀陣列貼圖+環甲板/液壓鎖/掃描柱);失敗=保留舊底座(graceful)。
+   離線已 gltf-transform 解 Draco+simplify(80.7k→32.8k tris)+quantize(838KB)——遊戲端零解碼成本。 */
+let _oldPodDecal = null, _oldPodDeck = null, _podGlbReady = false;
+function loadPodGlb() {
+  if (!THREE.GLTFLoader) { console.warn('[lab] GLTFLoader 未載入,保留程序化底座'); return; }
+  fetch('assets/scene/recycling-pod.glb')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
+    .then(gltf => {
+      const root = gltf.scene;
+      root.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } }); // 嵌地件不投影
+      root.rotation.x = -Math.PI / 2;                            // 素材=直立輪 → 轉平(碟面朝上)
+      root.scale.setScalar(5.44 / 1.9);                          // 目標直徑 5.44 lab units(≈174px,對齊原分揀陣列)
+      // 沉入基準=「主盤面」而非最高點(輪頂不平:中央轂尖 z≈0.264、盤面 p90 z≈0.167 實測)——
+      // 用 bbox.max 會把整個盤面埋進地下只露轂尖。盤面微凸 +0.125 units(≈4px),中央轂凸 ~13px 當艙心凸飾。
+      const FACE_Z = 0.167;                                      // 盤面高(原始單位,頂點分佈 p90 實測)
+      root.position.set(0, 0.125 - FACE_Z * (5.44 / 1.9), 0);
+      labGroup.add(root);
+      if (_oldPodDecal) { _oldPodDecal.removeFromParent(); _oldPodDecal = null; } // 拆分揀陣列貼圖
+      if (_oldPodDeck) { _oldPodDeck.removeFromParent(); _oldPodDeck = null; }    // 拆環甲板/液壓鎖/掃描柱
+      _podGlbReady = true;
+      console.log('[lab] 回收艙 GLB 底座就位');
+    })
+    .catch(e => console.warn('[lab] 回收艙 GLB 載入失敗,保留程序化底座', e));
 }
 
 /* 四色地面箭頭:指向中央回收艙(玩家反饋 2026-07:原四色導軌是往外的脈動發光線,違反直覺+閃眼睛
@@ -1208,7 +1239,7 @@ function buildCoreCombatGuide() {
 // dt 照常傳 → 純運動(魔塵/氣泡/旋轉)不受影響。雷電弧另在自己的 updater 裡讀這旗標。
 export let LOW_FLICKER = false;
 export function setLabFlicker(low) { LOW_FLICKER = low; }
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

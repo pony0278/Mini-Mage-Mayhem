@@ -1,6 +1,6 @@
 # assets/ — 建模資產(GLB 原始檔)
 
-角色建模管線的**素材倉庫**(不是遊戲執行時載入的東西——遊戲本體是體素小人,
+建模素材倉庫 + 部署資產(`rigs/`、`scene/` 是遊戲執行時 fetch 的;`raw/`、`parts/` 純建模來源,
 這裡放的是 `tools/mesh-part-extractor.html` + `tools/punch-studio.html` 的輸入/中繼檔)。
 管線說明:[`docs/animation-workflow.md`](../docs/animation-workflow.md)、
 [`docs/part-authoring.md`](../docs/part-authoring.md)。
@@ -10,6 +10,10 @@
 - **`rigs/`** — **基座角色**(骨架版 GLB):16 骨、rest=T-pose、網格為骨頭的剛體子節點。
   `base-avatar.glb` 是 punch-studio 開機自動掛載的預設角色(**未來所有角色的基底**);
   慣例與原理見 `docs/animation-workflow.md` §1。
+- **`scene/`** — **場景 GLB**(遊戲執行時載入,同 rigs/ 屬部署資產):v2 場景件,
+  render-lab 開局 fetch(如 `recycling-pod.glb`=中央回收艙底座)。**入庫規範**:離線先
+  `gltf-transform copy`(解 Draco——遊戲的 GLTFLoader 沒配 DRACOLoader,壓縮檔直接載會炸)
+  → `simplify`(場景件抓 ~2-4 萬 tris)→ `quantize` 瘦身;遊戲端零解碼成本。
 - **`raw/`** — 第三方工具產的**整塊模型**,還沒切過。丟進
   `tools/mesh-part-extractor.html` 圈選拆部位的起點。
 - **`parts/`** — 已切出的**單一部位**。⚠ 目前這裡的檔案是**分檔匯出**
