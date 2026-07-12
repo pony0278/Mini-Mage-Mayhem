@@ -16,7 +16,7 @@ import {
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER,
   GUARD_MOVE, GUARD_STAM_MAX, GUARD_DRAIN, GUARD_BLOCK_COST, GUARD_REGEN, GUARD_REGEN_DELAY,
   GUARD_BLOCK_PUSH, GUARD_BLOCK_FLINCH, GUARD_BREAK_FUMBLE, GUARD_BREAK_LOCK,
-  FIRE_STAB_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
+  FIRE_STAB_DPS, FIRE_BURN_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
 import { FREEFORM, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
 import { generateReport } from './v2-report.js';
@@ -82,6 +82,12 @@ export function onSlipperyIce(x, y) { return stateAtPixel(x, y) === FL.ICE; }
 // 每幀(移動前)呼叫:電水=自電硬直(restunT 節流,避免每幀重暈);火海/毒區=削穩定值 → 歸零擊暈(好抓=收容路徑)。
 export function floorHazards(f, dt) {
   if (f.state !== 'alive' || f.carriedBy || f.invuln > 0) return;
+  if (f.burnT > 0) {                                                 // 著火(噴火帽直擊殘留,不靠地形):持續削穩定值→歸零擊暈+身上火粒子
+    f.burnT -= dt;
+    f.stability = Math.max(0, f.stability - FIRE_BURN_DPS * dt); f.stabCd = 0.3;
+    if (Math.random() < 0.6) game.particles.push({ x: f.x + (Math.random() * 2 - 1) * 10, y: f.y + (Math.random() * 2 - 1) * 10, vx: (Math.random() * 2 - 1) * 22, vy: -45 - Math.random() * 45, r: 2 + Math.random() * 2.4, life: 0.28 + Math.random() * 0.22, maxLife: 0.5, color: Math.random() < 0.5 ? '#ff7a3a' : '#ffce6a' });
+    if (f.stability <= 0 && !f.stunned && f.restunT <= 0) { f.lastHitBy = f.burnBy; stunFighter(f); }
+  }
   const st = stateAtPixel(f.x, f.y);
   if (st === FL.CHARGED) {
     if (!f.stunned && f.restunT <= 0) { stunFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); }

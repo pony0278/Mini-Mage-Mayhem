@@ -1,7 +1,7 @@
 // v2 道具與危險物 (spec F §3/§4;docs/v2-module-boundaries.md §3):
 // 裝備類道具(風壓手套/傳送符/噴火帽,補給座手動撿)、投擲瓶(冰/油=場上物件,撿了丟)、爆桶點燃→爆炸。
 // 新法術/道具的 cast 加在這裡;數值常數與資料表進 v2-state.js;報告欄位進 inc + v2-report.js。
-import { W, H } from './constants.js';
+import { W, H, TILE } from './constants.js';
 import { clamp } from './utils.js';
 import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan } from './fx.js';
@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
-  FIRE_RANGE, FIRE_CONE, FIRE_R, FIRE_STAMPS, FIRE_MIN, FIRE_HIT_STAB,
+  FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
   bottles, BOTTLE_LOB, BOTTLE_BREAK_V, BOTTLE_RESPAWN,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
@@ -19,7 +19,7 @@ import {
 } from './v2-state.js';
 import { flinch, camKick, dropCarry, stunFighter, freezeFighter } from './v2-combat.js';
 import { CLIPS } from './brawler-clips.js';
-import { stampElement, stateAtPixel, FL } from './v2-floor.js';
+import { stampElement, applyElement, stateAt, stateAtPixel, FL } from './v2-floor.js';
 import { circleHitsSolid } from './fx.js';
 
 // 元素 → 顏色(爆炸 tint + 升壓發光 telegraph);wild=未充能野生紫
@@ -175,16 +175,25 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
   f.vx = 0; f.vy = 0; game.sfx.push('upgrade');
   dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
 }
-// 噴火帽=前方噴流錐:沿中軸種幾塊火地板(點燃腳下油=R1 火海,stampElement 自動走反應)+ 錐內對手削穩定值+flinch(踩到火海後 floorHazards 續燒)。
+// 噴火帽=貼臉短扇形(使用者反饋 2026-07):採風壓扇形判定但射程極短。噴火**不留地形火**——
+// 只點燃扇內既有油(applyElement 只對 FL.OIL 格 → R1 火海;乾淨/其他地板一律不 stamp=無殘留),
+// 地形燃燒專屬「油+火」連段;直擊錐內目標=著火 DoT(floorHazards 續燒→歸零暈)+ 即時 flinch。
 export function castFire(f) {
   const a = f.facing; let hit = false;
-  for (let i = 0; i < FIRE_STAMPS; i++) {                                   // 沿中軸幾個落點種火(近→遠)
-    const d = FIRE_MIN + (FIRE_RANGE - FIRE_MIN) * (FIRE_STAMPS > 1 ? i / (FIRE_STAMPS - 1) : 0);
-    const px = f.x + Math.cos(a) * d, py = f.y + Math.sin(a) * d;
-    stampElement(px, py, FIRE_R, 'fire');                                  // 油上=R1 火海、草上=燒、clean=火(FLOOR_LIFE.fire 4s)
-    hitSpark(px, py, '#ffb04a', 1.4); addRing(px, py, FIRE_R * 0.7, '#ff7a3a', 0.3, 4);
+  // 只點燃扇形內既有的油格(逐格 applyElement:乾淨地板不種火=噴過去只有火光)
+  const t0x = Math.floor((f.x - FIRE_RANGE) / TILE), t1x = Math.floor((f.x + FIRE_RANGE) / TILE);
+  const t0y = Math.floor((f.y - FIRE_RANGE) / TILE), t1y = Math.floor((f.y + FIRE_RANGE) / TILE);
+  for (let ty = t0y; ty <= t1y; ty++) for (let tx = t0x; tx <= t1x; tx++) {
+    if (stateAt(tx, ty) !== FL.OIL) continue;                              // 只碰油:乾淨/水/冰… 一律不種火
+    const cx = tx * TILE + TILE / 2, cy = ty * TILE + TILE / 2;
+    const dx = cx - f.x, dy = cy - f.y, d = Math.hypot(dx, dy);
+    if (d > FIRE_RANGE) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) > FIRE_CONE) continue;
+    applyElement(tx, ty, 'fire');                                          // oil|fire → FIRE(stepFloor R1 沿相連油擴散成火海)
+    hit = true;
   }
-  for (const o of fighters) {                                              // 錐內對手:削穩定值+flinch(即時回饋;續燒交給 floorHazards)
+  for (const o of fighters) {                                              // 扇內對手:命中即扣 + 著火 DoT(floorHazards 續燒→歸零暈)
     if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
     const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
     if (d > FIRE_RANGE + o.r) continue;
@@ -192,17 +201,19 @@ export function castFire(f) {
     if (Math.abs(da) > FIRE_CONE) continue;
     hit = true;
     o.stability = Math.max(0, o.stability - FIRE_HIT_STAB); o.stabCd = 0.8; o.hurt = 0.12; o.faceT = 0.3; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    o.burnT = FIRE_BURN_T; o.burnBy = f.pid;                               // 著火:短時持續燒(floorHazards 削穩定+身上火粒子)
     flinch(o, a, 0.26);
+    addText(o.x, o.y - 34, '著火！', '#ff7a3a'); hitSpark(o.x, o.y, '#ffb04a', 1.5);
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o);
     if (o.pid === LOCAL) v2s.localFlash = 0.25;
   }
-  // 噴口火花 + 前方火焰粒子(專用 vfx 之後補;火海本體由 render-lab 地板 fx 畫)
-  const mx = f.x + Math.cos(a) * (f.r + 8), my = f.y + Math.sin(a) * (f.r + 8);
-  for (let i = 0; i < 18; i++) {
-    const ang = a + (Math.random() * 2 - 1) * FIRE_CONE, sp = 180 + Math.random() * 260;
-    game.particles.push({ x: mx, y: my, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 2 + Math.random() * 3, life: 0.2 + Math.random() * 0.24, maxLife: 0.44, color: Math.random() < 0.5 ? '#ff7a3a' : '#ffce6a' });
+  // 噴口火焰粒子(短射程扇形:噴慢一點、活短一點,約扇長內散開)
+  const mx = f.x + Math.cos(a) * (f.r + 6), my = f.y + Math.sin(a) * (f.r + 6);
+  for (let i = 0; i < 16; i++) {
+    const ang = a + (Math.random() * 2 - 1) * FIRE_CONE, sp = 120 + Math.random() * 200;
+    game.particles.push({ x: mx, y: my, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 2 + Math.random() * 3, life: 0.16 + Math.random() * 0.2, maxLife: 0.36, color: Math.random() < 0.5 ? '#ff7a3a' : '#ffce6a' });
   }
-  camKick(a, 7); addShake(hit ? 7 : 4); game.sfx.push('dash');
+  camKick(a, 6); addShake(hit ? 6 : 3); game.sfx.push('dash');
   dlog('FIRE spray by', NAMES[f.pid], hit ? 'hit' : 'miss');
 }
 // --- 投擲瓶=場上物件(朋友反饋定案:投擲類全走爆桶動詞——撿了丟、一次性、高頻刷新)。

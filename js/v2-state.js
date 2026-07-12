@@ -160,8 +160,10 @@ export const SLIDE_MIN = 220;        // 鎖滑最低速度(> SLIDE_CONTAIN_V 200
 export const SLIDE_KNOCK_V = 120;    // 冰上擊退速度超過此值 → 也觸發鎖滑(被打上冰/冰上挨打/摔落冰面)
 export const ICE_WALK = 0.4;         // 靜止站上冰(如冰凍醒來)的小心走速度倍率=逃生口,不觸發鎖滑
 export const OIL_R = 100;            // 油膜半徑(比冰面略大=好鋪、好引燃連段)
-// 噴火帽=前方噴流錐:沿中軸種幾塊火地板(點燃油=R1 火海)+ 錐內對手削穩定值+flinch。近中距離(比風短)。
-export const FIRE_RANGE = 155, FIRE_CONE = 0.55, FIRE_R = 42, FIRE_STAMPS = 3, FIRE_MIN = 34, FIRE_HIT_STAB = 18;
+// 噴火帽=貼臉短扇形(2026-07 使用者反饋:採風壓扇形判定但射程極短)。噴火**不留地形火**——
+// 只點燃扇內既有油(R1 火海=油+火專屬連段;乾淨地板噴過去只有火光,不殘留 fire tile);直擊錐內目標=著火 DoT+可暈。
+export const FIRE_RANGE = 88, FIRE_CONE = 0.72;                     // 極短貼臉扇形(RANGE≈2.7 tile,半張角 ±41°)
+export const FIRE_HIT_STAB = 18, FIRE_BURN_T = 1.2, FIRE_BURN_DPS = 70; // 命中即扣 18 + 著火 1.2s×70≈84(合計 ~102=從滿條可燒到暈);burn 在 floorHazards 續燒
 export const SLIDE_CONTAIN_V = 200; // 失控入艙:被擊退/打滑速度 > 此值且進艙半徑 = 收容(spec F §2.2)
 // 補給座刷新加權(裝備類專用;投擲瓶改場上物件後退出這張表)。調各道具出現率只動這張表。
 export const ITEM_WEIGHT = { wind: 2, fire: 2, teleport: 1 };
@@ -234,6 +236,7 @@ export function resetFighter(f) {
   f.facing = f.pid === 0 ? 0 : Math.PI; // face toward the centre
   f.faceT = 0; f.falling = false; f.fallT = 0; f.spin = 0; f.voidT = 0;
   f.hurt = 0; f.lastHitBy = -1; f.lastHitT = -9;
+  f.burnT = 0; f.burnBy = -1;        // 著火 DoT(噴火帽直擊殘留;不靠地形):floorHazards 每幀削穩定→歸零暈
   f.stability = STAB_MAX; f.stabCd = 0;
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;
