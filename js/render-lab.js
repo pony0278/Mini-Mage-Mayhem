@@ -419,7 +419,8 @@ export function initLabScene() {
   // Phase 2:中央結構(收容平台包住分揀陣列)+ 地面物流圖 + 淨戰區導引
   buildCentralScannerDeck();
   loadPodGlb();                                             // 中央底座 GLB(async;載成後換掉上面兩件程序化中央件)
-  buildSortingRoutes();
+  buildSortingRoutes();                                     // 程序化四色箭頭(fallback;GLB 牌載成後被 loadSignGlb 移除)
+  loadSignGlb();                                            // 「THROW IN!」指示牌 GLB(async;載成後換掉上面四色箭頭)
   buildIndustrialFloorMarkings();
   buildCoreCombatGuide();
   if (!FX_LOW) { buildArcaneArm(); buildServicePipeNetwork(); } // Phase 4:純裝飾,低效能模式剝除(決策 #3)
@@ -1227,30 +1228,68 @@ function buildRuneRing() {
   labAnimated.push({ update: (t) => { runes.rotation.z = t * 0.05; dashes.rotation.z = -t * 0.085; } }); // 雙層反向緩轉(魔法陣活著;非閃爍)
 }
 
+/* 四色方向定義(北 frost / 東 electric / 南 slime / 西 fire):箭頭與指示牌共用。 */
+const SORTING_DIRS = [
+  { ux: 0, uz: -1, c: 0x78ddff }, // 北 frost
+  { ux: 1, uz: 0, c: 0xa87cff },  // 東 electric
+  { ux: 0, uz: 1, c: 0x78ff9b },  // 南 slime
+  { ux: -1, uz: 0, c: 0xff914d }, // 西 fire
+];
+
 /* 四色地面箭頭:指向中央回收艙(玩家反饋 2026-07:原四色導軌是往外的脈動發光線,違反直覺+閃眼睛
-   → 改成朝內的靜態箭頭,引導樣本「送進艙」的方向)。不脈動、不加法發光、不進 labAnimated。 */
+   → 改成朝內的靜態箭頭,引導樣本「送進艙」的方向)。不脈動、不加法發光、不進 labAnimated。
+   2026-07 起降級為 fallback:載成使用者的「THROW IN!」牌 GLB 後由 loadSignGlb 移除(收進 _sortingArrows)。 */
+let _sortingArrows = [];
 function buildSortingRoutes() {
-  const dirs = [
-    { ux: 0, uz: -1, c: 0x78ddff }, // 北 frost
-    { ux: 1, uz: 0, c: 0xa87cff },  // 東 electric
-    { ux: 0, uz: 1, c: 0x78ff9b },  // 南 slime
-    { ux: -1, uz: 0, c: 0xff914d }, // 西 fire
-  ];
   const rIn = 5.4, rOut = 10.2, headLen = 2.0, headR = 1.15, barW = 0.5; // rIn=箭尖近艙、rOut=桿外端
-  dirs.forEach(d => {
+  SORTING_DIRS.forEach(d => {
     const alongX = d.ux !== 0;
     const mat = new THREE.MeshBasicMaterial({ color: d.c, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }); // 靜態、不脈動、不發光;toneMapped=false 免 ACES 洗掉元素色
     // 桿(rIn+headLen → rOut)
     const shaftLen = rOut - (rIn + headLen), shaftMid = (rIn + headLen + rOut) / 2;
     const shaft = new THREE.Mesh(alongX ? new THREE.BoxGeometry(shaftLen, 0.03, barW) : new THREE.BoxGeometry(barW, 0.03, shaftLen), mat);
-    shaft.position.set(d.ux * shaftMid, 0.07, d.uz * shaftMid); labGroup.add(shaft);
+    shaft.position.set(d.ux * shaftMid, 0.07, d.uz * shaftMid); labGroup.add(shaft); _sortingArrows.push(shaft);
     // 箭頭(四面錐躺平指向中央 −d)
     const head = new THREE.Mesh(new THREE.ConeGeometry(headR, headLen, 4), mat);
     head.position.set(d.ux * (rIn + headLen / 2), 0.1, d.uz * (rIn + headLen / 2));
     if (alongX) head.rotation.z = d.ux * Math.PI / 2;   // E:−x / W:+x
     else head.rotation.x = -d.uz * Math.PI / 2;         // N:+z / S:−z
-    labGroup.add(head);
+    labGroup.add(head); _sortingArrows.push(head);
   });
+}
+
+/* ---------- 「THROW IN!」地面指示牌 GLB(使用者資產 assets/scene/throw-in-sign.glb;2026-07 取代四色程序箭頭)----------
+   Meshy 生成的浮雕金屬箭頭牌(單 mesh 9.3k tris、無貼圖、模型面在 XY 平面/箭頭朝 +X)。四塊各繞區域 z 軸轉向
+   POD、平放於地(牌面朝上),依元素上色(使用者拍板保留四方向色線索;boost emissive 免 ACES 洗淡)。
+   載入成功=移除四色程序箭頭(_sortingArrows);失敗=保留箭頭(graceful)。離線已 gltf-transform optimize+quantize。 */
+let _signGlbReady = false;
+function loadSignGlb() {
+  if (!THREE.GLTFLoader) { console.warn('[lab] GLTFLoader 未載入,保留程序化箭頭'); return; }
+  fetch('assets/scene/throw-in-sign.glb')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
+    .then(gltf => {
+      const proto = gltf.scene;
+      const SC = 15.3, R = 7.8;                                  // SC:0.424 原型寬 → ≈6.5 lab units;R:牌心離 POD 半徑(對齊原箭頭跨距)
+      SORTING_DIRS.forEach(d => {
+        const s = proto.clone(true);                             // clone(true) 共用 geometry、只換材質
+        s.traverse(o => {
+          if (!o.isMesh) return;
+          o.castShadow = false; o.receiveShadow = true;
+          o.material = new THREE.MeshStandardMaterial({ color: d.c, metalness: 0.55, roughness: 0.5,
+            emissive: new THREE.Color(d.c), emissiveIntensity: 0.5 });                            // 元素色金屬牌 + 中度自發光(ACES 下仍讀得出色)
+        });
+        s.scale.setScalar(SC);
+        s.rotation.x = -Math.PI / 2;                              // 牌面朝上(平放)
+        s.rotation.z = Math.atan2(d.uz, -d.ux);                   // 箭頭指向 POD(rot.x 後的面內旋轉繞區域 z 軸)
+        s.position.set(d.ux * R, 0.25, d.uz * R);                 // y=0.25:微凸地面,外圈無地板化學不擋玩法資訊
+        labGroup.add(s);
+      });
+      _sortingArrows.forEach(m => m.removeFromParent()); _sortingArrows = []; // 拆四色程序箭頭(被牌取代)
+      _signGlbReady = true;
+      console.log('[lab] THROW IN! 指示牌 GLB 就位');
+    })
+    .catch(e => console.warn('[lab] 指示牌 GLB 載入失敗,保留程序化箭頭', e));
 }
 
 /* 地面模板字(dashed 框 + 標題 + 副標;回傳一片朝上的貼圖平面) */
@@ -1323,7 +1362,7 @@ function buildCoreCombatGuide() {
 // dt 照常傳 → 純運動(魔塵/氣泡/旋轉)不受影響。雷電弧另在自己的 updater 裡讀這旗標。
 export let LOW_FLICKER = false;
 export function setLabFlicker(low) { LOW_FLICKER = low; }
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, signGlbReady: () => _signGlbReady }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

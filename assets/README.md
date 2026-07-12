@@ -11,9 +11,11 @@
   `base-avatar.glb` 是 punch-studio 開機自動掛載的預設角色(**未來所有角色的基底**);
   慣例與原理見 `docs/animation-workflow.md` §1。
 - **`scene/`** — **場景 GLB**(遊戲執行時載入,同 rigs/ 屬部署資產):v2 場景件,
-  render-lab 開局 fetch(如 `recycling-pod.glb`=中央回收艙底座)。**入庫規範**:離線先
-  `gltf-transform copy`(解 Draco——遊戲的 GLTFLoader 沒配 DRACOLoader,壓縮檔直接載會炸)
-  → `simplify`(場景件抓 ~2-4 萬 tris)→ `quantize` 瘦身;遊戲端零解碼成本。
+  render-lab 開局 fetch(`recycling-pod.glb`=中央回收艙底座;`throw-in-sign.glb`=四方向
+  「THROW IN!」地面指示牌,取代原程序化四色箭頭)。**入庫規範**:離線先
+  `gltf-transform copy`(解 Draco——遊戲的 GLTFLoader 沒配 DRACOLoader,壓縮檔直接載會炸;
+  未壓縮的小件如指示牌可省這步,直接 `optimize`)→ `simplify`(場景件抓 ~2-4 萬 tris)
+  → `quantize` 瘦身;遊戲端零解碼成本。
 - **`raw/`** — 第三方工具產的**整塊模型**,還沒切過。丟進
   `tools/mesh-part-extractor.html` 圈選拆部位的起點。
 - **`parts/`** — 已切出的**單一部位**。⚠ 目前這裡的檔案是**分檔匯出**
