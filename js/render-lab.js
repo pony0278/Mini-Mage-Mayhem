@@ -959,17 +959,48 @@ function lightningStation() {
   return g;
 }
 
+/* ---------- 四角站「通電光環」(拉閘因果演出) ----------
+   玩家反饋 2026-07:拉桿→四道電束太不自然 → 改成場邊四座大型處理站被「魔法光環」觸發:
+   拉閘瞬間腳下亮起元素色光環 + 一圈擴散閃光(通電甦醒),armed 期間光環常駐=「機器活著」。
+   開局(未拉閘)光環全暗;round reset(stationsArmed=false)自動熄。ramp 用幀數推進(免時鐘耦合);
+   常駐態不脈動(對齊減閃爍方向),只有拉閘那一下的單次擴散閃光。 */
+const powerHalos = [];         // { ring, flashRing, orb, ramp }
+let stationsPowered = false;
+function addPowerHalo(g, color) {
+  const mat = () => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
+  const mk = (rIn, rOut) => new THREE.Mesh(new THREE.RingGeometry(rIn, rOut, 40), mat());
+  const ring = mk(2.3, 3.1); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.09; g.add(ring);       // 常駐光環(通電後亮;寬環=遠看得見)
+  const flashRing = mk(2.2, 2.7); flashRing.rotation.x = -Math.PI / 2; flashRing.position.y = 0.12; g.add(flashRing); // 拉閘擴散閃光(單次)
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(1.35, 18, 14), mat());                             // 站頂光暈球:高處的光不被牆擋,任何鏡頭角度都讀得到
+  orb.position.y = 3.4; g.add(orb);
+  powerHalos.push({ ring, flashRing, orb, ramp: 0 });
+}
+export function setStationsPowered(on) { stationsPowered = !!on; if (!on) for (const h of powerHalos) { h.ramp = 0; h.ring.material.opacity = 0; h.flashRing.material.opacity = 0; h.flashRing.scale.setScalar(1); h.orb.material.opacity = 0; } }
+labAnimated.push({ update: () => {
+  if (!stationsPowered) return;
+  for (const h of powerHalos) {
+    if (h.ramp < 1) {
+      h.ramp = Math.min(1, h.ramp + 0.035);                                    // 幀推進 ~0.5s 通電
+      const over = Math.sin(h.ramp * Math.PI);                                 // 過衝(甦醒感)
+      h.ring.material.opacity = 0.75 * h.ramp + 0.25 * over;
+      h.orb.material.opacity = 0.4 * h.ramp + 0.35 * over;
+      const fs = 1 + h.ramp * 2.0;                                             // 擴散閃光:放大+淡出(單次)
+      h.flashRing.scale.setScalar(fs); h.flashRing.material.opacity = 0.85 * (1 - h.ramp);
+    } else { h.ring.material.opacity = 0.75; h.orb.material.opacity = 0.4; h.flashRing.material.opacity = 0; } // 常駐:靜態(不脈動)
+  }
+} });
+
 /* ---------- LAB_LAYOUT(v2_10 place 編排;四角站 + 邊帶物流;原點=場地中心,單位=tile) ---------- */
 function buildLabProps() {
   const HX = SCENE_W / 2, HZ = SCENE_D / 2;                    // 17 / 15(總場景半寬/半深)
   const NORTH_EDGE = -HZ + 1.65, SOUTH_EDGE = HZ - 1.65, WEST_EDGE = -HX + 1.65, EAST_EDGE = HX - 1.65;
   const HAZARD_X = CORE_HX - 1.15, HAZARD_Z = CORE_HZ + 2.0;   // 13.85 / 12(四角站)
   const place = (obj, x, z, ry = 0) => { obj.position.set(x, 0, z); obj.rotation.y = ry; labGroup.add(obj); return obj; };
-  // 四角廢料處理站(採新四角站位)
-  place(fireStation(), -HAZARD_X, -HAZARD_Z, Math.PI * 0.25);
-  place(frostStation(), HAZARD_X, -HAZARD_Z, -Math.PI * 0.25);
-  place(poisonStation(), -HAZARD_X, HAZARD_Z, -Math.PI * 0.2);
-  place(lightningStation(), HAZARD_X, HAZARD_Z, 0);
+  // 四角廢料處理站(採新四角站位)+ 通電光環(拉閘因果演出:玩家反饋 2026-07 電束不自然 → 改場邊大型機具「被魔法光環觸發」)
+  addPowerHalo(place(fireStation(), -HAZARD_X, -HAZARD_Z, Math.PI * 0.25), 0xff7a2a);
+  addPowerHalo(place(frostStation(), HAZARD_X, -HAZARD_Z, -Math.PI * 0.25), 0x78ddff);
+  addPowerHalo(place(poisonStation(), -HAZARD_X, HAZARD_Z, -Math.PI * 0.2), 0xb06bff);
+  addPowerHalo(place(lightningStation(), HAZARD_X, HAZARD_Z, 0), 0x9fd0ff);
   // 回收料斗(沿牆帶)
   place(recyclingHopper(0x5ff0e0, 'orb'), -5.7, NORTH_EDGE + 0.15, 0);
   place(recyclingHopper(0xff8ad0, 'crystal'), 5.7, NORTH_EDGE + 0.15, 0);
@@ -1177,7 +1208,7 @@ function buildCoreCombatGuide() {
 // dt 照常傳 → 純運動(魔塵/氣泡/旋轉)不受影響。雷電弧另在自己的 updater 裡讀這旗標。
 export let LOW_FLICKER = false;
 export function setLabFlicker(low) { LOW_FLICKER = low; }
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

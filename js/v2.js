@@ -9,7 +9,7 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
 import { updateDeathTheater, addText, addRing, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, updateMouseWorld, mouseScreen } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
@@ -29,6 +29,7 @@ import { drawHud } from './v2-hud.js';
 import { CLIPS } from './brawler-clips.js';   // ?clip= 試播入口用(clip 名單+時長)
 
 let prevLocalSolid = true; // track when YOU step off solid ground (isles diagnostics)
+let _armedShown = false;       // 四角站通電光環的上次同步值(step 幀尾偵測 v2s.stationsArmed 變化)
 
 // 測試旗 ?grabany=1:免「對手被擊暈」前提,隨時可舉起對手(測扛/丟動畫+avatar rigged 手用)。
 // 正常玩法要先揍暈才抓;開這旗只放寬本機玩家的抓取條件,其餘(冷卻/被抓/範圍)照舊。
@@ -304,6 +305,7 @@ function step(dt) {
     const sx = f.x + Math.cos(f.facing) * WATER_SLAM_DIST, sy = f.y + Math.sin(f.facing) * WATER_SLAM_DIST;
     marks.push({ x: sx, y: sy, r: WATER_R, color: '#4da6ff', pulse: true, op: 0.8, fill: 0.2, speed: 11 });
   }
+  if (_armedShown !== v2s.stationsArmed) { _armedShown = v2s.stationsArmed; setStationsPowered(_armedShown); } // 拉閘 → 四角站通電光環(render-lab;因果演出);round reset 自動熄
   if (v2s.lowFlicker) for (const m of marks) m.pulse = false; // 減閃爍:標記全改常亮
   setGroundMarkers(marks);
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow

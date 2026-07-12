@@ -8,6 +8,7 @@ import { renderer, gl3dOk, scene, camera, setStockLights } from './render-core.j
 import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, updateWallFade, setStockGroundVisible, setStockWallsVisible, setToyboxDecorVisible, setWallFade as _setWallFade } from './render-world.js';
 import { initLabScene, updateLabScene } from './render-lab.js';
 export { setLabFlicker } from './render-lab.js'; // 減閃爍(光敏無障礙):凍結 lab 脈動光
+export { setStationsPowered } from './render-lab.js'; // 四角站通電光環(拉閘因果演出;v2.js 依 v2s.stationsArmed 切換)
 import { syncActors } from './render-actors.js';
 import { syncProps, syncProjectiles, syncZones } from './render-entities.js';
 
