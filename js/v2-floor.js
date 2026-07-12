@@ -21,6 +21,7 @@ const FLOOR_RX = {
   [`${FL.POISON}|fire`]:    { next: FL.CLEAN, event: 'poison_burst' },// R3 毒遇火 → 毒爆 + 清空
   [`${FL.FIRE}|poison`]:    { next: FL.CLEAN, event: 'poison_burst' },// R3 火遇毒 → 毒爆 + 清空
   [`${FL.FIRE}|ice`]:       { next: FL.WATER },                      // R4 冰滅火 → 水
+  [`${FL.ICE}|fire`]:       { next: FL.WATER },                      // R4b 火融冰 → 水(對稱於 R4;火帽/元素站/桶火皆可,接雷=R2 電水)
   [`${FL.OIL}|ice`]:        { next: FL.ICE },                        // R5 冰+油 → 冰面
   [`${FL.WATER}|ice`]:      { next: FL.ICE },                        // R5 冰+水 → 冰面
 };

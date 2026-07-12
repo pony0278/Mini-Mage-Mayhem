@@ -10,6 +10,7 @@ import {
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
+  WATER_SLAM_DIST, WATER_R, WATER_KNOCK, WATER_STAB,
   bottles, BOTTLE_LOB, BOTTLE_BREAK_V, BOTTLE_RESPAWN,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
@@ -77,6 +78,7 @@ function castItem(type, f) {
   if (type === 'wind') castWind(f);
   else if (type === 'teleport') castTeleport(f);
   else if (type === 'fire') castFire(f);
+  else if (type === 'water') castWater(f);
 }
 // step 在 impact 幀呼叫:施法中被打斷(暈/被抓)→ 取消(次數已扣、不退);否則發動效果
 export function resolveItemCast(f) {
@@ -176,21 +178,22 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
   dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
 }
 // 噴火帽=貼臉短扇形(使用者反饋 2026-07):採風壓扇形判定但射程極短。噴火**不留地形火**——
-// 只點燃扇內既有油(applyElement 只對 FL.OIL 格 → R1 火海;乾淨/其他地板一律不 stamp=無殘留),
+// 只作用扇內既有的反應性地板:油→R1 火海、冰→R4b 融成水(乾淨/其他一律不 stamp=無殘留),
 // 地形燃燒專屬「油+火」連段;直擊錐內目標=著火 DoT(floorHazards 續燒→歸零暈)+ 即時 flinch。
 export function castFire(f) {
   const a = f.facing; let hit = false;
-  // 只點燃扇形內既有的油格(逐格 applyElement:乾淨地板不種火=噴過去只有火光)
+  // 只作用扇內既有的油/冰格(逐格 applyElement:油→火海、冰→水;乾淨地板噴過去只有火光=無殘留)
   const t0x = Math.floor((f.x - FIRE_RANGE) / TILE), t1x = Math.floor((f.x + FIRE_RANGE) / TILE);
   const t0y = Math.floor((f.y - FIRE_RANGE) / TILE), t1y = Math.floor((f.y + FIRE_RANGE) / TILE);
   for (let ty = t0y; ty <= t1y; ty++) for (let tx = t0x; tx <= t1x; tx++) {
-    if (stateAt(tx, ty) !== FL.OIL) continue;                              // 只碰油:乾淨/水/冰… 一律不種火
+    const st = stateAt(tx, ty);
+    if (st !== FL.OIL && st !== FL.ICE) continue;                          // 只碰反應性地板(油=點燃、冰=融水);乾淨/水/毒 不動
     const cx = tx * TILE + TILE / 2, cy = ty * TILE + TILE / 2;
     const dx = cx - f.x, dy = cy - f.y, d = Math.hypot(dx, dy);
     if (d > FIRE_RANGE) continue;
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > FIRE_CONE) continue;
-    applyElement(tx, ty, 'fire');                                          // oil|fire → FIRE(stepFloor R1 沿相連油擴散成火海)
+    applyElement(tx, ty, 'fire');                                          // oil→FIRE(R1 沿油擴散)、ice→WATER(R4b 融冰)
     hit = true;
   }
   for (const o of fighters) {                                              // 扇內對手:命中即扣 + 著火 DoT(floorHazards 續燒→歸零暈)
@@ -215,6 +218,36 @@ export function castFire(f) {
   }
   camKick(a, 6); addShake(hit ? 6 : 3); game.sfx.push('dash');
   dlog('FIRE spray by', NAMES[f.pid], hit ? 'hit' : 'miss');
+}
+// 工業重錘=前方砸壓 AoE(原「盾」改造):面前 SLAM_DIST 落點 → 圓形範圍造濕地(接雷=R2 電水)+
+// 砸中對手=短擊倒(好抓送進艙)+ 徑向擊退。起手預告畫圓圈(v2.js marks)教落點/範圍。
+export function castWater(f) {
+  const a = f.facing;
+  const sx = f.x + Math.cos(a) * WATER_SLAM_DIST, sy = f.y + Math.sin(a) * WATER_SLAM_DIST; // 落點=面前
+  stampElement(sx, sy, WATER_R, 'water');                                   // 造濕地(水覆蓋油/冰=底料取代;接雷 R2 電水)
+  addRing(sx, sy, WATER_R, '#4da6ff', 0.4, 6); addRing(sx, sy, WATER_R * 0.6, '#bfe6ff', 0.32, 5);
+  hitSpark(sx, sy, '#8fd0ff', 2.2); addShake(8); addHitstop(0.08); game.sfx.push('explosion');
+  let hit = false;
+  for (const o of fighters) {                                               // 砸中範圍內對手:短擊倒(好抓)+ 徑向擊退 + 削穩定
+    if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
+    const dx = o.x - sx, dy = o.y - sy, d = Math.hypot(dx, dy);
+    if (d > WATER_R + o.r) continue;
+    hit = true;
+    const ka = Math.atan2(dy, dx) || 0;                                     // 從砸點往外
+    o.vx += Math.cos(ka) * WATER_KNOCK; o.vy += Math.sin(ka) * WATER_KNOCK;
+    o.stability = Math.max(0, o.stability - WATER_STAB); o.stabCd = 0.8; o.hurt = 0.14; o.faceT = 0.4; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    if (o.carrying) dropCarry(o);                                           // 砸中搬運者 → 鬆手
+    if (!o.stunned && o.restunT <= 0) stunFighter(o);                       // 砸壓定位=直接短擊倒(元素穿防,同其他 item cast)
+    flinch(o, ka, 0.3);
+    addText(o.x, o.y - 34, '砸暈！', '#8fd0ff');
+    if (o.pid === LOCAL) v2s.localFlash = 0.3;
+  }
+  for (let i = 0; i < 16; i++) {                                            // 水花粒子(徑向濺開)
+    const ang = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 220;
+    game.particles.push({ x: sx, y: sy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 2 + Math.random() * 3, life: 0.2 + Math.random() * 0.24, maxLife: 0.44, color: Math.random() < 0.5 ? '#4da6ff' : '#bfe6ff' });
+  }
+  camKick(a, 8);
+  dlog('WATER slam by', NAMES[f.pid], hit ? 'hit' : 'miss');
 }
 // --- 投擲瓶=場上物件(朋友反饋定案:投擲類全走爆桶動詞——撿了丟、一次性、高頻刷新)。
 // 物理共用桶語言(carryObj 撿丟/風吹/翻滾);瓶=脆:丟出落地/硬撞牆/硬撞人/被拳打(_smash)/被爆炸波及 全都碎。
