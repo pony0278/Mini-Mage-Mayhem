@@ -303,6 +303,7 @@ export function updateBarrels(dt) {
           const k = Math.pow(BARREL_FRICTION, dt); b.vx *= k; b.vy *= k;
           if (b.vx * b.vx + b.vy * b.vy < 400) { b.vx = 0; b.vy = 0; }
         }
+        b.roll += Math.hypot(b.vx, b.vy) / Math.max(b.r, 1) * dt;      // 翻滾角累積:滾動角速度=線速度/半徑(render 繞運動法向軸轉 b.roll)
       }
       if (!b.landed && game.time - b.flyT0 >= BARREL_LOB.T) {          // 彈道自然落地幀:剩餘速度 ×LAND_SKID=滾動收尾 + 重置引信 + 塵土
         b.landed = true; b.z = 0;

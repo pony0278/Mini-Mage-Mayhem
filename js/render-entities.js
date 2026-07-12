@@ -23,12 +23,16 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
       const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : (ice ? 0x2a6a88 : 0x000000);
       const s = pr.r * 1.9;
       const lift = (pr.held ? pr.r * 2.0 : 0) + (pr.fly || 0);   // held=浮在頭上;fly=被丟的拋物線視覺高度(v2.js 算;影子留地面讀高度)
-      const box = makeBox(s, s, s, col, emis, (charged || burning || ice) ? 0.6 : 0);
-      box.position.set(pr.x, pr.r * 0.95 + lift, pr.y);
-      box.rotation.y = (pr.x + pr.y) * 0.01 + (pr.held ? game.time * 1.5 : 0) + (pr.fly ? game.time * 5 : 0);   // 飛行中快速翻滾
-      propGroup.add(box);
+      const sp = Math.hypot(pr.vx || 0, pr.vy || 0);
+      // 桶=剛體 group(box+cap 一起轉)。移動中=繞「垂直於運動方向的水平軸」翻滾(360° 頭尾翻,非舊 yaw 陀螺自轉);靜止=慢 yaw 漂移。
+      const bgrp = new THREE.Group();
+      bgrp.position.set(pr.x, pr.r * 0.95 + lift, pr.y);
+      const box = makeBox(s, s, s, col, emis, (charged || burning || ice) ? 0.6 : 0); bgrp.add(box);
       const cap = makeBox(s * 1.04, 3, s * 1.04, burning ? 0x9c4422 : charged ? 0x3a7a90 : ice ? 0x6aa8c0 : earth ? 0x5a564e : 0x7a5a32);
-      cap.position.set(pr.x, pr.r * 1.9 + lift, pr.y); cap.rotation.y = box.rotation.y; propGroup.add(cap);
+      cap.position.y = pr.r * 0.95; bgrp.add(cap);
+      if (!pr.held && sp > 8) bgrp.quaternion.setFromAxisAngle(new THREE.Vector3(-(pr.vy || 0), 0, (pr.vx || 0)).normalize(), pr.roll || 0); // 翻滾:繞運動法向水平軸
+      else bgrp.rotation.y = (pr.x + pr.y) * 0.01 + (pr.held ? game.time * 1.5 : 0);
+      propGroup.add(bgrp);
       if (charged) { const g = makeGlowSphere(pr.r * 1.7, 0x9fe7ff, 0.3); g.position.set(pr.x, pr.r + lift, pr.y); propGroup.add(g); }
       else if (ice) { const g = makeGlowSphere(pr.r * 1.7, 0xcdf2ff, 0.22); g.position.set(pr.x, pr.r + lift, pr.y); propGroup.add(g); }
       if (pr.held) { const g = makeGlowSphere(pr.r * 2.1, 0xdff3ff, 0.26); g.position.set(pr.x, pr.r * 0.95 + lift, pr.y); propGroup.add(g); }
