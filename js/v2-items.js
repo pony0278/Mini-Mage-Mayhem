@@ -11,7 +11,7 @@ import {
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, itemProjectiles,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
-  BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, LAND_SKID, WALL_BOUNCE, lobZ,
+  BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, BARREL_WALL_HOP, LAND_SKID, WALL_BOUNCE, lobZ,
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
@@ -283,14 +283,21 @@ export function updateBarrels(dt) {
           addRing(b.x, b.y, 22, '#cbb9a2', 0.28, 3); game.sfx.push('thud');
         } else b.z = b.dropZ0 * (1 - u) * (1 - u);                     // 加速墜落(二次曲線)
       } else b.z = lobZ(game.time - b.flyT0, BARREL_LOB);
+      if (b.hopT0 > 0) {                                               // 撞牆彈跳騰空:短跳弧(貼地起落),期間 air=true → 無摩擦滑翔+快速自旋(render fly)
+        const hp = (game.time - b.hopT0) / BARREL_WALL_HOP.T;
+        if (hp >= 1) { b.hopT0 = -9; addRing(b.x, b.y, 18, '#cbb9a2', 0.24, 3); }
+        else b.z = Math.max(b.z, BARREL_WALL_HOP.apex * 4 * hp * (1 - hp));
+      }
       const air = b.z > 0;
       if (b.vx || b.vy) {                                              // 推/丟:速度整合 + 牆碰撞;空中無摩擦=直線飛
+        const spd0 = Math.hypot(b.vx, b.vy);                           // 撞牆前速度(反彈會×WALL_BOUNCE 衰減,騰空門檻看入射速)
         const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt;
         let wall = false;
         if (!circleHitsSolid(nx, b.y, b.r)) b.x = nx; else { b.vx = -b.vx * WALL_BOUNCE; wall = true; }   // 撞牆=小反彈(空中/滾動皆彈,不硬停)
         if (!circleHitsSolid(b.x, ny, b.r)) b.y = ny; else { b.vy = -b.vy * WALL_BOUNCE; wall = true; }
         // 空中撞牆:反彈後 z 快落不懸空(落地重置引信;彈回的小速度=往回掉一小段)
         if (wall && air && b.dropT0 < 0) { b.dropZ0 = b.z; b.dropT0 = game.time; b.flyT0 = -9; b.landed = true; }
+        else if (wall && !air && b.hopT0 < 0 && spd0 > BARREL_WALL_HOP.min) { b.hopT0 = game.time; addRing(b.x, b.y, 20, '#dff3ff', 0.26, 4); game.sfx.push('thud'); } // 地面高速撞牆 → 彈起翻滾
         b.x = clamp(b.x, b.r, W - b.r); b.y = clamp(b.y, b.r, H - b.r);
         if (!air) {
           const k = Math.pow(BARREL_FRICTION, dt); b.vx *= k; b.vy *= k;

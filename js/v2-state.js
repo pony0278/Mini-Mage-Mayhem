@@ -104,9 +104,12 @@ export const BARREL_FRICTION = 0.02, BARREL_PUSH = 130, BARREL_ARM_GRACE = 0.15;
 // 丟桶=排程動作:按下→播雙手過頂 heave 動畫(itemClip 'barrel_throw')→ release 幀才真的甩出。
 // **自動導出**:= clip 的 release tag 秒數(studio 移 release 幀→重貼 JSON 即對齊;舊值 22f fallback)。
 export const BARREL_THROW_DELAY = CLIPS.barrel_throw?.tags.release ?? 22 / 60;
+// 撞牆彈跳騰空(玩家反饋:桶被吹亂但沒翻—讓「夠快的桶撞牆反彈」那段騰空跳起翻滾):地面高速桶撞牆 → 短弧跳起(空中=快速自旋)→ 落地。
+// apex·4p(1−p)=貼地起落純跳弧(h0=0);min=觸發下限(慢滾不跳);T=騰空時長。
+export const BARREL_WALL_HOP = { min: 250, apex: 45, T: 0.4 };
 export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
-export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true, z: 0, dropT0: -9, dropZ0: 0 }));
-export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; b.dropT0 = -9; b.dropZ0 = 0; } }
+export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true, z: 0, dropT0: -9, dropZ0: 0, hopT0: -9 }));
+export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; b.dropT0 = -9; b.dropZ0 = 0; b.hopT0 = -9; } }
 
 // --- 危險 #2:四角元素站洩漏 (docs/v2-element-floor-chemistry.md §10)。輪流噴發:預警 3s → 徑向脈衝 + 殘留元素地板。
 // 落點=可玩四角(§10.4);火/冰/毒 種地板,雷=無地板電擊擊暈(raw arc)。總開關(B 刀)arm 循環;A 刀先 always-on。
