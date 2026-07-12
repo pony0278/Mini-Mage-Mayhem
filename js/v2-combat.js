@@ -5,10 +5,10 @@
 import { W, H } from './constants.js';
 import { clamp, norm } from './utils.js';
 import { game, keys, mouse, CAM, touchInput } from './state.js';
-import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
+import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, addBolt } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  SPEED, RUN_MULT, POD, inPod, resetFighter, applyStage, barrels, bottles, labSwitches,
+  SPEED, RUN_MULT, POD, inPod, resetFighter, applyStage, barrels, bottles, labSwitches, stations,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
@@ -362,8 +362,14 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (d <= PUNCH_RANGE + sw.r && Math.abs(da) <= PUNCH_CONE) {
       v2s.stationsArmed = true; hit = true;
-      addText(sw.x, sw.y - 34, '收容失控！四角開始洩漏', '#ff9a4a');
+      addText(sw.x, sw.y - 34, '總閘拉下！四角元素站洩漏', '#ff9a4a');
       addRing(sw.x, sw.y, 64, '#ff9a4a', 0.6, 7); addShake(9); addHitstop(0.12); game.sfx.push('explosion');
+      // 因果演出(玩家反饋:看不出拉桿=四站的總開關):電流從總閘竄到四個站 + 四站同時亮環,一次建立「拉桿→四站」因果
+      for (const s of stations) {
+        const bx = s.x - sw.x, by = s.y - sw.y;
+        addBolt(sw.x, sw.y, Math.atan2(by, bx), Math.hypot(bx, by), 0.4);
+        addRing(s.x, s.y, 50, '#ff9a4a', 0.55, 7); addRing(s.x, s.y, 26, '#ffd36d', 0.4, 6);
+      }
       dlog('SWITCH ARMED → stations live');
       break;
     }

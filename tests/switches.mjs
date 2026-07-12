@@ -30,10 +30,13 @@ const s1 = await page.evaluate(() => ({ n: __v2.labSwitches.length, xs: __v2.lab
 R(`開場兩支開關在左右(x=${s1.xs}、y=${s1.ys})`, s1.n === 2 && s1.xs === '80,880' && s1.ys === '320,320');
 R('開場未 arm', (await armed()) === false);
 
-// ---------- ② 揍左開關 = arm ----------
+// ---------- ② 揍左開關 = arm + 因果演出(四道電束竄向四站)----------
 await setArmed(false);
+await page.evaluate(() => { __v2.game.bolts.length = 0; });
 await whack(80, 320, 140, 320);   // 貼左開關(d=60<62)
 R('揍左開關=arm 四站', (await armed()) === true);
+const fx = await page.evaluate(() => __v2.game.bolts.length);
+R(`arm 因果演出:四道電束竄向四站(bolts=${fx})`, fx >= 4);
 
 // ---------- ③ reset 後揍右開關 = 也 arm ----------
 await setArmed(false);
