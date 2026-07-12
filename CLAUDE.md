@@ -27,13 +27,15 @@ The game JS now lives in **`js/` ES modules** (build-free); the three HTML files
 
 > **Module DAG (acyclic):** `constants` → `utils`/`data` → `state` → `sim` → `render` → `main`/panels. Invariant: **`sim.js` must not import render/input/main** (keeps the sim headless-extractable for the BR path).
 
-## No build / test / lint
+## No build / lint; opt-in headless tests
 
-There is no build, test, or lint tooling. To sanity-check a change, run Node's syntax checker on the modules (they're ESM — copy to `.mjs` so `node --check` treats them as modules):
+The game itself stays build-free (no build/lint). To sanity-check a change, run Node's syntax checker on the modules (they're ESM — copy to `.mjs` so `node --check` treats them as modules):
 
 ```bash
 for f in js/*.js; do cp "$f" /tmp/_chk.mjs && node --check /tmp/_chk.mjs || echo "FAIL $f"; done
 ```
+
+There **is** a headless v2 regression suite in **`tests/`** (puppeteer + SwiftShader; `tests/node_modules` gitignored, the second npm corner after `build/`): `cd tests && npm i && npm test`. Add a suite there (not scratchpad) when landing a new v2 system — see `tests/README.md` for the runner, coverage table, and headless gotchas.
 
 To actually *see* a change, render it headlessly with Puppeteer. **WebGL needs SwiftShader flags** — without them `WebGLRenderer` throws and the page is blank:
 

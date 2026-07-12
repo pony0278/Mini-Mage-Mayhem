@@ -1,5 +1,7 @@
-# 發佈工具的 npm 依賴(遊戲本體維持零 build;只有 build/ 用 npm)
+# 發佈工具與測試的 npm 依賴(遊戲本體維持零 build;只有 build/ 與 tests/ 用 npm)
 build/node_modules/
+tests/node_modules/
+tests/package-lock.json
 
 # Portal 投稿發佈產物(拋棄式,隨時用 build/ 重產)
 dist/

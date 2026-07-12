@@ -1,0 +1,12 @@
+{
+  "name": "mmm-tests",
+  "private": true,
+  "type": "module",
+  "description": "v2 headless 回歸套件(puppeteer + SwiftShader);遊戲本體維持零 build，測試依賴隔離在此(比照 build/)。",
+  "scripts": {
+    "test": "node run-all.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "^25.2.0"
+  }
+}

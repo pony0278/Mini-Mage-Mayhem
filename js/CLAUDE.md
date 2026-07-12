@@ -65,6 +65,10 @@
 
 ## 測試(headless;範式先抄再改)
 
+- **落地的回歸套件在 `tests/`**(repo 內,非 scratchpad):`cd tests && npm i && npm test`(`run-all.mjs`
+  自動起 server→逐套件跑→匯總)。核心套件 bottles/wind/oilfire/pickup/ice_slide 蓋投擲瓶/風壓/油火/撿道具/冰滑;
+  **新系統落地時把驗收套件加進 `tests/` 並在 `run-all.mjs` 的 SUITES 補一行**(別只留在 scratchpad=session 一結束就沒)。
+  陷阱總表在 `tests/README.md`。scratchpad 仍是**一次性探針/截圖**的地方。
 - **純 Node sim 測**(最快,免瀏覽器):constants/utils/state/fx/v2-state/v2-floor/v2-combat/v2-items 的 import 圖**無 DOM/THREE**,
   直接 `import(pathToFileURL(...))`。先鋪 `game.map`(全 TILE_FLOOR)+ reset 單例 + 手動 fresh fighter 欄位。
 - **瀏覽器測**(puppeteer + SwiftShader flags,見根 CLAUDE.md;`python3 -m http.server 8099`):
