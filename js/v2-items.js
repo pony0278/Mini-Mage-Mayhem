@@ -8,7 +8,7 @@ import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan } from './
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
-  WIND_RANGE, WIND_CONE, WIND_FORCE, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, itemProjectiles,
+  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, itemProjectiles,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, LAND_SKID, WALL_BOUNCE, lobZ,
@@ -84,17 +84,30 @@ function windBlast(f, a, ox, oy) {
   const fall = (1 - d / WIND_RANGE) * (1 - Math.abs(da) / WIND_CONE);        // 近×中=1、遠/邊→0
   return { ux: dx / d, uy: dy / d, force: WIND_FORCE * fall };
 }
+// 方向亂數擾動(吹亂=每個東西被吹去的方向略歪,不齊步滑):把單位向量繞 ±JITTER 隨機旋轉。
+function windScatter(ux, uy) {
+  const j = (Math.random() * 2 - 1) * WIND_TUMBLE_JITTER, c = Math.cos(j), s = Math.sin(j);
+  return [ux * c - uy * s, ux * s + uy * c];
+}
 export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手/桶/飛行冰瓶)往外飛;無貼臉自反噬(遠程武器)
   const a = f.facing; let hit = false;
   for (const o of fighters) {
     if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
     const w = windBlast(f, a, o.x, o.y); if (!w) continue;
     hit = true;
-    o.vx += w.ux * w.force; o.vy += w.uy * w.force;                          // 放射狀擊退(方向=從風施放者指向目標)
+    const [bx, by] = windScatter(w.ux, w.uy);                               // 方向亂數擾動=吹亂(不齊步滑)
     o.faceT = 0.3; o.hurt = 0.1; o.lastHitBy = f.pid; o.lastHitT = game.time;
-    flinch(o, Math.atan2(w.uy, w.ux), 0.3); camKick(a, 6);                   // 朝被吹方向甩頭
     if (o.carrying) dropCarry(o);                                            // 吹中搬運者 → 鬆手
-    hitSpark(o.x, o.y, '#dff3ff', 1.3); addRing(o.x, o.y, 32, '#dff3ff', 0.3, 4); addText(o.x, o.y - 26, '吹飛！', '#dff3ff');
+    if (w.force > WIND_TUMBLE_MIN && !o.stunned) {                          // 夠強(近中心)→ 吹翻滾:接拋飛管線=趴滾+爬起(非直立滑行)
+      o.vx = bx * w.force; o.vy = by * w.force;
+      o._lob = WIND_TUMBLE_LOB; o._thrownT = game.time; o.fumbleT = WIND_TUMBLE_LOB.T + 0.1;
+      o.stability = Math.max(o.stability, 25);                              // 落地不至於原地再被暈
+      addText(o.x, o.y - 30, '吹翻！', '#dff3ff');
+    } else {                                                                // 弱(邊緣/遠)→ 只吹歪踉蹌
+      o.vx += bx * w.force; o.vy += by * w.force;
+      flinch(o, Math.atan2(by, bx), 0.3); addText(o.x, o.y - 26, '吹飛！', '#dff3ff');
+    }
+    camKick(a, 6); hitSpark(o.x, o.y, '#dff3ff', 1.3); addRing(o.x, o.y, 32, '#dff3ff', 0.3, 4);
     if (o.pid === LOCAL) v2s.localFlash = 0.25;
   }
   for (const pr of itemProjectiles) { // 反彈投射物(風剋冰投):錐內飛行冰瓶 → 放射狀甩回+改歸風施放者
@@ -107,10 +120,11 @@ export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手
     hit = true;
     hitSpark(pr.x, pr.y, '#dff3ff', 1.5); addRing(pr.x, pr.y, 30, '#dff3ff', 0.32, 5); addText(pr.x, pr.y - 22, '反彈！', '#dff3ff');
   }
-  for (const b of barrels) { // 吹動桶:錐內 idle 桶 → 放射狀推走(被吹飛的活炸彈)+ 升壓
+  for (const b of barrels) { // 吹動桶:錐內 idle 桶 → 放射狀+亂數擾動推走(被吹亂的活炸彈)+ 升壓
     if (!b.alive || b.state !== 'idle') continue;
     const w = windBlast(f, a, b.x, b.y); if (!w) continue;
-    b.vx += w.ux * w.force; b.vy += w.uy * w.force;                          // 吹飛(updateBarrels 走物理+摩擦)
+    const [bx, by] = windScatter(w.ux, w.uy);
+    b.vx += bx * w.force * 1.4; b.vy += by * w.force * 1.4;                  // 吹飛(桶輕=吹更遠更亂;updateBarrels 走物理+滾動摩擦)
     pressurizeBarrel(b); hit = true;
   }
   addWindFan(f.x, f.y, a, WIND_RANGE, WIND_CONE);                          // 扇形衝擊波(取代舊地上一圈圓;render 畫扇形+外緣射程弧+風絲)
