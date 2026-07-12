@@ -14,7 +14,7 @@ import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
-  POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
+  POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
@@ -75,17 +75,33 @@ function mouseLeft(f) {                                                         
   if (f.carrying) { throwCarried(f); return; }
   punch(f);
 }
-function mouseRight(f) {                                                        // 右鍵=拖被擊暈的人 / 撿桶 / 放技能(道具)
+// 右鍵=攻擊直覺(玩家反饋 2026-07:拿噴火帽想引爆瓶,右鍵卻變舉瓶):持攻擊裝備(kind blast)→ 直接開火,
+// 不被撿桶/瓶搶走;逃脫類(傳送 mobility)不佔右鍵優先=拿著傳送照樣右鍵撿桶。撿/抓的互動優先版在 E(contextAction)。
+function mouseRight(f) {
   if (f.state !== 'alive') return;
-  if (f.carryObj) { dropBarrel(f); return; }                                   // 扛桶中 → 放下桶
+  if (f.carryObj) { dropBarrel(f); return; }                                   // 扛桶/瓶中 → 放下
   if (f.carrying) { dropCarry(f); return; }                                    // 搬運中 → 放下
-  if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {        // 空手且可動作 → 優先抓近處被擊暈的對手
-    const o = fighters[1 - f.pid];
+  if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {
+    const o = fighters[1 - f.pid];                                              // 抓暈眩對手=最高優先(收容主動詞)
     if (o.state === 'alive' && (o.stunned || GRAB_ANY) && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
-    if (pickupItem(f)) return;                                                   // 沒有可抓的暈眩對手 → 撿補給座/地上掉落道具(空手才撿)
-    const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }        // → 撿桶
+    if (f.item && ITEM_SPEC[f.item].kind === 'blast') { useItem(f); return; }   // 攻擊裝備=右鍵開火(引爆桶/瓶靠這下)
+    if (pickupItem(f)) return;                                                   // 空手 → 撿補給座/地上掉落道具
+    const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }        // → 撿桶/瓶
   }
   useItem(f); // 否則放技能(useItem 自帶守衛:無道具直接略過;被抓/暈時只有傳送可用)
+}
+// E/觸控情境鍵=互動優先(舊右鍵順序):撿/抓照舊——持攻擊裝備時也能撿桶/瓶(跟右鍵開火分工)。
+function contextAction(f) {
+  if (f.state !== 'alive') return;
+  if (f.carryObj) { dropBarrel(f); return; }
+  if (f.carrying) { dropCarry(f); return; }
+  if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {
+    const o = fighters[1 - f.pid];
+    if (o.state === 'alive' && (o.stunned || GRAB_ANY) && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
+    if (pickupItem(f)) return;
+    const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }
+  }
+  useItem(f);
 }
 // 單機版:只有本機玩家(藍=LOCAL)吃鍵盤輸入。紅方永遠是 AI 或被動練習假人 ——
 // 一律不吃輸入(舊 bug:假人 ai=false 但仍監聽 Enter/方向鍵,玩家一按 Enter 反而操控假人推開自己)。
@@ -107,16 +123,16 @@ function pollGuard() {
   f.guarding = pressed && canGuard(f);            // 按住=舉防(耐力/破防由 updateGuard 管);loop 前設好→無 1 幀延遲擋 AI 拳
   guardPrev = pressed;
 }
-const contextPrev = [false, false]; // E 鍵=右鍵情境動作(抓/放下/放技能)的鍵盤替身:Mac 觸控板/無滑鼠玩家不必用右鍵
+const contextPrev = [false, false]; // E 鍵=互動優先情境(contextAction:撿/抓照舊;與右鍵開火分工)。Mac 觸控板/無滑鼠也靠這鍵
 function pollContext() {
   const pressed = [keys.has('e'), false];
-  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !contextPrev[i]) mouseRight(fighters[i]); contextPrev[i] = pressed[i]; }
+  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !contextPrev[i]) contextAction(fighters[i]); contextPrev[i] = pressed[i]; }
 }
 // 觸控動作按鈕(Phase C):v2-touch 按下時設 press 閂鎖,這裡消費=一次一擊(等同鍵鼠的邊緣觸發)。
 // 揮拳/情境走一般幀;格擋另抽一支,定格(hitstop)中也要收(反應常落在凍結幀)——同 pollGuard。
 function pollTouchButtons() {
   if (touchInput.press.punch)   { touchInput.press.punch = false;   mouseLeft(fighters[LOCAL]); }
-  if (touchInput.press.context) { touchInput.press.context = false; mouseRight(fighters[LOCAL]); }
+  if (touchInput.press.context) { touchInput.press.context = false; contextAction(fighters[LOCAL]); } // 觸控=互動優先(單鍵難分工,保住撿桶瓶玩法)
 }
 function pollTouchGuard() {
   if (touchInput.press.guard) { touchInput.press.guard = false; doGuard(fighters[LOCAL]); }
@@ -338,7 +354,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],

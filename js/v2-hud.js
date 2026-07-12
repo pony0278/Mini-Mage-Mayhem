@@ -123,7 +123,7 @@ function drawCoachLine() {
   else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
   else if (!me.item && !me.carryObj && nearPickup(me)) { msg = '右鍵 / E 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
-  else if (!me.carryObj && nearBottle(me)) { msg = '右鍵 / E 撿瓶丟他'; col = '#9ee6ff'; } // 場上投擲瓶:撿了丟(碎=蓋元素地板)
+  else if (!me.carryObj && nearBottle(me)) { msg = 'E 撿瓶丟他'; col = '#9ee6ff'; } // 場上投擲瓶:撿了丟(E=互動鍵;持攻擊裝備時右鍵=開火不撿)
   if (!msg) return;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
@@ -251,9 +251,9 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／撿（裝備·瓶·桶）／放技能 · 扛著左鍵＝丟 · 空白鍵按住＝防禦 ·起手瞬間點＝反暈　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵＝抓／放技能（持攻擊裝備優先開火）· E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟 · 空白鍵按住＝防禦　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: lightning-1', VW - 10, VH - 4);
+  hctx.fillText('build: detonate-1', VW - 10, VH - 4);
 }

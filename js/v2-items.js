@@ -184,6 +184,16 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
 // 地形燃燒專屬「油+火」連段;直擊錐內目標=著火 DoT(floorHazards 續燒→歸零暈)+ 即時 flinch。
 export function castFire(f) {
   const a = f.facing; let hit = false;
+  const inCone = (x, y, pad) => {                                            // 扇內判定(prop 用;地板格另有逐格版)
+    const dx = x - f.x, dy = y - f.y, d = Math.hypot(dx, dy);
+    if (d > FIRE_RANGE + pad) return false;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    return Math.abs(da) <= FIRE_CONE;
+  };
+  // 引爆 prop(玩家反饋 2026-07:拿火帽想引爆瓶/桶,右鍵卻變舉瓶——引爆本身也缺)。瓶**先**碎:
+  // 油瓶潑出的油膜緊接著被下面的地板掃描同一發點燃=瞬間火海;冰瓶碎出的冰面同發融成水。桶=升壓(同揍桶)。
+  for (const t of bottles) if (t.alive && !t.held && t.landed && inCone(t.x, t.y, t.r)) { shatterBottle(t); hit = true; }
+  for (const b of barrels) if (b.alive && b.state === 'idle' && inCone(b.x, b.y, b.r)) { pressurizeBarrel(b); hit = true; }
   // 只作用扇內既有的油/冰格(逐格 applyElement:油→火海、冰→水;乾淨地板噴過去只有火光=無殘留)
   const t0x = Math.floor((f.x - FIRE_RANGE) / TILE), t1x = Math.floor((f.x + FIRE_RANGE) / TILE);
   const t0y = Math.floor((f.y - FIRE_RANGE) / TILE), t1y = Math.floor((f.y + FIRE_RANGE) / TILE);
@@ -226,6 +236,9 @@ export function castFire(f) {
 export function castWater(f) {
   const a = f.facing;
   const sx = f.x + Math.cos(a) * WATER_SLAM_DIST, sy = f.y + Math.sin(a) * WATER_SLAM_DIST; // 落點=面前
+  // 砸壓 prop(玩家反饋:近距離道具要能引爆桶/瓶):瓶先砸碎(潑出的元素隨後被水蓋掉=大水撲滅),桶=受擊升壓
+  for (const t of bottles) if (t.alive && !t.held && t.landed && Math.hypot(t.x - sx, t.y - sy) <= WATER_R + t.r) shatterBottle(t);
+  for (const b of barrels) if (b.alive && b.state === 'idle' && Math.hypot(b.x - sx, b.y - sy) <= WATER_R + b.r) pressurizeBarrel(b);
   stampElement(sx, sy, WATER_R, 'water');                                   // 造濕地(水覆蓋油/冰=底料取代;接雷 R2 電水)
   addRing(sx, sy, WATER_R, '#4da6ff', 0.4, 6); addRing(sx, sy, WATER_R * 0.6, '#bfe6ff', 0.32, 5);
   hitSpark(sx, sy, '#8fd0ff', 2.2); addShake(8); addHitstop(0.08); game.sfx.push('explosion');
@@ -255,6 +268,14 @@ export function castWater(f) {
 // 命中線內對手=電擊擊暈(元素穿防)+ 小擊退;沿線給水地板充電(R2 水→電水;乾地/其他 no-op=留下電水陷阱)。
 export function castLightning(f) {
   const a = f.facing, ca = Math.cos(a), sa = Math.sin(a); let hit = false;
+  const onLine = (x, y, pad) => {                                            // 直線判定(prop 用;同對手命中那把尺)
+    const dx = x - f.x, dy = y - f.y, along = dx * ca + dy * sa;
+    if (along < 0 || along > LIGHTNING_RANGE) return false;
+    return Math.abs(-dx * sa + dy * ca) <= LIGHTNING_WIDTH + pad;
+  };
+  // 引爆 prop(玩家反饋:道具要能引爆桶/瓶):線上瓶=電得碎裂、桶=受擊升壓
+  for (const t of bottles) if (t.alive && !t.held && t.landed && onLine(t.x, t.y, t.r)) { shatterBottle(t); hit = true; }
+  for (const b of barrels) if (b.alive && b.state === 'idle' && onLine(b.x, b.y, b.r)) { pressurizeBarrel(b); hit = true; }
   // 沿線逐 tile 給水充電(applyElement:水→charged、非水 no-op;不誤觸乾淨地板)
   const steps = Math.ceil(LIGHTNING_RANGE / (TILE * 0.5)), seen = new Set();
   for (let i = 1; i <= steps; i++) {
