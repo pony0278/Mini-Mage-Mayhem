@@ -128,9 +128,15 @@ export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手
       t.vx = w.ux * spd; t.vy = w.uy * spd;
       t.flyT0 = game.time;                                                     // 重啟拋物弧(從當前位置起新的一段)
       addText(t.x, t.y - 22, '反彈！', '#dff3ff'); addRing(t.x, t.y, 30, '#dff3ff', 0.32, 5);
-    } else {                                                                   // 地上瓶 → 放射狀+亂數擾動吹走(滑行硬撞即碎)
+    } else {                                                                   // 地上瓶 → 放射狀+亂數擾動(分強弱,對齊風對人:近中心強命中=擊飛拋射、邊緣弱命中=地面吹滑)
       const [bx, by] = windScatter(w.ux, w.uy);
-      t.vx += bx * w.force * 1.4; t.vy += by * w.force * 1.4;
+      if (w.force > WIND_TUMBLE_MIN) {                                         // 強(近中心)→ 擊飛進拋物弧:飛到下風落地碎(空中砸中人=冰凍/油潑膜),風多一條投送路徑
+        t.vx = bx * w.force; t.vy = by * w.force;
+        t.flyT0 = game.time; t.landed = false;                                 // updateBottles 走 BOTTLE_LOB 弧 → 自然落地/砸中/撞牆即碎
+        addText(t.x, t.y - 22, '吹飛！', '#dff3ff');
+      } else {                                                                 // 弱(邊緣/遠)→ 地面吹滑(滑撞牆/人夠快才碎;不夠快=換位不碎)
+        t.vx += bx * w.force * 1.4; t.vy += by * w.force * 1.4;
+      }
     }
     t.thrownBy = f.pid;                                                        // 改歸風施放者(碎裂凍人/計功歸風方)
     hit = true; hitSpark(t.x, t.y, '#dff3ff', 1.3);
