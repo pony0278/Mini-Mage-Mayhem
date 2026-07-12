@@ -7,7 +7,7 @@ import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
-  pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
+  pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, OIL_LOB, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_R, FIRE_STAMPS, FIRE_MIN, FIRE_HIT_STAB, itemProjectiles,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
@@ -36,18 +36,26 @@ export function pressurizeBarrel(b) {
 }
 
 // --- 道具:撿取 / 使用 (spec F §4). 補給座重刷隨機道具; 只拿1; 用完即空; 傳送符是被抓時唯一可用 ---
-export function updatePads(dt) {
-  for (const p of pads) {
-    if (!p.item) { p.respawn -= dt; if (p.respawn <= 0) p.item = randItem(); continue; }
-    for (const f of fighters) {
-      if (f.ai || f.state !== 'alive' || f.item || f.carriedBy || f.carrying || f.stunned) continue; // AI 這步不撿道具
-      if (Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r) {
-        f.item = p.item; f.itemUses = ITEM_SPEC[p.item].uses; p.item = null; p.respawn = v2s.padRespawnCur;
-        addText(f.x, f.y - 32, ITEM_INFO[f.item].name + '！', ITEM_INFO[f.item].color); addRing(f.x, f.y, 28, ITEM_INFO[f.item].color, 0.3, 4); game.sfx.push('upgrade');
-        dlog('PICKUP', NAMES[f.pid], f.item); break;
-      }
-    }
-  }
+export function updatePads(dt) { // 補給座只管重刷(撿取改手動,見 pickupItem);掉落物 TTL 另在 updateGroundItems
+  for (const p of pads) if (!p.item) { p.respawn -= dt; if (p.respawn <= 0) p.item = randItem(); }
+}
+export function updateGroundItems(dt) { // 地上掉落道具:TTL 倒數,到期自然消失
+  for (let i = groundItems.length - 1; i >= 0; i--) { const g = groundItems[i]; g.ttl -= dt; if (g.ttl <= 0) { addRing(g.x, g.y, 20, ITEM_INFO[g.type].color, 0.3, 3); groundItems.splice(i, 1); } }
+}
+// 被暈時道具噴到地上(逃脫類 whileDisabled=傳送 不掉,否則被暈就永遠逃不了)。誰先撿到誰的=收容前的搶奪戰。
+export function dropLooseItem(f) {
+  if (!f.item || ITEM_SPEC[f.item].whileDisabled) return;
+  groundItems.push({ x: f.x, y: f.y, type: f.item, uses: f.itemUses, ttl: GROUND_ITEM_TTL });
+  addText(f.x, f.y - 22, ITEM_INFO[f.item].name + ' 掉了！', ITEM_INFO[f.item].color); addRing(f.x, f.y, 26, ITEM_INFO[f.item].color, 0.3, 4); game.sfx.push('thud');
+  dlog('DROP', NAMES[f.pid], f.item); f.item = null; f.itemUses = 0;
+}
+// 手動撿(補給座 or 地上掉落):空手可動才撿;優先近的補給座、再地上掉落物。回傳 true=撿到(供 mouseRight 分派)。
+export function pickupItem(f) {
+  if (f.item || f.state !== 'alive' || f.carrying || f.carryObj || f.stunned || f.carriedBy || f.fumbleT > 0) return false;
+  const take = (type, uses, fx, fy) => { f.item = type; f.itemUses = uses; addText(f.x, f.y - 32, ITEM_INFO[type].name + '！', ITEM_INFO[type].color); addRing(f.x, f.y, 28, ITEM_INFO[type].color, 0.3, 4); game.sfx.push('upgrade'); dlog('PICKUP', NAMES[f.pid], type); };
+  for (const p of pads) if (p.item && Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r) { take(p.item, ITEM_SPEC[p.item].uses); p.item = null; p.respawn = v2s.padRespawnCur; return true; }
+  for (let i = 0; i < groundItems.length; i++) { const g = groundItems[i]; if (Math.hypot(f.x - g.x, f.y - g.y) < PICKUP_R + f.r) { take(g.type, g.uses); groundItems.splice(i, 1); return true; } }
+  return false;
 }
 export function useItem(f) {
   if (!f.item || f.state !== 'alive' || f.carrying) return;                 // 搬運中兩手全滿,不能用道具

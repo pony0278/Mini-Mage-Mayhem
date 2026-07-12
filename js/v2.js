@@ -13,7 +13,7 @@ import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, 
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
-  resetFighter, resetBarrels, resetPads, resetStage, resetStations,
+  resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
   POD, inPod, pads, barrels, ITEM_INFO, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitch, WIND_RANGE, WIND_CONE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
@@ -22,7 +22,7 @@ import {
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce } from './v2-combat.js';
-import { updatePads, updateBarrels, updateStations, updateItemProjectiles, useItem, resolveItemCast, castWind, castTeleport, castIce, castOil, castFire, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
+import { updatePads, updateBarrels, updateStations, updateItemProjectiles, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castIce, castOil, castFire, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -48,7 +48,7 @@ function playClip(name, f = fighters[LOCAL]) {
 
 // --- round / match orchestration ---
 function resetRound() {
-  resetBarrels(); resetPads(); resetStations(); resetFloor(); itemProjectiles.length = 0;
+  resetBarrels(); resetPads(); resetGroundItems(); resetStations(); resetFloor(); itemProjectiles.length = 0;
   for (const f of fighters) resetFighter(f);
 }
 function restartMatch() {
@@ -82,7 +82,8 @@ function mouseRight(f) {                                                        
   if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {        // 空手且可動作 → 優先抓近處被擊暈的對手
     const o = fighters[1 - f.pid];
     if (o.state === 'alive' && (o.stunned || GRAB_ANY) && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
-    const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }        // 沒有可抓的暈眩對手 → 撿桶
+    if (pickupItem(f)) return;                                                   // 沒有可抓的暈眩對手 → 撿補給座/地上掉落道具(空手才撿)
+    const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }        // → 撿桶
   }
   useItem(f); // 否則放技能(useItem 自帶守衛:無道具直接略過;被抓/暈時只有傳送可用)
 }
@@ -187,6 +188,7 @@ function step(dt) {
       if (f.stabCd > 0) f.stabCd -= dt; else if (!f.stunned && !f.carriedBy) f.stability = Math.min(STAB_MAX, f.stability + STAB_REGEN * dt);
       // stun countdown → recover (ungrabbed)
       if (f.stunned) { f.stunT -= dt; if (f.stunT <= 0) { f.stunned = false; f.frozen = false; f.stability = STUN_RECOVER; f.restunT = RESTUN_IMMUNE; } } // 醒來同時解凍
+      if (f.stunned && f.item) dropLooseItem(f); // 被暈=道具噴到地上(逃脫類不掉;誰先撿到誰的)
       // death theatre (isles over-void fall; no-op on the flat arena)
       if (updateDeathTheater(f, dt)) {
         if (f.dead) {
@@ -237,7 +239,7 @@ function step(dt) {
         containByEnviron(f, cause); break;
       }
     }
-    updateBarrels(dt); updateStations(dt); updatePads(dt); updateItemProjectiles(dt); // 廢料桶 / 元素站 / 補給座 / 拋擲道具(冰瓶;冰面衰退=stepFloor)
+    updateBarrels(dt); updateStations(dt); updatePads(dt); updateGroundItems(dt); updateItemProjectiles(dt); // 廢料桶 / 元素站 / 補給座重刷 / 掉落道具 TTL / 拋擲道具
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment, isles)
   const lf = fighters[LOCAL];
@@ -272,6 +274,7 @@ function step(dt) {
     marks.push({ x: s.x, y: s.y, r: ERUPT_PATCH_R + prog * ERUPT_PATCH_R * 1.7, color: col, pulse: true, op: 0.92, fill: 0, speed: 6 + (1 - prog) * 16 });
   }
   for (const p of pads) if (p.item) marks.push({ x: p.x, y: p.y, r: 24, color: ITEM_INFO[p.item].color, pulse: true, op: 0.5, fill: 0.12, speed: 4 }); // 補給座光圈
+  for (const g of groundItems) marks.push({ x: g.x, y: g.y, r: 18, color: ITEM_INFO[g.type].color, pulse: true, op: 0.72, fill: 0.18, speed: 7 }); // 地上掉落道具(可撿/搶)
   if (v2s.lowFlicker) for (const m of marks) m.pulse = false; // 減閃爍:標記全改常亮
   setGroundMarkers(marks);
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
@@ -322,7 +325,7 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   POD, barrels, explodeBarrel, stations, updateStations, labSwitch, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, ICE_LOB, itemProjectiles, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 拋擲道具(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, useItem, castWind, castTeleport, castIce, castOil, castFire, inc, generateReport, endMatch,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, castWind, castTeleport, castIce, castOil, castFire, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],

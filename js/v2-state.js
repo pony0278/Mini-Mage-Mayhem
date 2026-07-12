@@ -148,6 +148,10 @@ export const ITEM_SPEC = {
 export const ITEM_CAST_RECOVER = 0.18; // 排程施放後的恢復(承諾冷卻);瞬發道具(delay:0)不套用
 export const PAD_SPOTS = [[480, 140], [480, 500]]; // 補給座:上下中線(避開角落爆桶與中央實驗艙)
 export const PAD_RESPAWN = 5, PICKUP_R = 26;
+// 手動撿道具(2026-07,C 案):補給座改按鍵撿;被暈(逃脫類 whileDisabled 除外)道具噴到地上=掉落物,可撿/搶,TTL 到自然消失。
+export const GROUND_ITEM_TTL = 8;
+export const groundItems = []; // 地上掉落道具 { x, y, type, uses, ttl };round reset 清空
+export function resetGroundItems() { groundItems.length = 0; }
 // 風壓手套=遠距離扇形放射狀衝擊波(2026-07 重設計):錐內 → 力 = WIND_FORCE × 距離衰減(1−d/RANGE) × 角度衰減(1−|θ|/CONE),
 // 方向=從手心往外放射(正中往前全力、兩側斜著吹歪、遠處衰減)。近端窄遠端寬的扇形自動成立(錐從手心張開)。一發同時吹對手/桶/飛行冰瓶。
 export const WIND_RANGE = 320, WIND_CONE = 1.0, WIND_FORCE = 620; // RANGE=射程(遠程定位)/CONE=半張角±57°(夠寬才「整片」)/FORCE=中心近處峰值(>失控門檻→吹進艙)

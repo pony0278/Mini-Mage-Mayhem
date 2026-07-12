@@ -7,7 +7,7 @@ import { game } from './state.js';
 import { project } from './render.js';
 import {
   v2s, fighters, LOCAL, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
-  POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, ITEM_INFO, GUARD_STAM_MAX,
+  POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, ITEM_INFO, GUARD_STAM_MAX,
   STAGE_NAME, METHOD_COL, METHOD_ZH,
 } from './v2-state.js';
 
@@ -105,6 +105,11 @@ function drawParryPrompt() {
 }
 // 教練提示線(玩家反饋:「指示要更明顯地告訴我現在該做什麼」):
 // 按優先序只顯示一條,大字置中脈動,告訴本機玩家當下最重要的行動。
+function nearPickup(f) { // 附近有可撿的補給座道具或地上掉落道具(手動撿提示用)
+  for (const p of pads) if (p.item && Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r + 6) return true;
+  for (const g of groundItems) if (Math.hypot(f.x - g.x, f.y - g.y) < PICKUP_R + f.r + 6) return true;
+  return false;
+}
 function drawCoachLine() {
   const me = fighters[LOCAL], o = fighters[1 - LOCAL];
   let msg = null, col = '#ffd36d';
@@ -113,6 +118,7 @@ function drawCoachLine() {
   else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '⚡ 對手暈了！右鍵 / E 抓住他'; col = '#ffd36d'; }
   else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
+  else if (!me.item && !me.carryObj && nearPickup(me)) { msg = '右鍵 / E 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
   if (!msg) return;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
@@ -240,7 +246,7 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／放技能 · 扛人左鍵拋擲 · 空白鍵按住＝防禦（擋鉤拳/定身耗耐力·終結技與元素穿防）·起手瞬間點＝反暈　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵 / E 抓／撿道具（走到補給座/掉落物按）／放技能 · 扛人左鍵拋擲 · 空白鍵按住＝防禦 ·起手瞬間點＝反暈　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
