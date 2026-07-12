@@ -1197,7 +1197,24 @@ function makeDashRingTexture() { // 內側虛線圈(反向轉,做出雙層深度
   g.beginPath(); g.arc(S / 2, S / 2, 226, 0, Math.PI * 2); g.stroke();
   const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; return tex;
 }
+function makePodBaseTexture() { // 艙底盤面:放射漸層(中心暗紫→邊緣深灰,融入實驗室地板)+ 細同心刻紋
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d'), cx = S / 2;
+  const grad = g.createRadialGradient(cx, cx, 0, cx, cx, cx);
+  grad.addColorStop(0, '#1c1526');   // 中心:暗紫(魔法感)
+  grad.addColorStop(0.62, '#151a20');
+  grad.addColorStop(1, '#10151a');   // 邊緣:融入場景暗地板
+  g.fillStyle = grad; g.beginPath(); g.arc(cx, cx, cx, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(120,110,150,0.14)'; g.lineWidth = 2;              // 細同心刻紋(避免死平)
+  for (const r of [120, 176, 226]) { g.beginPath(); g.arc(cx, cx, r, 0, Math.PI * 2); g.stroke(); }
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; return tex;
+}
 function buildRuneRing() {
+  // 艙底盤面(使用者反饋 2026-07:符文縫隙透出原始地磚):不透明深盤墊在最底,蓋住地磚格線。
+  // 高度卡位:y=0.4 —— 壓住地磚(y=0)、但在地板化學 tile(y=0.6)之下 → 艙內冰面/油膜等玩法資訊照常顯示。
+  const base = new THREE.Mesh(new THREE.CircleGeometry(4.75 * LAB_SCALE, 56),
+    new THREE.MeshStandardMaterial({ map: makePodBaseTexture(), roughness: 0.85, metalness: 0.25 }));
+  base.rotation.x = -Math.PI / 2; base.position.set(CX, 0.4, CZ); base.receiveShadow = true; scene.add(base);
   const mkPlane = (tex, size, y) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
       new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85, toneMapped: false }));
