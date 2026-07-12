@@ -298,6 +298,12 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
       windSector(wa.x, wa.y, wa.angle, wa.cone, 0, wa.range, 2, 0xbfeaff, 0.07 + 0.05 * pulse);
       windSector(wa.x, wa.y, wa.angle, wa.cone, wa.range * 0.88, wa.range, 3, 0xdff3ff, 0.22 + 0.12 * pulse); // 外緣=射程邊界(讀「打多遠」)
     }
+    // 噴火帽起手預告:短火色扇形 + 外緣射程弧(教攻擊範圍;複用 windSector,火色。射程短→外緣弧比例厚一點好讀)
+    for (const fa of game.fireAims) {
+      const pulse = 0.5 + 0.5 * Math.sin(game.time * 9);
+      windSector(fa.x, fa.y, fa.angle, fa.cone, 0, fa.range, 2, 0xff7a3a, 0.12 + 0.07 * pulse);
+      windSector(fa.x, fa.y, fa.angle, fa.cone, fa.range * 0.78, fa.range, 3, 0xffce6a, 0.38 + 0.2 * pulse); // 外緣=射程邊界(讀「多短、貼臉」;稍厚稍亮=好記範圍)
+    }
     // 風壓手套發射閃:扇形從頂點掃到滿射程(easeOut)+ 亮前緣 + 少量放射狀風絲,再淡出
     for (const wf of game.windFans) {
       const life = clamp(wf.life / wf.maxLife, 0, 1), t = 1 - life;                    // t 0→1
