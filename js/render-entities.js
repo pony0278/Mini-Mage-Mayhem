@@ -18,9 +18,9 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
       }
       const charged = pr.charge === 'lightning', burning = pr.charge === 'fire';
       const cracked = pr.hp < pr.maxHp;
-      const ice = pr.wall === 'ice', earth = pr.wall === 'earth'; // ★3 風掌牆碎塊（冰=藍/土=石灰）
-      const col = burning ? 0xff7a3a : charged ? 0x6fb8d8 : ice ? 0x9fd8e8 : earth ? 0x8a8276 : (cracked ? 0x9c7038 : 0xb98a52);
-      const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : (ice ? 0x2a6a88 : 0x000000);
+      const ice = pr.wall === 'ice', earth = pr.wall === 'earth', oil = pr.wall === 'oil'; // 冰=藍/土=石灰/油=暗金(飛行瓶佔位)
+      const col = burning ? 0xff7a3a : charged ? 0x6fb8d8 : ice ? 0x9fd8e8 : oil ? 0x9a8a5a : earth ? 0x8a8276 : (cracked ? 0x9c7038 : 0xb98a52);
+      const emis = burning ? 0xff5a20 : charged ? 0x4fc8ff : (ice ? 0x2a6a88 : oil ? 0x2a2008 : 0x000000);
       const s = pr.r * 1.9;
       const lift = (pr.held ? pr.r * 2.0 : 0) + (pr.fly || 0);   // held=浮在頭上;fly=被丟的拋物線視覺高度(v2.js 算;影子留地面讀高度)
       const sp = Math.hypot(pr.vx || 0, pr.vy || 0);

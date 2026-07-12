@@ -8,7 +8,8 @@ import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan } from './
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R,
-  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, itemProjectiles,
+  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, ICE_LOB, OIL_LOB, OIL_R,
+  FIRE_RANGE, FIRE_CONE, FIRE_R, FIRE_STAMPS, FIRE_MIN, FIRE_HIT_STAB, itemProjectiles,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, BARREL_WALL_HOP, LAND_SKID, WALL_BOUNCE, lobZ,
@@ -67,6 +68,8 @@ function castItem(type, f) {
   if (type === 'wind') castWind(f);
   else if (type === 'teleport') castTeleport(f);
   else if (type === 'ice') castIce(f);
+  else if (type === 'oil') castOil(f);
+  else if (type === 'fire') castFire(f);
 }
 // step 在 impact 幀呼叫:施法中被打斷(暈/被抓)→ 取消(次數已扣、不退);否則發動效果
 export function resolveItemCast(f) {
@@ -154,43 +157,77 @@ export function castTeleport(f) { // 與對手換位(±偏移); 被抓時=脫困
   f.vx = 0; f.vy = 0; game.sfx.push('upgrade');
   dlog('TELEPORT', NAMES[f.pid], grabbed ? '(escape)' : '');
 }
-// 冰霜瓶:release 幀從頭頂甩出(useItem 播 barrel_throw 暫代動畫,resolveItemCast 在 delay=release 幀呼叫這裡)
-// → ICE_LOB 拋物線 → 落地/撞牆即碎 → 冰面。飛行中穿人不碰撞(瓶不傷人,殺傷=冰面滑行/接雷)。
-export function castIce(f) {
-  const a = f.facing, F = ICE_LOB.range / ICE_LOB.T;                 // 出手當下現算(改 LOB 即時生效)
-  itemProjectiles.push({ x: f.x + Math.cos(a) * (f.r + 8), y: f.y + Math.sin(a) * (f.r + 8), vx: Math.cos(a) * F, vy: Math.sin(a) * F, flyT0: game.time, z: ICE_LOB.h0, elem: 'ice', alive: true, owner: f.pid });
-  game.sfx.push('dash'); addText(f.x, f.y - 30, '拋瓶！', ITEM_INFO.ice.color);
-  dlog('ICE throw by', NAMES[f.pid]);
+// 丟擲瓶(冰/油共用管線):release 幀甩出 → LOB 拋物線 → 落地/撞牆即碎 → 種元素地板。
+// 冰=直擊凍人;油=不凍(純鋪面)。飛行中穿人碰撞在 updateItemProjectiles(分元素)。
+const THROW_R = { ice: ICE_R, oil: OIL_R };
+function castBottle(f, elem, lob) {
+  const a = f.facing, F = lob.range / lob.T;                          // 出手當下現算(改 LOB 即時生效)
+  itemProjectiles.push({ x: f.x + Math.cos(a) * (f.r + 8), y: f.y + Math.sin(a) * (f.r + 8), vx: Math.cos(a) * F, vy: Math.sin(a) * F, flyT0: game.time, z: lob.h0, elem, lob, alive: true, owner: f.pid });
+  game.sfx.push('dash'); addText(f.x, f.y - 30, '拋瓶！', elemColor(elem));
+  dlog(elem.toUpperCase() + ' throw by', NAMES[f.pid]);
 }
-function shatterProjectile(pr) { // 瓶=脆:落地/撞牆即碎 → 蓋元素地板;無傷害脈衝(冰的殺傷=滑行/接雷)
+export function castIce(f) { castBottle(f, 'ice', ICE_LOB); }
+export function castOil(f) { castBottle(f, 'oil', OIL_LOB); }
+// 噴火帽=前方噴流錐:沿中軸種幾塊火地板(點燃腳下油=R1 火海,stampElement 自動走反應)+ 錐內對手削穩定值+flinch(踩到火海後 floorHazards 續燒)。
+export function castFire(f) {
+  const a = f.facing; let hit = false;
+  for (let i = 0; i < FIRE_STAMPS; i++) {                                   // 沿中軸幾個落點種火(近→遠)
+    const d = FIRE_MIN + (FIRE_RANGE - FIRE_MIN) * (FIRE_STAMPS > 1 ? i / (FIRE_STAMPS - 1) : 0);
+    const px = f.x + Math.cos(a) * d, py = f.y + Math.sin(a) * d;
+    stampElement(px, py, FIRE_R, 'fire');                                  // 油上=R1 火海、草上=燒、clean=火(FLOOR_LIFE.fire 4s)
+    hitSpark(px, py, '#ffb04a', 1.4); addRing(px, py, FIRE_R * 0.7, '#ff7a3a', 0.3, 4);
+  }
+  for (const o of fighters) {                                              // 錐內對手:削穩定值+flinch(即時回饋;續燒交給 floorHazards)
+    if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0) continue;
+    const dx = o.x - f.x, dy = o.y - f.y, d = Math.hypot(dx, dy);
+    if (d > FIRE_RANGE + o.r) continue;
+    let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) > FIRE_CONE) continue;
+    hit = true;
+    o.stability = Math.max(0, o.stability - FIRE_HIT_STAB); o.stabCd = 0.8; o.hurt = 0.12; o.faceT = 0.3; o.lastHitBy = f.pid; o.lastHitT = game.time;
+    flinch(o, a, 0.26);
+    if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o);
+    if (o.pid === LOCAL) v2s.localFlash = 0.25;
+  }
+  // 噴口火花 + 前方火焰粒子(專用 vfx 之後補;火海本體由 render-lab 地板 fx 畫)
+  const mx = f.x + Math.cos(a) * (f.r + 8), my = f.y + Math.sin(a) * (f.r + 8);
+  for (let i = 0; i < 18; i++) {
+    const ang = a + (Math.random() * 2 - 1) * FIRE_CONE, sp = 180 + Math.random() * 260;
+    game.particles.push({ x: mx, y: my, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 2 + Math.random() * 3, life: 0.2 + Math.random() * 0.24, maxLife: 0.44, color: Math.random() < 0.5 ? '#ff7a3a' : '#ffce6a' });
+  }
+  camKick(a, 7); addShake(hit ? 7 : 4); game.sfx.push('dash');
+  dlog('FIRE spray by', NAMES[f.pid], hit ? 'hit' : 'miss');
+}
+function shatterProjectile(pr) { // 瓶=脆:落地/撞牆即碎 → 蓋元素地板(冰面/油膜);無傷害脈衝(殺傷=地板化學)
   pr.alive = false;
-  const n = stampElement(pr.x, pr.y, ICE_R, pr.elem);
-  addRing(pr.x, pr.y, ICE_R, ITEM_INFO.ice.color, 0.4, 5); hitSpark(pr.x, pr.y, ITEM_INFO.ice.color, 1.4);
-  addText(pr.x, pr.y - 20, '碎裂！', ITEM_INFO.ice.color); game.sfx.push('thud');
-  dlog('ICE shatter @', Math.round(pr.x) + ',' + Math.round(pr.y), 'tiles', n);
+  const col = elemColor(pr.elem), r = THROW_R[pr.elem] || ICE_R;
+  const n = stampElement(pr.x, pr.y, r, pr.elem);
+  addRing(pr.x, pr.y, r, col, 0.4, 5); hitSpark(pr.x, pr.y, col, 1.4);
+  addText(pr.x, pr.y - 20, '碎裂！', col); game.sfx.push('thud');
+  dlog(pr.elem.toUpperCase() + ' shatter @', Math.round(pr.x) + ',' + Math.round(pr.y), 'tiles', n);
 }
 export function updateItemProjectiles(dt) {
   for (let i = itemProjectiles.length - 1; i >= 0; i--) {
-    const pr = itemProjectiles[i];
+    const pr = itemProjectiles[i], lob = pr.lob || ICE_LOB;
     const t = game.time - pr.flyT0;
-    pr.z = lobZ(t, ICE_LOB);
-    // 直擊冰凍(玩家反饋定案):任何高度碰到人都算(桶教訓:規則綁看得見的碰撞,不綁看不見的弧高)。
-    // 砸中 → 冰凍(=暈+冰凍皮)+ 瓶在他腳下碎 → 冰面(雙效,同一顆瓶)。不打自己(owner)。
+    pr.z = lobZ(t, lob);
+    // 直擊碰撞(玩家反饋定案):任何高度碰到人都算(桶教訓:規則綁看得見的碰撞,不綁看不見的弧高)。不打自己(owner)。
+    // 冰=砸中凍人(暈+冰凍皮);油=不凍,只在腳下潑油膜。皆在目標腳下碎(雙效同一顆瓶)。
     for (const o of fighters) {
       if (o.state !== 'alive' || o.pid === pr.owner || o.carriedBy || o.invuln > 0) continue;
       if (Math.hypot(pr.x - o.x, pr.y - o.y) > o.r + 8) continue;
-      freezeFighter(o, pr.owner);
-      pr.x = o.x; pr.y = o.y;                                        // 在被凍者腳下碎 → 冰面置中
+      if (pr.elem === 'ice') freezeFighter(o, pr.owner);
+      pr.x = o.x; pr.y = o.y;                                        // 在目標腳下碎 → 地板置中
       shatterProjectile(pr);
       break;
     }
     if (!pr.alive) { itemProjectiles.splice(i, 1); continue; }
     const nx = pr.x + pr.vx * dt, ny = pr.y + pr.vy * dt;
-    if (circleHitsSolid(nx, ny, 8)) shatterProjectile(pr);           // 撞牆即碎(在牆邊成冰面;不反彈——脆)
+    if (circleHitsSolid(nx, ny, 8)) shatterProjectile(pr);           // 撞牆即碎(牆邊種地板;不反彈——脆)
     else {
       pr.x = clamp(nx, 8, W - 8); pr.y = clamp(ny, 8, H - 8);
-      if (t >= ICE_LOB.T) {                                          // 自然落地幀:回推跨幀過衝(粗 dt 下 t 超過 T 的位移已加)→ 落點=精確 range
-        const over = t - ICE_LOB.T;
+      if (t >= lob.T) {                                              // 自然落地幀:回推跨幀過衝(粗 dt 下 t 超過 T 的位移已加)→ 落點=精確 range
+        const over = t - lob.T;
         pr.x = clamp(pr.x - pr.vx * over, 8, W - 8); pr.y = clamp(pr.y - pr.vy * over, 8, H - 8);
         shatterProjectile(pr);
       }
