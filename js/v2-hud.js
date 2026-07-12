@@ -238,6 +238,25 @@ function drawWindSpeedLines() {
   }
   hctx.restore();
 }
+/* 收容演出:艙口 LED 飄字(使用者拍板:輕量融景,像招牌 LED,不做側邊終端面板)。
+   文字由 sim 排好(v2s.perform.line);這裡只管 LED 樣式:深底描邊膠囊 + 青字(失控段轉橘紅)+ 掃描期微閃。 */
+function drawPerformLED() {
+  const p = v2s.perform; if (!p) return;
+  const c = project(POD.x, POD.y, 82); if (c.behind) return;
+  hctx.font = '700 15px ui-monospace, SFMono-Regular, Consolas, monospace'; hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
+  const w = hctx.measureText(p.line).width + 28, h = 24;
+  const warn = p.n >= 2 && (p.phase === 'classify' || p.phase === 'resolve'); // 失控/清運段 → 警示色
+  hctx.fillStyle = 'rgba(8,18,22,.78)'; hctx.fillRect(c.x - w / 2, c.y - h / 2, w, h);
+  hctx.strokeStyle = warn ? 'rgba(255,110,80,.8)' : 'rgba(90,230,255,.55)'; hctx.lineWidth = 1;
+  hctx.strokeRect(c.x - w / 2 + 0.5, c.y - h / 2 + 0.5, w - 1, h - 1);
+  const blink = (!v2s.lowFlicker && p.phase === 'scan' && Math.floor(p.pk * 10) % 2 === 0) ? 0.72 : 1; // 掃描期微閃(減閃爍=常亮)
+  hctx.fillStyle = warn ? `rgba(255,150,90,${blink})` : `rgba(140,235,255,${blink})`;
+  hctx.fillText(p.line, c.x, c.y + 1);
+  hctx.font = '700 10px ui-monospace, monospace'; hctx.fillStyle = 'rgba(160,220,235,.55)';
+  hctx.fillText('MAGIC WASTE INTAKE · ' + ['SCAN', 'SORT', 'SEAL'][p.n - 1], c.x, c.y + h / 2 + 11);
+  hctx.textBaseline = 'alphabetic';
+}
+
 export function drawHud() {
   hctx.clearRect(0, 0, VW, VH);
   drawWindSpeedLines();
@@ -264,6 +283,7 @@ export function drawHud() {
   drawContainHud();
   drawItems();
   drawSwitchLabels();
+  drawPerformLED(); // 收容演出 LED 飄字(艙口上方)
   if (!drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先
   // stage / seal banner
   if (v2s.winBannerT > 0 && v2s.bannerText) {
@@ -277,5 +297,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: signs-1', VW - 10, VH - 4);
+  hctx.fillText('build: perform-1', VW - 10, VH - 4);
 }

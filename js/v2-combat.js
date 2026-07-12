@@ -13,7 +13,7 @@ import {
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
-  SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER,
+  SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS,
   GUARD_MOVE, GUARD_STAM_MAX, GUARD_DRAIN, GUARD_BLOCK_COST, GUARD_REGEN, GUARD_REGEN_DELAY,
   GUARD_BLOCK_PUSH, GUARD_BLOCK_FLINCH, GUARD_BREAK_FUMBLE, GUARD_BREAK_LOCK,
   FIRE_STAB_DPS, FIRE_BURN_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
@@ -436,6 +436,7 @@ export function breakFree(o) { // 掙脫成功: 搬運者踉蹌 → 反轉窗口
 }
 export function isReversal(v) { return game.time - (v.wasCarryingT || -9) < 2.5; } // 被關者剛剛還在搬人 → 反向收容
 export function containByCarry(f, o) { // 拖進艙 = 收容成功 (spec F §2.2 失控入艙)
+  if (v2s.perform) return;                                // 演出中不疊加收容
   const w = f.pid, rev = isReversal(o);
   inc.contains[w]++; inc.carries[w]++; inc.types.add('contain');
   if (rev) { inc.reverseContains++; inc.types.add('reverse'); }
@@ -443,6 +444,7 @@ export function containByCarry(f, o) { // 拖進艙 = 收容成功 (spec F §2.2
   resolveContain(w, o, rev ? 'reverse' : 'carry');
 }
 export function containByEnviron(v, cause) { // 被擊退/打滑失控進艙 → v 被收容, 對手勝(spec F §2.2)
+  if (v2s.perform) return;                                // 演出中不疊加收容
   const w = 1 - v.pid, rev = isReversal(v);
   inc.contains[w]++; inc.types.add('contain');
   if (cause === 'throw') { inc.throwContains++; inc.types.add('throw'); } // 拋進艙=蓄意的指定攻擊,不算意外
@@ -460,8 +462,70 @@ export function resolveContain(w, loser, method) {
   containLog.push({ winner: w, method, stage: v2s.stage });
   addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6);
   dlog('CONTAIN', NAMES[loser.pid], '→', NAMES[w], method, 'score', roundWins[0] + '-' + roundWins[1]);
-  if (roundWins[w] >= WIN_TARGET) finalSeal(w);
-  else softReintegrate(loser, roundWins[0] + roundWins[1]);
+  startPerform(w, loser); // 回收演出 V0.8:收尾(封存/彈回)延到演出結束(finishPerform)
+}
+// --- 回收演出 V0.8(使用者演出設計文檔 2026-07;拍板:不鎖定勝方/不動 follow cam/艙口 LED 飄字)---
+// 時間軸(佔總長比例):捕捉 0-12% → 掙扎 12-30% → 掃描 30-62% → 分類 62-80% → 收尾 80-100%。
+// 收尾風味 n:1 正常彈回 / 2 失控火花波及艙邊(文檔 §四:別只羞辱敗方)/ 3 壓縮成方塊送清運 → 事故報告。
+const PERFORM_KEYS = [0.12, 0.30, 0.62, 0.80];
+export function startPerform(w, loser) {
+  const total = roundWins[0] + roundWins[1], final = roundWins[w] >= WIN_TARGET;
+  const n = final ? 3 : Math.min(2, total);               // 演出風味(最終封存一定演第 3 式)
+  const cls = WASTE_CLASS[loser._lastItem || 'none'] || WASTE_CLASS.none;
+  // 敗方 snap 艙心 + 全保護(罩下不可打/不可抓;stunned=掙扎占位姿勢,V0.8 沿用暈眩搖晃)
+  loser.x = POD.x; loser.y = POD.y; loser.vx = 0; loser.vy = 0; loser.z = 0;
+  loser._thrownT = -9; loser._lying = false; loser.fumbleT = 0; loser._slideVx = 0; loser._slideVy = 0;
+  loser.stunned = true; loser.stunT = 99; loser.frozen = false; loser.invuln = 99; loser._performing = true;
+  // 勝方若站在罩位 → 輕推出罩外(免穿模;不鎖定,推完照常自由行動)
+  const win = fighters[w], d = Math.hypot(win.x - POD.x, win.y - POD.y), rNeed = PERFORM_DOME_R + win.r + 4;
+  if (win.state === 'alive' && d < rNeed) {
+    const a = d > 1 ? Math.atan2(win.y - POD.y, win.x - POD.x) : Math.PI;
+    win.x = POD.x + Math.cos(a) * rNeed; win.y = POD.y + Math.sin(a) * rNeed;
+  }
+  v2s.perform = { n, total, final, t: 0, T: PERFORM_T[n - 1], loser: loser.pid, winner: w, cls, phase: 'capture', pk: 0, line: '回收目標已捕捉', fired: 0, cube: null };
+  game.sfx.push('thud');
+  dlog('PERFORM start #' + n, NAMES[loser.pid], final ? '(final)' : '');
+}
+export function updatePerform(dt) {
+  const p = v2s.perform; if (!p) return;
+  const loser = fighters[p.loser];
+  loser.stunT = 99;                                       // 演出期間不醒(v2.js 迴圈 continue 掉倒數,這行保險)
+  p.t += dt; const k = Math.min(1, p.t / p.T), K = PERFORM_KEYS;
+  const conflict = ['易燃?', '低溫?', '帶電?', '會尖叫?']; // 文檔 §四:第二次分類圖示亂跳
+  if (k < K[0]) { p.phase = 'capture'; p.pk = k / K[0]; p.line = p.n === 2 ? '系統確認:它又回來了' : p.n === 3 ? '最終回收程序啟動' : '回收目標已捕捉'; }
+  else if (k < K[1]) { p.phase = 'struggle'; p.pk = (k - K[0]) / (K[1] - K[0]); p.line = p.n === 3 ? '取消重新投放程序' : '警告:此廢棄物仍在反抗'; }
+  else if (k < K[2]) {
+    p.phase = 'scan'; p.pk = (k - K[1]) / (K[2] - K[1]);
+    p.line = p.n === 2 ? '分類衝突:' + conflict[Math.floor(p.pk * 8) % conflict.length] : p.n === 3 ? '讀取樣本行為紀錄……' : '正在分析……';
+  } else if (k < K[3]) {
+    p.phase = 'classify'; p.pk = (k - K[2]) / (K[3] - K[2]);
+    p.line = p.n === 1 ? '分類完成:' + p.cls : p.n === 2 ? '分類失敗:太複雜 → 先丟掉' : '身份:玩家樣本(' + p.cls + ') → 正式清運';
+    if (p.fired < 1) { p.fired = 1; addRing(POD.x, POD.y, PERFORM_DOME_R, p.n === 2 ? '#ff9a4a' : '#9fe8ff', 0.4, 4); game.sfx.push('upgrade'); } // 分類鎖定「叮」
+  } else {
+    p.phase = 'resolve'; p.pk = (k - K[3]) / (1 - K[3]);
+    p.line = p.n === 1 ? '初步回收完成:樣本重新投入測試' : p.n === 2 ? '分類中心失控!' : '壓縮完成:請勿打開包裝';
+    if (p.fired < 2) {
+      p.fired = 2;
+      if (p.n === 2) {                                    // 錯誤回收事故:火花小爆炸,波及艙邊所有人
+        hitSpark(POD.x, POD.y, '#ffd257', 2); addRing(POD.x, POD.y, PERFORM_DOME_R * 2.2, '#ff9a4a', 0.5, 6); addShake(7); game.sfx.push('thud');
+        for (const o of fighters) {
+          if (o.pid === p.loser || o.state !== 'alive') continue;
+          const od = Math.hypot(o.x - POD.x, o.y - POD.y);
+          if (od < PERFORM_DOME_R * 2.4) { const a = Math.atan2(o.y - POD.y, o.x - POD.x); o.vx += Math.cos(a) * 260; o.vy += Math.sin(a) * 260; }
+        }
+      }
+      if (p.n === 3) { loser._hidden = true; p.cube = { x: POD.x, y: POD.y }; addShake(6); addHitstop(0.12); game.sfx.push('thud'); } // 卡通壓縮:人縮進包裝方塊(素木箱佔位)
+    }
+    if (p.cube) p.cube.y -= 46 * dt;                      // 包裝方塊往北送清運(輸送帶佔位,朝 WIZARD INTAKE 字)
+  }
+  if (p.t >= p.T) finishPerform();
+}
+function finishPerform() {
+  const p = v2s.perform, loser = fighters[p.loser];
+  loser._performing = false; loser.stunned = false; loser.stunT = 0; loser.invuln = 0;
+  v2s.perform = null;
+  if (p.final) { finalSeal(p.winner); }                   // 第三次:最終封存 → 事故報告(_hidden 由 resetFighter/restart 清)
+  else { addRing(POD.x, POD.y, PERFORM_DOME_R * 1.6, '#4dffcf', 0.5, 5); softReintegrate(loser, p.total); } // 開罩彈回出生點
 }
 export function finalSeal(w) { // 第三次 = 最終封存儀式 → 事故報告
   v2s.bannerText = NAMES[w] + ' 最終封存完成！'; v2s.winBannerT = 3.0;

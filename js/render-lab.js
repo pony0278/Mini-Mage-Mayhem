@@ -1362,7 +1362,48 @@ function buildCoreCombatGuide() {
 // dt 照常傳 → 純運動(魔塵/氣泡/旋轉)不受影響。雷電弧另在自己的 updater 裡讀這旗標。
 export let LOW_FLICKER = false;
 export function setLabFlicker(low) { LOW_FLICKER = low; }
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, signGlbReady: () => _signGlbReady }; // debug hook(headless 測試用)
+/* ---------- 收容演出:玻璃罩+掃描環(v2.js 每幀 setPodPerform 驅動;sim 不 import render)----------
+   使用者拍板:透明玻璃罩罩住被收容者。FX_LOW 降級成純透明殼(transmission 太貴,SwiftShader/低端跑不動)。
+   相位:capture=罩升起 / struggle=晃罩(掙扎)/ scan=掃描環頭→腳 / classify+resolve(n≥2)=紅燈 / resolve(n≤2)=開罩縮+淡出。 */
+let _domeGrp = null, _domeShell = null, _domeRim = null, _scanRing = null, _domeShown = false;
+const DOME_R = 56; // 世界px;同 v2-state PERFORM_DOME_R(sim/render 不互 import,常數各持一份,改要同步)
+function ensurePodDome() {
+  if (_domeGrp) return;
+  _domeGrp = new THREE.Group(); _domeGrp.position.set(CX, 0, CZ); _domeGrp.visible = false; scene.add(_domeGrp);
+  // 殼=加法混色(不走 transmission:SwiftShader/深色地板上幾乎隱形);玻璃感靠緯線蝕刻+底圈+頂部反光點
+  const glass = new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  _domeShell = new THREE.Mesh(new THREE.SphereGeometry(DOME_R, 40, 18, 0, Math.PI * 2, 0, Math.PI / 2), glass);
+  _domeGrp.add(_domeShell);
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0x8fe0ff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, toneMapped: false, depthWrite: false });
+  for (const hRatio of [0.35, 0.62, 0.84]) {               // 三圈緯線蝕刻(力場玻璃的讀形線)
+    const rr = DOME_R * Math.sqrt(1 - hRatio * hRatio);
+    const lat = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.9, 6, 40), lineMat);
+    lat.rotation.x = Math.PI / 2; lat.position.y = DOME_R * hRatio; _domeGrp.add(lat);
+  }
+  const glint = new THREE.Mesh(new THREE.SphereGeometry(4, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, toneMapped: false, depthWrite: false }));
+  glint.position.set(-DOME_R * 0.28, DOME_R * 0.9, -DOME_R * 0.22); _domeGrp.add(glint); // 頂部反光點(定住「有一片玻璃」)
+  _domeRim = new THREE.Mesh(new THREE.TorusGeometry(DOME_R, 3, 8, 56), new THREE.MeshBasicMaterial({ color: 0x4dffcf, transparent: true, opacity: 0.95, toneMapped: false }));
+  _domeRim.rotation.x = Math.PI / 2; _domeRim.position.y = 3; _domeGrp.add(_domeRim);
+  _scanRing = new THREE.Mesh(new THREE.TorusGeometry(DOME_R * 0.7, 1.5, 8, 40), new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, toneMapped: false, depthWrite: false }));
+  _scanRing.rotation.x = Math.PI / 2; _scanRing.visible = false; _domeGrp.add(_scanRing);
+}
+export function setPodPerform(p) {
+  if (!p) { if (_domeShown) { _domeGrp.visible = false; _domeShown = false; } return; }
+  ensurePodDome(); _domeGrp.visible = true; _domeShown = true;
+  const failing = p.n >= 2 && (p.phase === 'classify' || p.phase === 'resolve');
+  _domeRim.material.color.setHex(failing ? 0xff5a4a : 0x4dffcf);
+  let sy = 1, jx = 0, jz = 0, op = 1;
+  if (p.phase === 'capture') sy = 0.12 + 0.88 * p.pk;                                     // 罩升起
+  if (p.phase === 'struggle' && !LOW_FLICKER) { jx = Math.sin(p.pk * 44) * 2.2; jz = Math.cos(p.pk * 37) * 2.2; } // 掙扎晃罩(pk 驅動=hitstop 自然凍結;減閃爍關掉)
+  if (p.phase === 'resolve' && p.n <= 2) { sy = Math.max(0.05, 1 - p.pk * 1.15); op = Math.max(0, 1 - p.pk * 1.3); } // 開罩:縮+淡出
+  _domeGrp.scale.set(1, Math.max(0.05, sy), 1); _domeGrp.position.set(CX + jx, 0, CZ + jz);
+  _domeShell.material.opacity = 0.14 * op; _domeRim.material.opacity = 0.95 * op;
+  for (const ch of _domeGrp.children) if (ch !== _domeShell && ch !== _domeRim && ch !== _scanRing) ch.material.opacity = (ch.geometry.type === 'SphereGeometry' ? 0.85 : 0.5) * op; // 緯線+反光點跟著淡出
+  _scanRing.visible = p.phase === 'scan';
+  if (p.phase === 'scan') _scanRing.position.y = (DOME_R * 0.9 * (1 - p.pk) + 4) / Math.max(0.05, sy); // 掃描環頭→腳(除以 sy 抵銷 group 縮放)
+}
+
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, signGlbReady: () => _signGlbReady, domeVisible: () => _domeShown }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

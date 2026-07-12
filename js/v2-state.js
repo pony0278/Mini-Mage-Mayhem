@@ -216,6 +216,15 @@ export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff',
 export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', reverse: '反向' };
 export const WIN_TARGET = 3;
 
+// --- 回收演出 V0.8(使用者演出設計文檔 2026-07:收容後的招牌喜劇演出)---
+// 使用者拍板:不鎖定勝方、不動 follow cam;敗方 snap 艙心+玻璃罩+掃描+艙口 LED 分類字,收尾才彈回/封存。
+export const PERFORM_T = [2.1, 2.6, 3.6];      // 第 1/2/3 次收容演出總長(秒;文檔 §1.4 節奏上限內)
+export const PERFORM_DOME_R = 56;              // 玻璃罩半徑(世界px;蓋住艙圈 POD.r=46,留在 GLB 輪盤 r87 內)
+export const WASTE_CLASS = {                    // 分類結果(文檔 §三;依敗方本場拿過的道具個人化,免費一層笑點)
+  fire: '易燃魔法廢棄物', lightning: '帶電廢棄物', water: '潮濕超標廢棄物',
+  wind: '易飄散廢棄物', teleport: '空間不穩定廢棄物', none: '高危險魔法廢棄物',
+};
+
 // --- 跨模組可重賦值純量(唯一容器;一律 v2s.x 讀寫) ---
 export const v2s = {
   stage: 1,                                  // 收容階段 1..3
@@ -228,6 +237,7 @@ export const v2s = {
   localFlash: 0,                             // 本機被打的紅屏脈衝
   fallReason: '', fallReasonT: 0,            // isles:「為什麼掉下去」讀出
   lowFlicker: false,                         // 減閃爍(光敏無障礙):L 鍵切換,localStorage 記憶;3D 脈動由 render 的 setLabFlicker 吃
+  perform: null,                             // 收容演出狀態機(v2-combat startPerform/updatePerform;null=沒在演)
 };
 export function resetStage() { v2s.stage = 1; v2s.barrelRespawnCur = BARREL_RESPAWN; v2s.barrelFuseCur = BARREL_FUSE; v2s.padRespawnCur = PAD_RESPAWN; v2s.slideContainCur = SLIDE_CONTAIN_V; v2s.stationIntervalCur = STATION_INTERVAL; v2s.stationTimer = STATION_INTERVAL; v2s.lastStationIdx = -1; }
 export function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門檻)
@@ -269,6 +279,8 @@ export function resetFighter(f) {
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
   f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
   f.guarding = false; f.guardStam = GUARD_STAM_MAX; f.guardLock = 0; f.guardRegenT = 0; // 按住防禦架式:是否舉防/耐力/破防鎖定/回充延遲計時
+  f._performing = false; f._hidden = false;             // 收容演出:被罩在艙心(v2.js 迴圈凍結) / 壓縮後隱藏(render 不畫)
+  if (f._lastItem === undefined) f._lastItem = null;     // 本場拿過的最後一種道具(演出分類字用;跨回合保留,restartMatch 清)
   f.item = null; f.itemUses = 0;                        // 道具型別 + 剩餘次數
   f.carryObj = null;                                    // 扛著的物件(廢料桶;與 carrying=扛人 互斥)
   f._barrelThrowAt = 0;                                 // 排程丟桶(release 幀甩出;0=沒在丟)

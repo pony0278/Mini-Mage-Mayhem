@@ -28,9 +28,11 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `oilfire.mjs`   | 油瓶=油膜不凍人;噴火帽=短扇形**不留地形火**(只點油)、著火 DoT 續燒、油+火 R1 火海、起手預告扇形 |
 | `pickup.mjs`    | 手動撿道具(C 案):不自動撿、被暈掉地上帶剩餘次數、地上可搶、傳送(逃脫類)不掉、TTL 消失 |
 | `ice_slide.mjs` | 冰面鎖滑:帶動量直線滑、撞牆停+暈、滑進艙=收容、靜止站上=小心走 |
+| `perform.mjs`   | 回收演出 V0.8:收容→演出啟動(即時計分/snap 艙心/罩升起)、期間不二次收容、收尾才彈回+升階、#2 衝突字+火花震艙邊、#3 壓縮隱藏→matchOver+報告 |
 
 ## Headless 陷阱(踩過的;寫新套件先讀,`js/CLAUDE.md` §測試 有完整版)
 
+0. **收容=2.1~3.6s 演出(V0.8 起)**:任何 case 讓「暈眩/高速/拋飛」角色出現在 POD 半徑內都會開演出——敗方被**釘在艙心到演出結束**(位置每幀覆蓋、invuln 99),污染後續 case(wind ⑧ 事故:②的牆暈殘留+瞬移進艙)。**部署角色前清 stunned/frozen、座標避開 (480,320)±46**;真要測收容,等 `!state().perform` 再繼續。
 1. **rAF 節流**:headless 下 `requestAnimationFrame` 只走實時的 4~36%。等時間**一律輪詢 `__v2.game.time`**,
    別用 `setTimeout` 當遊戲時鐘;引信/冷卻類邏輯**直接呼叫**(如 `__v2.explodeBarrel(b)`)別等它自然到。
    套件裡的 `advance(sec)` helper 就是 game.time 輪詢。

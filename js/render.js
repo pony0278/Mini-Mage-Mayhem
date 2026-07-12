@@ -9,6 +9,7 @@ import { islandMode, freeIslands, syncIsland, drawGroundTexture, syncWalls, upda
 import { initLabScene, updateLabScene } from './render-lab.js';
 export { setLabFlicker } from './render-lab.js'; // 減閃爍(光敏無障礙):凍結 lab 脈動光
 export { setStationsPowered } from './render-lab.js'; // 四角站通電光環(拉閘因果演出;v2.js 依 v2s.stationsArmed 切換)
+export { setPodPerform } from './render-lab.js'; // 收容演出玻璃罩+掃描環(v2.js 每幀依 v2s.perform 驅動)
 import { syncActors } from './render-actors.js';
 import { syncProps, syncProjectiles, syncZones } from './render-entities.js';
 

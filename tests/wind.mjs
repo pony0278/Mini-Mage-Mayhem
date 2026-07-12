@@ -32,7 +32,7 @@ const s1b = await page.evaluate(() => ({ oVx: Math.round(__v2.fighters[0].vx), p
 R(`impact 幀才發動擊退(oVx ${s1b.oVx}>0)`, s1b.oVx > 0 && !s1b.pending);
 
 // ---------- ② 施法中被打斷=取消不退次數 ----------
-await page.evaluate(() => { const v = __v2, C = v.fighters[1], O = v.fighters[0]; C.x = 400; C.y = 300; C.facing = 0; C.item = 'wind'; C.itemUses = 3; C.itemCastCd = 0; C._itemCastAt = 0; C.stunned = false; C.restunT = 0; O.x = 480; O.y = 300; O.vx = O.vy = 0; O.invuln = 0; v.useItem(C); v.stunFighter(C); });
+await page.evaluate(() => { const v = __v2, C = v.fighters[1], O = v.fighters[0]; C.x = 400; C.y = 200; C.facing = 0; C.item = 'wind'; C.itemUses = 3; C.itemCastCd = 0; C._itemCastAt = 0; C.stunned = false; C.restunT = 0; O.x = 480; O.y = 200; O.vx = O.vy = 0; O.invuln = 0; O.stunned = false; O.frozen = false; v.useItem(C); v.stunFighter(C); }); // y=200 北列+清 O 暈:①的牆暈殘留+原 (480,300) 在艙半徑內=「暈者在艙」誤觸收容演出,污染後續 case
 await advance(0.4);
 // C 案:被暈→道具掉地上(帶剩餘 2 次=用掉的那次不退還)。取消發動(無擊退)+ 手上清空 + 地上有 2 次。
 const s2 = await page.evaluate(() => { const g = __v2.groundItems.find(x => x.type === 'wind'); return { oVx: Math.round(__v2.fighters[0].vx), handItem: __v2.fighters[1].item, groundUses: g ? g.uses : -1 }; });
@@ -49,13 +49,13 @@ const edge = await blastImpulse(400, 300, 0, 400 + 140 * Math.cos(0.9), 300 + 14
 R(`角度衰減:中軸(${Math.round(axis.mag)}) > 邊緣(${Math.round(edge.mag)})`, axis.mag > edge.mag + 30);
 
 // ---------- ④.5 吹翻滾:近中心強命中=接拋飛管線(翻滾)、邊緣弱命中=只吹歪(不翻)----------
-const tum = await blastImpulse(400, 300, 0, 470, 300);   // d=70 → force≈484 > MIN 300 → 翻滾
+const tum = await blastImpulse(400, 540, 0, 470, 540);   // d=70 → force≈484 > MIN 300 → 翻滾(y=540 南列:原 y=300 目標在艙半徑內,吹飛觸發收容演出把人釘艙心 2.1s 污染 ⑧)
 R(`近中心強命中=吹翻滾(_thrownT+fumbleT;force≈484)`, tum.thrown && tum.fumble > 0);
 const nudge = await blastImpulse(400, 300, 0, 400 + 150 * Math.cos(0.92), 300 + 150 * Math.sin(0.92)); // 邊緣 → force<MIN → 不翻
 R('邊緣弱命中=只吹歪不翻(無 _thrownT)', !nudge.thrown && nudge.mag > 0);
 
 // ---------- ⑤ 放射狀方向(偏下的目標被往下斜著吹)----------
-const rad = await blastImpulse(400, 300, 0, 480, 360);   // 目標在前方偏下 → 放射向量 (0.8,0.6)
+const rad = await blastImpulse(300, 500, 0, 380, 560);   // 目標在前方偏下 → 放射向量 (0.8,0.6)(避開 POD:原 (480,360) 在艙半徑內)
 R(`放射狀:偏軸目標被斜吹(ovx>0 且 ovy>0;ovy=${Math.round(rad.ovy)})`, rad.ovx > 0 && rad.ovy > 20);
 
 // ---------- ⑥ 吹動桶(idle 桶被吹走 + 升壓)----------

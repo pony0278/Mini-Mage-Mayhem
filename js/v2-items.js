@@ -55,7 +55,7 @@ export function dropLooseItem(f) {
 // 手動撿(補給座 or 地上掉落):空手可動才撿;優先近的補給座、再地上掉落物。回傳 true=撿到(供 mouseRight 分派)。
 export function pickupItem(f) {
   if (f.item || f.state !== 'alive' || f.carrying || f.carryObj || f.stunned || f.carriedBy || f.fumbleT > 0) return false;
-  const take = (type, uses, fx, fy) => { f.item = type; f.itemUses = uses; addText(f.x, f.y - 32, ITEM_INFO[type].name + '！', ITEM_INFO[type].color); addRing(f.x, f.y, 28, ITEM_INFO[type].color, 0.3, 4); game.sfx.push('upgrade'); dlog('PICKUP', NAMES[f.pid], type); };
+  const take = (type, uses, fx, fy) => { f.item = type; f.itemUses = uses; f._lastItem = type; addText(f.x, f.y - 32, ITEM_INFO[type].name + '！', ITEM_INFO[type].color); addRing(f.x, f.y, 28, ITEM_INFO[type].color, 0.3, 4); game.sfx.push('upgrade'); dlog('PICKUP', NAMES[f.pid], type); };
   for (const p of pads) if (p.item && Math.hypot(f.x - p.x, f.y - p.y) < PICKUP_R + f.r) { take(p.item, ITEM_SPEC[p.item].uses); p.item = null; p.respawn = v2s.padRespawnCur; return true; }
   for (let i = 0; i < groundItems.length; i++) { const g = groundItems[i]; if (Math.hypot(f.x - g.x, f.y - g.y) < PICKUP_R + f.r) { take(g.type, g.uses); groundItems.splice(i, 1); return true; } }
   return false;
