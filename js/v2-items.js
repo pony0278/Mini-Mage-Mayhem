@@ -219,9 +219,8 @@ export function updateBottles(dt) {
     if (t._smash) { shatterBottle(t); continue; }                    // 被拳打碎(v2-combat 只立旗,免 DAG 反向 import)
     if (t.held) continue;                                            // 被扛的瓶由 carry loop 定位
     t.z = lobZ(game.time - t.flyT0, BOTTLE_LOB);
-    const air = t.z > 0;
+    const air = t.z > 0, spd = Math.hypot(t.vx, t.vy);
     if (t.vx || t.vy) {
-      const spd = Math.hypot(t.vx, t.vy);
       const nx = t.x + t.vx * dt, ny = t.y + t.vy * dt;
       if (circleHitsSolid(nx, ny, t.r)) {                            // 撞牆:硬撞(飛行中/風吹滑行夠快)=碎;慢滑=停
         if (air || spd > BOTTLE_BREAK_V) { shatterBottle(t); continue; }
@@ -232,15 +231,16 @@ export function updateBottles(dt) {
         if (t.vx * t.vx + t.vy * t.vy < 400) { t.vx = 0; t.vy = 0; }
       }
       t.roll += spd / Math.max(t.r, 1) * dt;                          // 翻滾角(render 繞運動法向軸)
-      for (const f of fighters) {                                     // 碰到人:硬撞(丟出/風吹快滑)=腳下碎+冰凍;慢滑=推開
-        if (f.state !== 'alive' || f.carryObj === t || f.invuln > 0) continue;
-        const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy) || 1;
-        if (d > f.r + t.r) continue;
-        if ((air || spd > BOTTLE_BREAK_V) && f.pid !== t.thrownBy) { t.x = f.x; t.y = f.y; shatterBottle(t, f); break; } // 任何高度碰到都算(同舊直擊規則)
-        if (!air) { t.vx += dx / d * BARREL_PUSH; t.vy += dy / d * BARREL_PUSH; t.x = f.x + dx / d * (f.r + t.r); t.y = f.y + dy / d * (f.r + t.r); }
-      }
-      if (!t.alive) continue;
     }
+    // 碰到人(每幀都跑,對齊爆桶=場上物件一致可推):硬撞(丟出/風吹快滑/空中)=腳下碎+冰凍;靜止或慢滑=走動頂開
+    for (const f of fighters) {
+      if (f.state !== 'alive' || f.carryObj === t || f.invuln > 0) continue;
+      const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy) || 1;
+      if (d > f.r + t.r) continue;
+      if ((air || spd > BOTTLE_BREAK_V) && f.pid !== t.thrownBy) { t.x = f.x; t.y = f.y; shatterBottle(t, f); break; } // 任何高度碰到都算(同舊直擊規則)
+      if (!air) { t.vx += dx / d * BARREL_PUSH; t.vy += dy / d * BARREL_PUSH; t.x = f.x + dx / d * (f.r + t.r); t.y = f.y + dy / d * (f.r + t.r); } // 走進靜止/慢瓶=頂開(同桶 BARREL_PUSH)
+    }
+    if (!t.alive) continue;
     if (!t.landed && game.time - t.flyT0 >= BOTTLE_LOB.T) {          // 自然落地即碎(脆;桶=悶,落地閃 1s 才爆——材質對比)
       const over = game.time - t.flyT0 - BOTTLE_LOB.T;               // 回推跨幀過衝 → 落點=精確 range(同舊瓶管線)
       t.x = clamp(t.x - t.vx * over, t.r, W - t.r); t.y = clamp(t.y - t.vy * over, t.r, H - t.r);
