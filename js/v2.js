@@ -16,7 +16,7 @@ import {
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
-  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, CLEANUP_NEED,
+  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO, CLEANUP_NEED,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
@@ -58,19 +58,28 @@ function restartMatch() {
   resetInc(); containLog.length = 0; v2s.bannerText = ''; v2s.winBannerT = 0; resetStage();
   v2s.perform = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 回收演出殘留(分類記憶跨回合、不跨場)
   v2s.cleanup = [0, 0]; // Route A 清運進度歸零(新一場重來)
+  v2s.introT = INTRO_T; camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 再戰也走開場儀式(就位→開始!)
   resetRound();
 }
 
 // --- 有界跟隨(bounded follow):鏡頭跟一個「平滑 + 夾在內縮框裡」的代理點(camRig),
 // 而不是直接黏在角色上。X 夾在 [ix, W-ix]:玩家貼牆仍在畫面內、又不越過側牆露黑邊;
 // 垂直同樣夾 ny/sy。只用在平台場;浮島/格子場直接跟角色。數值可用 __v2.CAMB 即時微調。
+let _camDist0 = 0; // 開場拉遠用的基準 dist(boot 設定後記住;intro 結束還原)
 function updateCamRig(dt) {
   const lf = fighters[LOCAL];
   let tx = Math.min(Math.max(lf.x, CAMB.ix), W - CAMB.ix), ty = Math.min(Math.max(lf.y, CAMB.ny), CAMB.sy);
-  if (v2s.introT > 0) {                                    // 開場帶場(使用者上手文檔:進場看不到對手=困惑主因):先框對手,隨 intro 進度平移回玩家
-    const o = fighters[1 - LOCAL], k = 1 - Math.min(1, v2s.introT / INTRO_T), e = k * k * (3 - 2 * k); // smoothstep 0→1
-    tx = o.x + (tx - o.x) * e; ty = o.y + (ty - o.y) * e;
-  }
+  // 開場帶場(使用者拍板 2026-07:雙方就位靜止,鏡頭框住「兩人」+拉遠 →「開始!」後平滑回玩家;
+  // 不再飛去對手那邊——AI 一開工到處回收垃圾,玩家看著就懂)。
+  if (v2s.introT > 0) {
+    if (!_camDist0) _camDist0 = CAM.dist;
+    const o = fighters[1 - LOCAL];
+    const back = Math.min(1, Math.max(0, (INTRO_GO - v2s.introT) / INTRO_GO));   // 0=就位期,→1=「開始!」期間回到玩家
+    const e = back * back * (3 - 2 * back);                                       // smoothstep
+    const mx = (lf.x + o.x) / 2, my = (lf.y + o.y) / 2;                           // 兩人中點
+    tx = mx + (tx - mx) * e; ty = my + (ty - my) * e;
+    CAM.dist = _camDist0 + 130 * (1 - e);                                         // 拉遠框住雙方,回程收回
+  } else if (_camDist0) { CAM.dist = _camDist0; _camDist0 = 0; }                  // intro 結束還原(不干擾 sandbox 調參)
   const e = Math.min(1, dt * CAMB.ease);
   camRig.x += (tx - camRig.x) * e; camRig.y += (ty - camRig.y) * e;
 }
@@ -170,6 +179,7 @@ function step(dt) {
   }
   game.time += dt; inc.matchT += dt;
   if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
+  if (v2s.introT > INTRO_GO && (keys.size > 0 || (touchInput.enabled && touchInput.active))) v2s.introT = INTRO_GO; // 等不及的玩家按任何鍵=直接「開始!」
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
   if (v2s.localFlash > 0) v2s.localFlash -= dt;
   if (v2s.fallReasonT > 0) v2s.fallReasonT -= dt;
@@ -370,7 +380,7 @@ function frame(now) {
 }
 
 // --- boot ---
-window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning)
+window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning; v2s=可重賦值純量容器,測試歸零 introT 用)
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
@@ -483,7 +493,7 @@ if (TERRAIN === 'isles') {
   try { v2s.tutorial = localStorage.getItem('mmm_v2_played') !== '1'; } catch { v2s.tutorial = true; }
   if (v2s.tutorial) { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'demo'; }
   v2s.introT = INTRO_T;                          // 開場目標字幕/鏡頭帶場(教學+老手都演一次,便宜且無害)
-  camRig.x = fighters[1 - LOCAL].x; camRig.y = fighters[1 - LOCAL].y; // 鏡頭開場落在對手身上(updateCamRig 隨 intro 平移回玩家)
+  camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 鏡頭開場=兩人中點(就位構圖;「開始!」後回玩家)
   setActorShadow(true);
   setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target

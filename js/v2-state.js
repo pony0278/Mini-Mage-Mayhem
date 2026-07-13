@@ -219,7 +219,8 @@ export const WIN_TARGET = 3;
 // --- Route A 清運經濟(使用者上手設計文檔 2026-07 §3:普通垃圾=瓶,丟進回收口累積清運→取得工具)---
 // 「普通垃圾」= 場上投擲瓶(bottles);丟/推進中央回收口(POD)= 清運(不是砸人的另一種用途)。
 export const CLEANUP_NEED = 3;               // 清運幾件垃圾 → 生一個事故工具(Route A:穩定取得工具的路線)
-export const INTRO_T = 3.6;                  // 開場目標字幕+鏡頭帶到對手的時長(秒;v2s.introT 遞減)
+export const INTRO_T = 3.6;                  // 開場總長(秒;v2s.introT 遞減):就位期(雙方靜止+目標字幕+鏡頭框兩人)→「開始!」
+export const INTRO_GO = 0.9;                 // 尾段「開始!」閃字時長;introT<=INTRO_GO 起 AI 開始行動(使用者拍板:AI 一動玩家就懂)
 
 // --- 回收演出 V0.8(使用者演出設計文檔 2026-07:收容後的招牌喜劇演出)---
 // 使用者拍板:不鎖定勝方、不動 follow cam;敗方 snap 艙心+玻璃罩+掃描+艙口 LED 分類字,收尾才彈回/封存。

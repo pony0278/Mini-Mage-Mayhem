@@ -13,7 +13,7 @@ import {
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
-  SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS,
+  SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS, INTRO_GO,
   GUARD_MOVE, GUARD_STAM_MAX, GUARD_DRAIN, GUARD_BLOCK_COST, GUARD_REGEN, GUARD_REGEN_DELAY,
   GUARD_BLOCK_PUSH, GUARD_BLOCK_FLINCH, GUARD_BREAK_FUMBLE, GUARD_BREAK_LOCK,
   FIRE_STAB_DPS, FIRE_BURN_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
@@ -120,7 +120,7 @@ export function drainFloorEvents() {
 }
 export function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
-  const m = f.ai ? aiMove(f) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 被動假人(非 AI 非本機)不吃方向鍵,原地站
+  const m = f.ai ? (v2s.introT > INTRO_GO ? { x: 0, y: 0 } : aiMove(f)) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 開場就位期 AI 靜止,「開始!」(introT<=INTRO_GO)才開工;被動假人不吃方向鍵原地站
   if (f.pid === LOCAL && !f.ai) {
     if (touchInput.enabled) { if (m.x || m.y) f.facing = Math.atan2(m.y, m.x); } // 手機:移動=面向;放開搖桿保留最後方向(可推向魔法陣→放開→按投擲)
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)

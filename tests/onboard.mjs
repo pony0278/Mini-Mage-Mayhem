@@ -18,6 +18,10 @@ const boot = await page.evaluate(() => ({ tutorial: __v2.state().tutorial, aiMod
 R('全新玩家 → 首局教學(tutorial)', boot.tutorial === true, JSON.stringify(boot));
 R('示範者 AI 開場即開(取代不會動假人)', boot.aiOn === true && boot.aiMode === 'demo');
 R('開場目標字幕/鏡頭帶場計時中(introT>0)', boot.introT > 0);
+const holdPos = await page.evaluate(() => [Math.round(__v2.fighters[1].x), Math.round(__v2.fighters[1].y)]);
+await advance(0.4);
+const holdPos2 = await page.evaluate(() => [Math.round(__v2.fighters[1].x), Math.round(__v2.fighters[1].y)]);
+R('就位期 AI 靜止(「開始!」前不開工)', holdPos[0] === holdPos2[0] && holdPos[1] === holdPos2[1], holdPos + ' vs ' + holdPos2);
 
 // ---------- ② Route A 清運經濟 ----------
 const putInPod = (thrownBy) => page.evaluate((by) => {
@@ -43,6 +47,7 @@ R('清運達標(3)→ 生事故工具 + 進度歸零', rew.cleanup === 0 && rew.
 // ---------- ③ 示範者撿垃圾:把瓶放到 AI 旁邊,牠會撿起來(carryObj) ----------
 await page.evaluate(() => {
   const v = __v2, o = v.fighters[1];
+  v.v2s.introT = 0; // 跳過開場(就位期 AI 被凍結;此 case 要看 AI 開工)
   o.x = 480; o.y = 120; o.carryObj = null; o.carrying = null; o._aiMode = 'demo'; o._demoThrows = 0; o.flinchT = 0; o.stunned = false;
   const t = v.bottles.find(b => !b.held) || v.bottles[0]; t.alive = true; t.held = false; t.x = 480; t.y = 130; t.z = 0; t.vx = 0; t.vy = 0; t.landed = true; t.flyT0 = -9;
   v.fighters[0].x = 100; v.fighters[0].y = 560; // 玩家遠離,別觸發 engage

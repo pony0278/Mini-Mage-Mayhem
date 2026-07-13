@@ -8,7 +8,7 @@ import { project } from './render.js';
 import {
   v2s, fighters, LOCAL, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
-  STAGE_NAME, METHOD_COL, METHOD_ZH, CLEANUP_NEED, INTRO_T,
+  STAGE_NAME, METHOD_COL, METHOD_ZH, CLEANUP_NEED, INTRO_T, INTRO_GO,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -247,15 +247,26 @@ function drawWindSpeedLines() {
    大字置中,最後 0.7s 淡出;鏡頭同時由 updateCamRig 帶場到對手再回玩家(看得到對手)。 */
 function drawIntro() {
   if (v2s.introT <= 0) return;
-  const a = Math.min(1, v2s.introT / 0.7); // 尾段淡出
-  hctx.save(); hctx.globalAlpha = a; hctx.textAlign = 'center';
+  hctx.save(); hctx.textAlign = 'center';
   const cx = VW / 2, cy = VH * 0.32;
-  hctx.fillStyle = 'rgba(6,12,18,.66)'; hctx.fillRect(0, cy - 42, VW, 96);
-  hctx.font = '900 34px system-ui, sans-serif'; hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(6,12,18,.85)';
-  hctx.strokeText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
-  hctx.fillStyle = '#9affd0'; hctx.fillText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
-  hctx.font = '800 17px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.92)';
-  hctx.fillText('撿垃圾清運換工具（穩）· 或直接把他當垃圾丟進去（快）', cx, cy + 30);
+  if (v2s.introT > INTRO_GO) {              // 就位期:雙方靜止、鏡頭框兩人 → 目標字幕(按任何鍵直接開始)
+    hctx.fillStyle = 'rgba(6,12,18,.66)'; hctx.fillRect(0, cy - 42, VW, 96);
+    hctx.font = '900 34px system-ui, sans-serif'; hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(6,12,18,.85)';
+    hctx.strokeText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
+    hctx.fillStyle = '#9affd0'; hctx.fillText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
+    hctx.font = '800 17px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.92)';
+    hctx.fillText('撿垃圾清運換工具（穩）· 或直接把他當垃圾丟進去（快）', cx, cy + 30);
+    hctx.font = '700 13px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.55)';
+    hctx.fillText('按任意鍵開始', cx, cy + 52);
+  } else {                                   // 「開始!」:AI 從這一刻開工(到處回收垃圾=活教學),字放大彈出+淡出
+    const k = 1 - v2s.introT / INTRO_GO;     // 0→1
+    const a = Math.min(1, v2s.introT / 0.35), pop = 1 + 0.25 * Math.max(0, 1 - k * 5); // 前 20% 彈一下
+    hctx.globalAlpha = a;
+    hctx.font = `900 ${Math.round(64 * pop)}px system-ui, sans-serif`;
+    hctx.lineWidth = 8; hctx.strokeStyle = 'rgba(6,12,18,.9)';
+    hctx.strokeText('開始！', cx, VH * 0.38);
+    hctx.fillStyle = '#ffe97a'; hctx.fillText('開始！', cx, VH * 0.38);
+  }
   hctx.restore();
 }
 /* Route A 清運進度(使用者上手文檔 §9:普通垃圾清運進度,要跟人員回收次數=三格 pip 分開,免混淆勝利條件)。
@@ -321,8 +332,8 @@ export function drawHud() {
   drawItems();
   drawSwitchLabels();
   drawPerformLED(); // 收容演出 LED 飄字(艙口上方)
-  if (!drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先
-  drawIntro(); // 開場目標字幕(最上層;倒數淡出)
+  if (v2s.introT <= INTRO_GO && !drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先;就位期讓位給開場字幕
+  drawIntro(); // 開場字幕:就位期=目標 → 尾段=「開始!」
   // stage / seal banner
   if (v2s.winBannerT > 0 && v2s.bannerText) {
     hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
@@ -335,5 +346,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: onboard-1', VW - 10, VH - 4);
+  hctx.fillText('build: onboard-2', VW - 10, VH - 4);
 }

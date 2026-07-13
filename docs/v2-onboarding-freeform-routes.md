@@ -1,7 +1,7 @@
 > 【實作狀態 2026-07】上手層已落地(build onboard-1)。拍板:走法乙(補 Tier1.5 清運經濟)+示範者 AI+純 follow cam+小決策全同意。
 > 已做:①Route A 清運經濟(垃圾瓶丟進回收口=清運+1、達 CLEANUP_NEED 生工具;v2-items recycleGarbage/rewardTool)
 > ②示範者 AI(首局撿垃圾→搬到艙心→放進去示範;玩家 engage/攻擊→切 fight;localStorage mmm_v2_played 門)
-> ③開場易讀(目標字幕+鏡頭帶到對手再回玩家+待機/動態教練線+清運 UI)。驗收 tests/onboard.mjs。
+> ③開場易讀(v2 拍板 2026-07:雙方就位靜止+鏡頭框兩人拉遠+目標字幕 →「開始!」大字 → AI 開工示範;按任意鍵跳過;再戰同儀式;+待機/動態教練線+清運 UI)。驗收 tests/onboard.mjs。
 > 未做(backlog):AI 性格差異(§7)、特殊事故稱號(§8 暴力清運)、首丟人艙吸附/首暈加長等微調。
 
 # 魔法事故回收中心：自由回收路線與動態教學設計
