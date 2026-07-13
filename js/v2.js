@@ -16,7 +16,7 @@ import {
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
-  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED,
+  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, CLEANUP_NEED,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
@@ -57,6 +57,7 @@ function restartMatch() {
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0];
   resetInc(); containLog.length = 0; v2s.bannerText = ''; v2s.winBannerT = 0; resetStage();
   v2s.perform = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 回收演出殘留(分類記憶跨回合、不跨場)
+  v2s.cleanup = [0, 0]; // Route A 清運進度歸零(新一場重來)
   resetRound();
 }
 
@@ -65,7 +66,11 @@ function restartMatch() {
 // 垂直同樣夾 ny/sy。只用在平台場;浮島/格子場直接跟角色。數值可用 __v2.CAMB 即時微調。
 function updateCamRig(dt) {
   const lf = fighters[LOCAL];
-  const tx = Math.min(Math.max(lf.x, CAMB.ix), W - CAMB.ix), ty = Math.min(Math.max(lf.y, CAMB.ny), CAMB.sy);
+  let tx = Math.min(Math.max(lf.x, CAMB.ix), W - CAMB.ix), ty = Math.min(Math.max(lf.y, CAMB.ny), CAMB.sy);
+  if (v2s.introT > 0) {                                    // 開場帶場(使用者上手文檔:進場看不到對手=困惑主因):先框對手,隨 intro 進度平移回玩家
+    const o = fighters[1 - LOCAL], k = 1 - Math.min(1, v2s.introT / INTRO_T), e = k * k * (3 - 2 * k); // smoothstep 0→1
+    tx = o.x + (tx - o.x) * e; ty = o.y + (ty - o.y) * e;
+  }
   const e = Math.min(1, dt * CAMB.ease);
   camRig.x += (tx - camRig.x) * e; camRig.y += (ty - camRig.y) * e;
 }
@@ -159,8 +164,12 @@ function step(dt) {
   game.screenShake = Math.max(0, game.screenShake - dt * 28);
   if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt;
   if (game.kickX || game.kickY) { const kd = Math.pow(0.00005, dt); game.kickX *= kd; game.kickY *= kd; if (Math.abs(game.kickX) + Math.abs(game.kickY) < 0.1) { game.kickX = 0; game.kickY = 0; } } // 鏡頭踹:~80ms 彈回
-  if (v2s.matchOver) return; // freeze gameplay while the incident report is up
+  if (v2s.matchOver) {
+    if (v2s.tutorial) { v2s.tutorial = false; try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* 隱私模式 */ } } // 首局打完 → 記「玩過」,下次不再教學
+    return; // freeze gameplay while the incident report is up
+  }
   game.time += dt; inc.matchT += dt;
+  if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
   if (v2s.localFlash > 0) v2s.localFlash -= dt;
   if (v2s.fallReasonT > 0) v2s.fallReasonT -= dt;
@@ -227,6 +236,10 @@ function step(dt) {
       f.running = !!(f._runKey && !f.carrying && !(f.carryObj && f.carryObj.kind !== 'bottle') && !f.stunned && f.fumbleT <= 0);
       floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
       if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
+      if (f.ai && f._aiMode === 'demo') {   // 示範者 AI:steer 在 v2-combat 設 intent flag,實際撿/放在這執行(v2-combat 不能 import v2-items)
+        if (f._aiWantThrow && f.carryObj) { f.carryObj.thrownBy = f.pid; dropBarrel(f); f._demoThrows++; } // 走到艙心「放」進去(可靠 recycle;歸屬 AI 讓玩家看到清運進度)
+        else if (f._aiWantGrab && !f.carryObj && !f.carrying) { const b = grabbableBarrel(f); if (b) pickUpBarrel(f, b); }
+      }
     }
     drainFloorEvents(); // 毒爆等一次性事件 AoE(本幀 stepFloor/道具注入產生的)
     // 搬運: 被搬者跟隨在搬運者身前 + 全程掙脫 + 拖進艙 = 收容
@@ -365,6 +378,8 @@ window.__v2 = { game, fighters, CAM, onSolid, ISLANDS, BRIDGES, // debug / headl
   punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
+    cleanup: [v2s.cleanup[0], v2s.cleanup[1]], cleaned: [inc.cleaned[0], inc.cleaned[1]],
+    tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
@@ -463,6 +478,12 @@ if (TERRAIN === 'isles') {
   setLabTheme(true);
   try { v2s.lowFlicker = localStorage.getItem('mmm_lowFlicker') === '1'; } catch { /* no storage */ }
   setLabFlicker(v2s.lowFlicker); // 減閃爍偏好開機還原
+  // 首局教學(使用者上手文檔 2026-07):沒玩過 → 教學局。示範者 AI 開場先撿垃圾丟進艙示範清運迴圈
+  // (取代「不會動的練習假人」——一頭霧水的頭號元兇),頭幾秒不主動打你;開場放目標字幕+鏡頭帶到對手。
+  try { v2s.tutorial = localStorage.getItem('mmm_v2_played') !== '1'; } catch { v2s.tutorial = true; }
+  if (v2s.tutorial) { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'demo'; }
+  v2s.introT = INTRO_T;                          // 開場目標字幕/鏡頭帶場(教學+老手都演一次,便宜且無害)
+  camRig.x = fighters[1 - LOCAL].x; camRig.y = fighters[1 - LOCAL].y; // 鏡頭開場落在對手身上(updateCamRig 隨 intro 平移回玩家)
   setActorShadow(true);
   setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target

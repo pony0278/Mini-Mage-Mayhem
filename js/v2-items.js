@@ -6,7 +6,7 @@ import { clamp } from './utils.js';
 import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt } from './fx.js';
 import {
-  v2s, fighters, LOCAL, dlog, NAMES, inc,
+  v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod, CLEANUP_NEED,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
@@ -325,11 +325,33 @@ export function shatterBottle(t, hitFighter) {
   if (hitFighter && t.elem === 'ice') freezeFighter(hitFighter, t.thrownBy); // 直擊冰凍(任何高度碰到都算,同舊瓶規則)
   dlog('BOTTLE', t.elem, 'shatter @', Math.round(t.x) + ',' + Math.round(t.y), 'tiles', n);
 }
+// Route A 清運(使用者上手文檔 §3 用途1):垃圾瓶進中央回收口 = 清運(不是碎在地上),
+// 歸屬丟的人(thrownBy),累積到 CLEANUP_NEED → rewardTool 生一件事故工具(穩定取得工具的路線)。
+function recycleGarbage(t) {
+  t.alive = false; t.held = false; t.vx = 0; t.vy = 0; t.z = 0; t.respawn = BOTTLE_RESPAWN;
+  addRing(POD.x, POD.y, POD.r * 1.2, '#4dffcf', 0.4, 5); game.sfx.push('upgrade');
+  const pid = t.thrownBy;
+  if (pid !== 0 && pid !== 1) { addText(POD.x, POD.y - 40, '♻ 已清運', '#9affd0'); return; } // 非玩家丟入(風吹/亂滑)=只清掉不計分
+  inc.cleaned[pid] = (inc.cleaned[pid] || 0) + 1;
+  v2s.cleanup[pid]++;
+  if (v2s.cleanup[pid] >= CLEANUP_NEED) { v2s.cleanup[pid] = 0; rewardTool(fighters[pid]); }
+  else addText(POD.x, POD.y - 40, '♻ 清運 ' + v2s.cleanup[pid] + '/' + CLEANUP_NEED, COLORS[pid]);
+  dlog('RECYCLE', NAMES[pid], 'cleanup', v2s.cleanup[pid]);
+}
+function rewardTool(f) { // 清運達標 → 在身前生一件事故工具(手動撿:走過去右鍵/E)
+  const type = randItem();
+  const gx = clamp(f.x + Math.cos(f.facing) * 34, 30, W - 30), gy = clamp(f.y + Math.sin(f.facing) * 34, 30, H - 30);
+  groundItems.push({ x: gx, y: gy, type, uses: ITEM_SPEC[type].uses, ttl: GROUND_ITEM_TTL });
+  addText(f.x, f.y - 42, '清運達標！事故工具已備', ITEM_INFO[type].color);
+  addRing(gx, gy, 30, ITEM_INFO[type].color, 0.45, 4); game.sfx.push('upgrade');
+  dlog('CLEANUP REWARD', NAMES[f.pid], type);
+}
 export function updateBottles(dt) {
   for (const t of bottles) {
     if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; }
     if (t._smash) { shatterBottle(t); continue; }                    // 被拳打碎(v2-combat 只立旗,免 DAG 反向 import)
     if (t.held) continue;                                            // 被扛的瓶由 carry loop 定位
+    if (t.z <= 2 && inPod(t.x, t.y)) { recycleGarbage(t); continue; } // Route A:落進回收口 = 清運(優先於碎裂;丟得進去才算,空中飛越不算)
     t.z = lobZ(game.time - t.flyT0, BOTTLE_LOB);
     const air = t.z > 0, spd = Math.hypot(t.vx, t.vy);
     if (t.vx || t.vy) {
@@ -356,7 +378,7 @@ export function updateBottles(dt) {
     if (!t.landed && game.time - t.flyT0 >= BOTTLE_LOB.T) {          // 自然落地即碎(脆;桶=悶,落地閃 1s 才爆——材質對比)
       const over = game.time - t.flyT0 - BOTTLE_LOB.T;               // 回推跨幀過衝 → 落點=精確 range(同舊瓶管線)
       t.x = clamp(t.x - t.vx * over, t.r, W - t.r); t.y = clamp(t.y - t.vy * over, t.r, H - t.r);
-      shatterBottle(t);
+      if (inPod(t.x, t.y)) recycleGarbage(t); else shatterBottle(t); // 落進回收口=清運(拋物線丟中艙),否則碎地(Route A vs 砸地)
     }
   }
 }

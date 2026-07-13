@@ -29,6 +29,7 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `pickup.mjs`    | 手動撿道具(C 案):不自動撿、被暈掉地上帶剩餘次數、地上可搶、傳送(逃脫類)不掉、TTL 消失 |
 | `ice_slide.mjs` | 冰面鎖滑:帶動量直線滑、撞牆停+暈、滑進艙=收容、靜止站上=小心走 |
 | `mobilefx.mjs`  | 手機自動降級:觸控+行動 UA → FX_LOW 自動開(點光剝除/無 transmission)+ dpr 夾 1.5;桌機完整;`?fx=full` 覆蓋 |
+| `onboard.mjs`   | 上手/循環重整:首局教學旗標(localStorage)→示範者 AI 取代不會動假人;Route A 清運經濟(垃圾瓶進艙=清運+1/歸屬 thrownBy/達標生工具);玩家攻擊→切 fight;首局打完記 localStorage |
 | `perform.mjs`   | 回收演出 V0.8:收容→演出啟動(即時計分/snap 艙心/罩升起)、期間不二次收容、收尾才彈回+升階、#2 衝突字+火花震艙邊、#3 壓縮隱藏→matchOver+報告 |
 
 ## Headless 陷阱(踩過的;寫新套件先讀,`js/CLAUDE.md` §測試 有完整版)

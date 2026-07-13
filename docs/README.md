@@ -19,6 +19,7 @@
 | [v2-floor-state-architecture.md](v2-floor-state-architecture.md) | **地板狀態機架構/實作指引**：新開 `js/v2-floor.js`（守 v2 DAG、鏡射 `game.oils` 計時覆蓋模式、不抄 sim.js）+ v2 私有 `v2s.floor` 層 + `FLOOR_RX` 正交反應表 + 單一 `applyElement` choke point + `stepFloor`；接線改動清單 + 維護性風險 + 四刀落地切法（先純 sim 邏輯層 headless 驗、render 後接） |
 | [v2-spec-D-arenas.md](v2-spec-D-arenas.md) | **規格 D（地圖 + loop）**：搶獎盃→Boss 甦醒→追逐；浮島四周墜落（render-only）；斷橋孤島落地 + 型錄 + 落地順序 |
 | [v2-spec-E-incident-report.md](v2-spec-E-incident-report.md) | **規格 E（北極星再定位）**：魔法事故報告/收容測試；吸收 C 為核心；收容狀態機 + 報告 schema + 等級 + V0.8/0.9/1.0 路線；可重用零件對照 |
+| [v2-onboarding-freeform-routes.md](v2-onboarding-freeform-routes.md) | **上手/自由路線+動態教學(使用者撰寫)**:兩路線(清運垃圾取工具 vs 直接速攻)、垃圾=資源(回收 or 武器)、動態教學隨行為切提示、首局示範者 AI、UI 三進度分開;已落地見文件頭 |
 | [v2-recycle-performance-design.md](v2-recycle-performance-design.md) | **回收演出設計(使用者撰寫)**:收容後的招牌喜劇演出——玻璃罩/掙扎/掃描/荒謬分類/三階段收尾(彈回/事故/壓縮清運);V0.8 最小版已落地(見文件頭實作狀態)|
 | [v2-spec-F-spells-items.md](v2-spec-F-spells-items.md) | **規格 F（法術系統再定義）**：撿即用道具取代升級樹；基礎動詞改「揮拳→擊暈→抓→搬→入倉」（陣風降為道具，取代 E §4）；道具 5 動詞框架 + 補給座/只拿1 + MVP 道具集（風/傳送/冰+爆桶）；**§2.5 回合模型：三階段收容升級（軟重整取代完全重置）**；報告吃道具故事 |
 | [magic-incident-report-concept.md](magic-incident-report-concept.md) | **概念原文**：魔法事故報告完整願景（世界觀/角色/收容/報告/圖鑑/挑戰碼/命名）— spec E 的來源 |
