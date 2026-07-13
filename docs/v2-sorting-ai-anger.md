@@ -1,4 +1,5 @@
 > 【實作狀態 2026-07】V0.8 已落地(build sort-anger-1)。定案:單一中央口**需求制**分類(非四角分區)+ AI 怒氣表 + 輪班倒數 + 必暴走。
+> ⚠【2026-07-13 主線被取代】核心憲章 v1.1(`v2-core-charter.md`)把勝負反轉成「分類競速=唯一勝利」:本文的「怒氣→老闆暴走→轉場收容戰」主線**退役**(暴走演出素材挪去結算儀式);需求制分類/AI 同事機制由憲章繼承並升級成序列制。本文保留當 V0.8 實作紀錄與喜劇素材庫。
 > 已做:①中央口需求輪換(v2s.demand;垃圾四型 fire/ice/poison/lightning)餵對=清運+換需求+AI冷靜、餵錯=中央口過載噴事故(reuse eruptStation)+怒氣↑↑(v2-items recycleGarbage/pickDemand)
 > ②AI 怒氣五階段(ANGER_STAGES)+ 輪班倒數 SHIFT_T~75s;怒氣爆 or 倒數歸零→triggerRampage(中央口切人員回收模式、AI 切戰鬥、台詞)(v2.js)
 > ③AI 同事讀需求撿對元素餵中央口=工作競賽(v2-combat demoMove;暴走才切 fight);砸 AI→怒氣↑ ④HUD:需求大標/輪班/AI情緒/工作競賽/暴走待回收人員(v2-hud drawSorting)。驗收 tests/sorting.mjs。
