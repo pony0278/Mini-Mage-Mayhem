@@ -20,8 +20,8 @@ const contain = () => page.evaluate(() => {
   v.stunFighter(v.fighters[1]);
 });
 const waitPerform = () => page.waitForFunction('__v2.state().perform', { timeout: 30000 });
-const waitPhase = (ph) => page.waitForFunction(`(__v2.state().perform||{}).phase === '${ph}'`, { timeout: 120000 });
-const waitEnd = () => page.waitForFunction('!__v2.state().perform', { timeout: 120000 });
+const waitPhase = (ph) => page.waitForFunction(`(__v2.state().perform||{}).phase === '${ph}'`, { timeout: 300000 }); // 300s:#3 要到 2.88s 遊戲時,rAF 節流最慢 ~3% 時 120s 會卡線
+const waitEnd = () => page.waitForFunction('!__v2.state().perform', { timeout: 300000 });
 const waitInvulnGone = () => page.evaluate(() => new Promise(res => { const iv = setInterval(() => { if (__v2.fighters[1].invuln <= 0 && !__v2.state().perform) { clearInterval(iv); res(); } }, 40); }));
 
 // ---------- ① 收容 → 演出啟動 ----------

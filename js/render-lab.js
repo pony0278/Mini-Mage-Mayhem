@@ -4,7 +4,7 @@
 // 原型單位:1 unit = 1 tile;我們的世界:1 tile = 32px → 一律乘 LAB_SCALE 換算,
 // builder 幾乎逐字移植。碰撞/模擬完全不動(牆的碰撞仍在 30×20 核心邊界)。
 import { W, H, TILE, COLS, ROWS } from './constants.js';
-import { renderer, scene } from './render-core.js';
+import { renderer, scene, IS_MOBILE } from './render-core.js';
 import { floor as floorGrid, FL } from './v2-floor.js'; // 地板化學狀態(唯讀);render→v2-floor 同 render→sim 方向,無循環
 
 const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
@@ -17,7 +17,8 @@ export const LAB = { SCENE_W, SCENE_D, CORE_W, CORE_D, CX, CZ, S: LAB_SCALE };
 
 // 低效能模式(?fx=low):關陰影/剝裝飾性點光/關玻璃 transmission(額外整景渲染 pass)。
 // SwiftShader headless 測試與低階機用;觀感主體(emissive/ACES/additive)全保留。
-export const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
+const _fxParam = new URLSearchParams(location.search).get('fx');
+export const FX_LOW = _fxParam ? _fxParam === 'low' : IS_MOBILE; // 手機自動低效能(2026-07 卡頓診斷:18 點光+13 transmission=主因,低配主執行緒 2.1×);?fx=low / ?fx=full 手動覆蓋
 export const labAnimated = [];          // { update(t, dt) } — updateLabScene 每幀跑
 let labBuilt = false;
 
@@ -1403,7 +1404,7 @@ export function setPodPerform(p) {
   if (p.phase === 'scan') _scanRing.position.y = (DOME_R * 0.9 * (1 - p.pk) + 4) / Math.max(0.05, sy); // 掃描環頭→腳(除以 sy 抵銷 group 縮放)
 }
 
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, signGlbReady: () => _signGlbReady, domeVisible: () => _domeShown }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, signGlbReady: () => _signGlbReady, domeVisible: () => _domeShown, fxLow: () => FX_LOW }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

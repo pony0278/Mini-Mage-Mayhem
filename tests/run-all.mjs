@@ -22,6 +22,7 @@ const SUITES = [
   ['pickup',    '手動撿道具 C 案(不自動撿/被暈掉落/地上可搶/TTL)'],
   ['ice_slide', '冰面鎖滑(直線滑/撞牆暈/滑進艙收容/小心走)'],
   ['perform',   '回收演出 V0.8(玻璃罩+掃描+分類字/期間不二次收容/收尾才彈回/失控火花/壓縮清運→報告)'],
+  ['mobilefx',  '手機自動降級(觸控+行動UA→FX_LOW+dpr1.5/桌機不變/?fx=full 覆蓋)'],
 ];
 
 // ⚠ server 一定要從 repo root 起(套件裡 import('./js/…') 由瀏覽器對 server 根解析;從 tests/ 起會 404)。

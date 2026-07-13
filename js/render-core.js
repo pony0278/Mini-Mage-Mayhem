@@ -10,6 +10,11 @@ const canvas = document.getElementById('game');
 // v2.html 用 960×540(16:9,CrazyGames responsive);index.html 維持 960×640(3:2)。
 export const VIEW_W = canvas.width, VIEW_H = canvas.height;
 
+// 手機/平板偵測(可觸控+粗指針或行動 UA;觸控筆電=fine pointer、UA 非行動 → 不算):
+// 2026-07 手機卡頓診斷的依據——FX 自動降級(render-lab FX_LOW)+ 下方 dpr 夾低都吃這個旗標。
+export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
+  (matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
+
   export function project(wx, wy, wz = 0) {
     const v = _projV.set(wx, wz, wy).project(camera);
     return { x: (v.x * 0.5 + 0.5) * VIEW_W, y: (-v.y * 0.5 + 0.5) * VIEW_H, behind: v.z > 1 };
@@ -25,7 +30,7 @@ export const VIEW_W = canvas.width, VIEW_H = canvas.height;
   let renderer = null, gl3dOk = false;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.5 : 2)); // 手機夾 1.5(填充率省 ~44%;960×540 → 最多 1440×810)
     renderer.setSize(VIEW_W, VIEW_H, false);
     renderer.shadowMap.enabled = false;
     gl3dOk = true;
