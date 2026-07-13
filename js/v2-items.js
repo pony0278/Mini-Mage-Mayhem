@@ -6,21 +6,22 @@ import { clamp } from './utils.js';
 import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt } from './fx.js';
 import {
-  v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod, CLEANUP_NEED,
-  GARBAGE_ELEMS, GARBAGE_NAME, randGarbage, ANGER_MAX, ANGER_MISSORT, ANGER_CALM, SHIFT_T,
+  v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod,
+  GARBAGE_ELEMS, GARBAGE_NAME, GARBAGE_ICON, randGarbage,
+  SEQ_LEN, SETS_WIN, ENERGY_SORT, ENERGY_SET, MISSORT_PAUSE, BOTTLE_CAP, bottleRespawnT, seqNeed, addEnergy,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
   WATER_SLAM_DIST, WATER_R, WATER_KNOCK, WATER_STAB,
   LIGHTNING_RANGE, LIGHTNING_WIDTH, LIGHTNING_KNOCK,
-  bottles, BOTTLE_LOB, BOTTLE_BREAK_V, BOTTLE_RESPAWN,
+  bottles, BOTTLE_LOB, BOTTLE_BREAK_V,
   barrels, BARREL_BLAST, BARREL_FORCE, BARREL_STAB, BARREL_PATCH_R, WILD_CONTAM,
   BARREL_FRICTION, BARREL_PUSH, BARREL_ARM_GRACE, BARREL_THROW_DELAY, GRAB_RANGE,
   BARREL_LOB, BARREL_BONK_STAB, BARREL_DROP_T, BARREL_LAND_FUSE, BARREL_WALL_HOP, LAND_SKID, WALL_BOUNCE, lobZ,
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
-import { flinch, camKick, dropCarry, stunFighter, freezeFighter } from './v2-combat.js';
+import { flinch, camKick, dropCarry, stunFighter, freezeFighter, endShift } from './v2-combat.js';
 import { CLIPS } from './brawler-clips.js';
 import { stampElement, applyElement, stateAt, stateAtPixel, FL } from './v2-floor.js';
 import { circleHitsSolid } from './fx.js';
@@ -41,6 +42,7 @@ export function pressurizeBarrel(b) {
 
 // --- 道具:撿取 / 使用 (spec F §4). 補給座重刷隨機道具; 只拿1; 用完即空; 傳送符是被抓時唯一可用 ---
 export function updatePads(dt) { // 補給座只管重刷(撿取改手動,見 pickupItem);掉落物 TTL 另在 updateGroundItems
+  if (!v2s.propsFull) return; // 憲章 §15 元素系統休眠:補給座不重刷(?props=full 回復)
   for (const p of pads) if (!p.item) { p.respawn -= dt; if (p.respawn <= 0) p.item = randItem(); }
 }
 export function updateGroundItems(dt) { // 地上掉落道具:TTL 倒數,到期自然消失
@@ -317,7 +319,7 @@ export function castLightning(f) {
 // 碎裂=蓋元素地板(冰面/油膜);冰瓶硬砸中人=直擊冰凍(hitFighter,歸因 thrownBy)。
 export function shatterBottle(t, hitFighter) {
   if (!t.alive) return;
-  t.alive = false; t.respawn = BOTTLE_RESPAWN; t.held = false; t._smash = false;
+  t.alive = false; t.respawn = bottleRespawnT(); t.held = false; t._smash = false;
   for (const f of fighters) if (f.carryObj === t) { f.carryObj = null; f._barrelThrowAt = 0; } // 在手上碎(爆炸波及)→ 放開持有者
   const col = elemColor(t.elem), r = t.elem === 'oil' ? OIL_R : ICE_R;
   const n = stampElement(t.x, t.y, r, t.elem);                        // 火/冰/毒/油=種地板;雷乾地無地板(下面 raw arc 補)
@@ -333,47 +335,55 @@ export function shatterBottle(t, hitFighter) {
   }
   dlog('BOTTLE', t.elem, 'shatter @', Math.round(t.x) + ',' + Math.round(t.y), 'tiles', n);
 }
-// 中央口需求制分類(使用者設計文檔 2026-07):中央口顯示「現在收 🔥」需求,垃圾瓶進口時判定——
-// 餵對(elem === v2s.demand)= 清運計分 + AI 冷靜 + 換下一個需求;餵錯 = 中央口過載噴事故(reuse eruptStation)
-// + AI 怒氣↑↑ + 拒收(不計分,需求不變仍要對的那個)。歸屬丟的人(thrownBy);非玩家丟入不計分/不計怒氣。
-function pickDemand() { // 只點「場上有的」元素(免玩家卡在拿不到);盡量換一個不同型
-  const avail = [...new Set(bottles.filter(b => b.alive && !b.held).map(b => b.elem))];
-  const pool = avail.filter(e => e !== v2s.demand);
-  const src = pool.length ? pool : (avail.length ? avail : GARBAGE_ELEMS);
-  v2s.demand = src[Math.floor(Math.random() * src.length)];
-}
-export function resetSorting() { v2s.anger = 0; v2s.rampage = false; v2s.rampageT = 0; v2s.shiftT = SHIFT_T; pickDemand(); } // round/match reset:怒氣/暴走歸零、輪班重計、重挑需求
-function recycleGarbage(t) {
-  const pid = t.thrownBy, correct = t.elem === v2s.demand;
-  t.alive = false; t.held = false; t.vx = 0; t.vy = 0; t.z = 0; t.respawn = BOTTLE_RESPAWN;
-  if (!correct) {                                                    // 餵錯 → 中央口過載噴事故
-    eruptStation({ x: POD.x, y: POD.y, elem: t.elem, state: 'warn' }); // reuse:火/冰/毒種地板、雷=raw arc、徑向擊退+FX
-    addText(POD.x, POD.y - 42, '✗ 分類錯誤!回收桶拒收', '#ff6b6b'); game.sfx.push('hurt');
-    if (pid === 0 || pid === 1) { inc.missorts[pid] = (inc.missorts[pid] || 0) + 1; if (!v2s.rampage) v2s.anger = Math.min(ANGER_MAX, v2s.anger + ANGER_MISSORT); }
-    dlog('MISSORT', pid, t.elem, 'want', v2s.demand, 'anger', v2s.anger);
-    return;                                                          // 需求不變(還是要對的那個)
+// 憲章核心:序列制分類(docs/v2-core-charter.md §5)。中央口對照「該選手自己的序列進度」——
+// 分對=前進+充能(工作=主要充能來源;完成一組=下班進度+1=唯一勝利進度);分錯=拒收彈回(輕罰,不銷毀可重試)。
+function pickSupply(prev) { // respawn 換型(§13 定案 3):保底(需求型在場歸零→強制出)→ 加權 50 玩家/30 AI/20 隨機 → 每型上限
+  const counts = {};
+  for (const b of bottles) if (b.alive || b.held) counts[b.elem] = (counts[b.elem] || 0) + 1;
+  const needs = [seqNeed(LOCAL), seqNeed(1 - LOCAL)];
+  for (const n of needs) if (n && !counts[n]) return n;
+  const r = Math.random();
+  let pick = (r < 0.5 && needs[0]) ? needs[0] : (r < 0.8 && needs[1]) ? needs[1] : GARBAGE_ELEMS[Math.floor(Math.random() * GARBAGE_ELEMS.length)];
+  if ((counts[pick] || 0) >= BOTTLE_CAP) {
+    const open = GARBAGE_ELEMS.filter(e => (counts[e] || 0) < BOTTLE_CAP);
+    if (open.length) pick = open[Math.floor(Math.random() * open.length)];
   }
-  addRing(POD.x, POD.y, POD.r * 1.2, '#4dffcf', 0.4, 5); game.sfx.push('upgrade'); // 分對 → 清運
-  if (pid !== 0 && pid !== 1) { addText(POD.x, POD.y - 40, '♻ 已清運', '#9affd0'); pickDemand(); return; }
-  inc.cleaned[pid] = (inc.cleaned[pid] || 0) + 1; inc.sorted[pid] = (inc.sorted[pid] || 0) + 1;
-  if (!v2s.rampage) v2s.anger = Math.max(0, v2s.anger - ANGER_CALM); // 分對 → AI 冷靜
-  v2s.cleanup[pid]++;
-  if (v2s.cleanup[pid] >= CLEANUP_NEED) { v2s.cleanup[pid] = 0; rewardTool(fighters[pid]); }
-  else addText(POD.x, POD.y - 40, '✓ ' + (GARBAGE_NAME[t.elem] || '') + ' 分類正確', COLORS[pid]);
-  pickDemand();
-  dlog('SORT-OK', NAMES[pid], t.elem, '→ next demand', v2s.demand, 'cleanup', v2s.cleanup[pid]);
+  return pick || randGarbage(prev);
 }
-function rewardTool(f) { // 清運達標 → 在身前生一件事故工具(手動撿:走過去右鍵/E)
-  const type = randItem();
-  const gx = clamp(f.x + Math.cos(f.facing) * 34, 30, W - 30), gy = clamp(f.y + Math.sin(f.facing) * 34, 30, H - 30);
-  groundItems.push({ x: gx, y: gy, type, uses: ITEM_SPEC[type].uses, ttl: GROUND_ITEM_TTL });
-  addText(f.x, f.y - 42, '清運達標！事故工具已備', ITEM_INFO[type].color);
-  addRing(gx, gy, 30, ITEM_INFO[type].color, 0.45, 4); game.sfx.push('upgrade');
-  dlog('CLEANUP REWARD', NAMES[f.pid], type);
+function rejectBottle(t, pid) { // 分錯=輕罰(§6.3):拒收、瓶彈出艙外(不銷毀=可重試)、近距者短停頓、序列不前進
+  inc.missorts[pid] = (inc.missorts[pid] || 0) + 1;
+  const a = Math.atan2(t.y - POD.y, t.x - POD.x) || Math.random() * Math.PI * 2;
+  t.held = false; t.z = 0; t.flyT0 = -9; t.landed = true;
+  t.x = POD.x + Math.cos(a) * (POD.r + 16); t.y = POD.y + Math.sin(a) * (POD.r + 16); // 先彈出艙半徑(否則下幀又進 recycle 判定)
+  t.vx = Math.cos(a) * 150; t.vy = Math.sin(a) * 150;                                  // 低於碎裂門檻(BOTTLE_BREAK_V)的地面滑出
+  const need = seqNeed(pid);
+  addText(POD.x, POD.y - 42, '✗ 拒收：你現在要 ' + (GARBAGE_ICON[need] || '') + (GARBAGE_NAME[need] || ''), '#ff6b6b');
+  addRing(POD.x, POD.y, POD.r * 1.1, '#ff6b6b', 0.35, 4); game.sfx.push('hurt');
+  const f = fighters[pid];
+  if (f && f.state === 'alive' && Math.hypot(f.x - POD.x, f.y - POD.y) < POD.r + 64) f.fumbleT = Math.max(f.fumbleT, MISSORT_PAUSE); // 近距投錯=短停頓;遠丟=搬運時間已是罰(§13 定案 5)
+  dlog('REJECT', pid, t.elem, 'need', need);
+}
+function recycleGarbage(t) {
+  const pid = t.thrownBy, need = (pid === 0 || pid === 1) ? seqNeed(pid) : null;
+  if (need && t.elem !== need && !v2s.shiftEnded) { rejectBottle(t, pid); return; }
+  t.alive = false; t.held = false; t.vx = 0; t.vy = 0; t.z = 0; t.respawn = bottleRespawnT();
+  if (!need || v2s.shiftEnded) { addText(POD.x, POD.y - 40, '♻ 已清運', '#9affd0'); return; } // 非選手丟入/完賽/鐘響後:收掉不計
+  v2s.seqIdx[pid]++;                                                  // 分對 → 自己的序列前進(§6.1 進度獨立)
+  inc.sorted[pid] = (inc.sorted[pid] || 0) + 1; inc.cleaned[pid] = (inc.cleaned[pid] || 0) + 1;
+  addEnergy(pid, ENERGY_SORT);
+  addRing(POD.x, POD.y, POD.r * 1.2, '#4dffcf', 0.4, 5); game.sfx.push('upgrade');
+  addText(POD.x, POD.y - 40, '✓ ' + (GARBAGE_NAME[t.elem] || '') + ' 分類正確', COLORS[pid]);
+  if (v2s.seqIdx[pid] % SEQ_LEN === 0) {                              // 完成一組 → 下班進度 +1(唯一勝利進度)
+    v2s.sets[pid]++; addEnergy(pid, ENERGY_SET);
+    v2s.bannerText = NAMES[pid] + ' 完成第 ' + v2s.sets[pid] + ' 組！下班進度 ' + v2s.sets[pid] + '/' + SETS_WIN; v2s.winBannerT = 1.4;
+    addRing(POD.x, POD.y, POD.r * 1.7, COLORS[pid], 0.5, 6); game.sfx.push('waveclear');
+    if (v2s.sets[pid] >= SETS_WIN) endShift(pid, 'sets');             // 配額達成 → 提前下班!(結算在 v2-combat endShift)
+  }
+  dlog('SORT-OK', NAMES[pid], t.elem, 'idx', v2s.seqIdx[pid], 'sets', v2s.sets[pid]);
 }
 export function updateBottles(dt) {
   for (const t of bottles) {
-    if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.elem = randGarbage(t.elem); t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; }
+    if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.elem = pickSupply(t.elem); t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; }
     if (t._smash) { shatterBottle(t); continue; }                    // 被拳打碎(v2-combat 只立旗,免 DAG 反向 import)
     if (t.held) continue;                                            // 被扛的瓶由 carry loop 定位
     if (t.z <= 2 && inPod(t.x, t.y)) { recycleGarbage(t); continue; } // Route A:落進回收口 = 清運(優先於碎裂;丟得進去才算,空中飛越不算)

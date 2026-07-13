@@ -16,13 +16,14 @@ import {
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
-  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO, CLEANUP_NEED, ANGER_MAX,
+  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
+  SETS_WIN, ENERGY_MAX, resetCharter,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform } from './v2-combat.js';
-import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, resetSorting } from './v2-items.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, endShift, startEject, updateEject, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform } from './v2-combat.js';
+import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -39,6 +40,9 @@ const GRAB_ANY = new URLSearchParams(location.search).get('grabany') === '1';
 // 不用先綁玩法頻道)。走 itemClip 頻道(free 時生效;扛人/被扛時讓位給 carry 動畫);對手 AI 凍結免干擾。
 // 程式亦可 __v2.playClip(name) 播一次(回傳 clip 秒長,查無名字回 0)。
 const TEST_CLIP = new URLSearchParams(location.search).get('clip');
+
+// 憲章 §15 元素系統休眠:桶/補給座/拉桿預設停用(核心驗證期);?props=full 回復=舊沙盒/測試模式。
+const PROPS_FULL = new URLSearchParams(location.search).get('props') === 'full';
 let _clipNextT = 0;
 function playClip(name, f = fighters[LOCAL]) {
   const c = CLIPS[name];
@@ -47,33 +51,19 @@ function playClip(name, f = fighters[LOCAL]) {
   return c.dur;
 }
 
-// 暴走轉場(使用者設計文檔 §4):同事翻臉——AI「你比垃圾更需要被處理!」→ 中央口切人員回收模式(HUD 讀 v2s.rampage)、
-// AI 切戰鬥、玩家被標記待回收人員。cause: 'shift'=輪班到抓狂 / 'anger'=被氣爆。收容戰本體不變,這只是「開打的因」。
-function triggerRampage(cause) {
-  if (v2s.rampage) return;
-  v2s.rampage = true; v2s.anger = ANGER_MAX; v2s.rampageT = 2.4;
-  v2s.bannerText = cause === 'shift' ? '下班時間到！主管失去耐心 → 人員回收' : 'AI：你比垃圾更需要被處理！';
-  v2s.winnerPid = -1;
-  const ai = fighters[1 - LOCAL]; ai._aiMode = 'fight'; ai._fightSince = game.time; // 同事 → 暴走對手(收容戰)
-  addText(POD.x, POD.y - 56, cause === 'shift' ? '⏰ 下班！人員回收啟動' : '♻ 待回收人員', '#ff6b6b');
-  addRing(POD.x, POD.y, POD.r * 2.4, '#ff6b6b', 0.6, 8); addRing(POD.x, POD.y, POD.r * 1.4, '#ffffff', 0.4, 5);
-  game.screenShake = Math.max(game.screenShake, 10); game.sfx.push('waveclear');
-  dlog('RAMPAGE', cause, 'anger', Math.round(v2s.anger));
-}
-
 // --- round / match orchestration ---
 function resetRound() {
   resetBarrels(); resetBottles(); resetPads(); resetGroundItems(); resetStations(); resetFloor();
+  if (!v2s.propsFull) { for (const b of barrels) { b.alive = false; b.respawn = 9e9; } for (const p of pads) { p.item = null; p.respawn = 9e9; } } // 憲章 §15 元素系統休眠(?props=full 回復;respawn 推遠免 updateBarrels/Pads 又生回來)
   for (const f of fighters) resetFighter(f);
-  resetSorting(); // 分類事故引擎:重挑中央口需求 + 怒氣/暴走歸零 + 輪班重計(bottles reset 後才挑得到場上元素)
+  resetCharter(); // 憲章:重生成 12 元素序列 + 進度/能量/時鐘/吐回演出歸零
   { const ai = fighters[1 - LOCAL]; if (ai.ai) ai._aiMode = 'demo'; } // 新一場:AI 同事回到分類模式(resetFighter 預設 fight,這裡覆蓋回 demo)
 }
 function restartMatch() {
   v2s.matchOver = false; v2s.report = null; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0];
   resetInc(); containLog.length = 0; v2s.bannerText = ''; v2s.winBannerT = 0; resetStage();
-  v2s.perform = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 回收演出殘留(分類記憶跨回合、不跨場)
-  v2s.cleanup = [0, 0]; // Route A 清運進度歸零(新一場重來)
+  v2s.perform = null; v2s.eject = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 演出殘留(分類記憶跨回合、不跨場)
   v2s.introT = INTRO_T; camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 再戰也走開場儀式(就位→開始!)
   resetRound();
 }
@@ -183,8 +173,9 @@ function syncTouchLabels() {
 }
 
 function step(dt) {
-  // 收容演出 → 玻璃罩/掃描環(render-lab);放 matchOver return 之前,最終封存後才收得掉罩
-  setPodPerform(v2s.perform ? { phase: v2s.perform.phase, pk: v2s.perform.pk, n: v2s.perform.n } : null);
+  // 收容/吐回演出 → 玻璃罩/掃描環(render-lab);放 matchOver return 之前,最終封存後才收得掉罩
+  setPodPerform(v2s.perform ? { phase: v2s.perform.phase, pk: v2s.perform.pk, n: v2s.perform.n }
+    : v2s.eject ? { phase: v2s.eject.phase, pk: v2s.eject.pk || 0, n: 1 } : null);
   // 視覺計時器先衰減再檢查 matchOver —— 否則最終封存的震屏(12)在結算畫面永遠不歸零,鏡頭抖不停
   game.screenShake = Math.max(0, game.screenShake - dt * 28);
   if (game.shakeSmallCd > 0) game.shakeSmallCd -= dt;
@@ -195,11 +186,22 @@ function step(dt) {
   }
   game.time += dt; inc.matchT += dt;
   if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
-  if (v2s.rampageT > 0) v2s.rampageT -= dt;      // 暴走轉場橫幅倒數
-  // 分類事故引擎:分類期(開場後、未暴走)輪班倒數;歸零 或 怒氣爆滿 → 暴走(使用者拍板:兩條保證閥)
-  if (!v2s.rampage && v2s.introT <= 0) {
-    if (v2s.shiftT > 0) v2s.shiftT -= dt;
-    if (v2s.anger >= ANGER_MAX || v2s.shiftT <= 0) triggerRampage(v2s.shiftT <= 0 ? 'shift' : 'anger');
+  if (v2s.bossT > 0) v2s.bossT -= dt;            // 老闆台詞框倒數(結算宣布)
+  // 憲章 §6.2 整局限時:開場後倒數;歸零=完成組數多者獲勝(平手比序列進度,再平=玩家)
+  if (!v2s.shiftEnded && v2s.introT <= 0) {
+    v2s.clockT -= dt;
+    if (v2s.clockT <= 0) {
+      v2s.clockT = 0;
+      const w = v2s.sets[0] !== v2s.sets[1] ? (v2s.sets[0] > v2s.sets[1] ? 0 : 1)
+        : (v2s.seqIdx[LOCAL] >= v2s.seqIdx[1 - LOCAL] ? LOCAL : 1 - LOCAL);
+      endShift(w, 'time');
+    }
+  }
+  // 能量滿提示(一次性 toast;打空/被消耗後旗標復位)
+  for (const f of fighters) {
+    const full = v2s.energy[f.pid] >= ENERGY_MAX;
+    if (full && !f._energyFullShown) { f._energyFullShown = true; addText(f.x, f.y - 48, '⚡ 能量滿！第三拳可擊暈', '#c9a6ff'); addRing(f.x, f.y, 34, '#c9a6ff', 0.45, 5); game.sfx.push('upgrade'); }
+    else if (!full) f._energyFullShown = false;
   }
   if (v2s.introT > INTRO_GO && (keys.size > 0 || (touchInput.enabled && touchInput.active))) v2s.introT = INTRO_GO; // 等不及的玩家按任何鍵=直接「開始!」
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
@@ -297,8 +299,8 @@ function step(dt) {
       if (f.state !== 'alive' || f.stunned || f.fumbleT > 0 || !b.alive) { if (b.alive) dropBarrel(f); else { f.carryObj = null; f._barrelThrowAt = 0; } continue; }
       b.x = f.x + Math.cos(f.facing) * (f.r + b.r * 0.9); b.y = f.y + Math.sin(f.facing) * (f.r + b.r * 0.9); b.vx = 0; b.vy = 0;
     }
-    // 失控入艙: 被擊退/打滑(速度夠快)、暈眩者、或被拋出翻滾中進到艙半徑 → 收容(對手勝)。無敵中免疫。演出中整段 suspend。
-    if (!v2s.perform) for (const f of fighters) {
+    // 失控入艙: 被擊退/打滑(速度夠快)、暈眩者、或被拋出翻滾中進到艙半徑 → 捕捉(拒收吐回干擾)。無敵中免疫。演出中整段 suspend。
+    if (!v2s.perform && !v2s.eject) for (const f of fighters) {
       if (f.state !== 'alive' || f.carriedBy || f.carrying || f.invuln > 0) continue;
       const thrown = inThrowFlight(f);
       if ((f.stunned || thrown || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
@@ -306,7 +308,8 @@ function step(dt) {
         containByEnviron(f, cause); break;
       }
     }
-    updatePerform(dt); // 回收演出推進(phase/LED 字/收尾彈回或封存)
+    updatePerform(dt); // 下班封艙演出推進(讀法 B 結局;phase/LED 字/壓縮清運)
+    updateEject(dt);   // 中途收容:捕捉→拒收→北管道吐回(憲章 §3.5 招牌干擾)
     updateBarrels(dt); updateBottles(dt); updateStations(dt); updatePads(dt); updateGroundItems(dt); // 廢料桶 / 投擲瓶 / 元素站 / 補給座重刷 / 掉落道具 TTL
   }
   // log the exact frame YOU step off solid ground (the "boarding then falling" moment, isles)
@@ -322,7 +325,7 @@ function step(dt) {
   // 被扛的桶(b.held)由 actor-brawler 畫在雙手上(舉過頭頂/丟桶 heave),這裡略過免雙重繪
   // fly = sim 真高度(B 案彈道 b.z,updateBarrels 算);人的高度=f.z(actor-brawler 直接讀)
   game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false, fly: b.z || 0, vx: b.vx, vy: b.vy, roll: b.roll })); // vx/vy/roll → render 桶翻滾(繞運動法向水平軸)
-  for (const sw of labSwitches) game.props.push({ x: sw.x, y: sw.y, r: sw.r, sw: true, armed: v2s.stationsArmed, hp: 1, maxHp: 1, held: false }); // 左右緊急拉桿(render-entities 畫拉桿:未啟動=琥珀立起、啟動=壓下變暗)
+  if (v2s.propsFull) for (const sw of labSwitches) game.props.push({ x: sw.x, y: sw.y, r: sw.r, sw: true, armed: v2s.stationsArmed, hp: 1, maxHp: 1, held: false }); // 左右緊急拉桿(憲章休眠:?props=full 才顯示)
   for (const t of bottles) if (t.alive && !t.held) game.props.push({ x: t.x, y: t.y, r: t.r, wall: t.elem, hp: 1, maxHp: 1, held: false, fly: t.z || 0, vx: t.vx, vy: t.vy, roll: t.roll }); // 場上投擲瓶(桶模 tint 佔位,瓶模好了換 mesh;vx/vy/roll → 翻滾)
   if (v2s.perform && v2s.perform.cube) game.props.push({ x: v2s.perform.cube.x, y: v2s.perform.cube.y, r: 12, hp: 1, maxHp: 1, held: false, fly: 0 }); // 壓縮包裝方塊(素木箱佔位)沿輸送方向滑走
   // 風壓手套起手預告:施法窗中(_itemCastAt 未到)每幀重建淡扇形,面向即時跟(教射程/範圍;對手也看得到=反應窗)
@@ -337,7 +340,7 @@ function step(dt) {
   // ground markers: 青綠實驗艙光 + 橘色爆桶危險區(引信中更亮更快閃)
   const carrying = fighters.some(f => f.carrying);
   const marks = [{ x: POD.x, y: POD.y, r: POD.r, color: carrying ? '#c661ff' : '#4dffcf', pulse: true, op: 0.72, fill: 0.16, speed: carrying ? 8 : 3 }];
-  if (!v2s.stationsArmed) for (const sw of labSwitches) marks.push({ x: sw.x, y: sw.y, r: sw.r + 12, color: '#ff9a4a', pulse: true, op: 0.8, fill: 0.2, speed: 5 }); // 未啟動=琥珀脈衝邀請揍任一支拉桿;啟動後熄
+  if (v2s.propsFull && !v2s.stationsArmed) for (const sw of labSwitches) marks.push({ x: sw.x, y: sw.y, r: sw.r + 12, color: '#ff9a4a', pulse: true, op: 0.8, fill: 0.2, speed: 5 }); // 未啟動=琥珀脈衝邀請(憲章休眠:?props=full 才顯示)
   for (const b of barrels) { // 升壓中=完整危險環(元素色 telegraph);idle 被充能=小光圈(先看得出爆種)
     if (!b.alive) continue;
     if (b.state === 'fuse') marks.push({ x: b.x, y: b.y, r: BARREL_BLAST * 0.85, color: barrelChargeColor(b.charge), pulse: true, op: 0.92, fill: 0.24, speed: 18 });
@@ -407,11 +410,14 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, endShift, startEject,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
-    cleanup: [v2s.cleanup[0], v2s.cleanup[1]], cleaned: [inc.cleaned[0], inc.cleaned[1]],
-    demand: v2s.demand, anger: Math.round(v2s.anger), shiftT: +v2s.shiftT.toFixed(1), rampage: v2s.rampage, sorted: [inc.sorted[0], inc.sorted[1]], missorts: [inc.missorts[0], inc.missorts[1]],
+    cleaned: [inc.cleaned[0], inc.cleaned[1]],
+    seq: v2s.seq.slice(), seqIdx: [v2s.seqIdx[0], v2s.seqIdx[1]], sets: [v2s.sets[0], v2s.sets[1]],
+    energy: [Math.round(v2s.energy[0]), Math.round(v2s.energy[1])], clockT: +v2s.clockT.toFixed(1), shiftEnded: v2s.shiftEnded,
+    eject: v2s.eject ? { pid: v2s.eject.pid, by: v2s.eject.by, phase: v2s.eject.phase, t: +v2s.eject.t.toFixed(2) } : null,
+    sorted: [inc.sorted[0], inc.sorted[1]], missorts: [inc.missorts[0], inc.missorts[1]],
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -437,7 +443,7 @@ function toggleAI() {
   const on = !fighters[1 - LOCAL].ai;
   for (let i = 0; i < fighters.length; i++) if (i !== LOCAL) fighters[i].ai = on;
   const o = fighters[1 - LOCAL];
-  if (!on) { o.vx = 0; o.vy = 0; } // 停下當假人
+  if (!on) { o.vx = 0; o.vy = 0; } else if (!v2s.shiftEnded) o._aiMode = 'demo'; // 停下當假人 / 重開=回到同事分類模式
   addText(o.x, o.y - 42, on ? 'AI 開啟' : 'AI 關閉 · 練習模式', on ? '#ff6b6b' : '#9affd0');
   game.sfx.push('upgrade');
 }
@@ -514,7 +520,9 @@ if (TERRAIN === 'isles') {
   // 首局教學(使用者上手文檔 2026-07):沒玩過 → 教學局。示範者 AI 開場先撿垃圾丟進艙示範清運迴圈
   // (取代「不會動的練習假人」——一頭霧水的頭號元兇),頭幾秒不主動打你;開場放目標字幕+鏡頭帶到對手。
   try { v2s.tutorial = localStorage.getItem('mmm_v2_played') !== '1'; } catch { v2s.tutorial = true; }
-  { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'demo'; } // 分類事故引擎:紅方=AI 同事,開局即在分類(暴走前 demo=分類、暴走後 fight);B 仍可切練習假人
+  { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'demo'; } // 憲章:紅方=AI 同事(分類競速對手;能量滿+落後才短暫切 fight);B 仍可切練習假人
+  v2s.propsFull = PROPS_FULL;                    // 憲章 §15 元素系統休眠旗(resetRound 據此清桶/補給座)
+  resetRound();                                  // boot 也走一次(生成序列+套用休眠;之前只靠模組載入時的初始擺設)
   v2s.introT = INTRO_T;                          // 開場目標字幕/鏡頭帶場(教學+老手都演一次,便宜且無害)
   camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 鏡頭開場=兩人中點(就位構圖;「開始!」後回玩家)
   setActorShadow(true);

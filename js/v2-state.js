@@ -194,10 +194,10 @@ export function resetPads() { for (const p of pads) { p.item = randItem(); p.res
 // kind:'bottle' 分支碎裂行為:瓶=脆(丟出落地/硬撞牆/硬撞人/被拳打/被爆炸波及 全都碎=蓋元素地板;冰瓶硬砸中人=直擊冰凍)。
 export const BOTTLE_LOB = { range: 180, apex: 34, T: 0.5, h0: 58 }; // 丟瓶拋物線(同 LOB 語言,?tune/控制台可即時調)
 export const BOTTLE_BREAK_V = 170;   // 地面硬撞碎裂門檻(px/s):走路推(BARREL_PUSH 130)不碎、風吹/丟出滑行必碎
-export const BOTTLE_RESPAWN = 5;     // 碎了 5s 在原點位重生(高頻=場上常備;桶 6s)
+// 瓶 respawn 時長改走 bottleRespawnT()(4~6s 隨機=稀缺窗;見下方憲章供料模型)
 // §12.5 羅盤分區:對角中帶(桶=東西中線、補給座=南北中線、元素站=四角、艙=中心)。對角配對:油-冰交叉。
-// 四型垃圾各一個開局點位(對角;分類事故引擎:開局四型齊備,需求一定拿得到);碎/清運後 respawn 隨機換型(供料多樣)
-export const BOTTLE_SPOTS = [[300, 180, 'fire'], [660, 180, 'ice'], [300, 460, 'poison'], [660, 460, 'lightning']];
+// 憲章供料模型(§13 定案 3):6 個瓶位、開局四型齊備+兩個補位;碎/清運後 respawn 走 pickSupply 加權(v2-items)
+export const BOTTLE_SPOTS = [[300, 180, 'fire'], [660, 180, 'ice'], [300, 460, 'poison'], [660, 460, 'lightning'], [180, 320, 'ice'], [780, 320, 'fire']];
 export const bottles = BOTTLE_SPOTS.map(([x, y, elem]) => ({ kind: 'bottle', x, y, x0: x, y0: y, r: 9, elem, alive: true, respawn: 0, held: false, vx: 0, vy: 0, thrownBy: -1, flyT0: -9, landed: true, z: 0, roll: 0, _smash: false }));
 export function resetBottles() { for (const t of bottles) { t.x = t.x0; t.y = t.y0; t.alive = true; t.respawn = 0; t.held = false; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; t._smash = false; } }
 
@@ -217,21 +217,43 @@ export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff',
 export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', reverse: '反向' };
 export const WIN_TARGET = 3;
 
-// --- Route A 清運經濟(使用者上手設計文檔 2026-07 §3:普通垃圾=瓶,丟進回收口累積清運→取得工具)---
-// 「普通垃圾」= 場上投擲瓶(bottles);丟/推進中央回收口(POD)= 清運(不是砸人的另一種用途)。
-export const CLEANUP_NEED = 3;               // 清運幾件垃圾 → 生一個事故工具(Route A:穩定取得工具的路線)
-// --- 分類事故引擎(使用者設計文檔 2026-07 §一~§十七:中央口需求制分類 → AI 怒氣 → 暴走人員回收)---
-// 中央口顯示「現在收 🔥」需求(輪換);餵對元素=清運+AI 冷靜、餵錯=中央口過載噴事故+AI 怒氣↑↑。
-export const GARBAGE_ELEMS = ['fire', 'ice', 'poison', 'lightning']; // 四型垃圾 = 四個需求(對齊文檔四處理區,單口需求制)
+// --- 核心憲章 v1.1(docs/v2-core-charter.md 2026-07-13 定稿):分類競速=唯一勝利 ---
+// 公開 12 元素序列(3 組×4)雙方共享、進度各自獨立;分對=前進+充能、分錯=拒收彈回(輕罰);
+// 先完成 SETS_WIN 組=提前下班。事故能量=唯一能力資源(工作+受擊充能;滿=第三拳可擊暈)。
+export const GARBAGE_ELEMS = ['fire', 'ice', 'poison', 'lightning']; // 四型垃圾(§13 定案 1:毒不換水——毒綠 vs 冰青可辨、水留給重錘)
 export const GARBAGE_NAME = { fire: '火焰廢料', ice: '冰霜廢料', poison: '黏液污染物', lightning: '帶電零件' };
 export const GARBAGE_ICON = { fire: '🔥', ice: '❄️', poison: '🧪', lightning: '⚡' };
 export function randGarbage(not) { const p = GARBAGE_ELEMS.filter(e => e !== not); return p[Math.floor(Math.random() * p.length)]; }
-// AI 怒氣(0..MAX);分錯/砸 AI ++、分對 −;爆滿=暴走(Phase 2 接輪班倒數+觸發)。五階段門檻。
-export const ANGER_MAX = 100, ANGER_MISSORT = 30, ANGER_HIT = 22, ANGER_CALM = 8;
-export const ANGER_STAGES = [0, 25, 55, 80, 100]; // 正常/疑惑/不耐煩/生氣/暴走 的下限
-export const ANGER_STAGE_NAME = ['正常', '疑惑', '不耐煩', '生氣', '準備回收你'];
-export function angerStage(a) { let s = 0; for (let i = 0; i < ANGER_STAGES.length; i++) if (a >= ANGER_STAGES[i]) s = i; return s; }
-export const SHIFT_T = 75;                    // 輪班倒數(秒):歸零 = 老闆下班抓狂,無條件暴走(使用者拍板:必暴走的保證閥+笑點)
+export const SEQ_LEN = 4;             // 每組序列元素數
+export const SETS_WIN = 3;            // 先完成幾組=提前下班(唯一勝利條件;§3.1)
+export const SHIFT_CLOCK = 180;       // 整局限時(秒);歸零=完成組數多者獲勝(§6.2)
+export const ENERGY_MAX = 100;        // 事故能量上限(雙方各一條)
+export const ENERGY_SORT = 12;        // 分對一件 +12(工作=主要充能來源;§5.2)
+export const ENERGY_SET = 10;         // 完成一組序列額外 +10
+export const ENERGY_HITBY = 25;       // 被正式命中 +25(充「被打方」=反擊資源;§3.3)
+export const ENERGY_PARRY = 10;       // 完美格擋獎勵(反暈退役=不繞能量閘;§13 定案 6)
+export const ENERGY_HIT_CD = 1.2;     // 受擊充能冷卻:同段連擊只計一次(§3.3 防站樁 farm)
+export const MISSORT_PAUSE = 0.4;     // 分錯且人在艙邊的短停頓(§6.3 輕罰)
+export const EJECT_T = 1.8;           // 中途收容:捕捉+拒收掃描時長(之後北管道吐回;總停工≈3s 內;§3.5)
+export const EJECT_POINT = { x: 480, y: 84 };                      // 北牆管道吐回落點(§13 定案 2:固定=可預測+路程成本)
+export const EJECT_LOB = { range: 236, apex: 64, T: 0.7, h0: 40 }; // 艙→北牆吐回拋物線
+export const EJECT_INVULN = 1.4;      // 吐回落地受擊保護(防蹲點;§3.4)
+export const BOTTLE_CAP = 2;          // 每型垃圾在場上限(供料模型;§13 定案 3)
+export const BOTTLE_RESPAWN_MIN = 4, BOTTLE_RESPAWN_MAX = 6;       // respawn 窗=稀缺窗(搶奪戲)
+export function bottleRespawnT() { return BOTTLE_RESPAWN_MIN + Math.random() * (BOTTLE_RESPAWN_MAX - BOTTLE_RESPAWN_MIN); }
+export function genSequence() { // 12 元素共享謎題;避免 3 連同型(2 連允許,對齊憲章 🔥🔥 示例)
+  const seq = [];
+  for (let i = 0; i < SEQ_LEN * SETS_WIN; i++) {
+    let e = GARBAGE_ELEMS[Math.floor(Math.random() * GARBAGE_ELEMS.length)];
+    if (i >= 2 && seq[i - 1] === e && seq[i - 2] === e) e = randGarbage(e);
+    seq.push(e);
+  }
+  return seq;
+}
+export function seqNeed(pid) { return v2s.seq[v2s.seqIdx[pid]] || null; } // 該選手當前要投的元素(完賽=null)
+export function addEnergy(pid, n) { if (pid !== 0 && pid !== 1) return; v2s.energy[pid] = Math.min(ENERGY_MAX, Math.max(0, v2s.energy[pid] + n)); }
+export function energized(pid) { return v2s.energy[pid] >= ENERGY_MAX; }
+export function resetCharter() { v2s.seq = genSequence(); v2s.seqIdx = [0, 0]; v2s.sets = [0, 0]; v2s.energy = [0, 0]; v2s.clockT = SHIFT_CLOCK; v2s.eject = null; v2s.shiftEnded = false; v2s.bossT = 0; v2s.bossLine = ''; }
 export const INTRO_T = 3.6;                  // 開場總長(秒;v2s.introT 遞減):就位期(雙方靜止+目標字幕+鏡頭框兩人)→「開始!」
 export const INTRO_GO = 0.9;                 // 尾段「開始!」閃字時長;introT<=INTRO_GO 起 AI 開始行動(使用者拍板:AI 一動玩家就懂)
 
@@ -256,13 +278,14 @@ export const v2s = {
   localFlash: 0,                             // 本機被打的紅屏脈衝
   fallReason: '', fallReasonT: 0,            // isles:「為什麼掉下去」讀出
   lowFlicker: false,                         // 減閃爍(光敏無障礙):L 鍵切換,localStorage 記憶;3D 脈動由 render 的 setLabFlicker 吃
-  perform: null,                             // 收容演出狀態機(v2-combat startPerform/updatePerform;null=沒在演)
-  cleanup: [0, 0],                           // Route A 清運進度(每方;丟垃圾進艙累積,到 CLEANUP_NEED 換工具後歸零)
-  demand: 'fire',                            // 中央口當前需求元素(分類事故引擎;pickDemand 輪換,只點場上有的)
-  anger: 0,                                  // AI 怒氣(分錯/砸 AI ++、分對 −;爆滿或輪班倒數歸零=暴走)
-  shiftT: SHIFT_T,                           // 輪班倒數(分類期遞減;歸零=老闆抓狂暴走)
-  rampage: false,                            // 暴走旗(中央口切人員回收模式、AI 切戰鬥;triggerRampage 設)
-  rampageT: 0,                               // 暴走轉場橫幅倒數(演出用)
+  perform: null,                             // 收容演出狀態機(v2-combat startPerform/updatePerform;null=沒在演;憲章後=下班封艙結局用)
+  seq: [], seqIdx: [0, 0], sets: [0, 0],     // 憲章:共享 12 元素序列 + 各自進度 + 下班進度(唯一勝利;resetCharter 生成)
+  energy: [0, 0],                            // 事故能量(工作+受擊充能;滿=第三拳可擊暈,暈成功清條)
+  clockT: SHIFT_CLOCK,                       // 本班剩餘時間(歸零=完成組數多者獲勝)
+  eject: null,                               // 中途收容吐回演出({pid,by,t,T,phase,pk,line};null=沒在演;v2-combat startEject/updateEject)
+  shiftEnded: false,                         // 下班鐘已響(endShift 只跑一次;之後序列凍結)
+  bossT: 0, bossLine: '',                    // 老闆台詞框(開場/結算;HUD 畫)
+  propsFull: false,                          // 元素系統休眠旗(桶/補給座/拉桿預設停用;?props=full 回復=舊沙盒/測試)
   tutorial: false,                           // 首局教學旗標(v2.js 依 localStorage 設;示範者 AI + 容錯 + 完整教學提示)
   introT: 0,                                 // 開場目標字幕/鏡頭帶場的倒數(>0=演出中;v2.js step 遞減)
 };
@@ -296,6 +319,7 @@ export function resetFighter(f) {
   f.comboN = 0; f.comboT = 0;     // 連段:下一拳是第幾段 / 接段窗口
   f.pushWinT = 0; f.pushCd = 0; f.pushFrom = null; f._aiPushAt = 0; // 格擋推開:窗口/冷卻/攻擊者/AI排程
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
+  f._energyHitT = -9; f._energyFullShown = false; // 受擊充能冷卻戳(憲章 §3.3 同段連擊只計一次)+ 能量滿提示旗
   f._aiMode = 'fight'; f._aiWantGrab = false; f._aiWantThrow = false; f._demoThrows = 0; f._fightSince = -9; // 示範者 AI(首局教學):demo=撿垃圾丟艙示範清運;玩家engage/被打→fight(steer 在 v2-combat、撿丟由 v2.js 執行 intent flag)
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
   f.running = false; f._runKey = null; f._tapKey = ''; f._tapT = -9; // 跑步:同鍵連按2次觸發(v2.js keydown 記 tap、step 每幀裁定)

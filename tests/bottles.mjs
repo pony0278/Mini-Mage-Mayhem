@@ -8,7 +8,7 @@ import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
 const page = await B.newPage();
 const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
-await page.goto('http://localhost:8099/v2.html', { waitUntil: 'networkidle0' });
+await page.goto('http://localhost:8099/v2.html?props=full', { waitUntil: 'networkidle0' });
 await page.waitForFunction('window.__v2 && __v2.fighters[0].state === "alive"', { timeout: 20000 });
 await page.bringToFront();
 let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };
@@ -20,7 +20,7 @@ const s1 = await page.evaluate(() => ({
   n: __v2.bottles.length, elems: __v2.bottles.map(t => t.elem).sort().join(','),
   padPool: __v2.pads.map(p => p.item), badPad: __v2.pads.some(p => p.item === 'ice' || p.item === 'oil'),
 }));
-R(`開場 4 瓶(${s1.elems})`, s1.n === 4 && s1.elems === 'fire,ice,lightning,poison'); // 分類事故引擎:四型垃圾各一(fire/ice/poison/lightning),oil 退出
+R(`開場 6 瓶四型齊備(${s1.elems})`, s1.n === 6 && ['fire', 'ice', 'lightning', 'poison'].every(e => s1.elems.includes(e))); // 憲章供料:6 瓶位、開局四型齊+兩補位,oil 退出
 R(`補給座只出裝備類(${s1.padPool})`, !s1.badPad);
 
 // ---------- ② 撿瓶 + 扛瓶全速 ----------
