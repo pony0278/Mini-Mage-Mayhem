@@ -238,6 +238,10 @@ export const EJECT_T = 1.8;           // 中途收容:捕捉+拒收掃描時長(
 export const EJECT_POINT = { x: 480, y: 84 };                      // 北牆管道吐回落點(§13 定案 2:固定=可預測+路程成本)
 export const EJECT_LOB = { range: 236, apex: 64, T: 0.7, h0: 40 }; // 艙→北牆吐回拋物線
 export const EJECT_INVULN = 1.4;      // 吐回落地受擊保護(防蹲點;§3.4)
+// 下班結局(取代事故報告;純場上演出=贏家打卡嘲笑+輸家加班,§14「快速下一局」):
+export const ENDING_T = 4.2;          // 結局演出時長(實時秒;matchOver 凍結 game.time,用實時 dt 倒數)→ 自動再上工(R 可跳)
+export const ENDING_MOCKS = ['先走囉~加班加油！', '明天見（如果你做得完的話）', '掰~記得關燈', '我先下班，你慢慢分', '這批我不加班了，交給你囉'];
+export function pickMock() { return ENDING_MOCKS[Math.floor(Math.random() * ENDING_MOCKS.length)]; }
 export const BOTTLE_CAP = 2;          // 每型垃圾在場上限(供料模型;§13 定案 3)
 export const BOTTLE_RESPAWN_MIN = 4, BOTTLE_RESPAWN_MAX = 6;       // respawn 窗=稀缺窗(搶奪戲)
 export function bottleRespawnT() { return BOTTLE_RESPAWN_MIN + Math.random() * (BOTTLE_RESPAWN_MAX - BOTTLE_RESPAWN_MIN); }
@@ -285,6 +289,7 @@ export const v2s = {
   eject: null,                               // 中途收容吐回演出({pid,by,t,T,phase,pk,line};null=沒在演;v2-combat startEject/updateEject)
   shiftEnded: false,                         // 下班鐘已響(endShift 只跑一次;之後序列凍結)
   bossT: 0, bossLine: '',                    // 老闆台詞框(開場/結算;HUD 畫)
+  ending: null,                              // 下班結局演出({winner,t,T,mock,sealed};endMatch 設,v2.js 倒數→自動再上工)
   propsFull: false,                          // 元素系統休眠旗(桶/補給座/拉桿預設停用;?props=full 回復=舊沙盒/測試)
   tutorial: false,                           // 首局教學旗標(v2.js 依 localStorage 設;示範者 AI + 容錯 + 完整教學提示)
   introT: 0,                                 // 開場目標字幕/鏡頭帶場的倒數(>0=演出中;v2.js step 遞減)

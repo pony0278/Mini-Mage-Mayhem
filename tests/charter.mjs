@@ -105,8 +105,8 @@ await page.evaluate(() => {
 });
 await feed(true);
 await waitFor('v.state().matchOver', 4); // ⚠ matchOver 凍結 game.time → 不能用 advance 等(會吊死)
-const s9 = await page.evaluate(() => { const s = __v2.state(); return { matchOver: s.matchOver, winner: s.winnerPid, sets: s.sets[0], report: !!s.report, shiftEnded: s.shiftEnded }; });
-R('先完成 3 組 → 提前下班獲勝(唯一勝利;加班 gag→報告)', s9.matchOver && s9.winner === 0 && s9.sets === 3 && s9.report, JSON.stringify(s9));
+const s9 = await page.evaluate(() => { const s = __v2.state(); return { matchOver: s.matchOver, winner: s.winnerPid, sets: s.sets[0], ending: s.ending, shiftEnded: s.shiftEnded }; });
+R('先完成 3 組 → 提前下班獲勝(下班結局:贏家嘲笑、輸家加班 gag)', s9.matchOver && s9.winner === 0 && s9.sets === 3 && !!s9.ending && s9.ending.winner === 0 && s9.ending.sealed === false, JSON.stringify(s9));
 
 // ---------- ⑩ 整局限時歸零 → 完成多者獲勝 ----------
 await page.evaluate(() => { __v2.restartMatch(); const v = __v2; v.v2s.introT = 0; v.v2s.sets = [0, 1]; v.v2s.clockT = 0.3; v.fighters[0].x = 200; v.fighters[0].y = 560; v.fighters[1].x = 700; v.fighters[1].y = 560; });

@@ -56,8 +56,8 @@ const hid = await waitFor('v.fighters[1]._hidden === true', 8);
 R('壓縮:輸家隱藏(變包裝方塊北送)', hid);
 const over = await waitFor('v.state().matchOver', 8);
 const domeDown = await page.waitForFunction('!__lab.domeVisible()', { timeout: 30000 }).then(() => true).catch(() => false);
-const s5 = await page.evaluate(() => ({ over: __v2.state().matchOver, report: !!__v2.state().report, winner: __v2.state().winnerPid }));
-R('封艙收尾 → matchOver+報告+罩收掉(勝者=下班者)', over && s5.over && s5.report && s5.winner === 0 && domeDown, JSON.stringify(s5));
+const s5 = await page.evaluate(() => ({ over: __v2.state().matchOver, ending: __v2.state().ending, winner: __v2.state().winnerPid }));
+R('封艙收尾 → matchOver+下班結局(封艙 sealed)+罩收掉(勝者=下班者)', over && s5.over && !!s5.ending && s5.ending.sealed === true && s5.winner === 0 && domeDown, JSON.stringify(s5));
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);

@@ -15,12 +15,12 @@ import {
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS, INTRO_GO,
   SETS_WIN, ENERGY_HITBY, ENERGY_HIT_CD, ENERGY_PARRY, EJECT_T, EJECT_POINT, EJECT_LOB, EJECT_INVULN, addEnergy, energized, seqNeed,
+  ENDING_T, pickMock,
   GUARD_MOVE, GUARD_STAM_MAX, GUARD_DRAIN, GUARD_BLOCK_COST, GUARD_REGEN, GUARD_REGEN_DELAY,
   GUARD_BLOCK_PUSH, GUARD_BLOCK_FLINCH, GUARD_BREAK_FUMBLE, GUARD_BREAK_LOCK,
   FIRE_STAB_DPS, FIRE_BURN_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
 import { FREEFORM, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
-import { generateReport } from './v2-report.js';
 import { stateAtPixel, floorEvents, FL } from './v2-floor.js';
 
 // camera-relative basis (mirrors main.js buildInput) so screen-up = forward at any azimuth
@@ -595,7 +595,16 @@ export function softReintegrate(loser, total) { // 非第三次:被收容者出�
   addHitstop(0.35); game.sfx.push('upgrade');
   resetFighter(loser); loser.invuln = 1.8; // 彈回出生點 + 無敵(不能被抓/打)
 }
-export function endMatch(pid) { v2s.matchOver = true; v2s.report = generateReport(pid); game.sfx.push('upgrade'); dlog('MATCH OVER → report', v2s.report.level, v2s.report.name); }
+// 下班結局(使用者拍板 2026-07-13:拿掉事故報告 → 純場上演出=贏家打卡嘲笑、輸家加班;v2.js 倒數後自動再上工)。
+// sealed=讀法 B 封艙路徑(輸家已 _hidden 成包裝方塊,不畫加班牌,改畫「已封裝回收」);否則畫輸家加班牌。
+export function endMatch(pid) {
+  v2s.matchOver = true; v2s.winnerPid = pid; v2s.report = null;
+  const winner = fighters[pid], loser = fighters[1 - pid];
+  winner.facing = Math.atan2(loser.y - winner.y, loser.x - winner.x); // 贏家轉頭對著輸家嘲笑
+  v2s.ending = { winner: pid, t: 0, T: ENDING_T, mock: pickMock(), sealed: !!loser._hidden };
+  game.sfx.push('upgrade');
+  dlog('SHIFT OVER → 下班結局', NAMES[pid], v2s.ending.sealed ? '(封艙)' : '(加班)');
+}
 export function doAction(f) { // 情境動作鍵(j 鍵;桶的撿/丟/放走滑鼠+E+觸控的 mouseLeft/mouseRight)
   if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || f.carryObj) return;
   if (f.carrying) { dropCarry(f); return; }

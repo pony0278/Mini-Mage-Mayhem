@@ -63,7 +63,7 @@ function restartMatch() {
   v2s.matchOver = false; v2s.report = null; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0];
   resetInc(); containLog.length = 0; v2s.bannerText = ''; v2s.winBannerT = 0; resetStage();
-  v2s.perform = null; v2s.eject = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 演出殘留(分類記憶跨回合、不跨場)
+  v2s.perform = null; v2s.eject = null; v2s.ending = null; v2s.bossT = 0; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 演出殘留(分類記憶跨回合、不跨場)
   v2s.introT = INTRO_T; camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 再戰也走開場儀式(就位→開始!)
   resetRound();
 }
@@ -182,7 +182,9 @@ function step(dt) {
   if (game.kickX || game.kickY) { const kd = Math.pow(0.00005, dt); game.kickX *= kd; game.kickY *= kd; if (Math.abs(game.kickX) + Math.abs(game.kickY) < 0.1) { game.kickX = 0; game.kickY = 0; } } // 鏡頭踹:~80ms 彈回
   if (v2s.matchOver) {
     if (v2s.tutorial) { v2s.tutorial = false; try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* 隱私模式 */ } } // 首局打完 → 記「玩過」,下次不再教學
-    return; // freeze gameplay while the incident report is up
+    updateRings(dt); updateFloatingTexts(dt);            // 結局演出的環/飄字照樣推進(game.time 凍結,用實時 dt)
+    if (v2s.ending) { v2s.ending.t += dt; if (v2s.ending.t >= v2s.ending.T) restartMatch(); } // 下班結局倒數 → 自動再上工(R 可提前;matchOver 凍結 game.time,用實時 dt)
+    return; // freeze gameplay while the clock-out ending plays
   }
   game.time += dt; inc.matchT += dt;
   if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
@@ -411,7 +413,8 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
   punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, endShift, startEject,
-  state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
+  state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, stage: v2s.stage,
+    ending: v2s.ending ? { winner: v2s.ending.winner, t: +v2s.ending.t.toFixed(2), sealed: v2s.ending.sealed, mock: v2s.ending.mock } : null,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
     cleaned: [inc.cleaned[0], inc.cleaned[1]],
     seq: v2s.seq.slice(), seqIdx: [v2s.seqIdx[0], v2s.seqIdx[1]], sets: [v2s.sets[0], v2s.sets[1]],
@@ -473,10 +476,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'b') toggleAI(); // 切換 AI / 練習模式
   if (k === 'l') toggleFlicker(); // 減閃爍開關
   if (k === 'k') cycleSlowmo(); // 慢動作觀察:1→0.5→0.25→0.1× 循環
-  if (v2s.matchOver) { // incident report screen: R = rematch, C = copy share text
-    if (k === 'r') restartMatch();
-    else if (k === 'c' && v2s.report && navigator.clipboard) { navigator.clipboard.writeText(v2s.report.share); dlog('copied share text'); }
-  }
+  if (v2s.matchOver && k === 'r') restartMatch(); // 下班結局:R = 立刻再上工(否則 ENDING_T 後自動)
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('pointerdown', unlockAudio);

@@ -6,9 +6,9 @@ import { clamp } from './utils.js';
 import { game } from './state.js';
 import { project } from './render.js';
 import {
-  v2s, fighters, LOCAL, COLORS, NAMES, inc, containLog,
+  v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
-  METHOD_ZH, INTRO_T, INTRO_GO,
+  INTRO_T, INTRO_GO,
   GARBAGE_NAME, GARBAGE_ICON, SEQ_LEN, SETS_WIN, ENERGY_MAX, seqNeed,
 } from './v2-state.js';
 
@@ -188,40 +188,46 @@ function drawItems() {
   if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + ' ×' + me.itemUses + '（右鍵 / E 使用）', 24, VH - 40); }
   else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, VH - 40); }
 }
-const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
-function drawReport() {
-  const r = v2s.report;
-  hctx.fillStyle = 'rgba(8,10,16,.62)'; hctx.fillRect(0, 0, VW, VH); // dim the frozen world
-  const pw = 640, ph = 446, px = (VW - pw) / 2, py = (VH - ph) / 2;
-  hctx.fillStyle = 'rgba(20,24,34,.97)'; hctx.fillRect(px, py, pw, ph);
-  hctx.strokeStyle = 'rgba(255,211,109,.5)'; hctx.lineWidth = 2; hctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
-  let y = py + 40; const cx = VW / 2;
+// 下班結局(使用者拍板 2026-07-13:拿掉事故報告 → 純場上演出)。
+// 贏家頭頂嘲笑對話框 + 頂部下班橫幅 + 輸家加班牌(封艙路徑=已回收字);底部 R 立刻再上工/自動倒數。
+function speechBubble(x, y, text, col) {
+  hctx.save(); hctx.font = '900 16px system-ui, sans-serif'; hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
+  const w = hctx.measureText(text).width + 24, h = 30, top = y - h - 10;
+  hctx.fillStyle = 'rgba(250,252,255,.97)';
+  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(x - w / 2, top, w, h, 11) : hctx.rect(x - w / 2, top, w, h); hctx.fill();
+  hctx.beginPath(); hctx.moveTo(x - 8, top + h); hctx.lineTo(x + 8, top + h); hctx.lineTo(x, top + h + 11); hctx.closePath(); hctx.fill(); // 尖角指向頭頂
+  hctx.fillStyle = col; hctx.fillText(text, x, top + h / 2);
+  hctx.restore(); hctx.textBaseline = 'alphabetic';
+}
+function worldTag(x, y, text, col) {
+  hctx.save(); hctx.font = '900 14px system-ui, sans-serif'; hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
+  const w = hctx.measureText(text).width + 18;
+  hctx.fillStyle = 'rgba(20,22,30,.85)';
+  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(x - w / 2, y - 13, w, 24, 7) : hctx.rect(x - w / 2, y - 13, w, 24); hctx.fill();
+  hctx.strokeStyle = col; hctx.lineWidth = 1.5; hctx.stroke();
+  hctx.fillStyle = col; hctx.fillText(text, x, y + 1);
+  hctx.restore(); hctx.textBaseline = 'alphabetic';
+}
+function drawEnding() {
+  const e = v2s.ending; if (!e) return;
+  const w = fighters[e.winner], l = fighters[1 - e.winner];
+  hctx.fillStyle = 'rgba(8,10,16,.30)'; hctx.fillRect(0, 0, VW, VH); // 輕壓暗(不像報告全屏卡)
   hctx.textAlign = 'center';
-  hctx.font = '900 24px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 #' + r.num, cx, y); y += 40;
-  // level badge
-  hctx.font = '900 52px system-ui, sans-serif'; hctx.fillStyle = LEVEL_COL[r.level] || '#fff';
-  hctx.fillText(r.level + ' 級', cx, y + 6); y += 50;
-  hctx.font = '800 22px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
-  hctx.fillText(r.name, cx, y); y += 36;
-  hctx.font = '600 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
-  hctx.fillText(r.summary, cx, y); y += 34;
-  // stats line
-  hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
-  hctx.fillText(`勝者：${NAMES[r.winner]}　損害 ${r.damage}%　搬 ${inc.carries[0] + inc.carries[1]}·拋 ${inc.throwContains}·吹 ${inc.accidentContains.wind}·滑 ${inc.accidentContains.ice}·爆 ${inc.accidentContains.barrel}　反向 ${inc.reverseContains}　自傷 ${inc.itemBackfires}　主要道具 ${r.mostUsed}　${r.time.toFixed(0)}s`, cx, y); y += 30;
-  if (containLog.length) { // 三幕封存序列
-    hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
-    hctx.fillText('封存序列：' + containLog.map(c => NAMES[c.winner][0] + '·' + (METHOD_ZH[c.method] || c.method)).join('　→　'), cx, y); y += 30;
+  const top = '⏰ 下班！' + NAMES[e.winner] + ' 先走了';           // 頂部下班橫幅
+  hctx.font = '900 40px system-ui, sans-serif'; hctx.lineWidth = 7; hctx.strokeStyle = 'rgba(6,12,18,.9)';
+  hctx.strokeText(top, VW / 2, 84); hctx.fillStyle = COLORS[e.winner]; hctx.fillText(top, VW / 2, 84);
+  const ws = project(w.x, w.y, 64);                               // 贏家嘲笑對話框
+  if (!ws.behind) speechBubble(ws.x, ws.y, e.mock, COLORS[e.winner]);
+  if (e.sealed) {                                                 // 封艙路徑:輸家已壓縮回收
+    const c = project(POD.x, POD.y, 42);
+    if (!c.behind) worldTag(c.x, c.y, '📦 已封裝回收', '#9aa5b8');
+  } else if (l.state !== 'down') {                                // 加班路徑:輸家埋頭加班
+    const ls = project(l.x, l.y, 52);
+    if (!ls.behind) worldTag(ls.x, ls.y, '📋 加班中… 💦', '#9aa5b8');
   }
-  hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
-  hctx.fillText('稱號：' + r.title, cx, y); y += 34;
-  // committee comment (the share juice)
-  hctx.font = 'italic 700 17px system-ui, sans-serif'; hctx.fillStyle = '#9affd0';
-  hctx.fillText('「' + r.comment + '」', cx, y); y += 28;
-  hctx.font = '600 12px ui-monospace, monospace'; hctx.fillStyle = '#8a7d96';
-  hctx.fillText('挑戰碼 ' + r.code, cx, y); y += 30;
-  hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
-  hctx.fillText('按 R 再來一場　·　按 C 複製分享文字', cx, py + ph - 18);
+  const left = Math.max(0, Math.ceil(e.T - e.t));                 // 底部:R 立刻/自動倒數
+  hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = 'rgba(234,250,255,.9)';
+  hctx.fillText('按 R 立刻再上工　·　' + left + 's 後自動開下一班', VW / 2, VH - 40);
 }
 // 風壓爆風:發射中從兩側邊緣往內掃的速度線(爆風 whoosh;強度=windFan 剩餘壽命)
 function drawWindSpeedLines() {
@@ -384,25 +390,27 @@ export function drawHud() {
   hctx.font = '800 13px system-ui, sans-serif';
   hctx.fillStyle = aiOn ? 'rgba(255,140,140,.92)' : 'rgba(154,255,208,.96)';
   hctx.fillText(aiOn ? '紅方：AI 同事　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', VW / 2, 48);
-  drawCharter();      // 憲章面板:雙序列/下班進度/能量條/時鐘 + 艙口「投入:🔥」
-  drawContainHud();
-  drawItems();
-  drawSwitchLabels();
-  drawPerformLED(); // 演出 LED 飄字(艙口上方;封艙+吐回共用)
-  if (v2s.introT <= INTRO_GO && !drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先;就位期讓位給開場字幕
-  if (v2s.bossT > 0 && v2s.bossLine && !v2s.matchOver) drawBoss(v2s.bossLine); // 老闆結算宣布(下班鐘響)
-  drawIntro(); // 開場字幕:就位期=老闆訓話+目標 → 尾段=「開始!」
-  // stage / seal banner
-  if (v2s.winBannerT > 0 && v2s.bannerText) {
-    hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
-    hctx.fillStyle = COLORS[v2s.winnerPid] || '#eafaff'; hctx.fillText(v2s.bannerText, VW / 2, VH / 2 - 30);
+  if (!v2s.matchOver) { // 下班結局期:清掉對戰 HUD(序列面板/教練線/角色條/勝利橫幅),讓結局演出乾淨
+    drawCharter();      // 憲章面板:雙序列/下班進度/能量條/時鐘 + 艙口「投入:🔥」
+    drawContainHud();
+    drawItems();
+    drawSwitchLabels();
+    if (v2s.introT <= INTRO_GO && !drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先;就位期讓位給開場字幕
+    if (v2s.bossT > 0 && v2s.bossLine) drawBoss(v2s.bossLine); // 老闆結算宣布(下班鐘響;封艙演出期間 matchOver 還沒起)
+    // stage / seal banner
+    if (v2s.winBannerT > 0 && v2s.bannerText) {
+      hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
+      hctx.fillStyle = COLORS[v2s.winnerPid] || '#eafaff'; hctx.fillText(v2s.bannerText, VW / 2, VH / 2 - 30);
+    }
   }
+  drawPerformLED(); // 演出 LED 飄字(艙口上方;封艙+吐回共用;封艙在 matchOver 前跑,照畫)
+  drawIntro(); // 開場字幕:就位期=老闆訓話+目標 → 尾段=「開始!」
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
   hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵＝抓／放技能（持攻擊裝備優先開火）· E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟 · 空白鍵按住＝防禦　B：AI　L：減閃爍', VW / 2, VH - 18);
-  if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
+  if (v2s.ending) drawEnding(); // 下班結局(取代事故報告):贏家打卡嘲笑 + 輸家加班
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: charter-1', VW - 10, VH - 4);
+  hctx.fillText('build: charter-2', VW - 10, VH - 4);
 }
