@@ -23,7 +23,8 @@ const SUITES = [
   ['ice_slide', '冰面鎖滑(直線滑/撞牆暈/滑進艙收容/小心走)'],
   ['perform',   '回收演出 V0.8(玻璃罩+掃描+分類字/期間不二次收容/收尾才彈回/失控火花/壓縮清運→報告)'],
   ['mobilefx',  '手機自動降級(觸控+行動UA→FX_LOW+dpr1.5/桌機不變/?fx=full 覆蓋)'],
-  ['onboard',   '上手/循環重整(首局示範者AI/Route A 垃圾清運換工具/開場目標字幕+鏡頭/動態教練/localStorage)'],
+  ['onboard',   '上手框架(首局教學旗標/AI 同事開場即開/開場字幕+鏡頭/就位靜止/localStorage)'],
+  ['sorting',   '分類事故引擎(中央口需求制/餵對錯/AI 怒氣五階段/輪班倒數+暴走/AI 同事工作競賽)'],
 ];
 
 // ⚠ server 一定要從 repo root 起(套件裡 import('./js/…') 由瀏覽器對 server 根解析;從 tests/ 起會 404)。

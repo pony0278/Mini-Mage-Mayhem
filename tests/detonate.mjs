@@ -69,7 +69,7 @@ R('持傳送(逃脫類)右鍵近桶=照舊撿桶(傳送不被誤放)', s4.picked
 await resetAll();
 const s5 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1];
-  const t = v.bottles.find(b => b.elem === 'oil');
+  const t = v.bottles.find(b => b.alive) || v.bottles[0]; t.elem = 'oil';
   t.x = 360; t.y = 540; f.x = 300; f.y = 540; f.facing = 0;
   v.castFire(f);
   return { shattered: !t.alive, tx: Math.round(t.x) };
@@ -91,7 +91,7 @@ R(`火帽扇內桶=升壓(${s6.state})`, s6.state === 'fuse');
 await resetAll();
 const s7 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], b = v.barrels[0];
-  const t = v.bottles.find(x => x.elem === 'oil');
+  const t = v.bottles.find(x => x.alive) || v.bottles[0]; t.elem = 'oil';
   t.x = 360; t.y = 540; b.x = 340; b.y = 560;
   f.x = 300; f.y = 540; f.facing = 0;                       // 落點 (348,540),WATER_R 70 蓋到兩者
   v.castWater(f);
@@ -104,7 +104,7 @@ R(`水錘 AoE=瓶碎+潑油被水蓋掉(floor=${s7floor})+桶升壓(${s7.barrel}
 await resetAll();
 const s8 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], b = v.barrels[0];
-  const t = v.bottles.find(x => x.elem === 'ice');
+  const t = v.bottles.find(x => x.alive) || v.bottles[0]; t.elem = 'ice';
   t.x = 350; t.y = 545; b.x = 450; b.y = 535;               // 都貼在線(y=540 ±半寬 20+r)上
   f.x = 200; f.y = 540; f.facing = 0;
   v.castLightning(f);

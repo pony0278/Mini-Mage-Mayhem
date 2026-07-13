@@ -16,13 +16,13 @@ import {
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
-  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO, CLEANUP_NEED,
+  RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO, CLEANUP_NEED, ANGER_MAX,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform } from './v2-combat.js';
-import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
+import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, resetSorting } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
@@ -47,10 +47,26 @@ function playClip(name, f = fighters[LOCAL]) {
   return c.dur;
 }
 
+// 暴走轉場(使用者設計文檔 §4):同事翻臉——AI「你比垃圾更需要被處理!」→ 中央口切人員回收模式(HUD 讀 v2s.rampage)、
+// AI 切戰鬥、玩家被標記待回收人員。cause: 'shift'=輪班到抓狂 / 'anger'=被氣爆。收容戰本體不變,這只是「開打的因」。
+function triggerRampage(cause) {
+  if (v2s.rampage) return;
+  v2s.rampage = true; v2s.anger = ANGER_MAX; v2s.rampageT = 2.4;
+  v2s.bannerText = cause === 'shift' ? '下班時間到！主管失去耐心 → 人員回收' : 'AI：你比垃圾更需要被處理！';
+  v2s.winnerPid = -1;
+  const ai = fighters[1 - LOCAL]; ai._aiMode = 'fight'; ai._fightSince = game.time; // 同事 → 暴走對手(收容戰)
+  addText(POD.x, POD.y - 56, cause === 'shift' ? '⏰ 下班！人員回收啟動' : '♻ 待回收人員', '#ff6b6b');
+  addRing(POD.x, POD.y, POD.r * 2.4, '#ff6b6b', 0.6, 8); addRing(POD.x, POD.y, POD.r * 1.4, '#ffffff', 0.4, 5);
+  game.screenShake = Math.max(game.screenShake, 10); game.sfx.push('waveclear');
+  dlog('RAMPAGE', cause, 'anger', Math.round(v2s.anger));
+}
+
 // --- round / match orchestration ---
 function resetRound() {
   resetBarrels(); resetBottles(); resetPads(); resetGroundItems(); resetStations(); resetFloor();
   for (const f of fighters) resetFighter(f);
+  resetSorting(); // 分類事故引擎:重挑中央口需求 + 怒氣/暴走歸零 + 輪班重計(bottles reset 後才挑得到場上元素)
+  { const ai = fighters[1 - LOCAL]; if (ai.ai) ai._aiMode = 'demo'; } // 新一場:AI 同事回到分類模式(resetFighter 預設 fight,這裡覆蓋回 demo)
 }
 function restartMatch() {
   v2s.matchOver = false; v2s.report = null; roundWins[0] = 0; roundWins[1] = 0;
@@ -179,6 +195,12 @@ function step(dt) {
   }
   game.time += dt; inc.matchT += dt;
   if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
+  if (v2s.rampageT > 0) v2s.rampageT -= dt;      // 暴走轉場橫幅倒數
+  // 分類事故引擎:分類期(開場後、未暴走)輪班倒數;歸零 或 怒氣爆滿 → 暴走(使用者拍板:兩條保證閥)
+  if (!v2s.rampage && v2s.introT <= 0) {
+    if (v2s.shiftT > 0) v2s.shiftT -= dt;
+    if (v2s.anger >= ANGER_MAX || v2s.shiftT <= 0) triggerRampage(v2s.shiftT <= 0 ? 'shift' : 'anger');
+  }
   if (v2s.introT > INTRO_GO && (keys.size > 0 || (touchInput.enabled && touchInput.active))) v2s.introT = INTRO_GO; // 等不及的玩家按任何鍵=直接「開始!」
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
   if (v2s.localFlash > 0) v2s.localFlash -= dt;
@@ -389,6 +411,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
     cleanup: [v2s.cleanup[0], v2s.cleanup[1]], cleaned: [inc.cleaned[0], inc.cleaned[1]],
+    demand: v2s.demand, anger: Math.round(v2s.anger), shiftT: +v2s.shiftT.toFixed(1), rampage: v2s.rampage, sorted: [inc.sorted[0], inc.sorted[1]], missorts: [inc.missorts[0], inc.missorts[1]],
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -491,7 +514,7 @@ if (TERRAIN === 'isles') {
   // 首局教學(使用者上手文檔 2026-07):沒玩過 → 教學局。示範者 AI 開場先撿垃圾丟進艙示範清運迴圈
   // (取代「不會動的練習假人」——一頭霧水的頭號元兇),頭幾秒不主動打你;開場放目標字幕+鏡頭帶到對手。
   try { v2s.tutorial = localStorage.getItem('mmm_v2_played') !== '1'; } catch { v2s.tutorial = true; }
-  if (v2s.tutorial) { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'demo'; }
+  { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'demo'; } // 分類事故引擎:紅方=AI 同事,開局即在分類(暴走前 demo=分類、暴走後 fight);B 仍可切練習假人
   v2s.introT = INTRO_T;                          // 開場目標字幕/鏡頭帶場(教學+老手都演一次,便宜且無害)
   camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 鏡頭開場=兩人中點(就位構圖;「開始!」後回玩家)
   setActorShadow(true);

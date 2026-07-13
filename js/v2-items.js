@@ -7,6 +7,7 @@ import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod, CLEANUP_NEED,
+  GARBAGE_ELEMS, GARBAGE_NAME, randGarbage, ANGER_MAX, ANGER_MISSORT, ANGER_CALM, SHIFT_T,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
@@ -319,24 +320,48 @@ export function shatterBottle(t, hitFighter) {
   t.alive = false; t.respawn = BOTTLE_RESPAWN; t.held = false; t._smash = false;
   for (const f of fighters) if (f.carryObj === t) { f.carryObj = null; f._barrelThrowAt = 0; } // 在手上碎(爆炸波及)→ 放開持有者
   const col = elemColor(t.elem), r = t.elem === 'oil' ? OIL_R : ICE_R;
-  const n = stampElement(t.x, t.y, r, t.elem);
+  const n = stampElement(t.x, t.y, r, t.elem);                        // 火/冰/毒/油=種地板;雷乾地無地板(下面 raw arc 補)
   addRing(t.x, t.y, r, col, 0.4, 5); hitSpark(t.x, t.y, col, 1.4);
   addText(t.x, t.y - 20, '碎裂！', col); game.sfx.push('thud');
   if (hitFighter && t.elem === 'ice') freezeFighter(hitFighter, t.thrownBy); // 直擊冰凍(任何高度碰到都算,同舊瓶規則)
+  if (t.elem === 'lightning') {                                       // 帶電零件=raw arc(雷無地板):範圍電擊擊暈(同元素站雷)
+    for (const f of fighters) {
+      if (f.state !== 'alive' || f.invuln > 0 || f.pid === t.thrownBy) continue;
+      if (Math.hypot(f.x - t.x, f.y - t.y) > r + f.r) continue;
+      if (!f.stunned && f.restunT <= 0) { f.lastHitBy = t.thrownBy; stunFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); }
+    }
+  }
   dlog('BOTTLE', t.elem, 'shatter @', Math.round(t.x) + ',' + Math.round(t.y), 'tiles', n);
 }
-// Route A 清運(使用者上手文檔 §3 用途1):垃圾瓶進中央回收口 = 清運(不是碎在地上),
-// 歸屬丟的人(thrownBy),累積到 CLEANUP_NEED → rewardTool 生一件事故工具(穩定取得工具的路線)。
+// 中央口需求制分類(使用者設計文檔 2026-07):中央口顯示「現在收 🔥」需求,垃圾瓶進口時判定——
+// 餵對(elem === v2s.demand)= 清運計分 + AI 冷靜 + 換下一個需求;餵錯 = 中央口過載噴事故(reuse eruptStation)
+// + AI 怒氣↑↑ + 拒收(不計分,需求不變仍要對的那個)。歸屬丟的人(thrownBy);非玩家丟入不計分/不計怒氣。
+function pickDemand() { // 只點「場上有的」元素(免玩家卡在拿不到);盡量換一個不同型
+  const avail = [...new Set(bottles.filter(b => b.alive && !b.held).map(b => b.elem))];
+  const pool = avail.filter(e => e !== v2s.demand);
+  const src = pool.length ? pool : (avail.length ? avail : GARBAGE_ELEMS);
+  v2s.demand = src[Math.floor(Math.random() * src.length)];
+}
+export function resetSorting() { v2s.anger = 0; v2s.rampage = false; v2s.rampageT = 0; v2s.shiftT = SHIFT_T; pickDemand(); } // round/match reset:怒氣/暴走歸零、輪班重計、重挑需求
 function recycleGarbage(t) {
+  const pid = t.thrownBy, correct = t.elem === v2s.demand;
   t.alive = false; t.held = false; t.vx = 0; t.vy = 0; t.z = 0; t.respawn = BOTTLE_RESPAWN;
-  addRing(POD.x, POD.y, POD.r * 1.2, '#4dffcf', 0.4, 5); game.sfx.push('upgrade');
-  const pid = t.thrownBy;
-  if (pid !== 0 && pid !== 1) { addText(POD.x, POD.y - 40, '♻ 已清運', '#9affd0'); return; } // 非玩家丟入(風吹/亂滑)=只清掉不計分
-  inc.cleaned[pid] = (inc.cleaned[pid] || 0) + 1;
+  if (!correct) {                                                    // 餵錯 → 中央口過載噴事故
+    eruptStation({ x: POD.x, y: POD.y, elem: t.elem, state: 'warn' }); // reuse:火/冰/毒種地板、雷=raw arc、徑向擊退+FX
+    addText(POD.x, POD.y - 42, '✗ 分類錯誤!回收桶拒收', '#ff6b6b'); game.sfx.push('hurt');
+    if (pid === 0 || pid === 1) { inc.missorts[pid] = (inc.missorts[pid] || 0) + 1; if (!v2s.rampage) v2s.anger = Math.min(ANGER_MAX, v2s.anger + ANGER_MISSORT); }
+    dlog('MISSORT', pid, t.elem, 'want', v2s.demand, 'anger', v2s.anger);
+    return;                                                          // 需求不變(還是要對的那個)
+  }
+  addRing(POD.x, POD.y, POD.r * 1.2, '#4dffcf', 0.4, 5); game.sfx.push('upgrade'); // 分對 → 清運
+  if (pid !== 0 && pid !== 1) { addText(POD.x, POD.y - 40, '♻ 已清運', '#9affd0'); pickDemand(); return; }
+  inc.cleaned[pid] = (inc.cleaned[pid] || 0) + 1; inc.sorted[pid] = (inc.sorted[pid] || 0) + 1;
+  if (!v2s.rampage) v2s.anger = Math.max(0, v2s.anger - ANGER_CALM); // 分對 → AI 冷靜
   v2s.cleanup[pid]++;
   if (v2s.cleanup[pid] >= CLEANUP_NEED) { v2s.cleanup[pid] = 0; rewardTool(fighters[pid]); }
-  else addText(POD.x, POD.y - 40, '♻ 清運 ' + v2s.cleanup[pid] + '/' + CLEANUP_NEED, COLORS[pid]);
-  dlog('RECYCLE', NAMES[pid], 'cleanup', v2s.cleanup[pid]);
+  else addText(POD.x, POD.y - 40, '✓ ' + (GARBAGE_NAME[t.elem] || '') + ' 分類正確', COLORS[pid]);
+  pickDemand();
+  dlog('SORT-OK', NAMES[pid], t.elem, '→ next demand', v2s.demand, 'cleanup', v2s.cleanup[pid]);
 }
 function rewardTool(f) { // 清運達標 → 在身前生一件事故工具(手動撿:走過去右鍵/E)
   const type = randItem();
@@ -348,7 +373,7 @@ function rewardTool(f) { // 清運達標 → 在身前生一件事故工具(手�
 }
 export function updateBottles(dt) {
   for (const t of bottles) {
-    if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; }
+    if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.elem = randGarbage(t.elem); t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; }
     if (t._smash) { shatterBottle(t); continue; }                    // 被拳打碎(v2-combat 只立旗,免 DAG 反向 import)
     if (t.held) continue;                                            // 被扛的瓶由 carry loop 定位
     if (t.z <= 2 && inPod(t.x, t.y)) { recycleGarbage(t); continue; } // Route A:落進回收口 = 清運(優先於碎裂;丟得進去才算,空中飛越不算)
@@ -399,7 +424,7 @@ export function pickUpBarrel(f, b) { // 桶/瓶共用(kind:'bottle' 只差浮字
   // clip 播完落回程序 barrelHold 姿勢 → 結尾幀請對齊 barrel_throw 的 grab_hold 幀(= ANIM.barrelHold)才無縫)
   if (CLIPS.barrel_pickup) { f.itemFx = game.time; f.itemClip = 'barrel_pickup'; }
   const bottle = b.kind === 'bottle', col = bottle ? elemColor(b.elem) : barrelChargeColor(b.charge);
-  addText(f.x, f.y - 30, bottle ? '抓起' + ITEM_INFO[b.elem].name + '！' : '抓起桶！', col); addRing(f.x, f.y, 30, col, 0.3, 4); game.sfx.push('upgrade');
+  addText(f.x, f.y - 30, bottle ? '抓起' + (GARBAGE_NAME[b.elem] || '廢料') + '！' : '抓起桶！', col); addRing(f.x, f.y, 30, col, 0.3, 4); game.sfx.push('upgrade'); // 瓶=垃圾元素(fire/ice/poison/lightning)→用 GARBAGE_NAME,不能查 ITEM_INFO(無 ice/poison 項→undefined.name 崩)
 }
 export function dropBarrel(f) {
   const b = f.carryObj; if (!b) return;

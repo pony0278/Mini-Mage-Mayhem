@@ -9,6 +9,7 @@ import {
   v2s, fighters, LOCAL, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   STAGE_NAME, METHOD_COL, METHOD_ZH, CLEANUP_NEED, INTRO_T, INTRO_GO,
+  GARBAGE_NAME, GARBAGE_ICON, ANGER_MAX, ANGER_STAGE_NAME, angerStage, SHIFT_T,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -131,10 +132,10 @@ function drawCoachLine() {
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
   else if (o.state === 'alive' && !o.stunned && o.stability < STAB_MAX * 0.55) { msg = '⚡ 對手即將可回收！繼續打'; col = '#ffd36d'; } // 攻擊 B 分支:快暈了
   else if (o.state === 'alive' && (o.flinchT > 0 || (me.punchFx > 0 && game.time - me.punchFx < 0.7))) { msg = '有效！繼續攻擊讓他失衡'; col = '#ffd36d'; } // 攻擊 B 分支:剛命中
+  else if (me.carryObj && !v2s.rampage) { msg = (me.carryObj.elem === v2s.demand ? '✓ 對的！丟進中央口' : '⚠ 中央口現在收 ' + (GARBAGE_ICON[v2s.demand] || '') + '，這個丟錯會惹怒 AI'); col = me.carryObj.elem === v2s.demand ? '#9affd0' : '#ffab5a'; } // 扛著垃圾:提示對不對
   else if (!me.item && !me.carryObj && nearPickup(me)) { msg = '右鍵 / E 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
-  else if (!me.carryObj && nearBottle(me)) { msg = 'E 撿垃圾 → 丟進回收口換工具，或砸對手'; col = '#9ee6ff'; } // 垃圾兩用(文檔 §3):清運 or 武器
-  else if (nearSwitch(me)) { msg = '⚠ 揍拉桿 → 啟動四角元素站洩漏（高風險）'; col = '#ff9a4a'; } // 走近未啟動總閘:告訴玩家它控制四站
-  else { msg = '目標：把對手丟進中央回收口 ×' + WIN_TARGET + '　撿垃圾清運換工具，或直接開打'; col = '#9ee6ff'; } // 待機預設:永遠給核心目標
+  else if (v2s.rampage) { msg = '♻ 把 AI 丟進中央回收口 ×' + WIN_TARGET + '　揍暈 → 右鍵抓 → 拖進去'; col = '#ff9a9a'; } // 暴走後核心目標
+  else { msg = '中央口現在收 ' + (GARBAGE_ICON[v2s.demand] || '') + (GARBAGE_NAME[v2s.demand] || '') + '：撿對的垃圾丟給它(分錯會惹怒 AI)'; col = '#9ee6ff'; } // 分類期待機預設:當前需求
   if (!msg) return;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
@@ -285,6 +286,41 @@ function drawCleanupMeter() {
   hctx.fillText('垃圾丟進回收口 → 換工具', x0 + 52 + full * (size + gap) + 8, y0 - 3);
 }
 
+/* 分類事故引擎 HUD(使用者設計文檔 §12):中央口需求大標(暴走→待回收人員)+ 輪班倒數 + AI 情緒 + 工作競賽計分。
+   易讀性=成敗關鍵(§16.5:玩家要知道 AI 為什麼暴走),所以每項都大且明確。 */
+function drawSorting() {
+  if (v2s.matchOver || v2s.introT > 0) return;
+  // ① 中央口需求(在艙口上方,大圖示+名):分類期=現在收🔥;暴走=待回收人員
+  const c = project(POD.x, POD.y, 92);
+  if (!c.behind) {
+    hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
+    const ramp = v2s.rampage, label = ramp ? '♻ 待回收人員 · 收人不收垃圾'
+      : '現在收：' + (GARBAGE_ICON[v2s.demand] || '') + ' ' + (GARBAGE_NAME[v2s.demand] || '');
+    hctx.font = '900 18px system-ui, sans-serif';
+    const w = hctx.measureText(label).width + 26;
+    hctx.fillStyle = ramp ? 'rgba(40,8,10,.82)' : 'rgba(8,16,22,.82)';
+    hctx.fillRect(c.x - w / 2, c.y - 15, w, 30);
+    hctx.strokeStyle = ramp ? 'rgba(255,90,80,.9)' : 'rgba(120,235,255,.7)'; hctx.lineWidth = 2; hctx.strokeRect(c.x - w / 2 + 1, c.y - 14, w - 2, 28);
+    hctx.fillStyle = ramp ? '#ff8a7a' : '#eafaff'; hctx.fillText(label, c.x, c.y + 1);
+    hctx.textBaseline = 'alphabetic';
+  }
+  if (v2s.rampage) return; // 暴走後不畫輪班/情緒/計分(換成收容戰 HUD)
+  // 左側狀態欄(下移到 y122+ 避開中央教練線 y62~100;清運表在 y58 仍在教練線上方):工作競賽 → 輪班倒數 → AI 情緒
+  hctx.textAlign = 'left';
+  hctx.font = '800 12px system-ui, sans-serif'; hctx.fillStyle = 'rgba(234,250,255,.85)';
+  hctx.fillText('分類競賽  你 ' + inc.sorted[LOCAL] + ' / AI ' + inc.sorted[1 - LOCAL], 24, 124);         // 工作競賽
+  const bw = 150, k = Math.max(0, Math.min(1, v2s.shiftT / SHIFT_T));                                    // 輪班倒數條
+  hctx.fillStyle = 'rgba(234,250,255,.8)'; hctx.fillText('⏰ 輪班 ' + Math.ceil(v2s.shiftT) + 's', 24, 144);
+  hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(90, 136, bw, 6);
+  hctx.fillStyle = k < 0.25 ? '#ff6b6b' : '#ffd257'; hctx.fillRect(90, 136, bw * k, 6);
+  const stg = angerStage(v2s.anger), icon = ['🙂', '❓', '😐', '😠', '🔥'][stg];                          // AI 情緒(暫定圖示,後續再改)+ 怒氣條
+  hctx.font = '800 13px system-ui, sans-serif'; hctx.fillStyle = stg >= 3 ? '#ff8a6a' : 'rgba(234,250,255,.92)';
+  hctx.fillText(icon + ' AI：' + ANGER_STAGE_NAME[stg], 24, 164);
+  const aw = 150, ak = Math.max(0, Math.min(1, v2s.anger / ANGER_MAX));
+  hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(90, 156, aw, 6);
+  hctx.fillStyle = stg >= 3 ? '#ff6b6b' : (stg >= 2 ? '#ffab5a' : '#9affd0'); hctx.fillRect(90, 156, aw * ak, 6);
+}
+
 /* 收容演出:艙口 LED 飄字(使用者拍板:輕量融景,像招牌 LED,不做側邊終端面板)。
    文字由 sim 排好(v2s.perform.line);這裡只管 LED 樣式:深底描邊膠囊 + 青字(失控段轉橘紅)+ 掃描期微閃。 */
 function drawPerformLED() {
@@ -327,12 +363,20 @@ export function drawHud() {
   hctx.fillText(aiOn ? '紅方：AI 對手　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', VW / 2, 48);
   // 三格收容進度 (每格標收容方式)= 勝利進度(人員回收);清運進度另畫一排,兩者刻意分開(文檔 §9)
   drawPips(0, 24, 1); drawPips(1, VW - 24, -1);
-  drawCleanupMeter(); // Route A 清運進度(本機;垃圾丟進艙換工具)
+  drawCleanupMeter(); // Route A 清運進度(本機;分對垃圾換工具)
+  drawSorting();      // 分類事故引擎:中央口需求/輪班倒數/AI 情緒/工作競賽計分/暴走待回收人員
   drawContainHud();
   drawItems();
   drawSwitchLabels();
   drawPerformLED(); // 收容演出 LED 飄字(艙口上方)
   if (v2s.introT <= INTRO_GO && !drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先;就位期讓位給開場字幕
+  if (v2s.rampageT > 0 && v2s.bannerText) { // 暴走轉場橫幅(同事翻臉那一刻)
+    hctx.save(); hctx.textAlign = 'center';
+    hctx.globalAlpha = Math.min(1, v2s.rampageT / 0.6);
+    hctx.font = '900 30px system-ui, sans-serif'; hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(8,8,16,.85)';
+    hctx.strokeText(v2s.bannerText, VW / 2, VH * 0.30); hctx.fillStyle = '#ff8a6a'; hctx.fillText(v2s.bannerText, VW / 2, VH * 0.30);
+    hctx.restore();
+  }
   drawIntro(); // 開場字幕:就位期=目標 → 尾段=「開始!」
   // stage / seal banner
   if (v2s.winBannerT > 0 && v2s.bannerText) {
@@ -346,5 +390,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // end-of-match incident report overlay
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: onboard-2', VW - 10, VH - 4);
+  hctx.fillText('build: sort-anger-1', VW - 10, VH - 4);
 }

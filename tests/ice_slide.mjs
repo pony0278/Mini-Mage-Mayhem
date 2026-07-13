@@ -86,21 +86,18 @@ await page.keyboard.up('d');
 R(`站上冰起步=小心走 ${Math.round(walk.speed)}px/s(≈SPEED×0.4,不鎖滑)`, !walk.sliding && walk.speed > 30 && walk.speed < 110);
 
 // ---------- ⑥ 滑進艙=收容 cause 'ice' ----------
-const c6 = await page.evaluate(() => new Promise(res => {
+// ⚠ 冰帶要蓋過艙心(不能只到艙邊):鎖滑貫穿入艙才在艙半徑內仍 >門檻;停在艙前=洩速到門檻下=永不收容(waitFor 空轉爆 protocolTimeout)。
+await page.evaluate(() => {
   const v = __v2, t = v.fighters[1];
-  t.x = 680; t.y = 320; t.vx = 0; t.vy = 0; t.stunned = false; t.stunT = 0; t.restunT = 0; t.frozen = false; t.fumbleT = 0; t.invuln = 0; t._onIce = false; t._slideVx = 0; t._slideVy = 0; t._slideT = -9;
+  t.x = 640; t.y = 320; t.vx = 0; t.vy = 0; t.stunned = false; t.stunT = 0; t.restunT = 0; t.frozen = false; t.fumbleT = 0; t.invuln = 0; t._onIce = false; t._slideVx = 0; t._slideVy = 0; t._slideT = -9;
   v.fighters[0].x = 200; v.fighters[0].y = 140;    // 本機閃開
-  __stamp(620, 320, 90);                            // 冰帶通到艙邊(艙 480,320 r46)
-  const n0 = v.state().containLog.length, t0 = v.game.time, trace = []; let last = '';
+  __stamp(560, 320, 130);                           // 冰帶蓋過艙心 x≈430–690(艙 480,320 r46)→ 鎖滑貫穿入艙
+  window.__n6 = v.state().containLog.length;
   t.vx = -250;                                      // 朝艙擊退 → 鎖滑
-  const iv = setInterval(() => {
-    const r = { t: +(v.game.time - t0).toFixed(2), x: Math.round(t.x), sl: Math.round(t._slideVx), st: t.stunned, pod: Math.round(Math.hypot(t.x - 480, t.y - 320)) };
-    const k = JSON.stringify([r.x, r.sl, r.st]); if (k !== last) { trace.push(r); last = k; }
-    const L = v.state().containLog;
-    if (L.length > n0 || v.game.time - t0 > 5) { clearInterval(iv); res({ last: L[L.length - 1] || null, trace: trace.slice(-8) }); }
-  }, 25);
-}));
-R(`滑進艙=收容(method=${c6.last && c6.last.m}, winner=${c6.last && c6.last.w})`, !!c6.last && c6.last.m === 'ice' && c6.last.w === 0, c6.last ? '' : JSON.stringify(c6.trace));
+});
+const got6 = await waitFor('v.state().containLog.length > window.__n6', 4);
+const c6 = await page.evaluate(() => __v2.state().containLog.slice(-1)[0] || null);
+R(`滑進艙=收容(method=${c6 && c6.m}, winner=${c6 && c6.w})`, got6 && !!c6 && c6.m === 'ice' && c6.w === 0, got6 ? JSON.stringify(c6) : 'no-contain(timeout)');
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);

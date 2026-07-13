@@ -1,5 +1,5 @@
 // 投擲瓶=場上物件(朋友反饋定案)驗收:
-// ①開場 4 瓶在點位(2冰2油)+補給座只出裝備類 ②右鍵撿瓶(carryObj kind bottle)+扛瓶全速(不吃 CARRY_SLOW)
+// ①開場 4 瓶在點位(四型垃圾各一)+補給座只出裝備類 ②右鍵撿瓶(carryObj kind bottle)+扛瓶全速(不吃 CARRY_SLOW)
 // ③丟瓶=拋物線+自然落地碎=蓋元素地板(油=FL.oil) ④丟冰瓶直擊=凍人+腳下碎
 // ⑤風吹地上瓶→高速滑行砸牆碎 ⑥拳打瓶=_smash→下一tick碎 ⑦爆桶波及→瓶連環碎 ⑧碎後 respawn 回原點位
 // ⑨風反彈飛行瓶(thrownBy 改歸風方) ⑩瓶被扛時 props 略過(免雙重繪)
@@ -20,7 +20,7 @@ const s1 = await page.evaluate(() => ({
   n: __v2.bottles.length, elems: __v2.bottles.map(t => t.elem).sort().join(','),
   padPool: __v2.pads.map(p => p.item), badPad: __v2.pads.some(p => p.item === 'ice' || p.item === 'oil'),
 }));
-R(`開場 4 瓶(${s1.elems})`, s1.n === 4 && s1.elems === 'ice,ice,oil,oil');
+R(`開場 4 瓶(${s1.elems})`, s1.n === 4 && s1.elems === 'fire,ice,lightning,poison'); // 分類事故引擎:四型垃圾各一(fire/ice/poison/lightning),oil 退出
 R(`補給座只出裝備類(${s1.padPool})`, !s1.badPad);
 
 // ---------- ② 撿瓶 + 扛瓶全速 ----------
@@ -62,7 +62,7 @@ R('扛瓶可跑、扛桶不可跑(輕重差異)', s2b.canRunBottle && !s2b.canRu
 // ---------- ③ 丟油瓶:拋物線+自然落地碎=油膜 ----------
 const s3 = await page.evaluate(() => {
   const v = __v2, C = v.fighters[1];
-  const t = v.bottles.find(b => b.elem === 'oil' && b.alive);
+  const t = v.bottles.find(b => b.alive) || v.bottles[0]; t.elem = 'oil'; // oil 退出垃圾型 → 強制設 elem 測油膜機制(shatterBottle 仍 handle oil)
   C.x = 200; C.y = 560; C.facing = 0; C.stunned = false; C.fumbleT = 0; C.carrying = null; C.carryObj = null;
   v.fighters[0].x = 60; v.fighters[0].y = 60; // 目標挪開(測純落地)
   t.x = C.x; t.y = C.y; t.held = true; C.carryObj = t;
@@ -82,7 +82,7 @@ R(`油瓶自然落地碎(落點 x≈${s3b.x},期望=出手228+range180=408)`, s3
 await page.evaluate(() => { const v = __v2; for (const t of v.bottles) { t.alive = true; t.respawn = 0; t.held = false; t.x = t.x0; t.y = t.y0; t.vx = t.vy = 0; t.flyT0 = -9; t.landed = true; t.z = 0; } });
 const s4 = await page.evaluate(() => {
   const v = __v2, C = v.fighters[1], O = v.fighters[0];
-  const t = v.bottles.find(b => b.elem === 'ice' && b.alive);
+  const t = v.bottles.find(b => b.alive) || v.bottles[0]; t.elem = 'ice'; // 供料隨機化 → 強制冰
   // ⚠ 遠離 POD(480,320,r46):凍住+在艙內=失控收容→整場 reset(踩過的陷阱)
   C.x = 400; C.y = 560; C.facing = 0; C.stunned = false; O.x = 500; O.y = 560; O.vx = O.vy = 0; O.invuln = 0; O.stunned = false; O.frozen = false; O.restunT = 0;
   t.x = C.x; t.y = C.y; t.held = true; C.carryObj = t;
@@ -177,7 +177,7 @@ R(`走進靜止瓶=頂開(不碎;位移 x 700→${s11b.x})`, s11b.alive && s11b.
 // ---------- ⑫ 強風擊飛地上瓶 → 進拋物弧 → 落地碎(空地也碎;新行為,舊版滑走存活)----------
 await page.evaluate(() => { const v = __v2; for (const t of v.bottles) { t.alive = true; t.respawn = 0; t.held = false; t.x = t.x0; t.y = t.y0; t.vx = t.vy = 0; t.flyT0 = -9; t.landed = true; t.z = 0; t._smash = false; } for (const b of v.barrels) { b.alive = false; b.respawn = 99; } v.fighters[0].x = 60; v.fighters[0].y = 60; });
 const s12 = await page.evaluate(() => {
-  const v = __v2, C = v.fighters[1], t = v.bottles.find(b => b.elem === 'oil');
+  const v = __v2, C = v.fighters[1], t = v.bottles.find(b => b.alive) || v.bottles[0]; t.elem = 'oil';
   t.x = 380; t.y = 540; t.vx = t.vy = 0; t.alive = true; t.held = false; t.z = 0; t.landed = true; // 南邊空地(遠離 POD/牆)
   C.x = 300; C.y = 540; C.facing = 0; C.stunned = false; C.item = null;                            // d=80 中軸 → force≈465 > MIN 300
   v.castWind(C);

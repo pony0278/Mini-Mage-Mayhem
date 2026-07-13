@@ -17,7 +17,7 @@ const floorAt = (x, y) => page.evaluate(([x, y]) => import('./js/v2-floor.js').t
 const s1 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], o = v.fighters[0];
   o.x = 60; o.y = 60; o.frozen = false;
-  const t = v.bottles.find(b => b.elem === 'oil' && b.alive);
+  const t = v.bottles.find(b => b.alive) || v.bottles[0]; t.elem = 'oil'; // oil 退垃圾型 → 強制設測油膜
   f.x = 200; f.y = 520; f.facing = 0; f.stunned = false; f.carryObj = null; f.carrying = null;
   t.x = f.x; t.y = f.y; t.held = true; f.carryObj = t;
   v.launchBarrel(f);

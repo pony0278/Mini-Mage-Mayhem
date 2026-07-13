@@ -29,8 +29,9 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `pickup.mjs`    | 手動撿道具(C 案):不自動撿、被暈掉地上帶剩餘次數、地上可搶、傳送(逃脫類)不掉、TTL 消失 |
 | `ice_slide.mjs` | 冰面鎖滑:帶動量直線滑、撞牆停+暈、滑進艙=收容、靜止站上=小心走 |
 | `mobilefx.mjs`  | 手機自動降級:觸控+行動 UA → FX_LOW 自動開(點光剝除/無 transmission)+ dpr 夾 1.5;桌機完整;`?fx=full` 覆蓋 |
-| `onboard.mjs`   | 上手/循環重整:首局教學旗標(localStorage)→示範者 AI 取代不會動假人;Route A 清運經濟(垃圾瓶進艙=清運+1/歸屬 thrownBy/達標生工具);玩家攻擊→切 fight;首局打完記 localStorage |
+| `onboard.mjs`   | 上手開場框架(只驗易讀層;經濟/同事/怒氣移到 `sorting.mjs`):首局教學旗標(localStorage)、AI 同事開場即開(demo 取代不會動假人)、開場字幕/鏡頭帶場計時、就位期 AI 靜止、首局打完記 localStorage |
 | `perform.mjs`   | 回收演出 V0.8:收容→演出啟動(即時計分/snap 艙心/罩升起)、期間不二次收容、收尾才彈回+升階、#2 衝突字+火花震艙邊、#3 壓縮隱藏→matchOver+報告 |
+| `sorting.mjs`   | 分類事故引擎:開局需求+四型垃圾、餵對=清運+計分+換需求+怒氣↓、餵錯=事故+怒氣↑↑+不計分、非玩家丟入不計分、清運達標生工具、砸 AI→怒氣↑、怒氣爆滿→暴走(AI 切 fight)、輪班倒數歸零→暴走、AI 同事讀需求分類(工作競賽) |
 
 ## Headless 陷阱(踩過的;寫新套件先讀,`js/CLAUDE.md` §測試 有完整版)
 
@@ -41,7 +42,9 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 2. **本機玩家 `fighters[0]` 的 facing 每幀吃滑鼠重算**(桌機瞄準)→ 施放者測試**一律用 `fighters[1]`**,
    或每 tick 重新釘 facing。
 3. **POD 在 (480,320) r46**:凍住/高速的角色進艙半徑=失控收容→整場 reset,污染測試。
-   測冰凍/擊飛時把角色擺**南邊空地**(如 y=540)避開。
+   測冰凍/擊飛時把角色擺**南邊空地**(如 y=540)避開。**反過來要測「滑進艙=收容」**:冰帶必須 `stampElement` **蓋過艙心**
+   (非只到艙邊)——鎖滑貫穿入艙才在艙半徑內仍 >`slideContainCur` 門檻;停在艙前=洩速到門檻下=永不收容,
+   `waitFor` 空轉到 game-time 逾時→在單一長 `page.evaluate` 內會爆 puppeteer protocolTimeout(整支掛死)。
 4. **hitstop 0.12s** 會凍住 per-fighter step 迴圈 → `advance` 要給足(≥0.3s)跨過。
 5. **server 從 repo root 起**:套件用 `import('./js/v2-floor.js')` 由瀏覽器對 server 根解析,從 `tests/` 起會 404。
 6. **狀態污染**:上一個 case 留下的升壓桶引信到點會爆、`stampElement` 留的地板會殘留 → 新 case 先 `resetFloor()` /
