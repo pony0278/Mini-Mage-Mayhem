@@ -27,7 +27,7 @@ import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundI
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
-import { CLIPS, prepClip } from './brawler-clips.js';   // ?clip= 試播入口 + 動作接觸表工具(runtime 注入/定格 clip)
+import { CLIPS } from './brawler-clips.js';   // ?clip= 試播入口用(clip 名單+時長)
 
 let prevLocalSolid = true; // track when YOU step off solid ground (isles diagnostics)
 let _armedShown = false;       // 四角站通電光環的上次同步值(step 幀尾偵測 v2s.stationsArmed 變化)
@@ -44,11 +44,6 @@ const TEST_CLIP = new URLSearchParams(location.search).get('clip');
 // 憲章 §15 元素系統休眠:桶/補給座/拉桿預設停用(核心驗證期);?props=full 回復=舊沙盒/測試模式。
 const PROPS_FULL = new URLSearchParams(location.search).get('props') === 'full';
 let _clipNextT = 0;
-// 動作接觸表工具(skill/tools:brawler-animator)用的兩個 dev hook——把候選 clip snapshot runtime 注入 CLIPS
-// + 定格在某一影格,不必先寫進 brawler-clips.js 就能 headless 渲染關鍵幀迭代。正式玩法不碰(只在測試/授權工具啟用)。
-let _clipHold = null; // { name, fr } 或 null;非 null 時 step 每幀把本機角色的 itemClip 釘在該幀
-function injectClip(name, snap) { CLIPS[name] = prepClip(snap); return CLIPS[name].dur; }        // 注入候選 clip(可覆蓋同名)
-function holdClipFrame(name, fr) { _clipHold = (name == null) ? null : { name, fr: fr || 0 }; }   // 定格某幀(null=解除)
 function playClip(name, f = fighters[LOCAL]) {
   const c = CLIPS[name];
   if (!c) { console.warn('[v2] playClip: 無此 clip「' + name + '」;可用:', Object.keys(CLIPS).join(', ')); return 0; }
@@ -223,12 +218,6 @@ function step(dt) {
     if (TEST_CLIP) {                                   // ?clip= 試播:循環播放 + 凍結對手 AI
       fighters[1 - LOCAL].ai = false;
       if (game.time >= _clipNextT) _clipNextT = game.time + (playClip(TEST_CLIP) || 1) + 0.5;
-    }
-    if (_clipHold) {                                   // 接觸表工具:每幀把本機角色的 clip 釘在指定影格(繞過節流下的慢 blend)
-      const f = fighters[LOCAL];
-      f.itemClip = _clipHold.name; f.itemFx = game.time - _clipHold.fr / 60;
-      f.punchFx = -9; f.carryClip = null; f.carryObj = null; f.carrying = null; f.stunned = false; f.fumbleT = 0;
-      fighters[1 - LOCAL].ai = false;
     }
     stepFloor(dt); // 地板化學:火沿油滾動 + 每格衰退/預警 + 電水雙計時器(注入=道具/站;cut 3 接)
     for (const f of fighters) {
@@ -421,7 +410,7 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning; v2s=可重賦值純量容器,測試歸零 introT 用)
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
-  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip, injectClip, holdClipFrame, CLIPS,
+  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
   punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, endShift, startEject,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, stage: v2s.stage,
