@@ -17,7 +17,7 @@ import {
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
@@ -298,7 +298,8 @@ function step(dt) {
       if (jumping(f) && !f.stunned) continue; // 主動跳躍=受控,飛越艙口不算失控入艙(帶著鎖滑動量跳過艙也安全);暈著照收
       const thrown = inThrowFlight(f);
       if ((f.stunned || thrown || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
-        const cause = thrown ? 'throw' : (onSlipperyIce(f.x, f.y) || game.time - (f._slideT || -9) < 0.5) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind'); // 剛滑出冰面衝進艙也算 ice
+        const cause = (thrown && f._lob === WIND_CARRY_LOB) ? 'wind' // 風壓空中接送進艙=記 wind(連段收尾;brawl-3)
+          : thrown ? 'throw' : (onSlipperyIce(f.x, f.y) || game.time - (f._slideT || -9) < 0.5) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind'); // 剛滑出冰面衝進艙也算 ice
         containByEnviron(f, cause); break;
       }
     }
@@ -402,7 +403,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, bottles, shatterBottle, roundWins, containLog, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
   punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,

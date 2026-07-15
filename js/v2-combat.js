@@ -373,27 +373,32 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
       if (o.guardStam <= 0) guardBreak(o);                              // 這一擋耗盡=破防(攻擊方免費機會)
       continue;                                                         // 擋掉:無穩定值傷害、不開推開窗、不打飛
     }
+    const wasStunned = o.stunned;                                       // 命中前就暈著? → 這拳=挑飛 launcher(brawl-3 連段收尾)
     o.faceT = 0.2; o.hurt = 0.12; o.lastHitBy = f.pid; o.lastHitT = game.time;
     o.stability = Math.max(0, o.stability - COMBO_STAB[stage]); o.stabCd = 0.8;
     flinch(o, a, fin ? 0.32 : 0.22);
     const cpx = o.x - Math.cos(a) * o.r * 0.7, cpy = o.y - Math.sin(a) * o.r * 0.7; // 火花開在拳頭接觸點
     hitSpark(cpx, cpy, '#ffe0a3', fin ? 2.2 : 1.5); addRing(cpx, cpy, fin ? 34 : 20, '#ffd36d', fin ? 0.32 : 0.22, fin ? 5 : 3);
-    if (fin) { addText(o.x, o.y - 34, o.guarding ? '穿防重擊！' : '重擊！', '#ffb14a'); o.guarding = false; } // 終結技穿防:破掉架式
+    if (fin && !wasStunned) { addText(o.x, o.y - 34, o.guarding ? '穿防重擊！' : '重擊！', '#ffb14a'); o.guarding = false; } // 終結技穿防:破掉架式
     // 格擋窗口:被打中(還能動)→ 短窗內按格擋鍵可推開攻擊方;AI 有機率排程一次推開
     if (!o.stunned && !o.carriedBy) {
       o.pushWinT = PUSH_WIN; o.pushFrom = f;
       if (o.ai && o.pushCd <= 0 && !o._aiPushAt && Math.random() < AI_PUSH_CHANCE) o._aiPushAt = game.time + 0.15 + Math.random() * 0.3;
     }
-    if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 穩定值歸零 → 擊暈(爽鬥回歸:打夠就暈,無能量閘)
-    // 鉤拳不位移(受擊=純踉蹌);終結技=打飛:小拋物線(擊中→打飛→落地),與丟人同管線、lob 較小。
-    // 放在擊暈判定之後:stunFighter 會把速度×0.4,打崩+打飛要同時成立(落地時還暈著)。
-    if (fin) {
+    const stunsNow = o.stability <= 0 && !o.stunned && o.restunT <= 0;
+    if (stunsNow) stunFighter(o);                                       // 穩定值歸零 → 擊暈(無能量閘)
+    // brawl-3 打飛三分層:①命中前已暈=挑飛 launcher(接風壓吹進艙的入口)②這拳打暈=原地暈(連段黏臉、不飛走)
+    // ③還有穩定值=純踉蹌不位移(連段接得到暈,鉤拳/終結技皆然)。空中被鉤拳=拍蚊子小翻滾(brawl-2 空中規則)。
+    if (wasStunned) {                                                   // 對「已暈」的對手出拳 → 大挑飛(瞄向艙那側,接風壓接送)
       const F = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;            // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
       o.vx = Math.cos(a) * F; o.vy = Math.sin(a) * F;
       o._thrownT = game.time; o._lob = PUNCH_LAUNCH_LOB; o.fumbleT = PUNCH_LAUNCH_LOB.T + 0.1;
-      o._jumpT = -9; o._diveT0 = -9;                                    // 空中被終結=照樣挑飛(彈道覆蓋跳躍)
+      o._jumpT = -9; o._diveT0 = -9;                                    // 空中被再擊=照樣挑飛(彈道覆蓋跳躍)
       if (o.carrying) dropCarry(o);                                     // 飛行中不可能繼續扛人(扛桶由 v2.js 扛桶 loop 的 fumbleT 條件掉)
-    } else if (jumping(o) || o._diveT0 > -5) {                          // 空中挨鉤拳=拍蚊子:小翻滾落地(brawl-2 空中規則)
+      addText(o.x, o.y - 40, '挑飛！', '#ffd36d');
+    } else if (stunsNow) {                                              // 打暈那拳:原地暈(不飛走,連段接得住;之後補一拳=挑飛 或 抓→丟)
+      addShake(5); addText(o.x, o.y - 40, '打暈！', '#ffe97a');
+    } else if (jumping(o) || o._diveT0 > -5) {                          // 空中挨鉤拳=拍蚊子:小翻滾落地
       o._jumpT = -9; o._diveT0 = -9;
       const F2 = AIR_HIT_LOB.range / AIR_HIT_LOB.T;
       o.vx = Math.cos(a) * F2; o.vy = Math.sin(a) * F2;

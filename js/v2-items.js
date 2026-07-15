@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod,
   GARBAGE_ELEMS, GARBAGE_NAME, randGarbage, bottleRespawnT,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
-  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
+  WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, WIND_CARRY_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
   WATER_SLAM_DIST, WATER_R, WATER_KNOCK, WATER_STAB,
   LIGHTNING_RANGE, LIGHTNING_WIDTH, LIGHTNING_KNOCK,
@@ -20,7 +20,7 @@ import {
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
-import { flinch, camKick, dropCarry, stunFighter, freezeFighter } from './v2-combat.js';
+import { flinch, camKick, dropCarry, stunFighter, freezeFighter, inThrowFlight } from './v2-combat.js';
 import { CLIPS } from './brawler-clips.js';
 import { stampElement, applyElement, stateAt, stateAtPixel, FL } from './v2-floor.js';
 import { circleHitsSolid } from './fx.js';
@@ -113,10 +113,16 @@ export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手
     const [bx, by] = windScatter(w.ux, w.uy);                               // 方向亂數擾動=吹亂(不齊步滑)
     o.faceT = 0.3; o.hurt = 0.1; o.lastHitBy = f.pid; o.lastHitT = game.time;
     if (o.carrying) dropCarry(o);                                            // 吹中搬運者 → 鬆手
-    if (w.force > WIND_TUMBLE_MIN && !o.stunned) {                          // 夠強(近中心)→ 吹翻滾:接拋飛管線=趴滾+爬起(非直立滑行)
+    const airborne = o.z > 1 || inThrowFlight(o);                           // 已騰空(挑飛/跳/翻滾中)? → 乾淨接送
+    if (airborne) {                                                          // brawl-3 空中接送:往瞄準方向直送(不 scatter/不墊穩定)=一路吹進艙、無落地反擊
+      o.vx = w.ux * w.force; o.vy = w.uy * w.force;                          // 用原始方向(不亂),精準送進艙口
+      o._lob = WIND_CARRY_LOB; o._thrownT = game.time; o.fumbleT = WIND_CARRY_LOB.T + 0.1;
+      o._jumpT = -9; o._diveT0 = -9;                                         // 接管彈道(覆蓋跳/挑飛殘值)
+      addText(o.x, o.y - 30, '吹進去！', '#9ee6ff');
+    } else if (w.force > WIND_TUMBLE_MIN && !o.stunned) {                    // 地面強命中(近中心)→ 吹翻滾:接拋飛管線=趴滾+爬起(非直立滑行)
       o.vx = bx * w.force; o.vy = by * w.force;
       o._lob = WIND_TUMBLE_LOB; o._thrownT = game.time; o.fumbleT = WIND_TUMBLE_LOB.T + 0.1;
-      o.stability = Math.max(o.stability, 25);                              // 落地不至於原地再被暈
+      o.stability = Math.max(o.stability, 25);                              // 落地不至於原地再被暈(地面吹飛防站樁鎖;空中接送刻意不墊)
       addText(o.x, o.y - 30, '吹翻！', '#dff3ff');
     } else {                                                                // 弱(邊緣/遠)→ 只吹歪踉蹌
       o.vx += bx * w.force; o.vy += by * w.force;

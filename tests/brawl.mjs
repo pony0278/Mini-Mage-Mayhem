@@ -38,16 +38,16 @@ const stun = await page.evaluate(() => { const v = __v2;
 });
 R('連拳削穩定值歸零=擊暈(無能量閘)', stun.stunned && stun.punches <= 8, JSON.stringify(stun));
 
-// ---------- ③ 終結技=打飛(PUNCH_LAUNCH_LOB) ----------
+// ---------- ③ 對「已暈」的對手出拳=挑飛 launcher(brawl-3 連段收尾;連段中的拳不飛走) ----------
 const fling = await page.evaluate(() => { const v = __v2;
   const a = v.fighters[1], o = v.fighters[0];
-  o.stunned = false; o.stunT = 0; o.restunT = 9; o.stability = 100; o.invuln = 0; o.fumbleT = 0; o._lob = null; // restunT 防這拳又觸發暈,分離「打飛」判定
-  a.x = 470; a.y = 540; o.x = 500; o.y = 540; o.vx = o.vy = 0;
-  a._strikeKind = 2; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a);
-  const lobV = v.PUNCH_LAUNCH_LOB.range / v.PUNCH_LAUNCH_LOB.T; // 出手速度=range/T 現算(挑空 lob:短程高頂,速度不大)
+  o.stunned = true; o.stunT = 5; o.restunT = 0; o.stability = 0; o.invuln = 0; o.fumbleT = 0; o._lob = null; o.carrying = null; // 已暈的對手
+  a.x = 470; a.y = 540; o.x = 500; o.y = 540; o.vx = o.vy = 0; a.punchCd = 0;
+  a._strikeKind = 0; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a); // 普通鉤拳打已暈者=挑飛
+  const lobV = v.PUNCH_LAUNCH_LOB.range / v.PUNCH_LAUNCH_LOB.T;
   return { lob: o._lob === v.PUNCH_LAUNCH_LOB, fumble: +o.fumbleT.toFixed(2), speed: Math.round(Math.hypot(o.vx, o.vy)), lobV: Math.round(lobV) };
 });
-R('終結技命中=打飛(PUNCH_LAUNCH_LOB 彈道+翻滾,出手速度=range/T)', fling.lob && fling.fumble > 0 && Math.abs(fling.speed - fling.lobV) <= 5, JSON.stringify(fling));
+R('對已暈者出拳=挑飛(PUNCH_LAUNCH_LOB;連段收尾/接風壓入口)', fling.lob && fling.fumble > 0 && Math.abs(fling.speed - fling.lobV) <= 5, JSON.stringify(fling));
 
 // ---------- ④ 完美格擋=反暈 ----------
 const parry = await page.evaluate(() => { const v = __v2;
