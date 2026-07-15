@@ -12,7 +12,7 @@ import { updateDeathTheater, addText, addRing, updateParticles, updateRings, upd
 import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, updateMouseWorld, mouseScreen } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
-  v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog, PARRY_SLOW,
+  v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
   resetFighter, resetBarrels, resetPads, resetGroundItems, groundItems, resetStage, resetStations,
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
@@ -235,7 +235,7 @@ function step(dt) {
       if (f.comboT > 0) f.comboT -= dt;
       if (f.pushCd > 0) f.pushCd -= dt;
       if (f.pushWinT > 0) { f.pushWinT -= dt; if (f.pushWinT <= 0) f._aiPushAt = 0; }
-      if (f.parryWinT > 0) { f.parryWinT -= dt; if (f.parryWinT <= 0) f.parryFrom = null; } // 黃金窗口過期
+      if (f._counterFrom && game.time - f._counterAt > 0.6) f._counterFrom = null; // 反擊窗口早過期(擋了沒反擊)→ 清掉懸空攻擊者參照
       updateGuard(f, dt); // 防禦架式:耐力衰退/回充/破防(guarding 由 pollGuard 設;AI 暫不舉防=只回充)
       if (f.ai && f._aiPushAt && game.time >= f._aiPushAt) { f._aiPushAt = 0; doPushOff(f); } // AI 的格擋反應
       if (f._strikeAt && game.time >= f._strikeAt) resolveStrike(f); // impact 影格到 → 判定命中(起手被打斷則取消)
@@ -379,15 +379,11 @@ function cycleSlowmo() {
 }
 showSlowmo();
 
-let grayOn = false;
 function frame(now) {
   let dt = Math.min(0.033, (now - last) / 1000);
   last = now;
   if (slowmo < 1) dt *= slowmo;   // 慢動作觀察:整場模擬按倍率放慢(動畫/判定同步慢,可看清出拳過程)
-  // 精準格擋黃金時間:本機玩家被瞄準的起手期 → 時間放慢+畫面去彩(HUD 保持彩色,提示跳出來)
-  const parryActive = !v2s.matchOver && fighters[LOCAL].parryWinT > 0 && !fighters[LOCAL].ai;
-  if (parryActive) dt *= PARRY_SLOW;
-  if (parryActive !== grayOn) { grayOn = parryActive; gameCanvas.style.filter = parryActive ? 'saturate(0.12) brightness(0.9)' : ''; }
+  // 反擊拳改制(brawl-3.1):不再有慢動作/灰屏提示——反擊靠「擋下瞬間 hitstop」的手感抓時機(讓玩家自己體會)。
   updateMouseWorld(); // 滑鼠螢幕座標 → 地面世界座標(供本地玩家瞄準)
   step(dt);
   if (touchMod) touchMod.setReportVisible(v2s.matchOver); // 結算畫面亮觸控「再戰/複製」、收起對戰控制(桌機 no-op)
@@ -426,7 +422,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
     guardStam: [Math.round(fighters[0].guardStam), Math.round(fighters[1].guardStam)],
     guardLock: [+fighters[0].guardLock.toFixed(2), +fighters[1].guardLock.toFixed(2)],
     strikePending: [fighters[0]._strikeAt > 0, fighters[1]._strikeAt > 0],
-    parries: inc.parries, parryWin: [+fighters[0].parryWinT.toFixed(3), +fighters[1].parryWinT.toFixed(3)],
+    parries: inc.parries, counter: [!!fighters[0]._counterFrom, !!fighters[1]._counterFrom],
     pushCd: [+fighters[0].pushCd.toFixed(2), +fighters[1].pushCd.toFixed(2)] }) };
 // 練習模式:B 鍵切換 AI 開關。關掉後紅方不動(不追、不打),當成手感練習的假人。
 // 讀 fighters[1].ai 為唯一真相(tune 面板的勾選也吃這條),HUD 據此顯示狀態。

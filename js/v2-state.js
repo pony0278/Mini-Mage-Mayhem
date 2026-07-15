@@ -61,10 +61,13 @@ export const DIVE_CD = 0.6;        // 下壓後拳冷卻
 export const AI_JUMP_CHANCE = 0.012, AI_JUMP_CD = 4; // AI 每幀起跳率(中距離對峙時)+ 冷卻;起跳後半程自動下壓
 // 格擋推開:被打中後 PUSH_WIN 秒內按格擋鍵 → 把攻擊方推開+踉蹌,斷 combo;冷卻 PUSH_CDT
 export const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, PUSH_STAGGER = 0.45, AI_PUSH_CHANCE = 0.22;
-// 精準格擋(節奏遊戲反擊):對手出拳預測會命中且你格擋可用 → 黃金窗口=對方起手期(STRIKE_DELAY),
-// 本機時間放慢 PARRY_SLOW 倍+灰屏,窗口內按格擋鍵=反暈對方;超時挨打後按=普通推開;空按=進冷卻。
-// 同一顆鍵三層結果,時機決定一切。AI 不會精準格擋(玩家專屬爽點;難度分級再說)。
-export const PARRY_SLOW = 0.3;
+// 反擊拳(brawl-3.1 改制,使用者拍板 2026-07-15:讓玩家自己體會,不再有慢動作/灰屏/大字提示)：
+// 先「按住 Shift 成功擋下」對手的鉤拳 → 開一個反擊窗口 = 擋下後停頓 COUNTER_DELAY(逼你別狂按),
+// 停頓過後的 COUNTER_WIN 內按「左鍵出拳」= 反擊拳=反暈攻擊者;太早按=喪失窗口、太晚=過期。
+// 唯一線索=擋下瞬間的 hitstop(手感抓,無 UI 提示)。AI 不舉防→不會反擊(玩家專屬)。
+// 終結技穿防不可擋→不可反擊(反擊只從擋下鉤拳來)。
+export const COUNTER_DELAY = 0.1;   // 擋下後的停頓(這段內按左鍵=太早,喪失反擊)
+export const COUNTER_WIN = 0.25;    // 停頓過後的反擊窗口長度(緊=自己體會)
 // 按住防禦架式(2026-07):隨時可舉防、擋普通鉤拳(前兩段);終結技+元素穿防;耐力耗盡=破防。
 // 空按不再進冷卻(改由耐力當防呆閘門)。數值 ?tune=1 可調。
 export const GUARD_MOVE = 0;            // 舉防時移動倍率(0=定身;想拉開就得放防)
@@ -317,7 +320,7 @@ export function resetFighter(f) {
   f.z = 0;                           // 被拋飛的 sim 高度(B 案彈道;v2.js step 每幀由 lobZ 算,判定 gate+render 都讀它)
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)
   f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
-  f.parryWinT = 0; f.parryWin0 = 0; f.parryFrom = null;  // 精準格擋黃金窗口(剩餘/總長/攻擊者)
+  f._counterFrom = null; f._counterAt = -9;              // 反擊拳:擋下後記攻擊者 + 反擊窗口開啟時刻(game.time+COUNTER_DELAY)
   f.guarding = false; f.guardStam = GUARD_STAM_MAX; f.guardLock = 0; f.guardRegenT = 0; // 按住防禦架式:是否舉防/耐力/破防鎖定/回充延遲計時
   f._performing = false; f._hidden = false;             // 收容演出:被罩在艙心(v2.js 迴圈凍結) / 壓縮後隱藏(render 不畫)
   if (f._lastItem === undefined) f._lastItem = null;     // 本場拿過的最後一種道具(演出分類字用;跨回合保留,restartMatch 清)

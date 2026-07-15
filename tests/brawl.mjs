@@ -49,17 +49,27 @@ const fling = await page.evaluate(() => { const v = __v2;
 });
 R('對已暈者出拳=挑飛(PUNCH_LAUNCH_LOB;連段收尾/接風壓入口)', fling.lob && fling.fumble > 0 && Math.abs(fling.speed - fling.lobV) <= 5, JSON.stringify(fling));
 
-// ---------- ④ 完美格擋=反暈 ----------
-const parry = await page.evaluate(() => { const v = __v2;
+// ---------- ④ 反擊拳(brawl-3.1:擋下鉤拳→停頓→左鍵反擊反暈) ----------
+const counter = await page.evaluate(() => { const v = __v2;
   const a = v.fighters[1], d = v.fighters[0];
-  a.stunned = false; a.stunT = 0; a.restunT = 0; a.frozen = false; a.stability = 100;
-  d.stunned = false; d.stunT = 0; d.fumbleT = 0; d._lob = null; d.vx = d.vy = 0; d.pushCd = 0;
+  a.stunned = false; a.stunT = 0; a.restunT = 0; a.frozen = false; a.stability = 100; a.carriedBy = null; a.fumbleT = 0;
+  d.stunned = false; d.stunT = 0; d.fumbleT = 0; d.vx = d.vy = 0; d.pushCd = 0; d.punchCd = 0; d.guardStam = 100; d._counterFrom = null; d.carryObj = null; d.carrying = null;
   a.x = 470; a.y = 540; d.x = 500; d.y = 540;
-  d.parryWinT = 0.2; d.parryWin0 = 0.2; d.parryFrom = a;   // 模擬黃金窗(對方那拳正要到)
-  v.doGuard(d);
-  return { attackerStunned: a.stunned, winCleared: d.parryWinT === 0 };
+  // ① 舉防擋下對手鉤拳 → 開反擊窗口
+  d.guarding = true; a._strikeKind = 0; a._strikeDir = Math.atan2(d.y - a.y, d.x - a.x); v.resolveStrike(a);
+  const opened = d._counterFrom === a;
+  d.guarding = false;
+  // ② 停頓內太早按左鍵 = 喪失反擊(逼你別狂按)
+  d._counterAt = v.game.time + 999; d.punchCd = 0; d.x = 500; d.y = 540; a.x = 470; a.y = 540; v.punch(d);
+  const earlyLost = d._counterFrom === null && !a.stunned;
+  // ③ 窗口內按左鍵 = 反擊反暈攻擊者
+  a.stunned = false; a.stunT = 0; a.restunT = 0; d._counterFrom = a; d._counterAt = v.game.time - 0.05; // 0<=dt0<COUNTER_WIN
+  d.punchCd = 0; d.x = 500; d.y = 540; a.x = 470; a.y = 540; v.punch(d);
+  return { opened, earlyLost, counterStunned: a.stunned };
 });
-R('完美格擋=反暈攻擊者(抓取回合入場券)', parry.attackerStunned && parry.winCleared, JSON.stringify(parry));
+R('擋下鉤拳=開反擊窗口', counter.opened, JSON.stringify(counter));
+R('停頓內太早按=喪失反擊(逼你別狂按)', counter.earlyLost, JSON.stringify(counter));
+R('窗口內左鍵=反擊反暈攻擊者', counter.counterStunned, JSON.stringify(counter));
 
 // ---------- ⑤ 搬進艙=resolveContain(roundWins+containLog) ----------
 await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];

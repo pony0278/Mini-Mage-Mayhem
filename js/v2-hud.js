@@ -83,27 +83,7 @@ function drawContainHud() {
     }
   }
 }
-// 精準格擋黃金時間:世界已被 frame() 去彩+緩速,這裡疊上大提示+倒數條(HUD 保持彩色)
-function drawParryPrompt() {
-  const me = fighters[LOCAL];
-  if (me.parryWinT <= 0 || me.ai || v2s.matchOver) return false;
-  const cx = VW / 2, cy = VH * 0.40;
-  const pk = v2s.lowFlicker ? 1 : 0.85 + 0.15 * Math.sin(game.time * 30);
-  hctx.save();
-  hctx.textAlign = 'center';
-  hctx.font = '900 44px system-ui, sans-serif';
-  hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(8,8,16,.85)';
-  hctx.strokeText('⚡ Shift 反擊！', cx, cy);
-  hctx.globalAlpha = pk; hctx.fillStyle = '#ffe97a';
-  hctx.fillText('⚡ Shift 反擊！', cx, cy);
-  // 倒數條:剩餘窗口比例
-  const bw = 260, bh = 10, p = Math.max(0, Math.min(1, me.parryWinT / (me.parryWin0 || 0.15)));
-  hctx.globalAlpha = 1;
-  hctx.fillStyle = 'rgba(8,8,16,.72)'; hctx.fillRect(cx - bw / 2 - 2, cy + 16 - 2, bw + 4, bh + 4);
-  hctx.fillStyle = '#ffe97a'; hctx.fillRect(cx - bw / 2, cy + 16, bw * p, bh);
-  hctx.restore();
-  return true;
-}
+// 反擊拳改制(brawl-3.1):拿掉大字提示/倒數條/慢動作/灰屏——反擊靠「擋下瞬間 hitstop」的手感抓,讓玩家自己體會。
 // 教練提示線(玩家反饋:「指示要更明顯地告訴我現在該做什麼」):
 // 按優先序只顯示一條,大字置中脈動,告訴本機玩家當下最重要的行動。
 function nearPickup(f) { // 附近有可撿的補給座道具或地上掉落道具(手動撿提示用;空手才撿得到)
@@ -318,7 +298,7 @@ export function drawHud() {
   drawContainHud();
   drawItems();
   drawSwitchLabels();
-  if (v2s.introT <= INTRO_GO && !drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先;就位期讓位給開場字幕
+  if (v2s.introT <= INTRO_GO) drawCoachLine(); // 就位期讓位給開場字幕(反擊提示已移除=玩家自己體會)
   // stage / seal banner
   if (v2s.winBannerT > 0 && v2s.bannerText) {
     hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
@@ -333,5 +313,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: brawl-3', VW - 10, VH - 4);
+  hctx.fillText('build: brawl-3.1', VW - 10, VH - 4);
 }
