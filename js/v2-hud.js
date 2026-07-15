@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   INTRO_T, INTRO_GO,
-  GARBAGE_NAME, GARBAGE_ICON, SEQ_LEN, SETS_WIN, ENERGY_MAX, seqNeed,
+  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, METHOD_ZH,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -122,22 +122,20 @@ function nearSwitch(f) { // 附近有未啟動的緊急拉桿(教學提示用;�
 }
 function drawCoachLine() {
   const me = fighters[LOCAL], o = fighters[1 - LOCAL];
-  const need = seqNeed(LOCAL), full = v2s.energy[LOCAL] >= ENERGY_MAX;
   let msg = null, col = '#ffd36d';
-  // 憲章動態教學:依玩家實際行為即時切提示;待機時永遠給核心目標(找對元素→丟中央口)。
+  // 爽鬥動態教學:依玩家實際行為即時切提示——一路引到「打暈→抓→丟進回收口」;待機時永遠給核心目標。
   if (me.carriedBy) { msg = '連打 ◀A D▶ 掙脫！'; col = '#9affd0'; }
-  else if (me.carrying) { msg = '拖進中央回收口＝對手停工 3 秒！或 左鍵拋擲'; col = '#c98cff'; }
-  else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '♻ 對手暈了！右鍵 / E 抓住 → 丟進回收口＝3 秒停工'; col = '#9affd0'; }
+  else if (me.carrying) { msg = '拖進中央回收口！或 左鍵拋擲'; col = '#c98cff'; }
+  else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '♻ 對手可回收了！右鍵 / E 抓住 → 拖進回收口'; col = '#9affd0'; }
   else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
-  else if (me.stunned) { msg = '你被打暈了…!'; col = '#ff9a9a'; }
-  else if (me.carryObj && me.carryObj.kind === 'bottle') {
-    msg = me.carryObj.elem === need ? '✓ 對的！丟進中央口' : '⚠ 你現在要 ' + (GARBAGE_ICON[need] || '') + (GARBAGE_NAME[need] || '') + '，這罐丟進去會被拒收';
-    col = me.carryObj.elem === need ? '#9affd0' : '#ffab5a';
-  }
-  else if (!me.item && !me.carryObj && nearPickup(me)) { msg = '右鍵 / E 撿道具'; col = '#9ee6ff'; } // ?props=full 沙盒才有補給座
-  else if (full) { msg = '⚡ 能量滿！三連擊第三拳＝擊暈 → 抓去回收口(或繼續分類保平安)'; col = '#c9a6ff'; }
-  else if (need) { msg = '找 ' + (GARBAGE_ICON[need] || '') + (GARBAGE_NAME[need] || '') + ' → 丟進中央口(序列在左上;AI 在跟你搶)'; col = '#9ee6ff'; }
-  else { msg = '配額完成！'; col = '#9affd0'; }
+  else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
+  else if (o.state === 'alive' && !o.stunned && o.stability < STAB_MAX * 0.55) { msg = '⚡ 對手即將可回收！繼續打'; col = '#ffd36d'; } // 快暈了
+  else if (o.state === 'alive' && (o.flinchT > 0 || (me.punchFx > 0 && game.time - me.punchFx < 0.7))) { msg = '有效！繼續攻擊讓他失衡'; col = '#ffd36d'; } // 剛命中
+  else if (me.carryObj && me.carryObj.kind === 'bottle') { msg = '左鍵把' + (GARBAGE_NAME[me.carryObj.elem] || '瓶子') + '砸向對手！'; col = '#9ee6ff'; }
+  else if (!me.item && !me.carryObj && nearPickup(me)) { msg = '右鍵 / E 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
+  else if (!me.carrying && !me.carryObj && nearBottle(me)) { msg = 'E 撿元素瓶 → 砸人（冰凍／著火／電擊／毒地板）'; col = '#9ee6ff'; }
+  else if (nearSwitch(me)) { msg = '⚠ 揍拉桿＝四角元素站開始洩漏（高風險高娛樂）'; col = '#ffab5a'; }
+  else { msg = '左鍵三連擊 → 打暈對手 → 抓去中央回收口 ×' + WIN_TARGET; col = '#9ee6ff'; }
   if (!msg) return;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
@@ -154,7 +152,7 @@ function drawCoachLine() {
 }
 // 緊急拉桿世界浮標(未啟動時):命名 + 一句功能,讓玩家一眼知道「這是控制四角元素站的總閘」。
 function drawSwitchLabels() {
-  if (!v2s.propsFull || v2s.stationsArmed) return; // 憲章休眠:拉桿只在 ?props=full 沙盒顯示
+  if (v2s.stationsArmed) return;
   const pulse = v2s.lowFlicker ? 1 : 0.7 + 0.3 * Math.sin(game.time * 4);
   hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
   for (const sw of labSwitches) {
@@ -188,46 +186,51 @@ function drawItems() {
   if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + ' ×' + me.itemUses + '（右鍵 / E 使用）', 24, VH - 40); }
   else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, VH - 40); }
 }
-// 下班結局(使用者拍板 2026-07-13:拿掉事故報告 → 純場上演出)。
-// 贏家頭頂嘲笑對話框 + 頂部下班橫幅 + 輸家加班牌(封艙路徑=已回收字);底部 R 立刻再上工/自動倒數。
-function speechBubble(x, y, text, col) {
-  hctx.save(); hctx.font = '900 16px system-ui, sans-serif'; hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
-  const w = hctx.measureText(text).width + 24, h = 30, top = y - h - 10;
-  hctx.fillStyle = 'rgba(250,252,255,.97)';
-  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(x - w / 2, top, w, h, 11) : hctx.rect(x - w / 2, top, w, h); hctx.fill();
-  hctx.beginPath(); hctx.moveTo(x - 8, top + h); hctx.lineTo(x + 8, top + h); hctx.lineTo(x, top + h + 11); hctx.closePath(); hctx.fill(); // 尖角指向頭頂
-  hctx.fillStyle = col; hctx.fillText(text, x, top + h / 2);
-  hctx.restore(); hctx.textBaseline = 'alphabetic';
-}
-function worldTag(x, y, text, col) {
-  hctx.save(); hctx.font = '900 14px system-ui, sans-serif'; hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
-  const w = hctx.measureText(text).width + 18;
-  hctx.fillStyle = 'rgba(20,22,30,.85)';
-  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(x - w / 2, y - 13, w, 24, 7) : hctx.rect(x - w / 2, y - 13, w, 24); hctx.fill();
-  hctx.strokeStyle = col; hctx.lineWidth = 1.5; hctx.stroke();
-  hctx.fillStyle = col; hctx.fillText(text, x, y + 1);
-  hctx.restore(); hctx.textBaseline = 'alphabetic';
-}
-function drawEnding() {
-  const e = v2s.ending; if (!e) return;
-  const w = fighters[e.winner], l = fighters[1 - e.winner];
-  hctx.fillStyle = 'rgba(8,10,16,.30)'; hctx.fillRect(0, 0, VW, VH); // 輕壓暗(不像報告全屏卡)
-  hctx.textAlign = 'center';
-  const top = '⏰ 下班！' + NAMES[e.winner] + ' 先走了';           // 頂部下班橫幅
-  hctx.font = '900 40px system-ui, sans-serif'; hctx.lineWidth = 7; hctx.strokeStyle = 'rgba(6,12,18,.9)';
-  hctx.strokeText(top, VW / 2, 84); hctx.fillStyle = COLORS[e.winner]; hctx.fillText(top, VW / 2, 84);
-  const ws = project(w.x, w.y, 64);                               // 贏家嘲笑對話框
-  if (!ws.behind) speechBubble(ws.x, ws.y, e.mock, COLORS[e.winner]);
-  if (e.sealed) {                                                 // 封艙路徑:輸家已壓縮回收
-    const c = project(POD.x, POD.y, 42);
-    if (!c.behind) worldTag(c.x, c.y, '📦 已封裝回收', '#9aa5b8');
-  } else if (l.state !== 'down') {                                // 加班路徑:輸家埋頭加班
-    const ls = project(l.x, l.y, 52);
-    if (!ls.behind) worldTag(ls.x, ls.y, '📋 加班中… 💦', '#9aa5b8');
+function drawPips(pid, x0, dir) { // 三格收容進度:填色=收容方式
+  const size = 22, gap = 6, y0 = 26;
+  const mine = containLog.filter(c => c.winner === pid);
+  for (let i = 0; i < WIN_TARGET; i++) {
+    const px = dir === 1 ? x0 + i * (size + gap) : x0 - size - i * (size + gap);
+    hctx.fillStyle = mine[i] ? (METHOD_COL[mine[i].method] || COLORS[pid]) : 'rgba(255,255,255,.12)';
+    hctx.fillRect(px, y0, size, size);
+    hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 2; hctx.strokeRect(px + 1, y0 + 1, size - 2, size - 2);
   }
-  const left = Math.max(0, Math.ceil(e.T - e.t));                 // 底部:R 立刻/自動倒數
-  hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = 'rgba(234,250,255,.9)';
-  hctx.fillText('按 R 立刻再上工　·　' + left + 's 後自動開下一班', VW / 2, VH - 40);
+}
+// 事故報告結算(分享引擎;規格 E 北極星「輸了也好笑」——分家後 A 款的招牌收尾,docs/game-split.md)
+const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
+function drawReport() {
+  const r = v2s.report;
+  hctx.fillStyle = 'rgba(8,10,16,.62)'; hctx.fillRect(0, 0, VW, VH); // dim the frozen world
+  const pw = 640, ph = 446, px = (VW - pw) / 2, py = (VH - ph) / 2;
+  hctx.fillStyle = 'rgba(20,24,34,.97)'; hctx.fillRect(px, py, pw, ph);
+  hctx.strokeStyle = 'rgba(255,211,109,.5)'; hctx.lineWidth = 2; hctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+  let y = py + 40; const cx = VW / 2;
+  hctx.textAlign = 'center';
+  hctx.font = '900 24px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
+  hctx.fillText('魔法事故報告 #' + r.num, cx, y); y += 40;
+  // level badge
+  hctx.font = '900 52px system-ui, sans-serif'; hctx.fillStyle = LEVEL_COL[r.level] || '#fff';
+  hctx.fillText(r.level + ' 級', cx, y + 6); y += 50;
+  hctx.font = '800 22px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
+  hctx.fillText(r.name, cx, y); y += 36;
+  hctx.font = '600 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
+  hctx.fillText(r.summary, cx, y); y += 34;
+  // stats line
+  hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
+  hctx.fillText(`勝者：${NAMES[r.winner]}　損害 ${r.damage}%　搬 ${inc.carries[0] + inc.carries[1]}·拋 ${inc.throwContains}·吹 ${inc.accidentContains.wind}·滑 ${inc.accidentContains.ice}·爆 ${inc.accidentContains.barrel}　反向 ${inc.reverseContains}　自傷 ${inc.itemBackfires}　主要道具 ${r.mostUsed}　${r.time.toFixed(0)}s`, cx, y); y += 30;
+  if (containLog.length) { // 三幕封存序列
+    hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
+    hctx.fillText('封存序列：' + containLog.map(c => NAMES[c.winner][0] + '·' + (METHOD_ZH[c.method] || c.method)).join('　→　'), cx, y); y += 30;
+  }
+  hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
+  hctx.fillText('稱號：' + r.title, cx, y); y += 34;
+  // committee comment (the share juice)
+  hctx.font = 'italic 700 17px system-ui, sans-serif'; hctx.fillStyle = '#9affd0';
+  hctx.fillText('「' + r.comment + '」', cx, y); y += 28;
+  hctx.font = '600 12px ui-monospace, monospace'; hctx.fillStyle = '#8a7d96';
+  hctx.fillText('挑戰碼 ' + r.code, cx, y); y += 30;
+  hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
+  hctx.fillText('按 R 再來一場　·　按 C 複製分享文字', cx, py + ph - 18);
 }
 // 風壓爆風:發射中從兩側邊緣往內掃的速度線(爆風 whoosh;強度=windFan 剩餘壽命)
 function drawWindSpeedLines() {
@@ -251,12 +254,12 @@ function drawIntro() {
   if (v2s.introT > INTRO_GO) {              // 就位期:老闆訓話+目標字幕(按任何鍵直接開始)
     hctx.fillStyle = 'rgba(6,12,18,.66)'; hctx.fillRect(0, cy - 76, VW, 132);
     hctx.font = '900 20px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
-    hctx.fillText('🧑‍💼 主管：都給我好好工作！', cx, cy - 46); // 老闆開場監督(§13 定案 5;開始後就消失)
+    hctx.fillText('🧑‍💼 主管：都給我好好工作！', cx, cy - 46); // 老闆開場監督(世界觀留=喜劇土壤;開始後就消失)
     hctx.font = '900 34px system-ui, sans-serif'; hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(6,12,18,.85)';
-    hctx.strokeText('先完成 ' + SETS_WIN + ' 組分類的人　提前下班', cx, cy);
-    hctx.fillStyle = '#9affd0'; hctx.fillText('先完成 ' + SETS_WIN + ' 組分類的人　提前下班', cx, cy);
+    hctx.strokeText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
+    hctx.fillStyle = '#9affd0'; hctx.fillText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
     hctx.font = '800 17px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.92)';
-    hctx.fillText('看左上序列撿「對的元素」丟進中央回收口 · 分錯會被拒收 · AI 在跟你搶', cx, cy + 30);
+    hctx.fillText('打暈 → 抓起 → 丟進去 · 元素瓶／爆桶／冰面 都能幫你收容他', cx, cy + 30);
     hctx.font = '700 13px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.55)';
     hctx.fillText('按任意鍵開始', cx, cy + 52);
   } else {                                   // 「開始!」:AI 從這一刻開工(到處回收垃圾=活教學),字放大彈出+淡出
@@ -270,90 +273,10 @@ function drawIntro() {
   }
   hctx.restore();
 }
-/* 憲章 HUD(§11:一條決定勝負、一條決定能力):左上雙序列面板——
-   每人一行:名 + 下班進度 pips ■□□ + 當前組 4 元素 icon(✓完成/當前放大/待)+ 事故能量條。
-   時鐘在右上;艙口上方掛「你要投:🔥」。 */
-function drawCharter() {
-  if (v2s.matchOver || v2s.introT > 0) return;
-  // ① 艙口上方:你當前要投的元素(演出/吐回中讓位給 LED)
-  if (!v2s.perform && !v2s.eject) {
-    const need = seqNeed(LOCAL);
-    const c = project(POD.x, POD.y, 92);
-    if (!c.behind && need) {
-      hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
-      const label = '投入：' + (GARBAGE_ICON[need] || '') + ' ' + (GARBAGE_NAME[need] || '');
-      hctx.font = '900 18px system-ui, sans-serif';
-      const w = hctx.measureText(label).width + 26;
-      hctx.fillStyle = 'rgba(8,16,22,.82)'; hctx.fillRect(c.x - w / 2, c.y - 15, w, 30);
-      hctx.strokeStyle = 'rgba(120,235,255,.7)'; hctx.lineWidth = 2; hctx.strokeRect(c.x - w / 2 + 1, c.y - 14, w - 2, 28);
-      hctx.fillStyle = '#eafaff'; hctx.fillText(label, c.x, c.y + 1);
-      hctx.textBaseline = 'alphabetic';
-    }
-  }
-  // ② 左上雙序列面板(y122 起,避開中央教練線)
-  const x0 = 24;
-  hctx.textBaseline = 'middle';
-  for (const pid of [LOCAL, 1 - LOCAL]) {
-    const row = pid === LOCAL ? 0 : 1, y = 128 + row * 44;
-    const idx = v2s.seqIdx[pid], setN = Math.min(SETS_WIN - 1, Math.floor(idx / SEQ_LEN)), s0 = setN * SEQ_LEN;
-    hctx.textAlign = 'left'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillStyle = COLORS[pid];
-    hctx.fillText(pid === LOCAL ? '你' : 'AI', x0, y);
-    for (let i = 0; i < SETS_WIN; i++) {                    // 下班進度 pips(唯一勝利進度)
-      const px = x0 + 24 + i * 14;
-      hctx.fillStyle = i < v2s.sets[pid] ? COLORS[pid] : 'rgba(255,255,255,.14)';
-      hctx.fillRect(px, y - 5, 10, 10);
-      hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 1; hctx.strokeRect(px + .5, y - 4.5, 9, 9);
-    }
-    for (let i = 0; i < SEQ_LEN; i++) {                     // 當前組序列
-      const gi = s0 + i, e = v2s.seq[gi], done = gi < idx, cur = gi === idx;
-      const ix = x0 + 78 + i * 26;
-      hctx.font = cur ? '900 20px system-ui, sans-serif' : '900 14px system-ui, sans-serif';
-      hctx.globalAlpha = done ? 0.32 : 1;
-      hctx.fillText(GARBAGE_ICON[e] || '?', ix, y + (cur ? 0 : 1));
-      if (done) { hctx.globalAlpha = 0.9; hctx.font = '900 11px system-ui, sans-serif'; hctx.fillStyle = '#9affd0'; hctx.fillText('✓', ix + 3, y - 7); hctx.fillStyle = COLORS[pid]; }
-      if (cur && !v2s.lowFlicker) {                         // 當前格底光脈動
-        hctx.globalAlpha = 0.35 + 0.25 * Math.sin(game.time * 6);
-        hctx.strokeStyle = '#8febff'; hctx.lineWidth = 2; hctx.strokeRect(ix - 4, y - 12, 24, 24);
-      }
-      hctx.globalAlpha = 1;
-    }
-    const ex = x0 + 190, ew = 92, ek = Math.max(0, Math.min(1, v2s.energy[pid] / ENERGY_MAX)); // 事故能量條
-    hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(ex, y - 4, ew, 8);
-    const fullNow = ek >= 1, flash = fullNow && !v2s.lowFlicker && Math.floor(game.time * 6) % 2 === 0;
-    hctx.fillStyle = fullNow ? (flash ? '#e6ccff' : '#c9a6ff') : (ek > 0.6 ? '#b787ff' : '#8f6bd8');
-    hctx.fillRect(ex, y - 4, ew * ek, 8);
-    hctx.font = '800 11px system-ui, sans-serif'; hctx.fillStyle = fullNow ? '#e6ccff' : 'rgba(200,180,235,.85)';
-    hctx.fillText(fullNow ? '⚡滿' : '⚡', ex + ew + 6, y);
-  }
-  hctx.textBaseline = 'alphabetic';
-  // ③ 時鐘(右上):本班剩餘時間
-  const t = Math.max(0, v2s.clockT), mm = Math.floor(t / 60), ss = Math.floor(t % 60);
-  hctx.textAlign = 'right'; hctx.font = '900 16px ui-monospace, monospace';
-  hctx.fillStyle = t < 30 ? (v2s.lowFlicker || Math.floor(game.time * 3) % 2 === 0 ? '#ff8a7a' : '#ffd36d') : 'rgba(234,250,255,.9)';
-  hctx.fillText('⏱ ' + mm + ':' + String(ss).padStart(2, '0'), VW - 24, 30);
-  hctx.font = '700 10px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.55)';
-  hctx.fillText('本班剩餘', VW - 24, 44);
-}
-/* 老闆台詞框(§13 定案 5 MVP:2D 頭像+一句話):開場「好好工作!」/ 結算宣布。emoji 頭像先擋著,之後可換立繪。 */
-function drawBoss(line) {
-  hctx.save(); hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
-  const cy = VH * 0.20;
-  hctx.font = '900 15px system-ui, sans-serif';
-  const w = hctx.measureText(line).width + 74;
-  hctx.fillStyle = 'rgba(14,12,22,.88)';
-  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(VW / 2 - w / 2, cy - 26, w, 52, 12) : hctx.rect(VW / 2 - w / 2, cy - 26, w, 52); hctx.fill();
-  hctx.strokeStyle = 'rgba(255,211,109,.6)'; hctx.lineWidth = 2;
-  hctx.beginPath(); hctx.roundRect ? hctx.roundRect(VW / 2 - w / 2, cy - 26, w, 52, 12) : hctx.rect(VW / 2 - w / 2, cy - 26, w, 52); hctx.stroke();
-  hctx.font = '32px system-ui, sans-serif'; hctx.fillText('🧑\u200d💼', VW / 2 - w / 2 + 30, cy + 1);
-  hctx.font = '900 15px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
-  hctx.fillText(line, VW / 2 + 24, cy + 1);
-  hctx.restore(); hctx.textBaseline = 'alphabetic';
-}
-
 /* 收容演出:艙口 LED 飄字(使用者拍板:輕量融景,像招牌 LED,不做側邊終端面板)。
    文字由 sim 排好(v2s.perform.line);這裡只管 LED 樣式:深底描邊膠囊 + 青字(失控段轉橘紅)+ 掃描期微閃。 */
 function drawPerformLED() {
-  const p = v2s.perform || v2s.eject; if (!p) return;  // 封艙演出與中途吐回共用 LED(吐回無 n → 當 1)
+  const p = v2s.perform; if (!p) return;
   const c = project(POD.x, POD.y, 82); if (c.behind) return;
   hctx.font = '700 15px ui-monospace, SFMono-Regular, Consolas, monospace'; hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
   const w = hctx.measureText(p.line).width + 28, h = 24;
@@ -384,33 +307,31 @@ export function drawHud() {
   // title
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故回收中心 · 分類競速　先完成 ' + SETS_WIN + ' 組分類＝提前下班', VW / 2, 28);
+  hctx.fillText('魔法事故報告 · 收容測試　階段 ' + v2s.stage + '：' + STAGE_NAME[v2s.stage - 1] + '　封存 ' + WIN_TARGET + ' 次獲勝', VW / 2, 28);
   // AI 狀態(練習模式)— 永遠可見,B 切換
   const aiOn = fighters[1 - LOCAL].ai;
   hctx.font = '800 13px system-ui, sans-serif';
   hctx.fillStyle = aiOn ? 'rgba(255,140,140,.92)' : 'rgba(154,255,208,.96)';
   hctx.fillText(aiOn ? '紅方：AI 同事　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', VW / 2, 48);
-  if (!v2s.matchOver) { // 下班結局期:清掉對戰 HUD(序列面板/教練線/角色條/勝利橫幅),讓結局演出乾淨
-    drawCharter();      // 憲章面板:雙序列/下班進度/能量條/時鐘 + 艙口「投入:🔥」
-    drawContainHud();
-    drawItems();
-    drawSwitchLabels();
-    if (v2s.introT <= INTRO_GO && !drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先;就位期讓位給開場字幕
-    if (v2s.bossT > 0 && v2s.bossLine) drawBoss(v2s.bossLine); // 老闆結算宣布(下班鐘響;封艙演出期間 matchOver 還沒起)
-    // stage / seal banner
-    if (v2s.winBannerT > 0 && v2s.bannerText) {
-      hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
-      hctx.fillStyle = COLORS[v2s.winnerPid] || '#eafaff'; hctx.fillText(v2s.bannerText, VW / 2, VH / 2 - 30);
-    }
+  // 三格收容進度(每格填色=收容方式)= 勝利進度
+  drawPips(0, 24, 1); drawPips(1, VW - 24, -1);
+  drawContainHud();
+  drawItems();
+  drawSwitchLabels();
+  if (v2s.introT <= INTRO_GO && !drawParryPrompt()) drawCoachLine(); // 黃金時間大提示優先;就位期讓位給開場字幕
+  // stage / seal banner
+  if (v2s.winBannerT > 0 && v2s.bannerText) {
+    hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
+    hctx.fillStyle = COLORS[v2s.winnerPid] || '#eafaff'; hctx.fillText(v2s.bannerText, VW / 2, VH / 2 - 30);
   }
-  drawPerformLED(); // 演出 LED 飄字(艙口上方;封艙+吐回共用;封艙在 matchOver 前跑,照畫)
+  drawPerformLED(); // 收容演出 LED 飄字(艙口上方;matchOver 前跑,照畫)
   drawIntro(); // 開場字幕:就位期=老闆訓話+目標 → 尾段=「開始!」
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
   hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵＝抓／放技能（持攻擊裝備優先開火）· E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟 · 空白鍵按住＝防禦　B：AI　L：減閃爍', VW / 2, VH - 18);
-  if (v2s.ending) drawEnding(); // 下班結局(取代事故報告):贏家打卡嘲笑 + 輸家加班
+  if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: charter-2', VW - 10, VH - 4);
+  hctx.fillText('build: brawl-1', VW - 10, VH - 4);
 }

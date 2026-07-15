@@ -29,9 +29,9 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `pickup.mjs`    | 手動撿道具(C 案):不自動撿、被暈掉地上帶剩餘次數、地上可搶、傳送(逃脫類)不掉、TTL 消失 |
 | `ice_slide.mjs` | 冰面鎖滑:帶動量直線滑、撞牆停+暈、滑進艙=收容、靜止站上=小心走 |
 | `mobilefx.mjs`  | 手機自動降級:觸控+行動 UA → FX_LOW 自動開(點光剝除/無 transmission)+ dpr 夾 1.5;桌機完整;`?fx=full` 覆蓋 |
-| `onboard.mjs`   | 上手開場框架(只驗易讀層):首局教學旗標(localStorage)、AI 同事開場即開(demo 取代不會動假人)、開場字幕/鏡頭帶場計時、就位期 AI 靜止、首局打完記 localStorage |
-| `perform.mjs`   | 回收口演出(憲章 v1.1):中途進艙=捕捉演出(罩/釘艙心/不得分)、拒收吐回北管道+落地保護+比賽繼續、演出中不二次捕捉、讀法 B(鐘響時輸家在艙→轉 perform #3 封艙壓縮→matchOver+報告) |
-| `charter.mjs`   | 核心憲章 v1.1(分類競速=唯一勝利):12 元素序列/四型供料/元素系統休眠、分對=前進+充能+計分、分錯=拒收彈回輕罰、進度獨立(§6.1)、完成組=下班進度+能量 bonus、免費拳=踉蹌不暈+被打方充能、能量滿第三拳=擊暈+清條、中途進艙=吐回不結束、3 組=下班獲勝、限時歸零=完成多者勝、AI 讀自己序列 |
+| `onboard.mjs`   | 上手開場框架(只驗易讀層):首局教學旗標(localStorage)、AI 對手開場即開(fight 純戰鬥)、開場字幕/鏡頭帶場計時、就位期 AI 靜止、首局打完記 localStorage |
+| `perform.mjs`   | 回收演出 V0.8:收容→演出啟動(即時計分/罩/釘艙心/受保護)、演出中不二次收容、收尾才彈回+升階、第 2 次失控風味、第 3 次壓縮→matchOver+報告 |
+| `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=resolveContain 計分+containLog、endMatch=事故報告 |
 
 ## Headless 陷阱(踩過的;寫新套件先讀,`js/CLAUDE.md` §測試 有完整版)
 
@@ -50,10 +50,9 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 6. **狀態污染**:上一個 case 留下的升壓桶引信到點會爆、`stampElement` 留的地板會殘留 → 新 case 先 `resetFloor()` /
    關掉別的桶 / 把無關角色挪遠(`x=60,y=60`)。
 
-7. **元素系統休眠(憲章 §15)**:桶/補給座/拉桿預設不生成——吃它們的套件(detonate/switches/pickup/wind/bottles)
-   URL 要帶 **`?props=full`**。charter.mjs 反而驗「休眠生效」,別給它加旗。
-8. **AI 同事預設開**:會搶瓶/搬瓶——出拳/搬運類 case 開頭把 `fighters[1].ai=false` 並清掉
-   `carryObj/carrying`(扛著東西不能出拳,punch 會靜默 no-op)。
+7. ~~元素系統休眠~~(B 款憲章時期的旗;A 款爽鬥=系統預設全開,`?props=full` 已退役——別再給 URL 加旗)。
+8. **AI 對手預設開**:會走位/出拳干擾判定——出拳/搬運類 case 開頭把 `fighters[1].ai=false` 並清掉
+   `carryObj/carrying`(扛著東西不能出拳,punch 會靜默 no-op;判定測試直接呼叫 `resolveStrike`)。
 
 ## Debug hooks(頁內 `window.*`)
 

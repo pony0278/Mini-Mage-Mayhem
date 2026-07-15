@@ -1,5 +1,5 @@
-// 上手框架(使用者上手文檔 2026-07)驗收——只驗「開場易讀」框架;分類經濟/AI 同事/怒氣改由 sorting.mjs 驗:
-// ①全新玩家=首局教學旗標(localStorage 空)+ AI 同事開場即開(取代不會動假人)②開場字幕/鏡頭帶場計時
+// 上手框架(使用者上手文檔 2026-07;爽鬥 A 款)驗收——只驗「開場易讀」框架:
+// ①全新玩家=首局教學旗標(localStorage 空)+ AI 對手開場即開(純戰鬥;小人不搬東西)②開場字幕/鏡頭帶場計時
 // ③就位期 AI 靜止(「開始!」前不開工)④首局打完記 localStorage(下次不教學)⑤無錯
 // 陷阱:rAF 節流→game.time 輪詢 advance;matchOver 後 game.time 凍結→用 waitForFunction 等 tutorial-flip
 import puppeteer from 'puppeteer';
@@ -16,7 +16,7 @@ const advance = sec => page.evaluate(s => new Promise(res => { const t0 = __v2.g
 // ---------- ① 首局教學旗標 + AI 同事開場即開 ----------
 const boot = await page.evaluate(() => ({ tutorial: __v2.state().tutorial, aiMode: __v2.state().aiMode, aiOn: __v2.fighters[1].ai, introT: __v2.state().introT }));
 R('全新玩家 → 首局教學(tutorial)', boot.tutorial === true, JSON.stringify(boot));
-R('AI 同事開場即開(demo=分類模式,取代不會動假人)', boot.aiOn === true && boot.aiMode === 'demo');
+R('AI 對手開場即開(fight=純戰鬥;分類同事凍結在 B 款)', boot.aiOn === true && boot.aiMode === 'fight');
 R('開場目標字幕/鏡頭帶場計時中(introT>0)', boot.introT > 0);
 
 // ---------- ② 就位期 AI 靜止 ----------

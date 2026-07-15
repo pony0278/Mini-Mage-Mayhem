@@ -20,7 +20,7 @@
 | [v2-spec-D-arenas.md](v2-spec-D-arenas.md) | **規格 D（地圖 + loop）**：搶獎盃→Boss 甦醒→追逐；浮島四周墜落（render-only）；斷橋孤島落地 + 型錄 + 落地順序 |
 | [v2-spec-E-incident-report.md](v2-spec-E-incident-report.md) | **規格 E（北極星再定位）**：魔法事故報告/收容測試；吸收 C 為核心；收容狀態機 + 報告 schema + 等級 + V0.8/0.9/1.0 路線；可重用零件對照 |
 | [game-split.md](game-split.md) | **遊戲分家決策(2026-07-15 拍板,最高優先)**:60 人實測裂在核心循環 → 拆 A(爽鬥,先做)/B(分類,凍結於 commit 4c92837);兩款定位表+A-v0 手術清單+開放問題 |
-| [v2-core-charter.md](v2-core-charter.md) | **核心玩法憲章 v1.1(使用者撰寫,2026-07-13 定稿,最高設計權威;V0.9 已落地 build charter-1,實作狀態見文件頭)**:分類競速=唯一勝利(先完成 3 組序列=提前下班)、雙方各一條事故能量(工作+受擊充能)、能量閘控擊暈鏈、回收口=3s 干擾+讀法 B 結局合體;五支柱/鎖死規則/代碼差距對照/待決事項。**取代 sorting-ai-anger 的暴走主線** |
+| [v2-core-charter.md](v2-core-charter.md) | **核心玩法憲章 v1.1 → 分家後=B 款(分類)的設計權威(凍結;B 可玩狀態=commit `4c92837`)**:分類競速=唯一勝利、事故能量閘、回收口干擾、下班結局。**不再約束 main(A 款爽鬥)開發**——分家決策見 [game-split.md](game-split.md) |
 | [v2-sorting-ai-anger.md](v2-sorting-ai-anger.md) | **分類事故/AI 情緒(使用者撰寫)**:中央口需求制分類垃圾 → 分錯累積 AI 怒氣五階段 → 老闆抓狂把你當垃圾回收(給戰鬥一個因果);V0.8 已落地見文件頭。⚠ 暴走主線已被憲章 v1.1 取代,留作實作紀錄+喜劇素材庫 |
 | [v2-onboarding-freeform-routes.md](v2-onboarding-freeform-routes.md) | **上手/自由路線+動態教學(使用者撰寫)**:兩路線(清運垃圾取工具 vs 直接速攻)、垃圾=資源(回收 or 武器)、動態教學隨行為切提示、首局示範者 AI、UI 三進度分開;已落地見文件頭 |
 | [v2-recycle-performance-design.md](v2-recycle-performance-design.md) | **回收演出設計(使用者撰寫)**:收容後的招牌喜劇演出——玻璃罩/掙扎/掃描/荒謬分類/三階段收尾(彈回/事故/壓縮清運);V0.8 最小版已落地(見文件頭實作狀態)|
