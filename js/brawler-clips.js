@@ -250,5 +250,26 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0 },
   }),
+  // 下班揮手嘲笑(Claude 用「動作接觸表」工具授權的第一支 clip;非 studio 手排=概念驗證)。
+  // 用途:下班結局贏家播放(循環)。右臂舉高揮手 + 翹胯歪頭得意 + 左臂放鬆;無 impact(非戰鬥招)。
+  // 檢視:v2.html?clip=clockout_wave(循環試播);接觸表在 skill/tools。
+  clockout_wave: prepClip({
+    seq: [
+      { name: 'idle', frame: 0, frames: 12, ease: 'out', tag: 'idle' },
+      { name: 'raise', frame: 12, ease: 'out', tag: 'loop' },   // loop=循環起點(舉臂完成→在此繞圈揮手)
+      { name: 'wave_a', frame: 19, ease: 'in' },
+      { name: 'wave_b', frame: 26, ease: 'in' },
+      { name: 'wave_a2', frame: 33, ease: 'in' },
+      { name: 'hold', frame: 44, ease: 'out' },
+    ],
+    phases: {
+      raise:   { aL_sx: 10, aL_sy: 8, aL_sz: 24, aL_ex: 16, spine_x: -5, spine_y: -16, pelvis_y: 20, head_y: 16, head_x: -8, lL_kx: 8, lR_kx: 22, aR_sx: -8, aR_sz: 128, aR_ex: 82, aR_wy: 0, aR_stretch: 1.15 },
+      wave_a:  { aL_sx: 10, aL_sy: 8, aL_sz: 24, aL_ex: 16, spine_x: -5, spine_y: -16, pelvis_y: 20, head_y: 16, head_x: -8, lL_kx: 8, lR_kx: 22, aR_sx: -8, aR_sz: 150, aR_ex: 70, aR_wy: 34, aR_stretch: 1.15 },
+      wave_b:  { aL_sx: 10, aL_sy: 8, aL_sz: 24, aL_ex: 16, spine_x: -5, spine_y: -16, pelvis_y: 20, head_y: 16, head_x: -8, lL_kx: 8, lR_kx: 22, aR_sx: -8, aR_sz: 110, aR_ex: 92, aR_wy: -34, aR_stretch: 1.15 },
+      wave_a2: { aL_sx: 10, aL_sy: 8, aL_sz: 24, aL_ex: 16, spine_x: -5, spine_y: -16, pelvis_y: 20, head_y: 16, head_x: -8, lL_kx: 8, lR_kx: 22, aR_sx: -8, aR_sz: 150, aR_ex: 70, aR_wy: 34, aR_stretch: 1.15 },
+      hold:    { aL_sx: 10, aL_sy: 8, aL_sz: 24, aL_ex: 16, spine_x: -5, spine_y: -16, pelvis_y: 20, head_y: 16, head_x: -8, lL_kx: 8, lR_kx: 22, aR_sx: -8, aR_sz: 130, aR_ex: 80, aR_wy: 6, aR_stretch: 1.15 },
+    },
+    lags: { aL: 0, aR: 0.14, lL: 0, lR: 0.1 },
+  }),
 };
 export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand']; // punchKind 0/1/2 → clip(使用者自編三連擊)
