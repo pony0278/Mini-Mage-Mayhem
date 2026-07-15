@@ -80,7 +80,7 @@ export const mouse = { x: W / 2, y: H / 2, down: false, right: false };
 // 手機觸控輸入(v2-touch 寫入、v2-combat/v2 讀取;桌機 enabled=false 完全不影響)。
 // enabled=觸控裝置;active=搖桿正被推;x/y=類比方向向量(-1..1,camera 前的螢幕軸,同 readMove 的 sx/sy)。
 // press=動作按鈕的邊緣觸發閂鎖(v2-touch 按下時設 true,v2.js step 消費後清 false=一次一擊)。
-export const touchInput = { enabled: false, active: false, x: 0, y: 0, guardHeld: false, press: { punch: false, context: false, guard: false } };
+export const touchInput = { enabled: false, active: false, x: 0, y: 0, mag: 0, guardHeld: false, press: { punch: false, context: false, guard: false, jump: false } }; // mag=搖桿推程 0~1(v2.js 跑步分檔用:≥RUN_STICK=跑)
 
 // Touch controls (client). touch.js (event wiring) writes these; main.js's buildInput
 // folds them into game.input; render draws the sticks/buttons. enabled = coarse-pointer

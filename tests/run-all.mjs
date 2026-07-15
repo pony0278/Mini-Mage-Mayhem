@@ -25,6 +25,7 @@ const SUITES = [
   ['mobilefx',  '手機自動降級(觸控+行動UA→FX_LOW+dpr1.5/桌機不變/?fx=full 覆蓋)'],
   ['onboard',   '上手框架(首局教學旗標/AI 對手開場即開/開場字幕+鏡頭/就位靜止/localStorage)'],
   ['brawl',     '爽鬥核心 brawl-1(系統全醒/穩定值歸零暈/終結技打飛/反暈/收容計分/事故報告)'],
+  ['jump',      '跳躍+下壓拳 brawl-2(跑=預設/空白跳/Shift防/空中免地板免鎖滑/下壓穿防+落空硬直/拍落/跳過艙口)'],
 ];
 
 // ⚠ server 一定要從 repo root 起(套件裡 import('./js/…') 由瀏覽器對 server 根解析;從 tests/ 起會 404)。

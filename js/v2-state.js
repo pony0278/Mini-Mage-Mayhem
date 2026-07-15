@@ -14,9 +14,10 @@ export const dlog = (...a) => { if (DEBUG) console.log('[v2]', ...a); };
 
 // --- 基礎調參 ---
 export const SPEED = 168;      // walk speed (px/s)
-// 跑步:同方向鍵(WASD)在 RUN_TAP 秒內連按 2 次 → 按住期間 ×RUN_MULT(放開/扛人/扛桶/暈=停)。
-// RUN_TAP=0.28 對齊準拍脈衝格(docs/v2-combat-rhythm.md);桌面鍵盤限定(觸控搖桿無雙擊語意,先不做)。
-export const RUN_MULT = 1.6, RUN_TAP = 0.28;
+// 跑=預設(brawl-2,使用者拍板 2026-07-15:亂鬥節奏玩家永遠要快,雙擊觸發退役):
+// 桌機=有方向鍵就是跑;手機=搖桿推程 < RUN_STICK 走(微操走位)、≥ RUN_STICK 跑(touchInput.mag)。
+// 走路只剩情境:冰面 ICE_WALK / 扛人扛桶 CARRY_SLOW(瓶=輕,照跑)。
+export const RUN_MULT = 1.6, RUN_STICK = 0.85;
 export const RESPAWN = 1.3;    // delay before a fallen fighter pops back in (isles)
 export const FRICTION = 0.25;  // isles 長滑行的每秒速度乘數(平台場改用 KNOCK_FRICTION, 見 v2-terrain)
 
@@ -34,11 +35,28 @@ export const COMBO_STAB = [20, 20, 35], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WIND
 // **自動導出**:直接讀各 punch clip 的第一個 impact key(prepClip.impactT)——studio 重編移動 impact 幀,
 // 重貼 JSON 即對齊,不再手動同步(舊值 fallback 防 clip 缺 impact)。
 // 起手期間被打暈/被抓/被推開踉蹌 → 打擊取消(格擋推開從此是真反制)。
-export const STRIKE_DELAY = PUNCH_CLIPS.map((n, i) => CLIPS[n]?.impactT ?? [0.283, 0.233, 0.383][i]);
+export const STRIKE_DELAY = PUNCH_CLIPS.map((n, i) => CLIPS[n]?.impactT ?? [0.283, 0.233, 0.383, 0.3][i]); // [3]=dive_punch 槽(下壓實際用 DIVE_T,見下)
 // 終結技=打飛:命中後小拋物線(最後一擊→擊中→打飛→落地),取代舊滑行擊退(FINISHER_KNOCK 240)。
 // 與丟人同一條彈道管線(f._lob 記 profile);調性=「挑空」:往前短、往上明顯、滯空久掛在空中。
 // 調參史:100/18/0.35(zmax≈34,嫌飛遠不夠高)→ 55/50/0.4(zmax≈65)→ 現值=使用者 ?tune 實測定稿(zmax≈115)。
 export const PUNCH_LAUNCH_LOB = { range: 80, apex: 100, T: 0.6, h0: 30 };
+// --- 跳躍+下壓拳(brawl-2,使用者拍板 2026-07-15:空白=跳/Shift=防;走位技術入遊戲)---
+// 跳躍=自發小 lob(z 走 v2.js 同一套 lobZ 管線;range 0=垂直,水平位移靠移動+空中操控)。
+// 空中規則:免地板化學+免冰面鎖滑(=冰滑主動解)、不可防/抓/被抓;空中挨拳=AIR_HIT_LOB 小翻滾落地。
+export const JUMP_LOB = { range: 0, apex: 46, T: 0.55, h0: 0 };
+export const AIR_CTRL = 0.55;      // 空中操控率(移動輸入 × 此係數)
+export const JUMP_CD = 0.22;       // 落地後可再跳的間隔(防兔子跳刷屏;計時含滯空)
+export const AIR_HIT_LOB = { range: 70, apex: 40, T: 0.45, h0: 30 }; // 空中挨拳=小翻滾(拍蚊子)
+// 下壓拳:空中按攻擊=鎖方向俯衝,DIVE_T 後落地幀 AoE 判定(排程打擊 kind 3)。重擊穿防(剋龜,
+// 補完三角:防禦剋連拳、下壓剋防禦、格擋反暈剋出手);落空=DIVE_LAG 硬直(有承諾才有讀取)。
+// DIVE_T 由 dive_punch clip 的 impact 幀自動導出(同 STRIKE_DELAY 機制;使用者編好 clip 即對齊)。
+export const DIVE_T = CLIPS.dive_punch?.impactT ?? 0.3;
+export const DIVE_R = 44;          // 落點 AoE 半徑
+export const DIVE_STAB = 45;       // 削穩定(> 終結技 35=獎勵讀位,兩發即暈)
+export const DIVE_FWD = 46;        // 俯衝前撲距離(往起跳鎖定的 facing)
+export const DIVE_LAG = 0.2;       // 落空硬直(移動鎖;命中無硬直)
+export const DIVE_CD = 0.6;        // 下壓後拳冷卻
+export const AI_JUMP_CHANCE = 0.012, AI_JUMP_CD = 4; // AI 每幀起跳率(中距離對峙時)+ 冷卻;起跳後半程自動下壓
 // 格擋推開:被打中後 PUSH_WIN 秒內按格擋鍵 → 把攻擊方推開+踉蹌,斷 combo;冷卻 PUSH_CDT
 export const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, PUSH_STAGGER = 0.45, AI_PUSH_CHANCE = 0.22;
 // 精準格擋(節奏遊戲反擊):對手出拳預測會命中且你格擋可用 → 黃金窗口=對方起手期(STRIKE_DELAY),
@@ -284,7 +302,10 @@ export function resetFighter(f) {
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
   f._aiMode = 'fight';               // AI 對手=純戰鬥(B 款示範者/同事 AI 凍結在 4c92837)
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
-  f.running = false; f._runKey = null; f._tapKey = ''; f._tapT = -9; // 跑步:同鍵連按2次觸發(v2.js keydown 記 tap、step 每幀裁定)
+  f.running = false;                 // 跑=預設:v2.js step 每幀裁定(有移動輸入+沒扛重物=跑;手機看推程)
+  f._jumpT = -9; f.jumpCd = 0;       // 跳躍:起跳時戳(z=lobZ(t,JUMP_LOB),v2.js 每幀算)+ 再跳冷卻
+  f._diveT0 = -9; f._diveZ0 = 0; f._diveDir = 0; f._diveLagT = 0; // 下壓拳:俯衝起始戳/起始高度/鎖定方向/落空硬直
+  f._aiJumpAt = 0; f._aiDiveAt = 0;  // AI 跳躍排程(對峙起跳/半程下壓)
   f.frozen = false;                  // 冰凍皮(=暈的視覺變體:render 冰塊+不搖晃;stun 醒來時清)
   f._slideVx = 0; f._slideVy = 0; f._onIce = false; f._slideT = -9; // 鎖滑:滑行向量(≠0=鎖定中)/上幀在冰上/滑行起始戳(收容歸因)
   f._lob = null;                     // 這次被拋飛用的彈道 profile(丟人=PERSON_LOB/終結技=PUNCH_LAUNCH_LOB;null 退回 PERSON_LOB)

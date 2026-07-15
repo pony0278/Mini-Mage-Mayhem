@@ -14,6 +14,7 @@ import {
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS, INTRO_GO,
+  JUMP_LOB, AIR_CTRL, JUMP_CD, AIR_HIT_LOB, DIVE_T, DIVE_R, DIVE_STAB, DIVE_FWD, DIVE_LAG, DIVE_CD, AI_JUMP_CHANCE, AI_JUMP_CD,
   GUARD_MOVE, GUARD_STAM_MAX, GUARD_DRAIN, GUARD_BLOCK_COST, GUARD_REGEN, GUARD_REGEN_DELAY,
   GUARD_BLOCK_PUSH, GUARD_BLOCK_FLINCH, GUARD_BREAK_FUMBLE, GUARD_BREAK_LOCK,
   FIRE_STAB_DPS, FIRE_BURN_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
@@ -88,6 +89,7 @@ export function floorHazards(f, dt) {
     if (Math.random() < 0.6) game.particles.push({ x: f.x + (Math.random() * 2 - 1) * 10, y: f.y + (Math.random() * 2 - 1) * 10, vx: (Math.random() * 2 - 1) * 22, vy: -45 - Math.random() * 45, r: 2 + Math.random() * 2.4, life: 0.28 + Math.random() * 0.22, maxLife: 0.5, color: Math.random() < 0.5 ? '#ff7a3a' : '#ffce6a' });
     if (f.stability <= 0 && !f.stunned && f.restunT <= 0) { f.lastHitBy = f.burnBy; stunFighter(f); }
   }
+  if (airborne(f)) return; // 空中=腳不沾地:地板化學(電水/火海/毒區)不作用(跳過危險地板=走位技術;著火 DoT 在身上,照燒)
   const st = stateAtPixel(f.x, f.y);
   if (st === FL.CHARGED) {
     if (!f.stunned && f.restunT <= 0) { stunFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); }
@@ -126,11 +128,14 @@ export function moveFighter(f, dt) {
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
   } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
   if (f.guarding) { m.x *= GUARD_MOVE; m.y *= GUARD_MOVE; }                       // 舉防=定身(GUARD_MOVE 0);想拉開就得放防。擊退/被推仍照 f.vx/vy 走
-  const sp = SPEED * ((f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;瓶=輕(全速);跑步(雙擊)加速
+  if (f._diveLagT > 0) { m.x = 0; m.y = 0; }                                      // 下壓落空硬直:短暫定身(v2.js 倒數)
+  let sp = SPEED * ((f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;瓶=輕(全速);跑=預設(v2.js 每幀裁定)
+  if (f._diveT0 > -5) { m.x = Math.cos(f._diveDir); m.y = Math.sin(f._diveDir); sp = DIVE_FWD / DIVE_T; } // 俯衝:鎖方向自動前撲(承諾,無操控)
+  else if (airborne(f)) { m.x *= AIR_CTRL; m.y *= AIR_CTRL; }                     // 空中操控率(起跳動量為主)
   // --- 冰面=鎖滑(玩家反饋 2026-07):帶動量踩上 → 鎖原始方向直線滑行,直到撞牆(暈)/撞人/滑出冰面。
   //     滑行中無操控;速度 ≥ SLIDE_MIN(> 失控收容門檻)→ 滑進艙=收容(cause 'ice')。
   //     靜止站上冰(冰凍醒來/瓶在腳下碎)= 小心走 ICE_WALK,不觸發鎖滑=逃生口。
-  if (onSlipperyIce(f.x, f.y)) {
+  if (!airborne(f) && onSlipperyIce(f.x, f.y)) { // 空中=腳不沾地,飛越冰面不觸發鎖滑(跳=冰滑主動解;落地帶移動輸入照樣觸發)
     if (!(f._slideVx || f._slideVy)) { // 未鎖:判定要不要開始滑
       const vv = Math.hypot(f.vx, f.vy);
       const enterMoving = !f._onIce && (m.x || m.y);   // 走著/跑著踩進冰
@@ -224,9 +229,55 @@ export function freezeFighter(o, byPid) {
     addText(o.x, o.y - 46, '冰晶四濺！', '#bfe6ff');
   }
 }
+// --- 跳躍+下壓拳(brawl-2:走位技術;空白=跳,空中攻擊=下壓)---
+export function jumping(f) { return f._jumpT > -5 && game.time - f._jumpT < JUMP_LOB.T + 0.02; }
+export function airborne(f) { return jumping(f) || f._diveT0 > -5 || f.z > 1; } // z>1 含被拋飛(對空中規則一視同仁)
+export function jump(f) { // 自發小 lob(z 在 v2.js 每幀由 lobZ(t,JUMP_LOB) 算);冰面鎖滑的主動解
+  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || f.guarding || f._performing) return;
+  if (f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) return; // 扛人/扛桶跳不動(重量感);瓶=輕
+  if (airborne(f) || f.jumpCd > 0) return;
+  if (f._slideVx || f._slideVy) { // 鎖滑中起跳=解鎖:動量帶上天(落地乾淨,不續滑)
+    f.vx = f._slideVx; f.vy = f._slideVy; f._slideVx = 0; f._slideVy = 0;
+    addText(f.x, f.y - 40, '跳出冰面！', '#bfe6ff');
+  }
+  f._jumpT = game.time; f.jumpCd = JUMP_LOB.T + JUMP_CD;
+  game.sfx.push('dash'); addRing(f.x, f.y, 20, '#cfe8ff', 0.25, 3);
+  inc.types.add('jump');
+}
+export function dive(f) { // 空中+攻擊:鎖方向俯衝,DIVE_T 後落地幀 AoE 判定(kind 3);穿防;落空硬直
+  if (f._diveT0 > -5 || f._strikeAt || f.punchCd > 0 || f.stunned || f.carriedBy || f.fumbleT > 0) return;
+  f._diveT0 = game.time; f._diveZ0 = Math.max(f.z, 8); f._diveDir = f.facing;
+  f._jumpT = -9;                                       // 跳躍彈道讓位給俯衝(z 改由 dive 線性壓地)
+  f.punchCd = DIVE_CD;
+  f.punchFx = game.time; f.punchKind = 3; f.punchArm = 1; // 動畫:dive_punch 槽(缺槽 actor-brawler 暫用 overhand)
+  f._strikeAt = game.time + DIVE_T; f._strikeKind = 3; f._strikeDir = f.facing;
+  game.sfx.push('dash');
+}
+function resolveDive(f) { // 下壓落地幀:落點圓形 AoE;命中=大削穩定+穿防+擊退;落空=硬直
+  f._strikeAt = 0; f._diveT0 = -9;
+  if (f.stunned || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return; // 半途被拍落=這撲不存在
+  addRing(f.x, f.y, DIVE_R, '#ffd36d', 0.32, 5);
+  let hit = false;
+  for (const o of fighters) {
+    if (o === f || o.state !== 'alive' || o.carriedBy || o.invuln > 0 || o._performing) continue;
+    if (Math.hypot(o.x - f.x, o.y - f.y) > DIVE_R + o.r) continue;
+    hit = true;
+    const a = Math.atan2(o.y - f.y, o.x - f.x) || f._strikeDir;
+    if (o.guarding) { o.guarding = false; addText(o.x, o.y - 34, '穿防重擊！', '#ffb14a'); } // 重擊穿防(剋龜)
+    o.stability = Math.max(0, o.stability - DIVE_STAB); o.stabCd = 1.2;
+    o.lastHitBy = f.pid; o.lastHitT = game.time;
+    o.vx += Math.cos(a) * 260; o.vy += Math.sin(a) * 260;
+    flinch(o, a, 0.3); hitSpark(o.x, o.y, '#ffe0a3', 2.2);
+    if (o.pid === LOCAL) v2s.localFlash = 0.3;
+    if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 暈/踉蹌後的掉桶瓶由 v2.js 扛桶 loop 條件處理
+  }
+  if (hit) { addShake(7); addHitstop(0.1); camKick(f._strikeDir, 9); game.sfx.push('smash'); inc.types.add('dive'); }
+  else { f._diveLagT = DIVE_LAG; addShake(3); game.sfx.push('thud'); addText(f.x, f.y - 30, '撲空！', '#9aa5b8'); }
+}
 // 出拳=起手:播動作、鎖定方向,STRIKE_DELAY 秒後的 impact 影格才判定命中(resolveStrike)。
 // 起手中被打暈/被抓/被推開踉蹌 → resolveStrike 的守衛直接取消 = 格擋推開是能打斷出拳的真反制。
 export function punch(f) {
+  if (airborne(f) && f.state === 'alive' && !f.stunned && !f.carriedBy && !f.carrying && !f.carryObj) { dive(f); return; } // 空中攻擊=下壓拳
   if (f.punchCd > 0 || f.stunned || f.carrying || f.carryObj || f.carriedBy || f.fumbleT > 0 || f.guarding || f.state !== 'alive') return; // 舉防中不能出拳(防禦=承諾架式,要攻擊先放防)
   if (f.comboT <= 0) f.comboN = 0;                        // 超窗 → 從第一段重來
   const stage = f.comboN;                                 // 0 左鉤 / 1 右鉤 / 2 浮誇直拳(終結技)
@@ -250,14 +301,14 @@ export function punch(f) {
 // 都不是=不做事(按住本身=防禦架式,由 v2.js pollGuard 設 f.guarding、updateGuard 管耐力)。
 // 空按不再進冷卻——「隨時可舉防」,防呆改由耐力條(GUARD_STAM)承擔。
 export function doGuard(f) {
-  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0) return;
+  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || airborne(f)) return; // 空中沒有格擋/推開(空中規則)
   if (f.parryWinT > 0) { doPerfectParry(f); return; }
   if (f.pushWinT > 0 && f.pushCd <= 0) { doPushOff(f); return; }
 }
-// 能否舉防(按住防禦架式):活著、非暈/被扛/踉蹌、不在破防鎖定、不在鎖滑中、耐力>0。
+// 能否舉防(按住防禦架式):活著、非暈/被扛/踉蹌、不在破防鎖定、不在鎖滑中、不在空中、耐力>0。
 export function canGuard(f) {
   return f.state === 'alive' && !f.stunned && !f.carriedBy && !f.carrying && !f.carryObj
-    && f.fumbleT <= 0 && f.guardLock <= 0 && f.guardStam > 0 && !(f._slideVx || f._slideVy);
+    && f.fumbleT <= 0 && f.guardLock <= 0 && f.guardStam > 0 && !(f._slideVx || f._slideVy) && !airborne(f);
 }
 // 每幀:耐力衰退/回充。舉防中純守衰退;放開後延遲才回充。v2.js step 於 pollGuard 設好 f.guarding 後呼叫。
 export function updateGuard(f, dt) {
@@ -297,6 +348,7 @@ export function doPerfectParry(d) { // 黃金窗口內按下:取消對方那拳+
 }
 export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打擊回饋
   const stage = f._strikeKind, fin = stage === 2;
+  if (stage === 3) { resolveDive(f); return; } // 下壓拳:落地幀 AoE(自帶取消守衛)
   f._strikeAt = 0;
   if (f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return; // 被打斷:這拳不存在
   const a = f._strikeDir; let hit = false;
@@ -339,7 +391,14 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
       const F = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;            // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
       o.vx = Math.cos(a) * F; o.vy = Math.sin(a) * F;
       o._thrownT = game.time; o._lob = PUNCH_LAUNCH_LOB; o.fumbleT = PUNCH_LAUNCH_LOB.T + 0.1;
+      o._jumpT = -9; o._diveT0 = -9;                                    // 空中被終結=照樣挑飛(彈道覆蓋跳躍)
       if (o.carrying) dropCarry(o);                                     // 飛行中不可能繼續扛人(扛桶由 v2.js 扛桶 loop 的 fumbleT 條件掉)
+    } else if (jumping(o) || o._diveT0 > -5) {                          // 空中挨鉤拳=拍蚊子:小翻滾落地(brawl-2 空中規則)
+      o._jumpT = -9; o._diveT0 = -9;
+      const F2 = AIR_HIT_LOB.range / AIR_HIT_LOB.T;
+      o.vx = Math.cos(a) * F2; o.vy = Math.sin(a) * F2;
+      o._thrownT = game.time; o._lob = AIR_HIT_LOB; o.fumbleT = AIR_HIT_LOB.T + 0.1;
+      addText(o.x, o.y - 40, '拍落！', '#ffd36d');
     }
     if (o.pid === LOCAL) v2s.localFlash = 0.2;
   }
@@ -393,6 +452,7 @@ export function doPushOff(o) {
   dlog('PUSHOFF', NAMES[o.pid], '→', NAMES[f.pid]);
 }
 export function startCarry(f, o) {
+  if (airborne(f) || airborne(o)) return; // 空中不可抓/被抓(brawl-2 空中規則;呼叫端條件同幀可能過期,這裡守底)
   f.carrying = o; o.carriedBy = f; o.escape = 0; o.stunned = false; o.stunT = 0; o.mashSide = 0; o._aPrev = false; o._dPrev = false;
   f._carryThrowAt = 0; f.carryClip = 'person_throw'; f.carryFx = game.time; f.carryHold = PERSON_HOLD_T; // 抓起就播 0→hold(reach→抓→舉→翻橫)然後定格在 hold 幀扛著走
   addText(o.x, o.y - 30, '抓住！', COLORS[f.pid]); addRing(o.x, o.y, 34, COLORS[f.pid], 0.35, 4); addShake(4); game.sfx.push('upgrade');
@@ -573,6 +633,16 @@ export function aiMove(f) {
   const dx = gx - f.x, dy = gy - f.y, dl = Math.hypot(dx, dy) || 1;
   const dir = FREEFORM ? aiSafeDir(f, dx / dl, dy / dl) : { x: dx / dl, y: dy / dl };
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
+  // 跳躍(brawl-2):中距離對峙時偶爾起跳,半程自動下壓(活教學:AI 示範跳攻,玩家看得懂新動詞)
+  if (f._aiDiveAt && game.time >= f._aiDiveAt) { f._aiDiveAt = 0; if (airborne(f) && !f.stunned) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); dive(f); } }
+  if (!attackGrace && !f.carrying && f.fumbleT <= 0 && !f.stunned && o.state === 'alive' && !o.stunned && game.time >= (f._aiJumpAt || 0)) {
+    const jd = Math.hypot(o.x - f.x, o.y - f.y);
+    if (jd > PUNCH_RANGE && jd < 150 && Math.random() < AI_JUMP_CHANCE) {
+      jump(f);
+      f._aiJumpAt = game.time + AI_JUMP_CD;
+      f._aiDiveAt = game.time + JUMP_LOB.T * 0.45; // 快到頂點時下壓
+    }
+  }
   // actions: grab a stunned rival (after a human-like reaction delay), else sometimes punch when in range
   if (!f.carrying && f.fumbleT <= 0 && o.state === 'alive' && !o.carriedBy && o.invuln <= 0) {
     const od = Math.hypot(o.x - f.x, o.y - f.y);

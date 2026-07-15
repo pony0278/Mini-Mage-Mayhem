@@ -31,6 +31,7 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `mobilefx.mjs`  | 手機自動降級:觸控+行動 UA → FX_LOW 自動開(點光剝除/無 transmission)+ dpr 夾 1.5;桌機完整;`?fx=full` 覆蓋 |
 | `onboard.mjs`   | 上手開場框架(只驗易讀層):首局教學旗標(localStorage)、AI 對手開場即開(fight 純戰鬥)、開場字幕/鏡頭帶場計時、就位期 AI 靜止、首局打完記 localStorage |
 | `perform.mjs`   | 回收演出 V0.8:收容→演出啟動(即時計分/罩/釘艙心/受保護)、演出中不二次收容、收尾才彈回+升階、第 2 次失控風味、第 3 次壓縮→matchOver+報告 |
+| `jump.mjs`      | 跳躍+下壓拳 brawl-2:跑=預設(雙擊退役)、空白跳/Shift防、空中免地板化學+鎖滑中起跳解鎖、下壓命中削45穿防/落空硬直、空中挨拳拍落、跳越艙口不觸發失控收容 |
 | `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=resolveContain 計分+containLog、endMatch=事故報告 |
 
 ## Headless 陷阱(踩過的;寫新套件先讀,`js/CLAUDE.md` §測試 有完整版)
@@ -53,6 +54,8 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 7. ~~元素系統休眠~~(B 款憲章時期的旗;A 款爽鬥=系統預設全開,`?props=full` 已退役——別再給 URL 加旗)。
 8. **AI 對手預設開**:會走位/出拳干擾判定——出拳/搬運類 case 開頭把 `fighters[1].ai=false` 並清掉
    `carryObj/carrying`(扛著東西不能出拳,punch 會靜默 no-op;判定測試直接呼叫 `resolveStrike`)。
+9. **鍵盤 edge 測試要 down/等待/up**:rAF 節流下 `keyboard.press()` 的 down+up 常落在同一取樣幀,
+   `keys.has()` 邊緣觸發(跳/格擋)整個吃不到——先 `keyboard.down()`,waitForFunction 等狀態成立再 `up()`。
 
 ## Debug hooks(頁內 `window.*`)
 

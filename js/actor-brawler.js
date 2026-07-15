@@ -310,7 +310,7 @@ export function updateBrawler(e, g) {
   const iclip = e.itemClip ? CLIPS[e.itemClip] : null;              // 道具施法 clip(與拳互斥,優先)
   const ipt = now - (e.itemFx != null ? e.itemFx : -9);
   const pt = now - (e.punchFx != null ? e.punchFx : -9);
-  const clip = CLIPS[PUNCH_CLIPS[e.punchKind || 0]];
+  const clip = CLIPS[PUNCH_CLIPS[e.punchKind || 0]] || (e.punchKind === 3 ? CLIPS.overhand : null); // 下壓拳槽 dive_punch 未編好前暫用 overhand(砸下剪影最接近)
   if (cclip && cpt >= 0 && cpt < cclip.dur) {
     pose = evalClip(cclip, cpt);
     if (e.carrying && e.carryHold && cpt >= e.carryHold) {         // 定格扛著走:腿部疊走路(上身/手臂維持 studio hold 幀;丟出後時鐘解凍不再疊)

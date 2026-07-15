@@ -29,7 +29,7 @@ export function initTouch() {
   if (window.screen && screen.orientation && typeof screen.orientation.addEventListener === 'function')
     screen.orientation.addEventListener('change', syncOrientation);
   syncOrientation();
-  if (typeof window !== 'undefined') window.__touch = { isTouch, syncOrientation, gate: () => gateEl, joy: () => ({ ...touchInput }), btns: () => ({ punch: btnPunch, context: btnContext, guard: btnGuard }), report: () => reportEl }; // headless 健檢
+  if (typeof window !== 'undefined') window.__touch = { isTouch, syncOrientation, gate: () => gateEl, joy: () => ({ ...touchInput }), btns: () => ({ punch: btnPunch, context: btnContext, guard: btnGuard, jump: btnJump }), report: () => reportEl }; // headless 健檢
 }
 
 // ===== Phase B:浮動虛擬搖桿(左半螢幕,拇指按哪冒哪)→ 類比移動 + 面向 =====
@@ -65,18 +65,19 @@ function joyMove(e) {
   let nx = dx / JOY_R, ny = dy / JOY_R; const nm = Math.hypot(nx, ny);   // 類比向量:螢幕軸(上=−y=前),同 readMove 的 sx/sy
   if (nm < JOY_DEAD) { nx = 0; ny = 0; } else { const f = Math.min(nm, 1) / nm; nx *= f; ny *= f; }
   touchInput.x = nx; touchInput.y = ny;
+  touchInput.mag = nm < JOY_DEAD ? 0 : Math.min(nm, 1); // 推程 0~1:v2.js 跑步分檔(推一半=走、到底=跑),取代雙擊(手感不順,使用者反饋 2026-07-15)
   e.preventDefault();
 }
 function joyUp(e) {
   if (e.pointerId !== joyId) return;
-  joyId = null; touchInput.active = false; touchInput.x = 0; touchInput.y = 0;   // 放開:停止移動(facing 已保留,v2-combat 只在有移動時更新)
+  joyId = null; touchInput.active = false; touchInput.x = 0; touchInput.y = 0; touchInput.mag = 0; // 放開:停止移動(facing 已保留,v2-combat 只在有移動時更新)
   joyBase.style.display = 'none'; joyThumb.style.display = 'none';
 }
 
 // ===== Phase C:右下 3 顆動作按鈕 → 邊緣觸發現有 mouseLeft/mouseRight/doGuard =====
 // 按下只設 touchInput.press.X 閂鎖(v2.js step 消費),不 import sim/glue,避免與 v2.js 的動態 import 成環。
 // 尺寸用 vmin 響應式;揮拳最大(主要輸出),抓/技能、格擋次之。字會依情境換(扛人=投擲、可抓=抓/否則技能)。
-let btnPunch = null, btnContext = null, btnGuard = null;
+let btnPunch = null, btnContext = null, btnGuard = null, btnJump = null;
 function makeBtn(label, sizeVmin, right, bottom, bg, glow, key) {
   const b = document.createElement('div');
   b.textContent = label;
@@ -94,10 +95,11 @@ function makeBtn(label, sizeVmin, right, bottom, bg, glow, key) {
   return b;
 }
 function buildButtons() {
-  // 拇指弧:揮拳(主)最右下、格擋在其左、抓/技能在其上——都在右手拇指可及區。
+  // 拇指弧:揮拳(主)最右下、格擋在其左上、抓/技能在其左、跳在抓與格擋之間——都在右手拇指可及區。
   btnPunch   = makeBtn('揮拳', 22, '5vmin',  '7vmin',  'rgba(255,92,84,.30)',  'rgba(255,120,110,.65)', 'punch');
   btnContext = makeBtn('抓',   15, '30vmin', '11vmin', 'rgba(120,190,255,.28)','rgba(140,200,255,.6)',  'context');
   btnGuard   = makeBtn('格擋', 15, '8vmin',  '33vmin', 'rgba(255,214,96,.26)', 'rgba(255,224,120,.6)',  'guard');
+  btnJump    = makeBtn('跳',   15, '27vmin', '28vmin', 'rgba(154,255,208,.24)','rgba(154,255,208,.6)',  'jump'); // brawl-2:跳躍(空中按揮拳=下壓)
 }
 
 // v2.js 每幀依本機玩家情境呼叫:扛人→「投擲」、可抓→「抓」/否則「技能」。只在文字變動時寫 DOM。
@@ -141,7 +143,7 @@ export function setReportVisible(v) {
   if (reportEl) reportEl.style.display = v ? 'flex' : 'none';
   const gp = v ? 'none' : '';                 // 結算時收起對戰控制:免誤觸 + 免殘留 latch 在重開第一幀誤發拳
   if (joyZone) joyZone.style.display = gp;
-  for (const b of [btnPunch, btnContext, btnGuard]) if (b) b.style.display = gp;
+  for (const b of [btnPunch, btnContext, btnGuard, btnJump]) if (b) b.style.display = gp;
   if (v) {
     touchInput.press.punch = touchInput.press.context = touchInput.press.guard = false;
     touchInput.active = false; touchInput.x = 0; touchInput.y = 0; joyId = null;

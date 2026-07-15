@@ -17,11 +17,11 @@ import {
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, RUN_TAP,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
   camRig, CAMB,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne } from './v2-combat.js';
 import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
@@ -84,7 +84,7 @@ function updateCamRig(dt) {
   camRig.x += (tx - camRig.x) * e; camRig.y += (ty - camRig.y) * e;
 }
 
-// --- 輸入:情境動作(J)/道具(K)/格擋(空白鍵),邊緣觸發;滑鼠=瞄準+左鍵連擊+右鍵情境 ---
+// --- 輸入:情境動作(J)/道具(K)/跳躍(空白)/格擋(Shift),邊緣觸發;滑鼠=瞄準+左鍵連擊+右鍵情境 ---
 function mouseLeft(f) {                                                         // 左鍵=揮拳;扛人=拋擲;扛桶=丟桶
   if (f.state !== 'alive') return;
   if (f.carryObj) { throwBarrel(f); return; }
@@ -131,13 +131,21 @@ function pollItem() {
   const pressed = [keys.has('k'), keys.has('.')];
   for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
 }
-let guardPrev = false; // 格擋鍵=空白鍵(本機玩家)。按下瞬間 doGuard(黃金窗=反暈/挨打後=推開);按住=防禦架式(f.guarding)
-function pollGuard() {
-  const pressed = keys.has(' ') || (touchInput.enabled && touchInput.guardHeld);
+let guardPrev = false; // 格擋鍵=Shift(本機玩家;brawl-2 空白讓給跳)。按下瞬間 doGuard(黃金窗=反暈/挨打後=推開);按住=防禦架式(f.guarding)
+function pollGuard() { // brawl-2 鍵位重排(使用者拍板):防禦=Shift(空白讓給跳躍=高頻動作佔最好的鍵)
+  const pressed = keys.has('shift') || (touchInput.enabled && touchInput.guardHeld);
   const f = fighters[LOCAL];
   if (pressed && !guardPrev) doGuard(f);          // edge:精準格擋/推開分派
   f.guarding = pressed && canGuard(f);            // 按住=舉防(耐力/破防由 updateGuard 管);loop 前設好→無 1 幀延遲擋 AI 拳
   guardPrev = pressed;
+}
+let jumpPrev = false;
+function pollJump() { // 空白=跳(edge);空中再按攻擊=下壓拳(mouseLeft→punch→dive 分派)
+  const pressed = keys.has(' ');
+  const f = fighters[LOCAL];
+  if (pressed && !jumpPrev) jump(f);
+  jumpPrev = pressed;
+  if (touchInput.press.jump) { touchInput.press.jump = false; jump(f); }
 }
 const contextPrev = [false, false]; // E 鍵=互動優先情境(contextAction:撿/抓照舊;與右鍵開火分工)。Mac 觸控板/無滑鼠也靠這鍵
 function pollContext() {
@@ -187,7 +195,7 @@ function step(dt) {
   syncTouchLabels(); // 情境按鈕字(每幀,只在變動時寫 DOM)
   if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); pollTouchGuard(); } // 定格中也收格擋輸入:玩家的反應常落在凍結幀裡,不能吃掉
   else {
-    pollAction(); pollItem(); pollGuard(); pollContext();
+    pollAction(); pollItem(); pollGuard(); pollContext(); pollJump();
     pollTouchButtons(); pollTouchGuard();
     if (TEST_CLIP) {                                   // ?clip= 試播:循環播放 + 凍結對手 AI
       fighters[1 - LOCAL].ai = false;
@@ -199,6 +207,8 @@ function step(dt) {
       if (f._performing) { f.x = POD.x; f.y = POD.y; f.vx = 0; f.vy = 0; continue; } // 收容演出:被罩在艙心(掙扎/掃描由 render+HUD 演;stun 倒數也凍結=不會醒)
       // cooldown timers
       if (f.punchCd > 0) f.punchCd -= dt;
+      if (f.jumpCd > 0) f.jumpCd -= dt;
+      if (f._diveLagT > 0) f._diveLagT -= dt;
       if (f.itemCastCd > 0) f.itemCastCd -= dt;
       if (f.regrabCd > 0) f.regrabCd -= dt;
       if (f.fumbleT > 0) f.fumbleT -= dt;
@@ -206,7 +216,14 @@ function step(dt) {
       {
         // 哨兵用 > -5(-9=未被丟):撞牆快落會把 _thrownT 夾成 game.time-T+0.1,開場 game.time 小時是小負數,仍屬有效時戳
         const lob = f._lob || PERSON_LOB;   // 丟人=PERSON_LOB / 終結技打飛=PUNCH_LAUNCH_LOB(同一條管線)
-        const z = (f._thrownT > -5) ? lobZ(game.time - f._thrownT, lob) : 0;
+        let z = (f._thrownT > -5) ? lobZ(game.time - f._thrownT, lob) : 0;
+        if (f._jumpT > -5) {                // 跳躍(brawl-2):自發小 lob,同一套 z;到時落地清戳
+          const jt = game.time - f._jumpT;
+          if (jt < JUMP_LOB.T) z = Math.max(z, lobZ(jt, JUMP_LOB)); else f._jumpT = -9;
+        }
+        if (f._diveT0 > -5) {               // 下壓:從起跳高度線性壓地(落地幀=resolveStrike kind 3 清 _diveT0)
+          z = Math.max(0, f._diveZ0 * (1 - (game.time - f._diveT0) / DIVE_T));
+        }
         if (!z && f.z > 1) { f.vx *= LAND_SKID; f.vy *= LAND_SKID; addRing(f.x, f.y, 24, '#cbb9a2', 0.28, 3); game.sfx.push('thud'); }
         f.z = z;
         // 被丟打橫旗:飛行中+落地滑行都趴著,滑停(fumbleT 歸零)才站起(render 讀,actor-brawler 平滑旋轉)
@@ -241,9 +258,13 @@ function step(dt) {
         }
         continue;
       }
-      // 跑步裁定:雙擊鍵放開即停;扛人/扛桶/暈眩/踉蹌不能跑(搬運要有重量感);瓶=輕,拿著照樣跑
-      if (f._runKey && !keys.has(f._runKey)) f._runKey = null;
-      f.running = !!(f._runKey && !f.carrying && !(f.carryObj && f.carryObj.kind !== 'bottle') && !f.stunned && f.fumbleT <= 0);
+      // 跑=預設(brawl-2):有移動輸入就是跑;扛人/扛桶/暈眩/踉蹌不能跑(搬運要有重量感);瓶=輕,拿著照樣跑。
+      // 手機:搖桿推程 < RUN_STICK=走(微操走位)、到底=跑;AI 維持走速(可預測的難度)。
+      const mvIn = (!f.ai && f.pid === LOCAL)
+        ? (touchInput.enabled ? (touchInput.active && touchInput.mag >= RUN_STICK)
+          : (keys.has('w') || keys.has('a') || keys.has('s') || keys.has('d')))
+        : false;
+      f.running = !!(mvIn && !f.carrying && !(f.carryObj && f.carryObj.kind !== 'bottle') && !f.stunned && f.fumbleT <= 0);
       floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
       if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
     }
@@ -274,6 +295,7 @@ function step(dt) {
     // 失控入艙: 被擊退/打滑(速度夠快)、暈眩者、或被拋出翻滾中進到艙半徑 → 收容(對手勝)。無敵中免疫。演出中整段 suspend。
     if (!v2s.perform) for (const f of fighters) {
       if (f.state !== 'alive' || f.carriedBy || f.carrying || f.invuln > 0) continue;
+      if (jumping(f) && !f.stunned) continue; // 主動跳躍=受控,飛越艙口不算失控入艙(帶著鎖滑動量跳過艙也安全);暈著照收
       const thrown = inThrowFlight(f);
       if ((f.stunned || thrown || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
         const cause = thrown ? 'throw' : (onSlipperyIce(f.x, f.y) || game.time - (f._slideT || -9) < 0.5) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind'); // 剛滑出冰面衝進艙也算 ice
@@ -381,7 +403,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, BOTTLE_LOB, bottles, shatterBottle, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB,
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
@@ -397,6 +419,8 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
     itemBackfires: inc.itemBackfires, barrelBooms: inc.barrelBooms, itemUses: inc.itemUses,
     throws: [inc.throws[0], inc.throws[1]], throwContains: inc.throwContains,
     fumble: [+fighters[0].fumbleT.toFixed(2), +fighters[1].fumbleT.toFixed(2)],
+    z: [+(fighters[0].z || 0).toFixed(1), +(fighters[1].z || 0).toFixed(1)], running: [fighters[0].running, fighters[1].running],
+    jumping: [jumping(fighters[0]), jumping(fighters[1])], diving: [fighters[0]._diveT0 > -5, fighters[1]._diveT0 > -5],
     guarding: [fighters[0].guarding, fighters[1].guarding],
     guardStam: [Math.round(fighters[0].guardStam), Math.round(fighters[1].guardStam)],
     guardLock: [+fighters[0].guardLock.toFixed(2), +fighters[1].guardLock.toFixed(2)],
@@ -424,16 +448,7 @@ function toggleFlicker() {
 }
 window.addEventListener('keydown', (e) => {
   unlockAudio();
-  const k = e.key.toLowerCase();
-  // 跑步雙擊偵測:同方向鍵 RUN_TAP 秒內連按 2 次 → 記 _runKey(step 每幀裁定 running;按住期間持續)。
-  // e.repeat 擋鍵盤自動重複(按住不是連按)。
-  if (!e.repeat && (k === 'w' || k === 'a' || k === 's' || k === 'd')) {
-    const me = fighters[LOCAL];
-    if (me && !me.ai) {
-      if (me._tapKey === k && game.time - me._tapT < RUN_TAP) me._runKey = k;
-      me._tapKey = k; me._tapT = game.time;
-    }
-  }
+  const k = e.key.toLowerCase(); // 跑=預設(brawl-2):雙擊偵測退役;'shift'=防禦、' '=跳(pollGuard/pollJump 每幀讀 keys)
   keys.add(k);
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(k)) e.preventDefault();
   if (k === 'b') toggleAI(); // 切換 AI / 練習模式

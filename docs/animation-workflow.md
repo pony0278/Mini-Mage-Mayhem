@@ -62,7 +62,10 @@
    (或直接把 JSON 貼給 Claude 並說明是哪個招式)
 4. **判定時刻自動同步**:`STRIKE_DELAY`/`BARREL_THROW_DELAY`/`PERSON_HOLD_T`/`PERSON_THROW_DELAY` 由
    clip 的 impact key / `release`/`hold` tag **自動導出**(v2-state import CLIPS)——移動影格重貼 JSON 即對齊,
-   **不再手動改常數**。扛人 clip 記得把定格幀標 tag `hold`、甩出幀標 `release`(§4)
+   **不再手動改常數**。扛人 clip 記得把定格幀標 tag `hold`、甩出幀標 `release`(§4);
+   跳躍/下壓 clip 標 `air`(離地幀)/`land`(落地幀)→ studio 預覽自動抬升角色(air 在第 0 幀=俯衝式線性壓地、
+   否則拋物線;preview-only,遊戲內高度由 sim 彈道 JUMP_LOB/DIVE_T 決定);`dive_punch` 的 impact 幀=落地判定
+   → 自動導出 `DIVE_T`(編好貼入即對齊,PUNCH_CLIPS[3] 槽)
 5. 重新整理 `v2.html?clip=招式名` 驗證(任意 clip 循環試播,不用綁玩法;或跑 headless 姿勢截圖)
 
 ## 3. 資料格式(編排器 JSON snapshot)

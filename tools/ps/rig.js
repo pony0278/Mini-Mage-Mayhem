@@ -370,6 +370,26 @@ placeCam();
 // ===== Pose apply =====
 let CARRY_TILT_NOW = 0, CARRY_YAW_NOW = 0;       // 目前幀被扛者 pitch/yaw(度);parts.js 幽靈讀它做拎頭旋轉
 const CARRY_OFF_NOW = { x: 0, y: 0, z: 0 };      // 目前幀被扛者掛點偏移(手局部,PS 單位);原地變異、parts.js 讀
+// --- 跳躍預覽(brawl-2 air/land tag;使用者拍板 2026-07-15「角色會離地才方便編動作」)---
+// air..land 段自動抬升整個角色(applyPose 的踩地公式加項→素體+avatar+部位全跟)。preview-only:
+// 不寫進姿勢/匯出——遊戲內高度永遠由 sim 彈道(JUMP_LOB/DIVE_T)決定,studio 只負責讓剪影看得對。
+// 兩種曲線:air 在第 0 幀=俯衝式(開場即空中,線性壓地到 land=遊戲 dive 同款);否則=拋物線 0→頂→0(遊戲 lobZ 同形)。
+const JUMP_PREVIEW_APEX = 46 / 25;   // 對齊遊戲 JUMP_LOB.apex 46px(PS 1 單位=25px)
+function jumpTagFrames(){
+  let af = null, lf = null;
+  try{ for(const k of (SEQ || [])){ if(k.tag === 'air' && af === null) af = k.frame; if(k.tag === 'land' && lf === null && af !== null && k.frame > af) lf = k.frame; } }catch(e){ /* SEQ 未就緒 */ }
+  if(af !== null && lf === null) lf = timelineLastFrame();   // 沒標 land:落在 clip 結尾
+  return { af, lf };
+}
+function jumpLiftNow(){
+  const { af, lf } = jumpTagFrames();
+  if(af === null || lf === null || lf <= af) return 0;
+  const cur = (typeof playT !== 'undefined' ? playT : 0) * REF_FPS;   // 播放/scrub/選 key 都設 playT(WYSIWYG 契約)
+  if(cur < af || cur > lf) return 0;
+  const p = (cur - af) / (lf - af);
+  if(af <= 0) return JUMP_PREVIEW_APEX * (1 - p);            // 俯衝式:線性壓地
+  return JUMP_PREVIEW_APEX * 4 * p * (1 - p);                // 跳躍式:拋物線
+}
 function applyPose(p){
   CARRY_TILT_NOW = p.carry_tilt || 0; CARRY_YAW_NOW = p.carry_yaw || 0;
   CARRY_OFF_NOW.x = p.carry_ox || 0; CARRY_OFF_NOW.y = p.carry_oy || 0; CARRY_OFF_NOW.z = p.carry_oz || 0;
@@ -440,7 +460,7 @@ function applyPose(p){
   if(cL!==2){ _footBox.expandByObject(legL.foot); grounded=true; }
   if(cR!==2){ _footBox.expandByObject(legR.foot); grounded=true; }
   if(!grounded){ _footBox.expandByObject(legL.foot); _footBox.expandByObject(legR.foot); }   // 雙腳皆抬:仍用雙腳防止飄走
-  root.position.y = isFinite(_footBox.min.y) ? (baseY - _footBox.min.y + (p.root_py||0)) : (baseY + (p.root_py||0));
+  root.position.y = isFinite(_footBox.min.y) ? (baseY - _footBox.min.y + (p.root_py||0) + jumpLiftNow()) : (baseY + (p.root_py||0) + jumpLiftNow());
   // 基底角色(rigged avatar):素體 pose 完成後,把世界差量轉寫到角色骨頭(avatar.js;載入前守衛)
   if (typeof updateAvatarPose === 'function') updateAvatarPose(p);
   // rigged 手手指彎曲:逐關鍵格姿勢軸(aL_/aR_ f*)→ 驅動 HAND_RIG 指骨(parts.js;未掛手時 no-op)

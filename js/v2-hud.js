@@ -79,7 +79,7 @@ function drawContainHud() {
     if (f.pid === LOCAL && f.pushWinT > 0 && f.pushCd <= 0 && !f.stunned && !f.carriedBy) {
       const pk = v2s.lowFlicker ? 0.95 : 0.75 + 0.25 * Math.sin(game.time * 18);
       hctx.fillStyle = `rgba(154,255,208,${pk})`; hctx.font = '900 14px system-ui, sans-serif';
-      hctx.fillText('空白鍵 推開！', s.x, s.y - 18);
+      hctx.fillText('Shift 推開！', s.x, s.y - 18);
     }
   }
 }
@@ -93,9 +93,9 @@ function drawParryPrompt() {
   hctx.textAlign = 'center';
   hctx.font = '900 44px system-ui, sans-serif';
   hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(8,8,16,.85)';
-  hctx.strokeText('⚡ 空白鍵 反擊！', cx, cy);
+  hctx.strokeText('⚡ Shift 反擊！', cx, cy);
   hctx.globalAlpha = pk; hctx.fillStyle = '#ffe97a';
-  hctx.fillText('⚡ 空白鍵 反擊！', cx, cy);
+  hctx.fillText('⚡ Shift 反擊！', cx, cy);
   // 倒數條:剩餘窗口比例
   const bw = 260, bh = 10, p = Math.max(0, Math.min(1, me.parryWinT / (me.parryWin0 || 0.15)));
   hctx.globalAlpha = 1;
@@ -127,7 +127,7 @@ function drawCoachLine() {
   if (me.carriedBy) { msg = '連打 ◀A D▶ 掙脫！'; col = '#9affd0'; }
   else if (me.carrying) { msg = '拖進中央回收口！或 左鍵拋擲'; col = '#c98cff'; }
   else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '♻ 對手可回收了！右鍵 / E 抓住 → 拖進回收口'; col = '#9affd0'; }
-  else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = '空白鍵 推開！'; col = '#9affd0'; }
+  else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = 'Shift 推開！'; col = '#9affd0'; }
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
   else if (o.state === 'alive' && !o.stunned && o.stability < STAB_MAX * 0.55) { msg = '⚡ 對手即將可回收！繼續打'; col = '#ffd36d'; } // 快暈了
   else if (o.state === 'alive' && (o.flinchT > 0 || (me.punchFx > 0 && game.time - me.punchFx < 0.7))) { msg = '有效！繼續攻擊讓他失衡'; col = '#ffd36d'; } // 剛命中
@@ -329,9 +329,9 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動（同向連按2下＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 右鍵＝抓／放技能（持攻擊裝備優先開火）· E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟 · 空白鍵按住＝防禦　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動（＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 空白＝跳（空中左鍵＝下壓拳）· Shift 按住＝防禦 · 右鍵＝抓／放技能 · E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: brawl-1', VW - 10, VH - 4);
+  hctx.fillText('build: brawl-2', VW - 10, VH - 4);
 }
