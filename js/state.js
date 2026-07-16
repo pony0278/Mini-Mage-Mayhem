@@ -42,6 +42,7 @@ export const game = {
   boltAims: [],   // 魔導電鞭起手預告:直線+末端點(每幀重建;教直線射程)
   bolts: [],      // 魔導電鞭發射閃:直線電擊亮束(fx.addBolt;render-entities 畫亮束+末端爆)
   floatingTexts: [],
+  bursts: [],     // 漫畫打擊爆花(hitfx-1:fx.addBurst 推、v2-hud drawBursts 用 project() 畫最上層;拳=橘/反擊=金/下壓=紅)
   upgrades: [],
   stats: null,
   run: null,

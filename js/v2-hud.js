@@ -4,7 +4,7 @@
 
 import { clamp } from './utils.js';
 import { game } from './state.js';
-import { project } from './render.js';
+import { project, FX_LOW } from './render.js';
 import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
@@ -84,6 +84,60 @@ function drawContainHud() {
   }
 }
 // 反擊拳改制(brawl-3.1):拿掉大字提示/倒數條/慢動作/灰屏——反擊靠「擋下瞬間 hitstop」的手感抓,讓玩家自己體會。
+/* 漫畫打擊爆花(hitfx-1,使用者拍板 2026-07-16 選 GetAmped 風=圖 2):平塗白星+彩色粗描邊,畫「最上層蓋過角色」
+   (遮住命中瞬間=腦補補幀更痛);幀階式跳格播放(彈大→定住→縮小,不平滑淡出=漫畫感);顏色=打擊類型。
+   重擊帶速度線(往擊退反向甩的錐形線)+第一格全屏白閃;挑飛加全屏邊緣集中線。FX_LOW 留爆花、砍線(便宜的留)。
+   sim 推 fx.addBurst → game.bursts,這裡消費;元素爆炸維持既有發光粒子(能量感 vs 拳頭=漫畫感,分工)。 */
+function drawBursts() {
+  for (const b of game.bursts) {
+    const s = project(b.x, b.y, 24); if (s.behind) continue;
+    const e = project(b.x + b.size, b.y, 24);
+    const step = Math.min(2, Math.floor(b.t / (b.life / 3)));          // 3 格幀階(跳格,無補間)
+    const R = Math.max(12, Math.abs(e.x - s.x)) * [1.28, 1.0, 0.8][step];
+    // 速度線(重擊;FX_LOW 砍):從爆花往擊退反方向甩 3~6 條錐形線(圖 2 的黃色拖尾)
+    if (b.streaks > 0 && !FX_LOW && step < 2) {
+      const p2 = project(b.x + Math.cos(b.streakA) * 40, b.y + Math.sin(b.streakA) * 40, 24);
+      const dx = p2.x - s.x, dy = p2.y - s.y, dl = Math.hypot(dx, dy) || 1;
+      const ux = -dx / dl, uy = -dy / dl;                              // 反向(線甩在來拳方向後面)
+      hctx.fillStyle = '#ffe14a';
+      for (let i = 0; i < b.streaks; i++) {
+        const sp = (i / (b.streaks - 1) - 0.5) * 0.8 + Math.sin(b.seed * 5 + i * 2.7) * 0.1; // 扇形展開±0.4rad
+        const ca = Math.atan2(uy, ux) + sp;
+        const len = R * (1.7 + (i % 2) * 0.7), w = R * 0.16;
+        const tx = s.x + Math.cos(ca) * len, ty = s.y + Math.sin(ca) * len;
+        const px = -Math.sin(ca) * w, py = Math.cos(ca) * w;
+        hctx.beginPath(); hctx.moveTo(tx, ty); hctx.lineTo(s.x + px, s.y + py); hctx.lineTo(s.x - px, s.y - py); hctx.closePath(); hctx.fill();
+      }
+    }
+    // 爆花本體:不規則星形(角半徑吃 seed=每發長相不同),兩層=彩色粗描邊+白色實心
+    hctx.beginPath();
+    for (let i = 0; i < b.pts * 2; i++) {
+      const a = b.seed + (i / (b.pts * 2)) * Math.PI * 2;
+      const rr = (i % 2 === 0 ? R * (0.86 + 0.28 * Math.sin(b.seed * 7 + i * 3.7)) : R * 0.42);
+      const px = s.x + Math.cos(a) * rr, py = s.y + Math.sin(a) * rr * 0.92; // 輕微壓扁貼視角
+      i === 0 ? hctx.moveTo(px, py) : hctx.lineTo(px, py);
+    }
+    hctx.closePath();
+    hctx.lineWidth = Math.max(3, R * 0.22); hctx.lineJoin = 'miter';
+    hctx.strokeStyle = b.col; hctx.stroke();
+    hctx.fillStyle = '#fffdf5'; hctx.fill();
+  }
+  // 全屏層:第一格白閃(重擊)+ 邊緣集中線(挑飛;FX_LOW 砍線留閃)
+  for (const b of game.bursts) {
+    const step = Math.floor(b.t / (b.life / 3));
+    if (b.flash > 0 && step === 0) { hctx.fillStyle = `rgba(255,255,255,${b.flash})`; hctx.fillRect(0, 0, VW, VH); }
+    if (b.focus && !FX_LOW && step < 2 && !v2s.lowFlicker) {           // 集中線也吃減閃爍旗(光敏無障礙)
+      const s = project(b.x, b.y, 24); if (s.behind) continue;
+      hctx.strokeStyle = 'rgba(255,250,235,.6)'; hctx.lineWidth = 4; // 亮色集中線(場地是深色工業地板,黑線看不見)
+      for (let i = 0; i < 14; i++) {
+        const a = b.seed + (i / 14) * Math.PI * 2;
+        const ex = s.x + Math.cos(a) * VW, ey = s.y + Math.sin(a) * VW;          // 射向畫面外
+        const ix = s.x + Math.cos(a) * VW * 0.32, iy = s.y + Math.sin(a) * VW * 0.32; // 內端留空(中心乾淨)
+        hctx.beginPath(); hctx.moveTo(ex, ey); hctx.lineTo(ix, iy); hctx.stroke();
+      }
+    }
+  }
+}
 // 教練提示線(玩家反饋:「指示要更明顯地告訴我現在該做什麼」):
 // 按優先序只顯示一條,大字置中脈動,告訴本機玩家當下最重要的行動。
 function nearPickup(f) { // 附近有可撿的補給座道具或地上掉落道具(手動撿提示用;空手才撿得到)
@@ -297,6 +351,7 @@ export function drawHud() {
   drawPips(0, 24, 1); drawPips(1, VW - 24, -1);
   drawContainHud();
   drawItems();
+  drawBursts(); // 漫畫打擊爆花:最上層蓋過角色/血條(hitfx-1;白閃/集中線也在這層)
   drawSwitchLabels();
   if (v2s.introT <= INTRO_GO) drawCoachLine(); // 就位期讓位給開場字幕(反擊提示已移除=玩家自己體會)
   // stage / seal banner
@@ -313,5 +368,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: brawl-3.1', VW - 10, VH - 4);
+  hctx.fillText('build: hitfx-1', VW - 10, VH - 4);
 }

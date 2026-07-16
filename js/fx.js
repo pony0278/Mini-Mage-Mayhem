@@ -66,6 +66,23 @@ export function updateParticles(dt) {
 export function addWindFan(x, y, angle, range, cone, life = 0.45) {
   game.windFans.push({ x, y, angle, range, cone, life, maxLife: life });
 }
+// 漫畫打擊爆花(hitfx-1,使用者拍板 2026-07-16:GetAmped 風平塗星形=拳頭的打擊語言;元素維持發光粒子)。
+// sim 推事件、v2-hud 消費(drawBursts:project() 投影、畫最上層蓋過角色、幀階式跳格播放=漫畫感)。
+// 分級參數包在 v2-state HIT_BURST(拳=橘白/反擊=金/下壓=紅白;重擊帶速度線+白閃、挑飛加全屏集中線)。
+export function addBurst(x, y, opts = {}) {
+  game.bursts.push({
+    x, y, t: 0,
+    life: opts.life ?? 0.22,             // 總壽命(3 格幀階:彈大→定住→縮小)
+    size: opts.size ?? 24,               // 爆花半徑(世界 px;HUD 端投影換算螢幕大小)
+    col: opts.col ?? '#ff8a3a',          // 描邊色=打擊類型(免費的資訊層)
+    streaks: opts.streaks ?? 0,          // 速度線條數(重擊才有;FX_LOW 砍)
+    streakA: opts.streakA ?? 0,          // 速度線方向(=擊退方向,線往反向甩)
+    flash: opts.flash ?? 0,              // 全屏白閃強度(0=無;只在第一格)
+    focus: !!opts.focus,                 // 全屏邊緣集中線(最重檔:挑飛)
+    seed: Math.random() * Math.PI * 2,   // 星形隨機旋轉(每發長相不同)
+    pts: 8 + ((Math.random() * 3) | 0),  // 星角數 8~10
+  });
+}
 // 魔導電鞭發射閃:直線電擊亮束(頂點在手、直線打到 range),render 畫亮束+淡出。
 export function addBolt(x, y, angle, range, life = 0.22) {
   game.bolts.push({ x, y, angle, range, life, maxLife: life });
@@ -79,6 +96,8 @@ export function updateRings(dt) {
   game.windFans = game.windFans.filter(w => w.life > 0);
   for (const b of game.bolts) b.life -= dt;
   game.bolts = game.bolts.filter(b => b.life > 0);
+  for (const b of game.bursts) b.t += dt;                // 漫畫爆花老化(壽命到=直接消失,不淡出=跳格感)
+  game.bursts = game.bursts.filter(b => b.t < b.life);
 }
 export function updateFloatingTexts(dt) {
   for (const t of game.floatingTexts) {

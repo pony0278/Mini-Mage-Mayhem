@@ -30,6 +30,16 @@ export const POD = { x: W / 2, y: H / 2, r: 46 };
 export const STAB_MAX = 100, STAB_REGEN = 28;
 export const PUNCH_RANGE = 46, PUNCH_CONE = 0.9; // 揮拳零位移(受擊=純踉蹌);位移只屬於指定攻擊(終結技/風壓/爆桶)
 // 三連擊:左鉤→右鉤→浮誇直拳(終結技)。點擊就接段(空揮也演),超窗 0.9s 才重置
+// 漫畫打擊爆花分級(hitfx-1;fx.addBurst 的參數包,v2-combat 命中時挑一檔):
+// 顏色=打擊類型(拳=橘白/打暈=琥珀/挑飛=橘白最大/反擊=金/下壓=紅白);重擊帶速度線+白閃、挑飛加集中線。
+export const HIT_BURST = {
+  hook:    { size: 22, col: '#ff8a3a', life: 0.2 },                                        // 鉤拳:小爆花
+  fin:     { size: 32, col: '#ff8a3a', life: 0.24, streaks: 4, flash: 0.3 },               // 終結技(第三拳)
+  stun:    { size: 40, col: '#ffb300', life: 0.28, streaks: 5, flash: 0.45 },              // 打暈那拳
+  launch:  { size: 46, col: '#ff8a3a', life: 0.3, streaks: 6, flash: 0.5, focus: true },   // 挑飛 launcher(最大檔)
+  counter: { size: 42, col: '#ffd700', life: 0.28, streaks: 5, flash: 0.45 },              // 反擊拳=金
+  dive:    { size: 40, col: '#ff4a4a', life: 0.28, streaks: 5, flash: 0.4 },               // 下壓拳=紅
+};
 // brawl-3 連段黏臉:三連擊全中 = 剛好一次暈(25+25+50=STAB_MAX 100),讀作「連段接滿=暈」。
 // 有穩定值時所有拳只踉蹌不位移(黏在臉上,連段接得到暈);打暈那拳=原地;對「已暈」的對手出拳才=挑飛(launcher)。
 export const COMBO_STAB = [25, 25, 50], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WINDOW = 0.9;

@@ -5,13 +5,13 @@
 import { W, H } from './constants.js';
 import { clamp, norm } from './utils.js';
 import { game, keys, mouse, CAM, touchInput } from './state.js';
-import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText } from './fx.js';
+import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, addBurst } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   SPEED, RUN_MULT, POD, inPod, resetFighter, applyStage, barrels, bottles, labSwitches,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
-  COUNTER_DELAY, COUNTER_WIN,
+  COUNTER_DELAY, COUNTER_WIN, HIT_BURST,
   STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS, INTRO_GO,
@@ -269,6 +269,7 @@ function resolveDive(f) { // 下壓落地幀:落點圓形 AoE;命中=大削穩�
     o.lastHitBy = f.pid; o.lastHitT = game.time;
     o.vx += Math.cos(a) * 260; o.vy += Math.sin(a) * 260;
     flinch(o, a, 0.3); hitSpark(o.x, o.y, '#ffe0a3', 2.2);
+    addBurst(o.x, o.y, { ...HIT_BURST.dive, streakA: a });              // 下壓=紅白爆花(hitfx-1)
     if (o.pid === LOCAL) v2s.localFlash = 0.3;
     if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o); // 暈/踉蹌後的掉桶瓶由 v2.js 扛桶 loop 條件處理
   }
@@ -340,6 +341,7 @@ export function doCounter(d) { // 反擊拳(brawl-3.1):擋下鉤拳後,停頓過
   inc.parries++; inc.types.add('parry');
   const ca = Math.atan2(a.y - d.y, a.x - d.x), cpx = (d.x + a.x) / 2, cpy = (d.y + a.y) / 2;
   hitSpark(cpx, cpy, '#fff6c9', 2.2); addRing(cpx, cpy, 40, '#ffe97a', 0.4, 6);
+  addBurst(cpx, cpy, { ...HIT_BURST.counter, streakA: ca });            // 反擊=金色爆花(hitfx-1)
   addText(d.x, d.y - 40, '反擊！', '#ffe97a');
   addHitstop(0.14); addShake(7); camKick(ca, 8); game.sfx.push('smash');
   if (a.pid === LOCAL) v2s.localFlash = 0.24;
@@ -387,6 +389,8 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     }
     const stunsNow = o.stability <= 0 && !o.stunned && o.restunT <= 0;
     if (stunsNow) stunFighter(o);                                       // 穩定值歸零 → 擊暈(無能量閘)
+    // 漫畫打擊爆花(hitfx-1):單發挑檔(挑飛>打暈>終結>鉤拳),開在拳頭接觸點、線往擊退反向甩
+    addBurst(cpx, cpy, { ...HIT_BURST[wasStunned ? 'launch' : stunsNow ? 'stun' : fin ? 'fin' : 'hook'], streakA: a });
     // brawl-3 打飛三分層:①命中前已暈=挑飛 launcher(接風壓吹進艙的入口)②這拳打暈=原地暈(連段黏臉、不飛走)
     // ③還有穩定值=純踉蹌不位移(連段接得到暈,鉤拳/終結技皆然)。空中被鉤拳=拍蚊子小翻滾(brawl-2 空中規則)。
     if (wasStunned) {                                                   // 對「已暈」的對手出拳 → 大挑飛(瞄向艙那側,接風壓接送)
