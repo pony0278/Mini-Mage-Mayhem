@@ -386,9 +386,9 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動（＝跑）· 滑鼠瞄準 · 左鍵三連擊 · 空白＝跳（空中左鍵＝下壓拳）· Shift 按住＝防禦 · 右鍵＝抓／放技能 · E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：WASD 移動（＝跑）· 左鍵三連擊（跑久＝衝刺拳／空中＝下壓拳）· 空白＝跳 · Shift 按住＝防禦 · 右鍵＝抓／放技能 · E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: hitfx-2', VW - 10, VH - 4);
+  hctx.fillText('build: feel-1', VW - 10, VH - 4);
 }

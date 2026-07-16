@@ -65,7 +65,8 @@
    **不再手動改常數**。扛人 clip 記得把定格幀標 tag `hold`、甩出幀標 `release`(§4);
    跳躍/下壓 clip 標 `air`(離地幀)/`land`(落地幀)→ studio 預覽自動抬升角色(air 在第 0 幀=俯衝式線性壓地、
    否則拋物線;preview-only,遊戲內高度由 sim 彈道 JUMP_LOB/DIVE_T 決定);`dive_punch` 的 impact 幀=落地判定
-   → 自動導出 `DIVE_T`(編好貼入即對齊,PUNCH_CLIPS[3] 槽)
+   → 自動導出 `DIVE_T`(編好貼入即對齊,PUNCH_CLIPS[3] 槽);`dash_punch`(PUNCH_CLIPS[4],衝刺拳,impact→`DASH_T`)、
+   `hit_flinch`(受擊短 clip ≤0.2s,只在空閒時播)、`walk_cycle`(走路循環,tag `walk`(或 `run`)=循環起點)同為可選槽
 5. 重新整理 `v2.html?clip=招式名` 驗證(任意 clip 循環試播,不用綁玩法;或跑 headless 姿勢截圖)
 
 ## 3. 資料格式(編排器 JSON snapshot)

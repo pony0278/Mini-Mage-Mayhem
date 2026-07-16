@@ -39,6 +39,7 @@ export const HIT_BURST = {
   launch:  { size: 46, col: '#ff8a3a', life: 0.3, streaks: 6, flash: 0.5, focus: true },   // 挑飛 launcher(最大檔)
   counter: { size: 42, col: '#ffd700', life: 0.28, streaks: 5, flash: 0.45 },              // 反擊拳=金
   dive:    { size: 40, col: '#ff4a4a', life: 0.28, streaks: 5, flash: 0.4 },               // 下壓拳=紅
+  dash:    { size: 30, col: '#ff8a3a', life: 0.22, streaks: 3, flash: 0.2 },               // 衝刺攻擊(帶線=有衝勁)
 };
 // brawl-3 連段黏臉:三連擊全中 = 剛好一次暈(25+25+50=STAB_MAX 100),讀作「連段接滿=暈」。
 // 有穩定值時所有拳只踉蹌不位移(黏在臉上,連段接得到暈);打暈那拳=原地;對「已暈」的對手出拳才=挑飛(launcher)。
@@ -47,7 +48,7 @@ export const COMBO_STAB = [25, 25, 50], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WIND
 // **自動導出**:直接讀各 punch clip 的第一個 impact key(prepClip.impactT)——studio 重編移動 impact 幀,
 // 重貼 JSON 即對齊,不再手動同步(舊值 fallback 防 clip 缺 impact)。
 // 起手期間被打暈/被抓/被推開踉蹌 → 打擊取消(格擋推開從此是真反制)。
-export const STRIKE_DELAY = PUNCH_CLIPS.map((n, i) => CLIPS[n]?.impactT ?? [0.283, 0.233, 0.383, 0.3][i]); // [3]=dive_punch 槽(下壓實際用 DIVE_T,見下)
+export const STRIKE_DELAY = PUNCH_CLIPS.map((n, i) => CLIPS[n]?.impactT ?? [0.283, 0.233, 0.383, 0.3, 0.22][i]); // [3]=dive_punch/[4]=dash_punch 槽(實際用 DIVE_T/DASH_T,見下)
 // 終結技=打飛:命中後小拋物線(最後一擊→擊中→打飛→落地),取代舊滑行擊退(FINISHER_KNOCK 240)。
 // 與丟人同一條彈道管線(f._lob 記 profile);調性=「挑空」:往前短、往上明顯、滯空久掛在空中。
 // 調參史:100/18/0.35(zmax≈34,嫌飛遠不夠高)→ 55/50/0.4(zmax≈65)→ 現值=使用者 ?tune 實測定稿(zmax≈115)。
@@ -69,6 +70,15 @@ export const DIVE_FWD = 46;        // 俯衝前撲距離(往起跳鎖定的 faci
 export const DIVE_LAG = 0.2;       // 落空硬直(移動鎖;命中無硬直)
 export const DIVE_CD = 0.6;        // 下壓後拳冷卻
 export const AI_JUMP_CHANCE = 0.012, AI_JUMP_CD = 4; // AI 每幀起跳率(中距離對峙時)+ 冷卻;起跳後半程自動下壓
+// 衝刺攻擊(feel-1,使用者拍板 2026-07-16:跑+攻擊——中性=連段/跑=衝刺/空中=下壓,移動×攻擊矩陣補完)。
+// 跑=預設的觸發衝突解法:持續跑 ≥ DASH_RUN_T 才進「衝刺狀態」,此時出拳=前衝突進拳(遠距衝鋒=自帶預告);
+// 貼身短移動=普通連段。單發不入連段、可被擋(擋下照樣開反擊窗=融入三角);揮空=滑過頭+冷卻(位置懲罰)。
+export const DASH_RUN_T = 0.4;      // 持續跑多久=衝刺狀態
+export const DASH_T = CLIPS.dash_punch?.impactT ?? 0.22; // 起手(dash_punch clip impact 自動導出;暫用 rhook 頂)
+export const DASH_LUNGE = 88;       // 起手期間前衝距離(px;滑步突進,揮空就滑過頭)
+export const DASH_STAB = 30;        // 削穩定(> 鉤拳 25、< 下壓 45)
+export const DASH_KNOCK = 300;      // 命中擊退(唯一帶位移的普通命中=衝擊感)
+export const DASH_CD = 0.7;         // 出招後拳冷卻(+滑過頭=揮空懲罰窗)
 // 格擋推開:被打中後 PUSH_WIN 秒內按格擋鍵 → 把攻擊方推開+踉蹌,斷 combo;冷卻 PUSH_CDT
 export const PUSH_WIN = 0.55, PUSH_CDT = 3, PUSH_RANGE = 70, PUSH_FORCE = 380, PUSH_STAGGER = 0.45, AI_PUSH_CHANCE = 0.22;
 // 反擊拳(brawl-3.1 改制,使用者拍板 2026-07-15:讓玩家自己體會,不再有慢動作/灰屏/大字提示)：
@@ -324,6 +334,7 @@ export function resetFighter(f) {
   f._jumpT = -9; f.jumpCd = 0;       // 跳躍:起跳時戳(z=lobZ(t,JUMP_LOB),v2.js 每幀算)+ 再跳冷卻
   f._diveT0 = -9; f._diveZ0 = 0; f._diveDir = 0; f._diveLagT = 0; // 下壓拳:俯衝起始戳/起始高度/鎖定方向/落空硬直
   f._aiJumpAt = 0; f._aiDiveAt = 0;  // AI 跳躍排程(對峙起跳/半程下壓)
+  f._runT = 0; f._dashT0 = -9; f._dashDir = 0; // 衝刺攻擊:持續跑計時(v2.js 每幀)/突進起始戳/鎖定方向
   f.frozen = false;                  // 冰凍皮(=暈的視覺變體:render 冰塊+不搖晃;stun 醒來時清)
   f._slideVx = 0; f._slideVy = 0; f._onIce = false; f._slideT = -9; // 鎖滑:滑行向量(≠0=鎖定中)/上幀在冰上/滑行起始戳(收容歸因)
   f._lob = null;                     // 這次被拋飛用的彈道 profile(丟人=PERSON_LOB/終結技=PUNCH_LAUNCH_LOB;null 退回 PERSON_LOB)

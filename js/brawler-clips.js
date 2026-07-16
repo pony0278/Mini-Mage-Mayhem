@@ -251,4 +251,4 @@ export const CLIPS = {
     lags: { aL: 0, aR: 0, lL: 0, lR: 0 },
   }),
 };
-export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand', 'dive_punch']; // punchKind 0/1/2 → 三連擊;3=下壓拳(空中)——dive_punch 為可選槽,使用者編好貼入即播(缺槽時 actor-brawler 暫用 overhand)
+export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand', 'dive_punch', 'dash_punch']; // punchKind 0/1/2 → 三連擊;3=下壓拳(空中)/4=衝刺拳(跑)——皆為可選槽,使用者編好貼入即播(缺槽時 actor-brawler 暫用 overhand/rhook)

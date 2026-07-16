@@ -37,6 +37,7 @@ export const ANIM = {
   // 60 ≈ 20% 滑步(可接受的風格化)。想要大步幅+慢步頻:studio 加大髖擺/觸地幀 lX_stretch 伸腿,再回調此值。
   // bob=踩地感彈跳(PS 單位 ×25px):循環相位驅動 root_py,觸地幀(key)低、過渡點高=每步一跳;0=關。
   runClip: { stridePx: 108, bob: 0.3 },
+  walkClip: { stridePx: 60 },                                                               // CLIPS.walk_cycle 循環槽(feel-1;出場率低:跑=預設,走路只剩手機半桿/扛重物)
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭
@@ -310,7 +311,7 @@ export function updateBrawler(e, g) {
   const iclip = e.itemClip ? CLIPS[e.itemClip] : null;              // 道具施法 clip(與拳互斥,優先)
   const ipt = now - (e.itemFx != null ? e.itemFx : -9);
   const pt = now - (e.punchFx != null ? e.punchFx : -9);
-  const clip = CLIPS[PUNCH_CLIPS[e.punchKind || 0]] || (e.punchKind === 3 ? CLIPS.overhand : null); // 下壓拳槽 dive_punch 未編好前暫用 overhand(砸下剪影最接近)
+  const clip = CLIPS[PUNCH_CLIPS[e.punchKind || 0]] || (e.punchKind === 3 ? CLIPS.overhand : e.punchKind === 4 ? CLIPS.rhook : null); // dive_punch/dash_punch 槽未編好前暫用 overhand/rhook
   if (cclip && cpt >= 0 && cpt < cclip.dur) {
     pose = evalClip(cclip, cpt);
     if (e.carrying && e.carryHold && cpt >= e.carryHold) {         // 定格扛著走:腿部疊走路(上身/手臂維持 studio hold 幀;丟出後時鐘解凍不再疊)
@@ -322,6 +323,12 @@ export function updateBrawler(e, g) {
   }
   else if (free && iclip && ipt >= 0 && ipt < iclip.dur) pose = evalClip(iclip, ipt);
   else if (free && pt >= 0 && clip && pt < clip.dur) pose = evalClip(clip, pt);
+  // 受擊 clip 槽(feel-1,可選;studio 排):只在「空閒」時播——行動中(出拳/搬/施法)維持甩頭+壓扁 overlay,
+  // 因為普通拳不打斷行動,整身接管會讓畫面說「失控」但操作沒有=手感撒謊。格擋中/暈眩/翻滾另有姿勢,不搶。
+  else if (free && CLIPS.hit_flinch && !e.guarding && !e.stunned && e.fumbleT <= 0
+    && e.lastHitT != null && (now - e.lastHitT) >= 0 && (now - e.lastHitT) < CLIPS.hit_flinch.dur) {
+    pose = evalClip(CLIPS.hit_flinch, now - e.lastHitT);
+  }
   else if (free && e.running && CLIPS.run_cycle && u.amp > 0.3) {   // 跑步循環(可選槽,studio 排)
     // tag 'run'=循環起點:0→run 是「起跑」過渡段只播一次,之後在 [run..最後實排 key] 無縫繞圈
     // (run 幀與最後 key 姿勢要一致;沒標 tag → 整條循環)。循環終點=lastKeyT,**不含**
@@ -336,7 +343,15 @@ export function updateBrawler(e, g) {
       pose.root_py += A.runClip.bob * (0.5 - 0.5 * Math.cos(ph * Math.PI * 4));
     }
   }
+  else if (free && !e.running && CLIPS.walk_cycle && u.amp > 0.3) { // 走路循環(feel-1 可選槽;同 run_cycle 機制:tag walk(或 run)=循環起點)
+    const cyc = CLIPS.walk_cycle, le = cyc.lastKeyT ?? cyc.dur;
+    const ls = cyc.tags.walk ?? cyc.tags.run ?? 0, ll = Math.max(le - ls, 0.01);
+    u.wkT = (u.wkT || 0) + disp / A.walkClip.stridePx * ll;
+    const wt = u.wkT < le ? u.wkT : ls + ((u.wkT - ls) % ll);
+    pose = evalClip(cyc, wt);
+  }
   if (!e.running) u.runT = 0;                                       // 停跑 → 下次從起跑段重來(跑中出拳不重置,收招接回循環)
+  if (e.running) u.wkT = 0;                                         // 跑步中 → 走路循環下次重來
   const usingClip = pose != null;    // clip 播放 → 用高 blend 檔,別把浮誇關鍵幀壓扁
   if (!pose) {
     pose = { ..._zeroIdle };

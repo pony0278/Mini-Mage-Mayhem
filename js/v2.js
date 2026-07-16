@@ -265,6 +265,7 @@ function step(dt) {
           : (keys.has('w') || keys.has('a') || keys.has('s') || keys.has('d')))
         : false;
       f.running = !!(mvIn && !f.carrying && !(f.carryObj && f.carryObj.kind !== 'bottle') && !f.stunned && f.fumbleT <= 0);
+      f._runT = f.running ? (f._runT || 0) + dt : 0; // 衝刺狀態計時:持續跑 ≥ DASH_RUN_T 出拳=衝刺攻擊(feel-1)
       floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
       if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
     }
@@ -417,6 +418,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
     throws: [inc.throws[0], inc.throws[1]], throwContains: inc.throwContains,
     fumble: [+fighters[0].fumbleT.toFixed(2), +fighters[1].fumbleT.toFixed(2)],
     z: [+(fighters[0].z || 0).toFixed(1), +(fighters[1].z || 0).toFixed(1)], running: [fighters[0].running, fighters[1].running],
+    runT: [+(fighters[0]._runT || 0).toFixed(2), +(fighters[1]._runT || 0).toFixed(2)], dashing: [fighters[0]._dashT0 > -5, fighters[1]._dashT0 > -5],
     jumping: [jumping(fighters[0]), jumping(fighters[1])], diving: [fighters[0]._diveT0 > -5, fighters[1]._diveT0 > -5],
     guarding: [fighters[0].guarding, fighters[1].guarding],
     guardStam: [Math.round(fighters[0].guardStam), Math.round(fighters[1].guardStam)],
