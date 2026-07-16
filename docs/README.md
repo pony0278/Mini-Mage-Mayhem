@@ -19,6 +19,7 @@
 | [v2-floor-state-architecture.md](v2-floor-state-architecture.md) | **地板狀態機架構/實作指引**：新開 `js/v2-floor.js`（守 v2 DAG、鏡射 `game.oils` 計時覆蓋模式、不抄 sim.js）+ v2 私有 `v2s.floor` 層 + `FLOOR_RX` 正交反應表 + 單一 `applyElement` choke point + `stepFloor`；接線改動清單 + 維護性風險 + 四刀落地切法（先純 sim 邏輯層 headless 驗、render 後接） |
 | [v2-spec-D-arenas.md](v2-spec-D-arenas.md) | **規格 D（地圖 + loop）**：搶獎盃→Boss 甦醒→追逐；浮島四周墜落（render-only）；斷橋孤島落地 + 型錄 + 落地順序 |
 | [v2-spec-E-incident-report.md](v2-spec-E-incident-report.md) | **規格 E（北極星再定位）**：魔法事故報告/收容測試；吸收 C 為核心；收容狀態機 + 報告 schema + 等級 + V0.8/0.9/1.0 路線；可重用零件對照 |
+| [campaign.md](campaign.md) | **闖關化決策(2026-07-16 拍板,現行主線)**:3 關+廠長 boss+逃出下班——關卡表/boss 三段擊倒設計/台詞草稿/實作計畫/不做清單;戰鬥系統不動,闖關=外殼 |
 | [game-split.md](game-split.md) | **遊戲分家決策(2026-07-15 拍板,最高優先)**:60 人實測裂在核心循環 → 拆 A(爽鬥,先做)/B(分類,凍結於 commit 4c92837);兩款定位表+A-v0 手術清單+開放問題 |
 | [v2-core-charter.md](v2-core-charter.md) | **核心玩法憲章 v1.1 → 分家後=B 款(分類)的設計權威(凍結;B 可玩狀態=commit `4c92837`)**:分類競速=唯一勝利、事故能量閘、回收口干擾、下班結局。**不再約束 main(A 款爽鬥)開發**——分家決策見 [game-split.md](game-split.md) |
 | [v2-sorting-ai-anger.md](v2-sorting-ai-anger.md) | **分類事故/AI 情緒(使用者撰寫)**:中央口需求制分類垃圾 → 分錯累積 AI 怒氣五階段 → 老闆抓狂把你當垃圾回收(給戰鬥一個因果);V0.8 已落地見文件頭。⚠ 暴走主線已被憲章 v1.1 取代,留作實作紀錄+喜劇素材庫 |
