@@ -88,39 +88,61 @@ function drawContainHud() {
    (遮住命中瞬間=腦補補幀更痛);幀階式跳格播放(彈大→定住→縮小,不平滑淡出=漫畫感);顏色=打擊類型。
    重擊帶速度線(往擊退反向甩的錐形線)+第一格全屏白閃;挑飛加全屏邊緣集中線。FX_LOW 留爆花、砍線(便宜的留)。
    sim 推 fx.addBurst → game.bursts,這裡消費;元素爆炸維持既有發光粒子(能量感 vs 拳頭=漫畫感,分工)。 */
+const _bc = document.createElement('canvas');  // 爆花離屏畫布(低清降採樣;每次重設 width=清空)
+const BURST_Q = 3;                             // 降清倍率:1/3 解析度畫→平滑放大貼回(hitfx-2,使用者反饋:太清晰跟場景不搭)
 function drawBursts() {
   for (const b of game.bursts) {
     const s = project(b.x, b.y, 24); if (s.behind) continue;
     const e = project(b.x + b.size, b.y, 24);
     const step = Math.min(2, Math.floor(b.t / (b.life / 3)));          // 3 格幀階(跳格,無補間)
     const R = Math.max(12, Math.abs(e.x - s.x)) * [1.28, 1.0, 0.8][step];
-    // 速度線(重擊;FX_LOW 砍):從爆花往擊退反方向甩 3~6 條錐形線(圖 2 的黃色拖尾)
-    if (b.streaks > 0 && !FX_LOW && step < 2) {
+    // 擊退方向(螢幕空間):殘影拖影+速度線都用它
+    let kx = 1, ky = 0;
+    {
       const p2 = project(b.x + Math.cos(b.streakA) * 40, b.y + Math.sin(b.streakA) * 40, 24);
-      const dx = p2.x - s.x, dy = p2.y - s.y, dl = Math.hypot(dx, dy) || 1;
-      const ux = -dx / dl, uy = -dy / dl;                              // 反向(線甩在來拳方向後面)
-      hctx.fillStyle = '#ffe14a';
+      const dx = p2.x - s.x, dy = p2.y - s.y, dl = Math.hypot(dx, dy) || 1; kx = dx / dl; ky = dy / dl;
+    }
+    // --- 星形+速度線先畫進 1/BURST_Q 解析度離屏 → 平滑放大=邊緣鬆軟的「印刷貼圖感」(對齊 3D 場景的柔和) ---
+    const M = Math.ceil(R * 2.9);                                      // 半幅(要裝得下速度線)
+    const lw = Math.max(8, Math.ceil((M * 2) / BURST_Q));
+    _bc.width = lw; _bc.height = lw;                                   // 重設=清空
+    const c = _bc.getContext('2d'), k = lw / (M * 2), cx = lw / 2, cy = lw / 2;
+    // 速度線(重擊;FX_LOW 砍):往擊退反方向甩 3~6 條錐形線(圖 2 的黃色拖尾;低清後自帶鬆軟)
+    if (b.streaks > 0 && !FX_LOW && step < 2) {
+      const ux = -kx, uy = -ky;
+      c.fillStyle = '#ffe14a';
       for (let i = 0; i < b.streaks; i++) {
-        const sp = (i / (b.streaks - 1) - 0.5) * 0.8 + Math.sin(b.seed * 5 + i * 2.7) * 0.1; // 扇形展開±0.4rad
+        const sp = (i / (b.streaks - 1) - 0.5) * 0.8 + Math.sin(b.seed * 5 + i * 2.7 + step) * 0.14; // 扇形展開±0.4rad(相位吃 step=每格微跳)
         const ca = Math.atan2(uy, ux) + sp;
-        const len = R * (1.7 + (i % 2) * 0.7), w = R * 0.16;
-        const tx = s.x + Math.cos(ca) * len, ty = s.y + Math.sin(ca) * len;
+        const len = R * k * (1.7 + (i % 2) * 0.7), w = R * k * 0.16;
+        const tx = cx + Math.cos(ca) * len, ty = cy + Math.sin(ca) * len;
         const px = -Math.sin(ca) * w, py = Math.cos(ca) * w;
-        hctx.beginPath(); hctx.moveTo(tx, ty); hctx.lineTo(s.x + px, s.y + py); hctx.lineTo(s.x - px, s.y - py); hctx.closePath(); hctx.fill();
+        c.beginPath(); c.moveTo(tx, ty); c.lineTo(cx + px, cy + py); c.lineTo(cx - px, cy - py); c.closePath(); c.fill();
       }
     }
-    // 爆花本體:不規則星形(角半徑吃 seed=每發長相不同),兩層=彩色粗描邊+白色實心
-    hctx.beginPath();
+    // 爆花本體:不規則星形,兩層=彩色粗描邊+白色實心;頂點相位吃 step=沸騰線(手繪動畫的 boiling,每格重畫微變形)
+    c.beginPath();
+    const rot = b.seed + step * 0.06;                                  // 每格微轉一點(跳格感)
     for (let i = 0; i < b.pts * 2; i++) {
-      const a = b.seed + (i / (b.pts * 2)) * Math.PI * 2;
-      const rr = (i % 2 === 0 ? R * (0.86 + 0.28 * Math.sin(b.seed * 7 + i * 3.7)) : R * 0.42);
-      const px = s.x + Math.cos(a) * rr, py = s.y + Math.sin(a) * rr * 0.92; // 輕微壓扁貼視角
-      i === 0 ? hctx.moveTo(px, py) : hctx.lineTo(px, py);
+      const a = rot + (i / (b.pts * 2)) * Math.PI * 2;
+      const rr = (i % 2 === 0
+        ? R * k * (0.86 + 0.28 * Math.sin(b.seed * 7 + i * 3.7 + step * 2.1))
+        : R * k * 0.42 * (1 + 0.12 * Math.sin(step * 3.1 + i * 1.9)));
+      const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr * 0.92; // 輕微壓扁貼視角
+      i === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
     }
-    hctx.closePath();
-    hctx.lineWidth = Math.max(3, R * 0.22); hctx.lineJoin = 'miter';
-    hctx.strokeStyle = b.col; hctx.stroke();
-    hctx.fillStyle = '#fffdf5'; hctx.fill();
+    c.closePath();
+    c.lineWidth = Math.max(1.2, R * k * 0.22); c.lineJoin = 'miter';
+    c.strokeStyle = b.col; c.stroke();
+    c.fillStyle = '#fffdf5'; c.fill();
+    // --- 貼回主畫布:重擊首格先貼 2 節沿擊退方向的殘影(smear frame=低成本動態模糊,不走後處理) ---
+    const dst = M * 2;
+    if (b.streaks > 0 && step === 0) {
+      hctx.globalAlpha = 0.26; hctx.drawImage(_bc, s.x - M + kx * R * 0.55, s.y - M + ky * R * 0.55, dst, dst);
+      hctx.globalAlpha = 0.12; hctx.drawImage(_bc, s.x - M + kx * R * 1.15, s.y - M + ky * R * 1.15, dst, dst);
+      hctx.globalAlpha = 1;
+    }
+    hctx.drawImage(_bc, s.x - M, s.y - M, dst, dst);                   // 本體(平滑放大=柔邊)
   }
   // 全屏層:第一格白閃(重擊)+ 邊緣集中線(挑飛;FX_LOW 砍線留閃)
   for (const b of game.bursts) {
@@ -368,5 +390,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: hitfx-1', VW - 10, VH - 4);
+  hctx.fillText('build: hitfx-2', VW - 10, VH - 4);
 }
