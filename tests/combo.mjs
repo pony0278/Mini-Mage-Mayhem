@@ -72,6 +72,41 @@ const chain = await page.evaluate(() => new Promise(res => { const v = __v2; con
 const chainOk = (chain.perform || chain.wins[1] > 0) && chain.log.some(c => c.m === 'wind');
 R('全鏈 挑飛→風壓接送→進艙(收容成功+記 wind)', chainOk, JSON.stringify(chain));
 
+// ---------- ⑦ 出拳承諾(feel-2):起手面向硬鎖+鎖腳+不能跳/舉防,收招放開 ----------
+await page.evaluate(() => { const v = __v2; const a = v.fighters[1];
+  a.stunned = false; a.fumbleT = 0; a.punchCd = 0; a.carrying = null; a.carryObj = null; a._dashT0 = -9; a._diveT0 = -9; a._jumpT = -9; a.z = 0; a.guarding = false; a._runT = 0;
+  a.x = 300; a.y = 540; a.facing = 0;
+  v.punch(a); a._strikeAt = v.game.time + 9; });                       // 撐住起手期
+const commit = await page.evaluate(() => { const v = __v2; const a = v.fighters[1];
+  a.facing = 2.5;                                                      // 硬轉面向(模擬持續瞄準輸入)
+  return { dir: a._strikeDir }; });
+await page.waitForFunction('Math.abs(__v2.fighters[1].facing - __v2.fighters[1]._strikeDir) < 0.01', { timeout: 10000 }).catch(() => {});
+const locked = await page.evaluate(() => { const v = __v2; const a = v.fighters[1];
+  const faceLocked = Math.abs(a.facing - a._strikeDir) < 0.01;
+  const x0 = a.x;
+  v.jump(a);                                                           // 起手中不能跳
+  const noJump = !(a._jumpT > -5);
+  const noGuard = !v.canGuard(a);                                      // 起手中不能舉防
+  return { faceLocked, noJump, noGuard, x0: Math.round(x0) }; });
+await new Promise(r => setTimeout(r, 400));                            // 多等幾幀(無移動輸入的 f1 本就不動;鎖腳由本機案驗)
+const still = await page.evaluate(() => { const a = __v2.fighters[1];
+  const x1 = Math.round(a.x); a._strikeAt = __v2.game.time; __v2.resolveStrike(a); return x1; });
+R('出拳承諾:起手面向硬鎖(轉回出拳方向)+不能跳/舉防', locked.faceLocked && locked.noJump && locked.noGuard, JSON.stringify(locked));
+
+// ---------- ⑧ 起手鎖腳(本機玩家按住方向鍵,x 不動;收招後恢復移動) ----------
+await page.keyboard.down('d');
+await page.evaluate(() => { const v = __v2; const f = v.fighters[0];
+  f.stunned = false; f.fumbleT = 0; f.punchCd = 0; f.carrying = null; f.carryObj = null; f._dashT0 = -9; f._diveT0 = -9; f._jumpT = -9; f.z = 0; f.guarding = false; f._runT = 0; f.vx = 0; f.vy = 0;
+  f.x = 300; f.y = 540; v.CAM.azimuth = 0;
+  v.punch(f); f._strikeAt = v.game.time + 9; });                       // 起手撐住+按住 d
+await new Promise(r => setTimeout(r, 500));
+const rooted = await page.evaluate(() => Math.round(__v2.fighters[0].x));
+await page.evaluate(() => { const f = __v2.fighters[0]; f._strikeAt = __v2.game.time; __v2.resolveStrike(f); }); // 收招
+await page.waitForFunction('__v2.fighters[0].x > 310', { timeout: 15000 }).catch(() => {});
+const freed = await page.evaluate(() => Math.round(__v2.fighters[0].x));
+await page.keyboard.up('d');
+R('出拳承諾:起手鎖腳(按住方向不滑步)+收招恢復移動', Math.abs(rooted - 300) <= 4 && freed > 310, `起手 x=${rooted} 收招後 x=${freed}`);
+
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
 await B.close();

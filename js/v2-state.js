@@ -44,6 +44,10 @@ export const HIT_BURST = {
 // brawl-3 連段黏臉:三連擊全中 = 剛好一次暈(25+25+50=STAB_MAX 100),讀作「連段接滿=暈」。
 // 有穩定值時所有拳只踉蹌不位移(黏在臉上,連段接得到暈);打暈那拳=原地;對「已暈」的對手出拳才=挑飛(launcher)。
 export const COMBO_STAB = [25, 25, 50], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WINDOW = 0.9;
+// 出拳承諾(feel-2,使用者拍板 2026-07-16「不要邊轉邊滑步像溜冰芭蕾」):起手期(按下→impact)
+// 面向硬鎖在出拳方向+移動 ×PUNCH_MOVE(0=腳釘住;嫌連段追不上人可調 0.2 重滑步)+不能跳/舉防;
+// 收招期(impact 後)放開=連段節奏不變笨重。衝刺/下壓有自己的承諾位移、道具施法可轉向瞄準(有預告)=都不吃這條。
+export const PUNCH_MOVE = 0;
 // 傷害對齊動作的 impact 影格(玩家反饋階段:真格鬥手感):點擊=起手,STRIKE_DELAY 秒後才判定命中。
 // **自動導出**:直接讀各 punch clip 的第一個 impact key(prepClip.impactT)——studio 重編移動 impact 幀,
 // 重貼 JSON 即對齊,不再手動同步(舊值 fallback 防 clip 缺 impact)。
