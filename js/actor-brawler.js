@@ -57,7 +57,7 @@ export const ANIM = {
     lL_hy: 56, lL_hz: -30, lL_kx: 81, lL_ax: 60, lL_ty: -22, lL_scale: 1.09, lL_stretch: 1.09,
     lR_hx: 27, lR_hy: -67, lR_hz: 9, lR_kx: -11, lR_ax: 32,
   },
-  flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2 },
+  flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2, clipMul: 0.4 }, // clipMul=hit_flinch clip 播放時 overlay 降權(clip 已做軀幹後仰,免雙重受擊)
 };
 
 function shadeHex(h, m) {
@@ -298,7 +298,7 @@ export function updateBrawler(e, g) {
   const dt = Math.min(Math.max(now - (u.lastT ?? now), 0), 0.05); u.lastT = now;
 
   // --- 目標姿勢 ---
-  let pose = null, wob = 0;
+  let pose = null, wob = 0, flinchClip = false; // flinchClip:hit_flinch clip 正在當姿勢 → 世界層 flinch overlay 降權免雙重受擊
   const free = !e.carriedBy && !e.carrying;
   // 走路振盪器(clip 定格與程序分支共用:扛人 hold 定格時腿也要走)
   const walking = disp > A.walk.minDisp && !e.stunned && !e.carriedBy;
@@ -327,7 +327,7 @@ export function updateBrawler(e, g) {
   // 因為普通拳不打斷行動,整身接管會讓畫面說「失控」但操作沒有=手感撒謊。格擋中/暈眩/翻滾另有姿勢,不搶。
   else if (free && CLIPS.hit_flinch && !e.guarding && !e.stunned && e.fumbleT <= 0
     && e.lastHitT != null && (now - e.lastHitT) >= 0 && (now - e.lastHitT) < CLIPS.hit_flinch.dur) {
-    pose = evalClip(CLIPS.hit_flinch, now - e.lastHitT);
+    pose = evalClip(CLIPS.hit_flinch, now - e.lastHitT); flinchClip = true; // clip 接管受擊姿勢 → 下方 overlay 降權
   }
   else if (free && e.running && CLIPS.run_cycle && u.amp > 0.3) {   // 跑步循環(可選槽,studio 排)
     // tag 'run'=循環起點:0→run 是「起跑」過渡段只播一次,之後在 [run..最後實排 key] 無縫繞圈
@@ -430,7 +430,8 @@ export function updateBrawler(e, g) {
     g.quaternion.setFromAxisAngle(_upAxis, u.lieYaw);
     g.rotateX(Math.PI / 2 * u.lie);                 // 頭前腳後、面朝地;u.lie 內插=起身動畫
   } else { u.lieYaw = undefined; g.rotation.set(0, yaw, wob); }
-  const fk = e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0;
+  const fmul = flinchClip ? A.flinch.clipMul : 1;   // hit_flinch clip 播放時降權(clip 已做軀幹後仰,overlay 只留一點方向傾斜+impact 壓扁)
+  const fk = (e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0) * fmul;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
   updateHeldBarrel(e, g, R);   // 扛投擲物(桶/瓶):貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)

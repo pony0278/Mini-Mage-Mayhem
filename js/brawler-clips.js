@@ -250,6 +250,18 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0 },
   }),
+  hit_flinch: prepClip({ // 受擊短動作(使用者 studio 定稿 2026-07-16):軀幹後仰+右臂護頭+左腿踉蹌;
+    // 4f 到位→10f 回站姿,dur≈0.23s(< 連段拍 0.35s,不拖手感)。只在「空閒」時播(actor-brawler 有 free/非行動守衛);
+    // 世界層 flinch overlay 此時降權(ANIM.flinch.clipMul)避免雙重受擊。方向資訊由 overlay 的傾斜補(clip 是固定姿勢)。
+    seq: [
+      { name: 'idle', frame: 0, frames: 10, returnFrames: 10, ease: 'out' },
+      { name: 'hit_flinch', frame: 4, ease: 'out' },
+    ],
+    phases: {
+      hit_flinch: { spine_x: -27, spine_y: 17, aL_sx: -34, aL_sz: 24, aL_ex: 27, aR_sy: 36, aR_sz: 26, aR_ex: 62, lL_hx: -60, lL_kx: 39, lR_hy: 24 },
+    },
+    lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },
+  }),
   walk_cycle: prepClip({ // 走路循環(使用者 studio 定稿 2026-07-16;僵直腿卡通搖擺步):A@4→B@7 鏡像對步,
     // tag walk=循環起點。⚠ walk_end@10=接回時補的閉環 key(姿勢=複製 A):循環規約=最後 key 姿勢等於
     // 循環起點姿勢,原匯出只到 B 會每步跳回 A 抽一下;studio 重編時直接多排這個尾 key 即可拿掉這行註解。
