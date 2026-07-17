@@ -37,7 +37,7 @@ export const ANIM = {
   // 60 ≈ 20% 滑步(可接受的風格化)。想要大步幅+慢步頻:studio 加大髖擺/觸地幀 lX_stretch 伸腿,再回調此值。
   // bob=踩地感彈跳(PS 單位 ×25px):循環相位驅動 root_py,觸地幀(key)低、過渡點高=每步一跳;0=關。
   runClip: { stridePx: 108, bob: 0.3 },
-  walkClip: { stridePx: 60 },                                                               // CLIPS.walk_cycle 循環槽(feel-1;出場率低:跑=預設,走路只剩手機半桿/扛重物)
+  walkClip: { stridePx: 48 },                                                               // CLIPS.walk_cycle 循環槽:甩髖 ±52°≈44px 掃程 → 48 滑步率低(使用者 2026-07-16 定稿;AI 走路也吃這條)
   breath:  { rate: 2.6, knee: 72, elbow: 45, shoulder: 7, chest: 5 },                       // 待機呼吸(浮誇單向脈動,週期≈2.4s=有活力):腿 直↔深蹲(squat 帶髖+膝)+ 手臂肘 直↔彎(ex)+ 肩微開 + 含胸;走路時淡出。rate 大=快
   carried: { kickRate: 11, legAmp: 30, armBase: -140, armAmp: 25, armRateMul: 0.7, wobRate: 7, wobAmp: 0.16 },
   carry:   { armSx: -135, armEx: 12 },                                                     // 扛人:雙臂高舉過頭

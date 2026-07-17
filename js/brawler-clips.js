@@ -250,5 +250,21 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0 },
   }),
+  walk_cycle: prepClip({ // 走路循環(使用者 studio 定稿 2026-07-16;僵直腿卡通搖擺步):A@4→B@7 鏡像對步,
+    // tag walk=循環起點。⚠ walk_end@10=接回時補的閉環 key(姿勢=複製 A):循環規約=最後 key 姿勢等於
+    // 循環起點姿勢,原匯出只到 B 會每步跳回 A 抽一下;studio 重編時直接多排這個尾 key 即可拿掉這行註解。
+    seq: [
+      { name: 'idle', frame: 0, frames: 10, returnFrames: 10, ease: 'out' },
+      { name: 'walk', frame: 4, ease: 'out', tag: 'walk' },
+      { name: 'walk_copy', frame: 7, ease: 'out', tag: 'walk' },
+      { name: 'walk_end', frame: 10, ease: 'out' },
+    ],
+    phases: {
+      walk:      { aL_sx: -31, aL_sz: 25, aL_ex: 17, aR_sx: 52, aR_sz: 20, aR_ex: 31, lL_hx: 52, lL_ax: 60, lR_hx: -40, lR_ax: -56 },
+      walk_copy: { aL_sx: 50, aL_sz: 25, aL_ex: 17, aR_sx: -37, aR_sz: 20, aR_ex: 31, lL_hx: -43, lL_ax: -60, lR_hx: 60, lR_ax: 23 },
+      walk_end:  { aL_sx: -31, aL_sz: 25, aL_ex: 17, aR_sx: 52, aR_sz: 20, aR_ex: 31, lL_hx: 52, lL_ax: 60, lR_hx: -40, lR_ax: -56 },
+    },
+    lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },
+  }),
 };
 export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand', 'dive_punch', 'dash_punch']; // punchKind 0/1/2 → 三連擊;3=下壓拳(空中)/4=衝刺拳(跑)——皆為可選槽,使用者編好貼入即播(缺槽時 actor-brawler 暫用 overhand/rhook)
