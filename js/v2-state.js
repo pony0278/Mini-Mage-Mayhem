@@ -44,10 +44,14 @@ export const HIT_BURST = {
 // brawl-3 連段黏臉:三連擊全中 = 剛好一次暈(25+25+50=STAB_MAX 100),讀作「連段接滿=暈」。
 // 有穩定值時所有拳只踉蹌不位移(黏在臉上,連段接得到暈);打暈那拳=原地;對「已暈」的對手出拳才=挑飛(launcher)。
 export const COMBO_STAB = [25, 25, 50], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WINDOW = 0.9;
-// 出拳承諾(feel-2,使用者拍板 2026-07-16「不要邊轉邊滑步像溜冰芭蕾」):起手期(按下→impact)
-// 面向硬鎖在出拳方向+移動 ×PUNCH_MOVE(0=腳釘住;嫌連段追不上人可調 0.2 重滑步)+不能跳/舉防;
-// 收招期(impact 後)放開=連段節奏不變笨重。衝刺/下壓有自己的承諾位移、道具施法可轉向瞄準(有預告)=都不吃這條。
+// 出拳承諾(feel-2,使用者拍板 2026-07-16「不要邊轉邊滑步像溜冰芭蕾」):承諾期=**整段揮拳動畫**
+// (起手 _strikeAt>0 + 收招 _recoverT 未到=clip 播完為止;只鎖起手時 impact 後還有 0.3s 順勢在揮,照樣轉身穿幫)。
+// 承諾期間:面向硬鎖在出拳方向+移動 ×PUNCH_MOVE(0=腳釘住;嫌連段追不上人可調 0.2 重滑步)+不能跳/舉防。
+// 連段不變笨重:接段按鍵(punchCd 到)可在收招中直接取消進下一拳(方向取當下瞄準);道具施法也取消收招。
+// 衝刺/下壓有自己的承諾位移=不吃鎖腳。
 export const PUNCH_MOVE = 0;
+// 收招時長=clip 全長 − impact 幀(自動導出,同 STRIKE_DELAY;揮空=整段動畫的真懲罰窗)。[3][4]=dive/dash 自有懲罰,不用此表。
+export const PUNCH_RECOVER = PUNCH_CLIPS.map((n, i) => { const c = CLIPS[n]; return c?.impactT != null ? c.dur - c.impactT : [0.3, 0.3, 0.367, 0, 0][i]; });
 // 傷害對齊動作的 impact 影格(玩家反饋階段:真格鬥手感):點擊=起手,STRIKE_DELAY 秒後才判定命中。
 // **自動導出**:直接讀各 punch clip 的第一個 impact key(prepClip.impactT)——studio 重編移動 impact 幀,
 // 重貼 JSON 即對齊,不再手動同步(舊值 fallback 防 clip 缺 impact)。
@@ -344,7 +348,7 @@ export function resetFighter(f) {
   f._lob = null;                     // 這次被拋飛用的彈道 profile(丟人=PERSON_LOB/終結技=PUNCH_LAUNCH_LOB;null 退回 PERSON_LOB)
   f.z = 0;                           // 被拋飛的 sim 高度(B 案彈道;v2.js step 每幀由 lobZ 算,判定 gate+render 都讀它)
   f._carryThrowAt = 0; f.carryClip = null; f.carryFx = -9; f.carryHold = 0; // 排程丟人 + 拎頭 heave clip 時鐘 + hold 定格秒(0=不定格)
-  f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; // 排程中的打擊(impact 影格判定)
+  f._strikeAt = 0; f._strikeKind = 0; f._strikeDir = 0; f._recoverT = 0; // 排程中的打擊(impact 影格判定)+ 收招承諾到期時刻
   f._counterFrom = null; f._counterAt = -9;              // 反擊拳:擋下後記攻擊者 + 反擊窗口開啟時刻(game.time+COUNTER_DELAY)
   f.guarding = false; f.guardStam = GUARD_STAM_MAX; f.guardLock = 0; f.guardRegenT = 0; // 按住防禦架式:是否舉防/耐力/破防鎖定/回充延遲計時
   f._performing = false; f._hidden = false;             // 收容演出:被罩在艙心(v2.js 迴圈凍結) / 壓縮後隱藏(render 不畫)

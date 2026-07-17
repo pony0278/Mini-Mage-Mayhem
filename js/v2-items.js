@@ -73,6 +73,7 @@ export function useItem(f) {
   if (!spec.clip || spec.delay <= 0) { castItem(type, f); return; }         // 瞬發(傳送)→ 直接生效、無動畫
   // 排程施放:動畫時鐘 + impact 幀 + 承諾冷卻
   f.itemFx = game.time; f.itemClip = spec.clip;
+  f._recoverT = 0;                                                          // 接道具=取消出拳收招承諾(施法可轉向瞄準;挑飛→風壓接送要在收招窗內瞄)
   f._itemCastAt = game.time + spec.delay; f._itemCastType = type;
   f.itemCastCd = spec.delay + ITEM_CAST_RECOVER;
 }
@@ -395,6 +396,7 @@ export function grabbableBarrel(f) { // 範圍內最近的可撿投擲物(idle �
 }
 export function pickUpBarrel(f, b) { // 桶/瓶共用(kind:'bottle' 只差浮字顏色;動畫同一套雙手過頂)
   if (f.carrying || f.carryObj || !b || !b.alive || b.held) return;
+  f._recoverT = 0; // 撿桶/瓶=主動接的新動詞,取消出拳收招承諾(不卡腳)
   f.carryObj = b; b.held = true; b.vx = 0; b.vy = 0; b.z = 0; b.flyT0 = -9; b.landed = true; b.dropT0 = -9;
   // 撿桶動畫(可選 clip:CLIPS 有 barrel_pickup 就播;桶從第 0 幀起貼在雙手中點,手往下撈→舉起=桶跟著走。
   // clip 播完落回程序 barrelHold 姿勢 → 結尾幀請對齊 barrel_throw 的 grab_hold 幀(= ANIM.barrelHold)才無縫)

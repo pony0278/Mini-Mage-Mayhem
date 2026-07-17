@@ -9,7 +9,7 @@ import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, addB
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
   SPEED, RUN_MULT, PUNCH_MOVE, POD, inPod, resetFighter, applyStage, barrels, bottles, labSwitches,
-  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_LAUNCH_LOB,
+  STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_RECOVER, PUNCH_LAUNCH_LOB,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
   COUNTER_DELAY, COUNTER_WIN, HIT_BURST,
   DASH_RUN_T, DASH_T, DASH_LUNGE, DASH_STAB, DASH_KNOCK, DASH_CD,
@@ -122,6 +122,8 @@ export function drainFloorEvents() {
   }
   floorEvents.length = 0;
 }
+// 出拳承諾期(feel-2):起手(_strikeAt>0)+收招(_recoverT 未到)=整段揮拳動畫,身體跟拳一起承諾。
+export function punchLocked(f) { return f._strikeAt > 0 || f._recoverT > game.time; }
 export function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
   const m = f.ai ? (v2s.introT > INTRO_GO ? { x: 0, y: 0 } : aiMove(f)) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 開場就位期 AI 靜止,「開始!」(introT<=INTRO_GO)才開工;被動假人不吃方向鍵原地站
@@ -129,10 +131,10 @@ export function moveFighter(f, dt) {
     if (touchInput.enabled) { if (m.x || m.y) f.facing = Math.atan2(m.y, m.x); } // 手機:移動=面向;放開搖桿保留最後方向(可推向魔法陣→放開→按投擲)
     else f.facing = Math.atan2(mouse.y - f.y, mouse.x - f.x);                    // 桌機:面向滑鼠(移動與瞄準解耦)
   } else if (m.x || m.y) f.facing = Math.atan2(m.y, m.x);                        // AI／熱座紅方:面向移動方向
-  if (f._strikeAt > 0) f.facing = f._strikeDir;                                   // 出拳承諾(feel-2):起手期面向硬鎖在出拳方向(本機滑鼠/AI 皆蓋回;收招放開)
+  if (punchLocked(f)) f.facing = f._strikeDir;                                    // 出拳承諾(feel-2):整段揮拳(起手+收招=clip 播完)面向硬鎖在出拳方向(本機滑鼠/AI 皆蓋回)
   if (f.guarding) { m.x *= GUARD_MOVE; m.y *= GUARD_MOVE; }                       // 舉防=定身(GUARD_MOVE 0);想拉開就得放防。擊退/被推仍照 f.vx/vy 走
   if (f._diveLagT > 0) { m.x = 0; m.y = 0; }                                      // 下壓落空硬直:短暫定身(v2.js 倒數)
-  if (f._strikeAt > 0 && !(f._dashT0 > -5) && !(f._diveT0 > -5)) { m.x *= PUNCH_MOVE; m.y *= PUNCH_MOVE; } // 出拳承諾:起手鎖腳(衝刺/下壓走自己的承諾位移,不吃這條)
+  if (punchLocked(f) && !(f._dashT0 > -5) && !(f._diveT0 > -5)) { m.x *= PUNCH_MOVE; m.y *= PUNCH_MOVE; } // 出拳承諾:整段揮拳鎖腳(衝刺/下壓走自己的承諾位移,不吃這條)
   let sp = SPEED * ((f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;瓶=輕(全速);跑=預設(v2.js 每幀裁定)
   if (f._diveT0 > -5) { m.x = Math.cos(f._diveDir); m.y = Math.sin(f._diveDir); sp = DIVE_FWD / DIVE_T; } // 俯衝:鎖方向自動前撲(承諾,無操控)
   else if (f._dashT0 > -5) { m.x = Math.cos(f._dashDir); m.y = Math.sin(f._dashDir); sp = DASH_LUNGE / DASH_T; } // 衝刺攻擊:鎖方向滑步前衝(揮空=滑過頭)
@@ -238,7 +240,7 @@ export function freezeFighter(o, byPid) {
 export function jumping(f) { return f._jumpT > -5 && game.time - f._jumpT < JUMP_LOB.T + 0.02; }
 export function airborne(f) { return jumping(f) || f._diveT0 > -5 || f.z > 1; } // z>1 含被拋飛(對空中規則一視同仁)
 export function jump(f) { // 自發小 lob(z 在 v2.js 每幀由 lobZ(t,JUMP_LOB) 算);冰面鎖滑的主動解
-  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || f.guarding || f._performing || f._strikeAt > 0) return; // 出拳起手中不能跳(承諾)
+  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || f.guarding || f._performing || punchLocked(f)) return; // 出拳承諾中不能跳(起手+收招)
   if (f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) return; // 扛人/扛桶跳不動(重量感);瓶=輕
   if (airborne(f) || f.jumpCd > 0) return;
   if (f._slideVx || f._slideVy) { // 鎖滑中起跳=解鎖:動量帶上天(落地乾淨,不續滑)
@@ -306,7 +308,14 @@ export function punch(f) {
   const stage = f.comboN;                                 // 0 左鉤 / 1 右鉤 / 2 浮誇直拳(終結技)
   f.punchCd = COMBO_CD[stage];
   f.punchFx = game.time; f.punchKind = stage; f.punchArm = stage === 0 ? 0 : 1;
-  f._strikeAt = game.time + STRIKE_DELAY[stage]; f._strikeKind = stage; f._strikeDir = f.facing; // 方向在按下瞬間鎖定(出拳有承諾)
+  // 方向在按下瞬間鎖定(出拳有承諾)。本機玩家取「當下瞄準」而非 f.facing——收招期 facing 被前一拳鎖著,
+  // 接段那拳要能跟最新滑鼠/搖桿方向走(連段追得上人);AI/熱座在呼叫前已把 facing 設好,照用。
+  let aim = f.facing;
+  if (f.pid === LOCAL && !f.ai) {
+    if (touchInput.enabled) { const mv = readMove(f.pid); if (mv.x || mv.y) aim = Math.atan2(mv.y, mv.x); }
+    else aim = Math.atan2(mouse.y - f.y, mouse.x - f.x);
+  }
+  f._strikeAt = game.time + STRIKE_DELAY[stage]; f._strikeKind = stage; f._strikeDir = aim; f.facing = aim;
   // 點擊就接段(空揮也演完整套);超過接段窗口才重置
   f.comboN = (stage + 1) % 3; f.comboT = COMBO_WINDOW;
   // 反擊拳改制(brawl-3.1):不再於此開「起手期搶按」窗口——反擊改由「成功擋下鉤拳」觸發(見 resolveStrike 擋下分支)。
@@ -321,7 +330,7 @@ export function doGuard(f) {
 export function canGuard(f) {
   return f.state === 'alive' && !f.stunned && !f.carriedBy && !f.carrying && !f.carryObj
     && f.fumbleT <= 0 && f.guardLock <= 0 && f.guardStam > 0 && !(f._slideVx || f._slideVy) && !airborne(f)
-    && !(f._strikeAt > 0); // 出拳起手中不能舉防(承諾;收招後可)
+    && !punchLocked(f); // 出拳承諾中不能舉防(起手+收招=整段揮拳;揮空=真懲罰窗)
 }
 // 每幀:耐力衰退/回充。舉防中純守衰退;放開後延遲才回充。v2.js step 於 pollGuard 設好 f.guarding 後呼叫。
 export function updateGuard(f, dt) {
@@ -369,6 +378,7 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
   f._strikeAt = 0;
   if (dash) f._dashT0 = -9;                    // 前衝結束(被打斷也要停,免鬼滑)
   if (f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return; // 被打斷:這拳不存在
+  if (!dash) f._recoverT = game.time + PUNCH_RECOVER[stage]; // 收招承諾:鎖到 clip 播完(揮空=真懲罰窗;衝刺有 DASH_CD+滑過頭自己的懲罰)
   const a = f._strikeDir; let hit = false;
   // 出拳衝步只留終結技(玩家反饋:每拳都滑一步不自然)。鉤拳原地,進拳靠走位。
   if (fin) { f.vx += Math.cos(a) * 150; f.vy += Math.sin(a) * 150; }
@@ -483,6 +493,7 @@ export function doPushOff(o) {
 }
 export function startCarry(f, o) {
   if (airborne(f) || airborne(o)) return; // 空中不可抓/被抓(brawl-2 空中規則;呼叫端條件同幀可能過期,這裡守底)
+  f._recoverT = 0; // 抓人=主動接的新動詞,取消出拳收招承諾(打暈→立刻抓走不卡腳)
   f.carrying = o; o.carriedBy = f; o.escape = 0; o.stunned = false; o.stunT = 0; o.mashSide = 0; o._aPrev = false; o._dPrev = false;
   f._carryThrowAt = 0; f.carryClip = 'person_throw'; f.carryFx = game.time; f.carryHold = PERSON_HOLD_T; // 抓起就播 0→hold(reach→抓→舉→翻橫)然後定格在 hold 幀扛著走
   addText(o.x, o.y - 30, '抓住！', COLORS[f.pid]); addRing(o.x, o.y, 34, COLORS[f.pid], 0.35, 4); addShake(4); game.sfx.push('upgrade');

@@ -1,7 +1,8 @@
 // 連段系統(brawl-3;使用者拍板 2026-07-15:連段黏臉→暈→挑飛→風壓接送進艙)驗收:
 // ①三連擊全中=一次暈,且暈在原地不飛走(連段黏得住)②連段中每一拳都不位移(有穩定值時純踉蹌)
 // ③對已暈者出拳=挑飛 launcher ④風壓打空中目標=乾淨接送(往瞄準方向直送/不墊穩定/換 WIND_CARRY_LOB)
-// ⑤風壓打地面目標=維持吹翻滾(墊穩定防站樁,不搶連段接送)⑥全鏈:挑飛→風壓接送→進艙(記 wind)⑦無錯
+// ⑤風壓打地面目標=維持吹翻滾(墊穩定防站樁,不搶連段接送)⑥全鏈:挑飛→風壓接送→進艙(記 wind)
+// ⑦出拳承諾(feel-2):面向硬鎖+不能跳/舉防——起手+收招=整段揮拳(⑦b _recoverT 蓋章/演完放開)⑧本機起手鎖腳→收招恢復 ⑨無錯
 // 陷阱:resolveStrike 直接呼叫(免輸入管線);角色放艙南 y≈540 防污染;全鏈把 o 挑飛朝 POD、半程補風壓。
 import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
@@ -89,9 +90,17 @@ const locked = await page.evaluate(() => { const v = __v2; const a = v.fighters[
   const noGuard = !v.canGuard(a);                                      // 起手中不能舉防
   return { faceLocked, noJump, noGuard, x0: Math.round(x0) }; });
 await new Promise(r => setTimeout(r, 400));                            // 多等幾幀(無移動輸入的 f1 本就不動;鎖腳由本機案驗)
-const still = await page.evaluate(() => { const a = __v2.fighters[1];
-  const x1 = Math.round(a.x); a._strikeAt = __v2.game.time; __v2.resolveStrike(a); return x1; });
+// ---------- ⑦b 收招承諾:impact 後鎖到 clip 播完(_recoverT 蓋章),清掉即放開 ----------
+const recover = await page.evaluate(() => { const v = __v2; const a = v.fighters[1];
+  a._strikeAt = v.game.time; v.resolveStrike(a);                       // impact 幀=收招開始
+  const rec = a._recoverT > v.game.time;                               // 收招承諾已蓋章(=clip 全長−impact)
+  const stillNoGuard = !v.canGuard(a);                                 // 收招中仍不能舉防
+  v.jump(a); const stillNoJump = !(a._jumpT > -5);                     // 收招中仍不能跳
+  a._recoverT = 0;                                                     // 清掉承諾(=收招演完)
+  const freedGuard = v.canGuard(a);
+  return { rec, stillNoGuard, stillNoJump, freedGuard }; });
 R('出拳承諾:起手面向硬鎖(轉回出拳方向)+不能跳/舉防', locked.faceLocked && locked.noJump && locked.noGuard, JSON.stringify(locked));
+R('收招承諾:impact 後仍鎖(不能跳/舉防)到 clip 播完,演完即放開', recover.rec && recover.stillNoGuard && recover.stillNoJump && recover.freedGuard, JSON.stringify(recover));
 
 // ---------- ⑧ 起手鎖腳(本機玩家按住方向鍵,x 不動;收招後恢復移動) ----------
 await page.keyboard.down('d');
@@ -101,7 +110,7 @@ await page.evaluate(() => { const v = __v2; const f = v.fighters[0];
   v.punch(f); f._strikeAt = v.game.time + 9; });                       // 起手撐住+按住 d
 await new Promise(r => setTimeout(r, 500));
 const rooted = await page.evaluate(() => Math.round(__v2.fighters[0].x));
-await page.evaluate(() => { const f = __v2.fighters[0]; f._strikeAt = __v2.game.time; __v2.resolveStrike(f); }); // 收招
+await page.evaluate(() => { const f = __v2.fighters[0]; f._strikeAt = __v2.game.time; __v2.resolveStrike(f); f._recoverT = 0; }); // 收招+清承諾(收招鎖由 ⑦b 驗,這裡保持確定性)
 await page.waitForFunction('__v2.fighters[0].x > 310', { timeout: 15000 }).catch(() => {});
 const freed = await page.evaluate(() => Math.round(__v2.fighters[0].x));
 await page.keyboard.up('d');
