@@ -1,6 +1,7 @@
 // 漫畫打擊爆花(hitfx-1;使用者拍板 2026-07-16:GetAmped 風=拳頭的打擊語言,元素維持發光粒子)驗收:
 // ①鉤拳命中=小橘爆花(無速度線)②挑飛=最大檔(集中線+速度線+白閃)③打暈那拳=琥珀檔
-// ④反擊拳=金色爆花 ⑤下壓拳=紅色爆花 ⑥爆花會老化消失(壽命到=移除)⑦揮空不出爆花 ⑧無 console 錯誤
+// ④反擊拳=金色爆花 ⑤下壓拳=紅色爆花 ⑥爆花會老化消失(壽命到=移除)⑦揮空不出爆花
+// ⑧頓點分級(feel-3):普通 0.10<挑飛 0.20<打暈 0.22<反擊 0.26(>舊帽 0.12=帽已放開)⑨hitstopMul 倍率生效 ⑩無 console 錯誤
 // 陷阱:sim 側斷言 game.bursts(fx.addBurst 推、v2-hud 消費);判定直接呼叫 resolveStrike;角色放艙南 y≈540。
 import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
@@ -61,6 +62,34 @@ R('爆花壽命到=移除(updateRings 老化)', aged === 0, 'left=' + aged);
 // ---------- ⑦ 揮空=無爆花 ----------
 const whiff = await hit(`o.x=100; o.y=100; a._strikeKind=0; a._strikeDir=0; v.resolveStrike(a);`);
 R('揮空不出爆花', whiff.n === 0, JSON.stringify(whiff));
+
+// ---------- ⑧ 頓點分級(feel-3):HIT_STOP 表生效、輕重讀得出、舊 0.12 帽已放開 ----------
+const hstop = (setup) => page.evaluate((code) => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
+  v.game.hitstop = 0;
+  a.stunned = false; a.fumbleT = 0; a.punchCd = 0; a.carrying = null; a.carryObj = null; a._diveT0 = -9; a._jumpT = -9; a._recoverT = 0;
+  o.invuln = 0; o.fumbleT = 0; o._lob = null; o._thrownT = -9; o.z = 0; o._jumpT = -9; o.carrying = null; o.vx = o.vy = 0; o.guarding = false;
+  a.x = 470; a.y = 540; o.x = 500; o.y = 540;
+  new Function('v', 'a', 'o', code)(v, a, o);
+  return +v.game.hitstop.toFixed(3);
+}, setup);
+const hsPunch = await hstop(`o.stunned=false; o.restunT=9; o.stability=100;
+  a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`);
+const hsLaunch = await hstop(`o.stunned=true; o.stunT=5; o.restunT=0; o.stability=0; o.carriedBy=null;
+  a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`);
+const hsStun = await hstop(`o.stunned=false; o.restunT=0; o.stability=10;
+  a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`);
+const hsCounter = await hstop(`o.stunned=false; o.stability=100; o.pushCd=0; o.punchCd=0; o.guardStam=100; a.stability=100; a.restunT=0;
+  o._counterFrom=a; o._counterAt=v.game.time-0.02; v.punch(o);`);
+const near = (x, e) => Math.abs(x - e) < 0.001;
+R('頓點分級:普通 0.10/挑飛 0.20/打暈 0.22/反擊 0.26(輕重差 2.6×)',
+  near(hsPunch, 0.10) && near(hsLaunch, 0.20) && near(hsStun, 0.22) && near(hsCounter, 0.26),
+  `punch=${hsPunch} launch=${hsLaunch} stun=${hsStun} counter=${hsCounter}`);
+R('舊 0.12 硬帽已放開(反擊 0.26 完整生效)', hsCounter > 0.12, `counter=${hsCounter}`);
+
+// ---------- ⑨ hitstopMul 全域倍率(?tune=1 滑桿)----------
+const hsMul = await hstop(`v.v2s.hitstopMul = 2; o.stunned=false; o.restunT=9; o.stability=100;
+  a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a); v.v2s.hitstopMul = 1;`);
+R('hitstopMul=2 → 普通拳頓點 0.20(倍率生效,已復原 1)', near(hsMul, 0.20), `mul2 punch=${hsMul}`);
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);

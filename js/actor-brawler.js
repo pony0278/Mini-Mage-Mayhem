@@ -57,7 +57,8 @@ export const ANIM = {
     lL_hy: 56, lL_hz: -30, lL_kx: 81, lL_ax: 60, lL_ty: -22, lL_scale: 1.09, lL_stretch: 1.09,
     lR_hx: 27, lR_hy: -67, lR_hz: 9, lR_kx: -11, lR_ax: 32,
   },
-  flinch:  { window: 0.22, tip: 0.55, squashXZ: 0.15, squashY: 0.2, clipMul: 0.4 }, // clipMul=hit_flinch clip 播放時 overlay 降權(clip 已做軀幹後仰,免雙重受擊)
+  flinch:  { window: 0.35, tip: 0.55, squashXZ: 0.15, squashY: 0.2, clipMul: 0.4, clipRate: 0.625 }, // clipMul=hit_flinch clip 播放時 overlay 降權(clip 已做軀幹後仰,免雙重受擊);
+  // clipRate=hit_flinch 播放速率(feel-3 受擊演長:0.625=放慢 1.6×,0.23s clip 讀 0.37s;window 同步 0.22→0.35 配合 sim 側 flinch 時長 ×1.6)
 };
 
 function shadeHex(h, m) {
@@ -326,8 +327,8 @@ export function updateBrawler(e, g) {
   // 受擊 clip 槽(feel-1,可選;studio 排):只在「空閒」時播——行動中(出拳/搬/施法)維持甩頭+壓扁 overlay,
   // 因為普通拳不打斷行動,整身接管會讓畫面說「失控」但操作沒有=手感撒謊。格擋中/暈眩/翻滾另有姿勢,不搶。
   else if (free && CLIPS.hit_flinch && !e.guarding && !e.stunned && e.fumbleT <= 0
-    && e.lastHitT != null && (now - e.lastHitT) >= 0 && (now - e.lastHitT) < CLIPS.hit_flinch.dur) {
-    pose = evalClip(CLIPS.hit_flinch, now - e.lastHitT); flinchClip = true; // clip 接管受擊姿勢 → 下方 overlay 降權
+    && e.lastHitT != null && (now - e.lastHitT) >= 0 && (now - e.lastHitT) * A.flinch.clipRate < CLIPS.hit_flinch.dur) {
+    pose = evalClip(CLIPS.hit_flinch, (now - e.lastHitT) * A.flinch.clipRate); flinchClip = true; // clip 接管受擊姿勢(× clipRate 放慢=feel-3 演長)→ 下方 overlay 降權
   }
   else if (free && e.running && CLIPS.run_cycle && u.amp > 0.3) {   // 跑步循環(可選槽,studio 排)
     // tag 'run'=循環起點:0→run 是「起跑」過渡段只播一次,之後在 [run..最後實排 key] 無縫繞圈

@@ -27,7 +27,7 @@ export function addText(x, y, text, color = '#fff') {
   game.floatingTexts.push({ x, y, text, color, life: 0.82, maxLife: 0.82, vy: -34 });
 }
 // Hitstop (頓幀): freeze the gameplay sim for s seconds on a hit. Math.max (no stacking) + a hard cap.
-export function addHitstop(s) { game.hitstop = Math.min(0.12, Math.max(game.hitstop, s)); }
+export function addHitstop(s) { game.hitstop = Math.min(0.45, Math.max(game.hitstop, s)); } // 帽 0.45:放行 v2 分級表(反擊 0.26/封存 0.4;feel-3 前帽 0.12 把輕重壓扁到 1.5×);Math.max=不疊加
 // Screen-shake throttle: SMALL shakes (< SHAKE_BIG) are rate-limited + soft-capped so routine combat
 // reads calm; BIG events bypass both and still punch.
 const SHAKE_BIG = 6;         // >= this = a "big" event: always lands, uncapped

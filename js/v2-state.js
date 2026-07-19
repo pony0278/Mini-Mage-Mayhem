@@ -41,6 +41,11 @@ export const HIT_BURST = {
   dive:    { size: 40, col: '#ff4a4a', life: 0.28, streaks: 5, flash: 0.4 },               // 下壓拳=紅
   dash:    { size: 30, col: '#ff8a3a', life: 0.22, streaks: 3, flash: 0.2 },               // 衝刺攻擊(帶線=有衝勁)
 };
+// 頓點分級(feel-3,多玩家反饋「打擊頓點可再加強」):玩家動詞的 hitstop 全走這張表(×v2s.hitstopMul)。
+// 舊況=散落 0.08~0.14 且 fx 硬帽 0.12,輕重只差 1.5×(反擊 0.14/封存 0.4 從未生效);
+// 現=輕重差 2.6×(格鬥慣例):普通<衝刺<下壓<終結<挑飛<打暈<反擊。hitstop 凍結 game.time=所有計時一起凍,
+// 連段拍子相對關係不變,只是重的那拳世界多停一下。環境事故(桶爆/毒爆/站)不進表=不跟玩家動詞搶戲。
+export const HIT_STOP = { punch: 0.10, dash: 0.14, dive: 0.16, fin: 0.18, launch: 0.20, stun: 0.22, counter: 0.26, block: 0.05, seal: 0.4 };
 // brawl-3 連段黏臉:三連擊全中 = 剛好一次暈(25+25+50=STAB_MAX 100),讀作「連段接滿=暈」。
 // 有穩定值時所有拳只踉蹌不位移(黏在臉上,連段接得到暈);打暈那拳=原地;對「已暈」的對手出拳才=挑飛(launcher)。
 export const COMBO_STAB = [25, 25, 50], COMBO_CD = [0.35, 0.35, 0.6], COMBO_WINDOW = 0.9;
@@ -300,6 +305,7 @@ export const v2s = {
   matchOver: false, report: null,            // 對局結束旗標 + 事故報告物件
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝
+  hitstopMul: 1,                             // 頓點全域倍率(feel-3;?tune=1 打擊感滑桿,HIT_STOP 表 × 此值)
   fallReason: '', fallReasonT: 0,            // isles:「為什麼掉下去」讀出
   lowFlicker: false,                         // 減閃爍(光敏無障礙):L 鍵切換,localStorage 記憶;3D 脈動由 render 的 setLabFlicker 吃
   perform: null,                             // 收容演出狀態機(v2-combat startPerform/updatePerform;null=沒在演)

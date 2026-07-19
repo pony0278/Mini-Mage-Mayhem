@@ -109,6 +109,11 @@ copyButton('複製 彈道', () =>
   + `export const PUNCH_LAUNCH_LOB = { range: ${PL.range}, apex: ${PL.apex}, T: ${PL.T}, h0: ${PL.h0} };\n`
   + `export const BOTTLE_LOB = { range: ${IC.range}, apex: ${IC.apex}, T: ${IC.T}, h0: ${IC.h0} };`);
 
+header('打擊感(即時)');
+// 頓點分級表 HIT_STOP 全體 × 此倍率(feel-3):拖著實戰揍幾拳,壓出你要的重量感再抄回 v2s.hitstopMul 預設。
+slider('頓點倍率 hitstopMul', 0.5, 2, 0.05, v2.v2s.hitstopMul ?? 1, (x) => v2.v2s.hitstopMul = x);
+copyButton('複製 打擊感', () => `hitstopMul: ${v2.v2s.hitstopMul},`);
+
 header('跑步(即時)');
 // 邊跑邊拖:雙擊方向鍵開跑後直接調,差異立刻看得到
 slider('彈跳 bob(踩地感)', 0, 0.3, 0.01, ANIM.runClip.bob, (x) => ANIM.runClip.bob = x);
