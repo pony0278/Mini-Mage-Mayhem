@@ -4,7 +4,7 @@
 // 原型單位:1 unit = 1 tile;我們的世界:1 tile = 32px → 一律乘 LAB_SCALE 換算,
 // builder 幾乎逐字移植。碰撞/模擬完全不動(牆的碰撞仍在 30×20 核心邊界)。
 import { W, H, TILE, COLS, ROWS } from './constants.js';
-import { renderer, scene, IS_MOBILE } from './render-core.js';
+import { renderer, scene, camera, IS_MOBILE } from './render-core.js';
 import { floor as floorGrid, FL } from './v2-floor.js'; // 地板化學狀態(唯讀);render→v2-floor 同 render→sim 方向,無循環
 
 const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
@@ -379,7 +379,7 @@ export function initLabScene() {
   if (!FX_LOW) for (const [c, x, z] of [
     [0xff6a26, -13.85, -12], [0x53c8ff, 13.85, -12], [0x8dff7a, -13.85, 12], [0xa87cff, 13.85, 12],
   ]) {
-    const pl = new THREE.PointLight(c, 0.95, 11 * LAB_SCALE, 2);
+    const pl = new THREE.PointLight(c, 1.35, 13 * LAB_SCALE, 2); // perf-1:0.95→1.35、11→13(補償站身 decoLight 退役;全場點光 18→6)
     pl.position.set(CX + x * LAB_SCALE, 2.4 * LAB_SCALE, CZ + z * LAB_SCALE); scene.add(pl);
   }
 
@@ -428,6 +428,7 @@ export function initLabScene() {
     circleMat.opacity = 0.58 + Math.sin(t * 1.1) * 0.08;
     circleGlow.intensity = 1.6 + Math.max(0, Math.sin(t * 1.1)) * 0.6;
   } });
+  if (renderer) renderer.compile(scene, camera); // perf-1 預熱:建場後一次性預編譯全部 shader(在載入期=卡頓不可見;免首次入鏡才編譯)
 }
 
 /* ---------- 原型材質庫(牆/柱/管用;MeshStandard) ---------- */
@@ -586,13 +587,16 @@ function buildServicePipeNetwork() {
    ========================================================================== */
 M.glass = (c = 0x7fe8ff, o = 0.22) => new THREE.MeshPhysicalMaterial({
   color: c, transparent: true, opacity: o, roughness: 0.05, metalness: 0,
-  transmission: FX_LOW ? 0 : 0.6, emissive: c, emissiveIntensity: 0.08, side: THREE.DoubleSide });
+  // perf-1(2026-07-20 桌機卡頓診斷):transmission 全平台退役——13 面玻璃任一入鏡=three.js 整景多渲一趟,
+  // 近站區 draw calls 220→434=「走到特定位置突然卡」主因;風格化玻璃(透明+emissive)在深色場景已驗證讀得出。
+  transmission: 0, emissive: c, emissiveIntensity: 0.08, side: THREE.DoubleSide });
 M.wood = () => new THREE.MeshStandardMaterial({ color: 0x3a2b3f, roughness: 0.85 });
 
-// 裝飾性點光:低效能模式不建(氛圍主力=emissive/貼花;點光是加分項)。回傳可能為 null,動畫端判空。
-function decoLight(color, intensity, dist, decay = 2) {
-  if (FX_LOW) return null;
-  return new THREE.PointLight(color, intensity, dist, decay);
+// 裝飾性點光:perf-1(2026-07-20)全平台退役——three.js forward 不剔除光源,18 盞點光=每個像素
+// 每幀算 18 盞(透射 pass 期間再算一次)=桌機幀成本底噪主因。氛圍主力=emissive/貼花(手機已驗證),
+// 四角元素色改由場燈的角落底光(0.95→1.35 補強)承擔。回傳恆 null,動畫端判空(既有慣例)。
+function decoLight() {
+  return null;
 }
 function groundDecal(g, color, r = 2.8) { // 站台腳下的發光環貼花(各站自帶,顏色=站的元素色)
   const d = new THREE.Mesh(new THREE.RingGeometry(r - 0.2, r + 0.2, 24),
@@ -1140,6 +1144,7 @@ function loadPodGlb() {
       // 舊環甲板保留(使用者反饋 2026-07:加回更立體)——輪盤 r2.72 / 甲板 r4.56-4.95 不重疊,分層:輪盤嵌件→符文環帶→金屬甲板
       buildRuneRing();                                                            // 符文環帶填輪盤與甲板之間的地面
       _podGlbReady = true;
+      if (renderer) renderer.compile(scene, camera); // perf-1 預熱:GLB 換裝的新材質就地預編譯(否則首次入鏡才編譯=初始移動卡頓的第二刀)
       console.log('[lab] 回收艙 GLB 底座就位');
     })
     .catch(e => console.warn('[lab] 回收艙 GLB 載入失敗,保留程序化底座', e));

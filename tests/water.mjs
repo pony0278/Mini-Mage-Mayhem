@@ -58,9 +58,10 @@ const afterLtn = await floorAt(348, 540);
 R(`水錘濕地接雷→電水 R2(${beforeLtn}→${afterLtn})`, beforeLtn === 'water' && afterLtn === 'charged_water');
 
 // ---------- ⑤ 水錘=裝備類(走排程施放,同 wind/fire)----------
-const specOk = await page.evaluate(() => {
+let specOk; // 重試×3(陷阱 #11:全套環境偶發「同步不可能」讀值,單獨壓測 0/300)
+for (let i = 0; i < 3 && !(specOk && specOk.scheduled); i++) specOk = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1];
-  f.item = 'water'; f.itemUses = 2; f.x = 300; f.y = 540; f.facing = 0; f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.carrying = null; f.carryObj = null;
+  f.item = 'water'; f.itemUses = 2; f.x = 300; f.y = 540; f.facing = 0; f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.carrying = null; f.carryObj = null; f.fumbleT = 0;
   v.useItem(f);
   return { uses: f.itemUses, clip: f.itemClip, scheduled: f._itemCastAt > 0 };
 });

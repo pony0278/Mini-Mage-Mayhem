@@ -27,9 +27,11 @@ await page.evaluate(() => { __v2.fighters[1].ai = false; });
 
 // ---------- ① 持火帽近瓶按右鍵 = 開火不撿瓶 ----------
 await resetAll();
-const s1 = await page.evaluate(() => {
+let s1; // 重試×3(陷阱 #11)+ 補 cd/castAt 重置(原缺=前案殘留 cd 會讓 useItem 空轉)
+for (let i = 0; i < 3 && !(s1 && s1.casting); i++) s1 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], t = v.bottles[0];
   t.x = 340; t.y = 540; f.x = 300; f.y = 540; f.facing = 0; f.item = 'fire'; f.itemUses = 2;
+  f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.fumbleT = 0; f.carrying = null; f.carryObj = null;
   v.mouseRight(f);
   return { casting: f._itemCastAt > 0, type: f._itemCastType, uses: f.itemUses, pickedUp: !!f.carryObj, bottleHeld: t.held };
 });

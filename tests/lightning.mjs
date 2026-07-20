@@ -53,10 +53,11 @@ await page.evaluate(() => { const v = __v2, f = v.fighters[1]; f.x = 200; f.y = 
 const clean4 = await floorAt(350, 540);
 R(`乾淨地板 no-op(線上仍 clean=${clean4})`, clean4 === 'clean');
 
-// ---------- ⑤ 排程施放 ----------
-const sched = await page.evaluate(() => {
+// ---------- ⑤ 排程施放(重試×3:全套環境偶發「同步不可能」讀值,單獨壓測 0/300;陷阱 #11)----------
+let sched;
+for (let i = 0; i < 3 && !(sched && sched.scheduled); i++) sched = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1];
-  f.item = 'lightning'; f.itemUses = 2; f.x = 200; f.y = 540; f.facing = 0; f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.carrying = null; f.carryObj = null;
+  f.item = 'lightning'; f.itemUses = 2; f.x = 200; f.y = 540; f.facing = 0; f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.carrying = null; f.carryObj = null; f.fumbleT = 0;
   v.useItem(f);
   return { uses: f.itemUses, clip: f.itemClip, scheduled: f._itemCastAt > 0, type: f._itemCastType };
 });

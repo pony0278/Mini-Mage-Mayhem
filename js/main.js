@@ -117,7 +117,7 @@ document.addEventListener('visibilitychange', () => {
 
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
+  const dt = Math.min(0.033, Math.max(0, (now - last) / 1000)); // 下夾 0:rAF 時間戳可能倒退(headless/分頁還原),負 dt=game.time 倒流(同 v2.js)
   last = now;
   trackLifecycle();
   if (!paused) { updateMouseWorld(); buildInput(); update(dt); } // mouse-world → intents → sim, only when running

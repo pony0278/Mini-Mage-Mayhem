@@ -384,7 +384,7 @@ function cycleSlowmo() {
 showSlowmo();
 
 function frame(now) {
-  let dt = Math.min(0.033, (now - last) / 1000);
+  let dt = Math.min(0.033, Math.max(0, (now - last) / 1000)); // 下夾 0:headless/分頁還原的 rAF 時間戳可能倒退,負 dt 會讓 game.time 變負=絕對時戳比較全壞(排程施放 flake 元兇,2026-07-20 獵獲)
   last = now;
   if (slowmo < 1) dt *= slowmo;   // 慢動作觀察:整場模擬按倍率放慢(動畫/判定同步慢,可看清出拳過程)
   // 反擊拳改制(brawl-3.1):不再有慢動作/灰屏提示——反擊靠「擋下瞬間 hitstop」的手感抓時機(讓玩家自己體會)。

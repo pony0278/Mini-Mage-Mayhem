@@ -59,6 +59,15 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
    `carryObj/carrying`(扛著東西不能出拳,punch 會靜默 no-op;判定測試直接呼叫 `resolveStrike`)。
 9. **鍵盤 edge 測試要 down/等待/up**:rAF 節流下 `keyboard.press()` 的 down+up 常落在同一取樣幀,
    `keys.has()` 邊緣觸發(跳/格擋)整個吃不到——先 `keyboard.down()`,waitForFunction 等狀態成立再 `up()`。
+10. **hitstop=節流放大鏡**(feel-3 後致命):hitstop 期間整個 sim 凍結,rAF 節流下每 0.1s 頓幀
+   ≈ 數秒實時——前面案例累積的 hitstop 會把你的移動/計時等待窗整個吃光(waitForFunction 空轉超時)。
+   對策:case 設定時 `game.hitstop = 0`;手動 `resolveStrike` 前把無關角色挪出拳距(命中=又生頓幀);
+   斷言含 canGuard 一類複合條件時,把輸入旗標 dump 進回傳值(combo.mjs ⑦b 的 `why` 範式)。
+11. **game.time 可能是負的(已修根因,教訓留檔)**:headless 的 rAF 時間戳偶爾倒退,舊主迴圈
+   dt 沒下夾 → 負 dt 累積 → `game.time` 變負(獵獲值 −1.36s)。症狀=「同步不可能」:`useItem` 後
+   同行寫入的 `_itemCastType` 讀得到、`_itemCastAt > 0` 卻 false(= 負 time + delay 仍 < 0);相對比較
+   全正常所以其他案照過=只有「絕對時戳 > 0」類斷言偶發炸。根因已修(v2.js/main.js dt 下夾 0);
+   排程施放案仍保留重試×3 當環境保險。**寫新斷言別假設 game.time ≥ 0 以外的絕對值性質。**
 
 ## Debug hooks(頁內 `window.*`)
 

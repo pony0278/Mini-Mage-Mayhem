@@ -98,19 +98,25 @@ const recover = await page.evaluate(() => { const v = __v2; const a = v.fighters
   v.jump(a); const stillNoJump = !(a._jumpT > -5);                     // 收招中仍不能跳
   a._recoverT = 0;                                                     // 清掉承諾(=收招演完)
   const freedGuard = v.canGuard(a);
-  return { rec, stillNoGuard, stillNoJump, freedGuard }; });
+  const why = { st: a.state, stun: a.stunned, cb: !!a.carriedBy, cy: !!(a.carrying || a.carryObj), fum: +a.fumbleT.toFixed(2),
+    lock: +a.guardLock.toFixed(2), stam: Math.round(a.guardStam), slide: !!(a._slideVx || a._slideVy), z: +a.z.toFixed(1), jT: a._jumpT,
+    dT0: a._diveT0, gt: +v.game.time.toFixed(2), sAt: a._strikeAt, rT: a._recoverT }; // canGuard 全輸入(診斷 flake 用;dT0=airborne 的下壓分量)
+  return { rec, stillNoGuard, stillNoJump, freedGuard, why }; });
 R('出拳承諾:起手面向硬鎖(轉回出拳方向)+不能跳/舉防', locked.faceLocked && locked.noJump && locked.noGuard, JSON.stringify(locked));
 R('收招承諾:impact 後仍鎖(不能跳/舉防)到 clip 播完,演完即放開', recover.rec && recover.stillNoGuard && recover.stillNoJump && recover.freedGuard, JSON.stringify(recover));
 
 // ---------- ⑧ 起手鎖腳(本機玩家按住方向鍵,x 不動;收招後恢復移動) ----------
 await page.keyboard.down('d');
 await page.evaluate(() => { const v = __v2; const f = v.fighters[0];
+  v.v2s.perform = null; f._performing = false; f._hidden = false; f.invuln = 0; // 清掉案例⑥殘留的收容演出(否則 f 被釘在艙心 x=480,鎖腳斷言讀錯人)
+  v.game.hitstop = 0; // 清累積頓幀:feel-3 加長後,rAF 節流下 0.1s hitstop ≈ 數秒實時的 sim 凍結,會吃光移動等待窗(陷阱 #10)
+  v.fighters[1].x = 700; v.fighters[1].y = 200; // 把對手挪遠:⑦ 留他在 (300,540),收招那記 resolveStrike 會打中他=又生一段 hitstop 凍結
   f.stunned = false; f.fumbleT = 0; f.punchCd = 0; f.carrying = null; f.carryObj = null; f._dashT0 = -9; f._diveT0 = -9; f._jumpT = -9; f.z = 0; f.guarding = false; f._runT = 0; f.vx = 0; f.vy = 0;
   f.x = 300; f.y = 540; v.CAM.azimuth = 0;
   v.punch(f); f._strikeAt = v.game.time + 9; });                       // 起手撐住+按住 d
 await new Promise(r => setTimeout(r, 500));
 const rooted = await page.evaluate(() => Math.round(__v2.fighters[0].x));
-await page.evaluate(() => { const f = __v2.fighters[0]; f._strikeAt = __v2.game.time; __v2.resolveStrike(f); f._recoverT = 0; }); // 收招+清承諾(收招鎖由 ⑦b 驗,這裡保持確定性)
+await page.evaluate(() => { const f = __v2.fighters[0]; f._strikeAt = __v2.game.time; __v2.resolveStrike(f); f._recoverT = 0; __v2.game.hitstop = 0; }); // 收招+清承諾+清頓幀(收招鎖由 ⑦b 驗,這裡保持確定性)
 await page.waitForFunction('__v2.fighters[0].x > 310', { timeout: 15000 }).catch(() => {});
 const freed = await page.evaluate(() => Math.round(__v2.fighters[0].x));
 await page.keyboard.up('d');
