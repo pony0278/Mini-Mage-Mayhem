@@ -9,7 +9,7 @@ headless 套件驗收。測試依賴(puppeteer)隔離在本資料夾(比照 `bui
 ```bash
 cd tests
 npm i            # 裝 puppeteer + 下載 chromium 到 ~/.cache/puppeteer(僅第一次)
-npm test         # = node run-all.mjs:自動起 server → 逐套件跑 → 匯總
+npm test         # = node run-all.mjs:自動起 server → 併發跑套件 → 匯總(CONC=3 平行,環境變數可調;CONC=1 退回序列)
 ```
 
 單跑一支(debug 時)——**server 一定從 repo root 起**:
@@ -36,6 +36,16 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `hitfx.mjs`     | 漫畫打擊爆花 hitfx-1:命中推 game.bursts(鉤=小橘/挑飛=size46+集中線+白閃/打暈=琥珀/反擊=金/下壓=紅)、壽命到移除、揮空無爆花 |
 | `combo.mjs`     | 連段系統 brawl-3:三連擊黏臉=一次暈不飛走、連段中純踉蹌不位移、對已暈者出拳=挑飛 launcher、風壓打空中=乾淨接送(WIND_CARRY_LOB 不墊穩定)、地面=吹翻滾墊穩定、全鏈挑飛→風壓→進艙記 wind |
 | `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=resolveContain 計分+containLog、endMatch=事故報告 |
+
+## 提速(2026-07-20:全套 10min+ → ~3.5min)
+
+- **`?turbo=8`**(v2.js 測試旗):每個 rAF 幀跑 8 次 `step(dt)`——每步 dt 不變=物理/計時/輸入語意
+  全保真,只是畫面少畫;game.time 推進 ×8,等待類斷言收斂 ~8×。所有套件的 goto URL 已帶。
+  背景:headless rAF 節流到 ~5% 實時且反節流 flags 實測無效,唯一解=每幀多走模擬。
+- **run-all 併發 3**(`CONC` 環境變數;套件各自開瀏覽器、共用一個靜態 server)。
+- **寫新套件的 turbo 紀律**:短時間窗(施法預告/落空硬直/引信)在 turbo 下一幀就流完——
+  「先觸發再隔 evaluate 抓拍」會撲空;要嘛撐住窗(`_itemCastAt = time+9` 類)、要嘛觸發+取樣
+  寫在**同一個 evaluate**(手動 resolveStrike/resolveItemCast 後同步讀)。
 
 ## Headless 陷阱(踩過的;寫新套件先讀,`js/CLAUDE.md` §測試 有完整版)
 

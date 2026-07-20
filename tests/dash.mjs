@@ -9,7 +9,7 @@ const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, arg
 const page = await B.newPage();
 const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
 await page.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
-await page.goto('http://localhost:8099/v2.html', { waitUntil: 'networkidle0' });
+await page.goto('http://localhost:8099/v2.html?turbo=8', { waitUntil: 'networkidle0' });
 await page.waitForFunction('window.__v2 && __v2.fighters[0].state === "alive"', { timeout: 20000 });
 await page.bringToFront();
 let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };

@@ -9,7 +9,7 @@ const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, arg
 const page = await B.newPage();
 const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
 await page.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
-await page.goto('http://localhost:8099/v2.html', { waitUntil: 'networkidle0' });
+await page.goto('http://localhost:8099/v2.html?turbo=8', { waitUntil: 'networkidle0' });
 await page.waitForFunction('window.__v2 && __v2.fighters[0].state === "alive"', { timeout: 20000 });
 await page.bringToFront();
 let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };
@@ -89,9 +89,10 @@ await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fight
   o.x = 100; o.y = 100; a.x = 470; a.y = 540; a.punchCd = 0; a.jumpCd = 0; a.fumbleT = 0; a.stunned = false; a._diveLagT = 0;
   v.jump(a); });
 await W('__v2.state().z[1] > 8', 30);
-await page.evaluate(() => { const a = __v2.fighters[1]; a.punchCd = 0; __v2.dive(a); });
-await W('__v2.state().diving[1] === false', 30);
-const lag = await page.evaluate(() => +__v2.fighters[1]._diveLagT.toFixed(2));
+const lag = await page.evaluate(() => { const v = __v2, a = v.fighters[1];
+  a.punchCd = 0; v.dive(a);
+  a._strikeAt = v.game.time; v.resolveStrike(a);            // 手動落地幀(kind3→resolveDive;揮空=蓋 _diveLagT)——同步讀,turbo 下 0.2s 硬直一幀就流完
+  return +a._diveLagT.toFixed(2); });
 R('下壓落空=硬直(有承諾才有讀取)', lag > 0, 'lag=' + lag);
 
 // ---------- ⑧ 空中挨拳=拍落小翻滾 ----------

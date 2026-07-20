@@ -38,7 +38,7 @@ process.on('exit', cleanup); process.on('SIGINT', () => { cleanup(); process.exi
 
 async function waitServer() {
   for (let i = 0; i < 40; i++) {
-    try { const r = await fetch('http://localhost:8099/v2.html'); if (r.ok) return true; } catch { /* not up yet */ }
+    try { const r = await fetch('http://localhost:8099/v2.html?turbo=8'); if (r.ok) return true; } catch { /* not up yet */ }
     await new Promise(r => setTimeout(r, 250));
   }
   return false;
@@ -54,9 +54,25 @@ const runSuite = (name) => new Promise((res) => {
 
 if (!(await waitServer())) { console.error('✗ 本機 server 起不來(port 8099)'); process.exit(2); }
 
+// 併發池(2026-07-20 提速):套件彼此獨立(各自開瀏覽器、共用靜態 server)→ 同時跑 CONC 套。
+// 搭配 ?turbo=8(v2.js 測試旗:每幀 8 次 step)把 10min+ 的全套壓進分鐘級;CONC=1 可退回序列。
+const CONC = Math.max(1, parseInt(process.env.CONC || '3', 10) || 3);
+const results = new Array(SUITES.length);
+let next = 0;
+async function worker() {
+  while (next < SUITES.length) {
+    const my = next++;
+    const t0 = Date.now();
+    results[my] = await runSuite(SUITES[my][0]);
+    results[my].secs = Math.round((Date.now() - t0) / 1000);
+    process.stderr.write(`  ▸ ${SUITES[my][0]} done(${results[my].secs}s)\n`); // 進度心跳(stderr,不進匯總)
+  }
+}
+const wall0 = Date.now();
+await Promise.all(Array.from({ length: CONC }, worker));
 let failed = 0;
-for (const [name, desc] of SUITES) {
-  const r = await runSuite(name);
+for (let i = 0; i < SUITES.length; i++) {
+  const [name, desc] = SUITES[i]; const r = results[i];
   const summary = (r.out.match(/== .* ==/g) || ['(無匯總行)']).pop();
   console.log(`${r.code === 0 ? '✓ PASS' : '✗ FAIL'}  ${name.padEnd(11)} ${summary}   — ${desc}`);
   if (r.code !== 0) {
@@ -64,5 +80,5 @@ for (const [name, desc] of SUITES) {
     for (const line of r.out.split('\n')) if (line.startsWith('FAIL')) console.log('        ' + line);
   }
 }
-console.log(`\n== ${SUITES.length - failed}/${SUITES.length} suites green ==`);
+console.log(`\n== ${SUITES.length - failed}/${SUITES.length} suites green ==(${Math.round((Date.now() - wall0) / 1000)}s,CONC=${CONC},turbo=8)`);
 process.exit(failed ? 1 : 0);

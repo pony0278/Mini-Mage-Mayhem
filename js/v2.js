@@ -383,13 +383,18 @@ function cycleSlowmo() {
 }
 showSlowmo();
 
+// 測試加速(?turbo=N,headless 回歸專用;比照 ?slowmo/?grabany 測試旗):每個 rAF 幀跑 N 次 step(dt)。
+// 每步 dt 不變=物理/計時/輸入語意全保真(等同正常幀率的 N 個連續幀,只是畫面少畫)。
+// 背景:headless rAF 節流到 ~5% 實時且反節流 flags 無效(2026-07-20 實驗),19 套回歸要 10min+;
+// turbo=8 讓 game.time 推進 ×8=等待類斷言收斂 ~8×。正常遊玩不帶參數=1,零影響。
+const TURBO = (() => { const v = parseInt(new URLSearchParams(location.search).get('turbo')); return Number.isFinite(v) && v > 1 ? Math.min(32, v) : 1; })();
 function frame(now) {
   let dt = Math.min(0.033, Math.max(0, (now - last) / 1000)); // 下夾 0:headless/分頁還原的 rAF 時間戳可能倒退,負 dt 會讓 game.time 變負=絕對時戳比較全壞(排程施放 flake 元兇,2026-07-20 獵獲)
   last = now;
   if (slowmo < 1) dt *= slowmo;   // 慢動作觀察:整場模擬按倍率放慢(動畫/判定同步慢,可看清出拳過程)
   // 反擊拳改制(brawl-3.1):不再有慢動作/灰屏提示——反擊靠「擋下瞬間 hitstop」的手感抓時機(讓玩家自己體會)。
   updateMouseWorld(); // 滑鼠螢幕座標 → 地面世界座標(供本地玩家瞄準)
-  step(dt);
+  for (let i = 0; i < TURBO; i++) step(dt);
   if (touchMod) touchMod.setReportVisible(v2s.matchOver); // 結算畫面亮觸控「再戰/複製」、收起對戰控制(桌機 no-op)
   render3D();
   if (game.sfx.length) { for (const e of game.sfx) playSfx(e); game.sfx.length = 0; } // drain sfx
@@ -404,7 +409,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, bottles, shatterBottle, roundWins, containLog, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB,
   NAMES, AI_PROFILE, applyAiTier, updateAiCall, // AI 階級(tier-1):檔案表+進場排程(測試/控制台)
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,

@@ -28,17 +28,17 @@ async function load(mobile, url) {
 }
 
 // ---------- ① 手機模擬 → 自動 FX_LOW + dpr 1.5 ----------
-const mob = await load(true, 'http://localhost:8099/v2.html');
+const mob = await load(true, 'http://localhost:8099/v2.html?turbo=8');
 R('手機:FX_LOW 自動開', mob.fxLow === true, 'touch=' + mob.touch);
 R('手機:裝飾點光剝除(≤4 顆)+ 無 transmission', mob.pts <= 4 && mob.trans === 0, `pts=${mob.pts} trans=${mob.trans}`);
 R('手機:dpr 夾 1.5(canvas 內部寬 1440)', mob.cw === 1440, 'cw=' + mob.cw);
 
 // ---------- ② 桌機 → 完整管線(perf-1 後:點光縮編至 6=四角底光+艙+補光;transmission 全平台退役) ----------
-const desk = await load(false, 'http://localhost:8099/v2.html');
+const desk = await load(false, 'http://localhost:8099/v2.html?turbo=8');
 R('桌機:FX_LOW 關(點光=6:四角+艙+補光;perf-1 燈簇縮編)', desk.fxLow === false && desk.pts > 4 && desk.pts <= 8 && desk.trans === 0, `fxLow=${desk.fxLow} pts=${desk.pts} trans=${desk.trans}`);
 
 // ---------- ③ ?fx=full 手動覆蓋(手機也能要完整) ----------
-const ovr = await load(true, 'http://localhost:8099/v2.html?fx=full');
+const ovr = await load(true, 'http://localhost:8099/v2.html?fx=full&turbo=8');
 R('手機 ?fx=full:手動覆蓋回完整管線(桌機同款=點光 6)', ovr.fxLow === false && ovr.pts > 4 && ovr.pts <= 8, `fxLow=${ovr.fxLow} pts=${ovr.pts}`);
 
 R('無 page/console 錯誤', mob.errs.length + desk.errs.length + ovr.errs.length === 0, [...mob.errs, ...desk.errs, ...ovr.errs].slice(0, 3).join(' | '));

@@ -6,7 +6,7 @@ import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
 const page = await B.newPage();
 const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
-await page.goto('http://localhost:8099/v2.html', { waitUntil: 'networkidle0' });
+await page.goto('http://localhost:8099/v2.html?turbo=8', { waitUntil: 'networkidle0' });
 await page.waitForFunction('window.__v2 && __v2.fighters[0].state === "alive"', { timeout: 20000 });
 await page.bringToFront();
 let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };
@@ -64,14 +64,17 @@ for (let i = 0; i < 3 && !(sched && sched.scheduled); i++) sched = await page.ev
 R(`雷走排程施放(2→${sched.uses}=1、clip=${sched.clip}、type=${sched.type})`, sched.uses === 1 && sched.scheduled && sched.type === 'lightning');
 
 // ---------- ⑥ 起手預告直線(boltAims)+ 發射亮束(bolts)----------
+await page.evaluate(() => { const f = __v2.fighters[1]; f._itemCastAt = __v2.game.time + 9; }); // 撐住施法窗(turbo 下 0.283s 一幀就過=抓拍不到)
 await advance(0.05); // step 幀尾重建 boltAims(施法窗內)
 const aim = await page.evaluate(() => { const a = __v2.game.boltAims; return { n: a.length, range: a[0] ? Math.round(a[0].range) : -1, angle: a[0] ? +a[0].angle.toFixed(2) : -9 }; });
 R(`起手預告:施法窗中 boltAims 有一筆(range=${aim.range}=260、面向${aim.angle})`, aim.n === 1 && aim.range === 260 && aim.angle === 0);
-// 清舊束(①-④ 直接 cast 留的,rAF 節流下 game.time 走慢還沒淡出),再輪詢排程 cast 實際 resolve(_itemCastType 歸 null)
-await page.evaluate(() => { __v2.game.bolts.length = 0; });
-await page.evaluate(() => new Promise(res => { const v = __v2, f = v.fighters[1], t0 = v.game.time; const iv = setInterval(() => { if (!f._itemCastType || v.game.time - t0 > 1.5) { clearInterval(iv); res(); } }, 15); }));
-const flash = await page.evaluate(() => ({ aims: __v2.game.boltAims.length, bolts: __v2.game.bolts.length }));
-R(`impact 後發射亮束 bolts 生成 + boltAims 清空(bolts=${flash.bolts}、aims=${flash.aims})`, flash.bolts >= 1 && flash.aims === 0);
+// 同步發射+取樣(turbo 下亮束會在下一次 evaluate 前老化,得在同一 evaluate 內讀);aims 清空=下一幀重建,短輪詢
+const flash = await page.evaluate(() => { const v = __v2, f = v.fighters[1];
+  v.game.bolts.length = 0;
+  f._itemCastAt = v.game.time; v.resolveItemCast(f);
+  return { bolts: v.game.bolts.length }; });
+const aimsCleared = await page.waitForFunction('__v2.game.boltAims.length === 0', { timeout: 10000 }).then(() => true).catch(() => false);
+R(`impact 後發射亮束 bolts 生成 + boltAims 清空(bolts=${flash.bolts}、aimsCleared=${aimsCleared})`, flash.bolts >= 1 && aimsCleared);
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
