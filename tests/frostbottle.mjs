@@ -18,6 +18,16 @@ R('冰霜瓶 GLB 載成(frostBottleReady)', ready);
 
 await page.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false; v.fighters[1].x = 100; v.fighters[1].y = 100; });
 
+// ---------- ①b 貼圖可對應:mesh 有 UV + 材質綁貼圖(鎖 2026-07-20 坑:去圖 prune 砍 UV → 渲成素色) ----------
+await page.evaluate(() => { const b = __v2.bottles; b[0].elem = 'ice'; b[0].r = 9; b[0].x = 520; b[0].y = 470; b[0].z = 0; b[0].vx = 0; b[0].vy = 0; b[0].held = false; b[0].alive = true; });
+const texOk = await page.evaluate(() => new Promise(res => { setTimeout(() => {
+  const s = __lab.labGroup.parent; let mesh = null;
+  s.traverse(o => { if (o.userData && o.userData.__frost) o.traverse(m => { if (m.isMesh && !mesh) mesh = m; }); });
+  if (!mesh) return res({ found: false });
+  res({ found: true, hasUV: !!mesh.geometry.attributes.uv, hasMap: !!(mesh.material && mesh.material.map) });
+}, 500); }));
+R('貼圖可對應:mesh 帶 UV + 材質綁貼圖(去圖別 prune)', texOk.found && texOk.hasUV && texOk.hasMap, JSON.stringify(texOk));
+
 // scene 內「可見」冰瓶 GLB 實例數:數 clone 繼承的 userData.__frost + 祖鏈全可見
 // (握持 clone 是隱藏快取 bm.visible=false 不移除→必須查祖鏈可見,否則計入舊持有殘留;地面 clone 每幀重建=可見)。
 const COUNT_EXPR = `(()=>{const s=__lab.labGroup.parent;let n=0;s.traverse(o=>{if(o.userData&&o.userData.__frost){let vis=o.visible,p=o.parent;while(vis&&p){vis=p.visible;p=p.parent;}if(vis)n++;}});return n;})()`;

@@ -112,9 +112,11 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   // 道具 GLB(item-1:使用者的冰霜瓶 Meshy 模型;之後其他道具照同一 helper 加）。
   // 載一次→存正規化 proto(外層 group 高度 1、底部貼 y=0、xz 置中）→ 每個瓶實例 clone(true)（geometry/material 共用=clone 便宜，
   // 可每幀重建也不心疼)。三狀態消費:握持(actor-brawler)/地面+飛行(render-entities);未載成 clone 回 null=呼叫端退方塊。
-  // **入庫規範(2026-07-20 踩坑)**:①GLB 若 Draco 壓縮(Meshy 預設)遊戲 loader 會炸(無 DRACOLoader)→ 離線 gltf-transform 解壓。
+  // **入庫規範(2026-07-20 踩三坑)**:①GLB 若 Draco 壓縮(Meshy 預設)遊戲 loader 會炸(無 DRACOLoader)→ 離線 gltf-transform 解壓。
   // ②**貼圖必須外部化**:GLTFLoader 的內嵌 JPEG 在 SwiftShader(headless 測試/低端機)下上傳成全黑,外部 TextureLoader 就正常
-  //   →離線把貼圖抽成 frost-bottle-tex.jpg、GLB 去圖只留幾何,這裡 TextureLoader 載回指派(flipY=false=GLB 慣例、sRGB)。見 assets/README。
+  //   →離線把貼圖抽成 frost-bottle-tex.jpg、GLB 去圖只留幾何,這裡 TextureLoader 載回指派(flipY=false=GLB 慣例、sRGB)。
+  // ③**去圖時千萬別 prune()**:gltf-transform prune 見「沒貼圖引用」就把 UV(TEXCOORD_0)一併砍掉 → 遊戲裡貼圖無 UV 可對=渲成素色。
+  //   去圖只 setBaseColorTexture(null)+tex.dispose(),**不 prune**(保 UV)。見 assets/README。
   let _frostProto = null;
   export function loadFrostBottleGlb() {
     if (_frostProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,冰瓶退方塊'); return; }
