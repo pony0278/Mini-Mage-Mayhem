@@ -34,6 +34,7 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
     renderer.setSize(VIEW_W, VIEW_H, false);
     renderer.shadowMap.enabled = false;
     gl3dOk = true;
+    window.__gl = { renderer, info: () => renderer.info }; // debug hook(headless 效能診斷用,比照 __v2/__lab;info=programs/calls/memory)
   } catch (err) {
     console.warn('WebGL unavailable:', err);
   }
