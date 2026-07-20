@@ -324,7 +324,7 @@ function step(dt) {
   // fly = sim 真高度(B 案彈道 b.z,updateBarrels 算);人的高度=f.z(actor-brawler 直接讀)
   game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false, fly: b.z || 0, vx: b.vx, vy: b.vy, roll: b.roll })); // vx/vy/roll → render 桶翻滾(繞運動法向水平軸)
   for (const sw of labSwitches) game.props.push({ x: sw.x, y: sw.y, r: sw.r, sw: true, armed: v2s.stationsArmed, hp: 1, maxHp: 1, held: false }); // 左右緊急拉桿(render-entities 畫拉桿:未啟動=琥珀立起、啟動=壓下變暗)
-  for (const t of bottles) if (t.alive && !t.held) game.props.push({ x: t.x, y: t.y, r: t.r, wall: t.elem, hp: 1, maxHp: 1, held: false, fly: t.z || 0, vx: t.vx, vy: t.vy, roll: t.roll }); // 場上投擲瓶(桶模 tint 佔位,瓶模好了換 mesh;vx/vy/roll → 翻滾)
+  for (const t of bottles) if (t.alive && !t.held) game.props.push({ x: t.x, y: t.y, r: t.r, wall: t.elem, bottle: t.elem, hp: 1, maxHp: 1, held: false, fly: t.z || 0, vx: t.vx, vy: t.vy, roll: t.roll }); // 場上投擲瓶(bottle=元素旗:render-entities 用它鎖定冰瓶掛 GLB,不與 v1 冰牆碎塊的 wall:'ice' 撞;油瓶留方塊 tint;vx/vy/roll → 翻滾)
   if (v2s.perform && v2s.perform.cube) game.props.push({ x: v2s.perform.cube.x, y: v2s.perform.cube.y, r: 12, hp: 1, maxHp: 1, held: false, fly: 0 }); // 壓縮包裝方塊(素木箱佔位)沿輸送方向滑走
   // 風壓手套起手預告:施法窗中(_itemCastAt 未到)每幀重建淡扇形,面向即時跟(教射程/範圍;對手也看得到=反應窗)
   game.windAims.length = 0;

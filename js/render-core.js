@@ -109,6 +109,38 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
     return mat;
   }
 
+  // 道具 GLB(item-1:使用者的冰霜瓶 Meshy 模型;之後其他道具照同一 helper 加）。
+  // 載一次→存正規化 proto(外層 group 高度 1、底部貼 y=0、xz 置中）→ 每個瓶實例 clone(true)（geometry/material 共用=clone 便宜，
+  // 可每幀重建也不心疼)。三狀態消費:握持(actor-brawler)/地面+飛行(render-entities);未載成 clone 回 null=呼叫端退方塊。
+  // **入庫規範(2026-07-20 踩坑)**:①GLB 若 Draco 壓縮(Meshy 預設)遊戲 loader 會炸(無 DRACOLoader)→ 離線 gltf-transform 解壓。
+  // ②**貼圖必須外部化**:GLTFLoader 的內嵌 JPEG 在 SwiftShader(headless 測試/低端機)下上傳成全黑,外部 TextureLoader 就正常
+  //   →離線把貼圖抽成 frost-bottle-tex.jpg、GLB 去圖只留幾何,這裡 TextureLoader 載回指派(flipY=false=GLB 慣例、sRGB)。見 assets/README。
+  let _frostProto = null;
+  export function loadFrostBottleGlb() {
+    if (_frostProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,冰瓶退方塊'); return; }
+    const tex = new THREE.TextureLoader().load('assets/scene/frost-bottle-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
+    tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
+    fetch('assets/scene/frost-bottle.glb')
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
+      .then(gltf => {
+        const s = gltf.scene;
+        s.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.material.map = tex; o.material.needsUpdate = true; } }); // 貼外部圖
+        s.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(s);
+        const h = (box.max.y - box.min.y) || 1, cx = (box.max.x + box.min.x) / 2, cz = (box.max.z + box.min.z) / 2;
+        s.scale.multiplyScalar(1 / h);                     // 高度正規化到 1
+        s.position.set(-cx / h, -box.min.y / h, -cz / h);  // 底部貼 y=0、xz 置中(scale 後座標)
+        _frostProto = new THREE.Group(); _frostProto.add(s); _frostProto.userData.__frost = true; // 外層 group=掛載端 setScalar(目標高) 不會蓋掉正規化;__frost 旗=clone 繼承(測試精準計數用)
+        if (renderer) renderer.compile(scene, camera);       // perf-1 預熱:新材質載入期預編譯,免首次入鏡卡頓
+        console.log('[core] 冰霜瓶 GLB 就位');
+      })
+      .catch(e => console.warn('[core] 冰霜瓶 GLB 載入失敗,退方塊', e));
+  }
+  // 回傳一個掛載用 clone(高度 1、底貼地、xz 置中);未載成回 null。呼叫端 setScalar(目標高)+定位+轉向。
+  export function frostBottleClone() { return _frostProto ? _frostProto.clone(true) : null; }
+  export function frostBottleReady() { return !!_frostProto; } // 測試/除錯 hook
+
 // lab 場景(render-lab)接管燈光時,關掉單機的四盞常設燈(避免疊加過曝)
 export function setStockLights(on) {
   hemi.intensity = on ? 0.92 : 0;

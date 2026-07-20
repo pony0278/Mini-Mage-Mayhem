@@ -5,7 +5,7 @@ import { W, H } from './constants.js';
 import { rnd, clamp } from './utils.js';
 import { game } from './state.js';
 import { ELEMENT_INFO, isEarthKind } from './data.js';
-import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaGeo, colorHex, basicMat, makeBox, makeGlowSphere, matLambert, tmpMat, actorShadow, vividFx, groundMarkers } from './render-core.js';
+import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaGeo, colorHex, basicMat, makeBox, makeGlowSphere, matLambert, tmpMat, actorShadow, vividFx, groundMarkers, frostBottleClone } from './render-core.js';
 
   // --- interactive props (crates) — rebuilt each frame (few of them) ---
   const propGroup = new THREE.Group(); scene.add(propGroup);
@@ -30,6 +30,22 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
         propGroup.add(rod);
         if (!armed) { const g = makeGlowSphere(pr.r * 1.7, 0xffce6a, 0.34); g.position.set(pr.x, pr.r * 1.8, pr.y); propGroup.add(g); } // 未啟動=琥珀光暈(邀請揍)
         continue;
+      }
+      // item-1:冰霜瓶 GLB(地面+飛行狀態;鎖 pr.bottle==='ice',不碰 v1 冰牆碎塊的 wall:'ice')。未載成=frostBottleClone 回 null 退方塊。
+      if (pr.bottle === 'ice') {
+        const fb = frostBottleClone();
+        if (fb) {
+          const s = pr.r * 1.9, half = s / 2;                      // 目標高=舊方塊高;center 偏移=繞瓶心翻滾(非繞底,像丟出去的瓶子)
+          const lift = (pr.fly || 0), sp = Math.hypot(pr.vx || 0, pr.vy || 0);
+          fb.scale.setScalar(s); fb.position.y = -half;
+          const wrap = new THREE.Group(); wrap.add(fb);
+          wrap.position.set(pr.x, pr.r * 0.95 + lift, pr.y);
+          if (sp > 8) wrap.quaternion.setFromAxisAngle(new THREE.Vector3(-(pr.vy || 0), 0, (pr.vx || 0)).normalize(), pr.roll || 0); // 飛行=繞運動法向翻滾
+          else wrap.rotation.y = (pr.x + pr.y) * 0.01;              // 靜置=慢 yaw 漂移
+          propGroup.add(wrap);
+          const g = makeGlowSphere(pr.r * 1.7, 0xcdf2ff, 0.22); g.position.set(pr.x, pr.r + lift, pr.y); propGroup.add(g); // 冰光暈(維持舊瓶的辨識)
+          continue;
+        }
       }
       const charged = pr.charge === 'lightning', burning = pr.charge === 'fire';
       const cracked = pr.hp < pr.maxHp;

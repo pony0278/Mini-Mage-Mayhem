@@ -4,7 +4,7 @@
 // 原型單位:1 unit = 1 tile;我們的世界:1 tile = 32px → 一律乘 LAB_SCALE 換算,
 // builder 幾乎逐字移植。碰撞/模擬完全不動(牆的碰撞仍在 30×20 核心邊界)。
 import { W, H, TILE, COLS, ROWS } from './constants.js';
-import { renderer, scene, camera, IS_MOBILE } from './render-core.js';
+import { renderer, scene, camera, IS_MOBILE, loadFrostBottleGlb, frostBottleReady } from './render-core.js';
 import { floor as floorGrid, FL } from './v2-floor.js'; // 地板化學狀態(唯讀);render→v2-floor 同 render→sim 方向,無循環
 
 const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
@@ -420,6 +420,7 @@ export function initLabScene() {
   // Phase 2:中央結構(收容平台包住分揀陣列)+ 地面物流圖 + 淨戰區導引
   buildCentralScannerDeck();
   loadPodGlb();                                             // 中央底座 GLB(async;載成後換掉上面兩件程序化中央件)
+  loadFrostBottleGlb();                                     // 冰霜瓶 GLB(item-1;async 載一次,握持/地面/飛行三狀態 clone;未載成退方塊)
   // 四色地面箭頭/「THROW IN!」指示牌:2026-07-19 使用者反饋太突兀,整組拆除(歷史+替代方向見 js/CLAUDE.md;實作在 git c63a0cf 前)
   buildIndustrialFloorMarkings();
   buildCoreCombatGuide();
@@ -1346,7 +1347,7 @@ export function setPodPerform(p) {
   if (p.phase === 'scan') _scanRing.position.y = (DOME_R * 0.9 * (1 - p.pk) + 4) / Math.max(0.05, sy); // 掃描環頭→腳(除以 sy 抵銷 group 縮放)
 }
 
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, domeVisible: () => _domeShown, fxLow: () => FX_LOW }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, frostBottleReady: () => frostBottleReady(), domeVisible: () => _domeShown, fxLow: () => FX_LOW }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

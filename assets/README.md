@@ -13,7 +13,11 @@
 - **`scene/`** — **場景 GLB**(遊戲執行時載入,同 rigs/ 屬部署資產):v2 場景件,
   render-lab 開局 fetch(`recycling-pod.glb`=中央回收艙底座;`throw-in-sign.glb`=四方向
   「THROW IN!」地面指示牌——**2026-07-19 已下場**(使用者反饋太突兀,render-lab 不再載入;
-  檔案留庫備用)。**入庫規範**:離線先
+  檔案留庫備用);`frost-bottle.glb`+`frost-bottle-tex.jpg`=**冰霜瓶 GLB**(item-1;render-core
+  `loadFrostBottleGlb` 載一次、三狀態 clone=握持/地面/飛行,油瓶留方塊)。**貼圖必外部化(踩過的坑)**:
+  GLTFLoader 的內嵌 JPEG 在 SwiftShader(headless 測試/低端機)下上傳成**全黑**,外部 TextureLoader 就正常
+  →入庫時把貼圖抽成 `*-tex.jpg`、GLB 去圖只留幾何,loader 端 TextureLoader 載回指派(`flipY=false`/sRGB)。
+  **入庫規範**:離線先
   `gltf-transform copy`(解 Draco——遊戲的 GLTFLoader 沒配 DRACOLoader,壓縮檔直接載會炸;
   未壓縮的小件如指示牌可省這步,直接 `optimize`)→ `simplify`(場景件抓 ~2-4 萬 tris)
   → `quantize` 瘦身;遊戲端零解碼成本。
