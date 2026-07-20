@@ -7,6 +7,35 @@ import { game } from './state.js';
 import { ELEMENT_INFO, isEarthKind } from './data.js';
 import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaGeo, colorHex, basicMat, makeBox, makeGlowSphere, matLambert, tmpMat, actorShadow, vividFx, groundMarkers, frostBottleClone, ITEM_VIS_H } from './render-core.js';
 
+  // --- 冰霜瓶飄雪(item-1;使用者拍板 2026-07-20:換掉青色光圈)---
+  // 共享 geometry+material+sprite(每幀 propGroup.clear() 重建也「不」新建 buffer→零洩漏);
+  // 座標由 game.time 算=飄落循環,一幀只更新一次;所有冰瓶共用同一份 flake(雪不必逐瓶不同)。
+  const SNOW_N = 22;
+  function makeSnowflakeTex() { // 小六芒雪花 sprite(canvas 畫一次,免外部資產)
+    const S = 32, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+    g.translate(S / 2, S / 2); g.strokeStyle = '#eaffff'; g.lineWidth = 2.2; g.lineCap = 'round';
+    for (let k = 0; k < 6; k++) { g.rotate(Math.PI / 3); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, S * 0.42);
+      g.moveTo(0, S * 0.26); g.lineTo(S * 0.1, S * 0.34); g.moveTo(0, S * 0.26); g.lineTo(-S * 0.1, S * 0.34); g.stroke(); }
+    const t = new THREE.CanvasTexture(c); return t;
+  }
+  const _snowGeo = new THREE.BufferGeometry();
+  _snowGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SNOW_N * 3), 3));
+  const _snowMat = new THREE.PointsMaterial({ map: makeSnowflakeTex(), color: 0xffffff, size: 11, sizeAttenuation: true,
+    transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false }); // toneMapped:false=暗場不被 ACES 洗掉
+  let _snowT = -1;
+  function updateSnowGeo() {
+    if (_snowT === game.time) return; _snowT = game.time;              // 一幀只算一次(多瓶共用)
+    const p = _snowGeo.attributes.position.array, topY = 96, range = 74, fall = 0.3;
+    for (let i = 0; i < SNOW_N; i++) {
+      const seed = i * 2.399963, ri = 12 + (i % 3) * 8;                 // 三圈半徑(12/20/28)=雪散在瓶身周圍不只一圈
+      const drift = Math.sin(game.time * 0.9 + i * 1.7);                // 水平飄
+      const phase = (game.time * fall + i / SNOW_N) % 1;               // 0..1 循環(落到底回頂)
+      p[i * 3] = Math.cos(seed) * ri + drift * 6;
+      p[i * 3 + 1] = topY - phase * range;                             // 上→下飄落
+      p[i * 3 + 2] = Math.sin(seed) * ri + Math.cos(game.time * 0.7 + i) * 6;
+    }
+    _snowGeo.attributes.position.needsUpdate = true;
+  }
   // --- interactive props (crates) — rebuilt each frame (few of them) ---
   const propGroup = new THREE.Group(); scene.add(propGroup);
   export function syncProps() {
@@ -43,7 +72,8 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
           if (sp > 8) wrap.quaternion.setFromAxisAngle(new THREE.Vector3(-(pr.vy || 0), 0, (pr.vx || 0)).normalize(), pr.roll || 0); // 飛行=繞運動法向翻滾
           else wrap.rotation.y = (pr.x + pr.y) * 0.01;              // 靜置=慢 yaw 漂移
           propGroup.add(wrap);
-          const g = makeGlowSphere(s * 0.42, 0xcdf2ff, 0.2); g.position.set(pr.x, half + lift, pr.y); propGroup.add(g); // 冰光暈(隨等人高瓶同步放大,包住瓶身)
+          updateSnowGeo();                                        // 飄雪(取代青色光圈):共享 geo 每幀更新一次,每瓶掛一個輕量 Points
+          const snow = new THREE.Points(_snowGeo, _snowMat); snow.position.set(pr.x, lift, pr.y); propGroup.add(snow);
           continue;
         }
       }

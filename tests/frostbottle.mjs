@@ -28,6 +28,11 @@ const texOk = await page.evaluate(() => new Promise(res => { setTimeout(() => {
 }, 500); }));
 R('貼圖可對應:mesh 帶 UV + 材質綁貼圖(去圖別 prune)', texOk.found && texOk.hasUV && texOk.hasMap, JSON.stringify(texOk));
 
+// ---------- ①c 冰瓶飄雪(取代舊青色光圈):scene 有雪花 Points(o.isPoints) ----------
+const snowOk = await page.evaluate(() => { const s = __lab.labGroup.parent; let pts = 0;
+  s.traverse(o => { if (o.isPoints && o.visible) pts++; }); return pts; });
+R('冰瓶飄雪:場上有雪花 Points(≥1;光圈已換飄雪)', snowOk >= 1, `points=${snowOk}`);
+
 // scene 內「可見」冰瓶 GLB 實例數:數 clone 繼承的 userData.__frost + 祖鏈全可見
 // (握持 clone 是隱藏快取 bm.visible=false 不移除→必須查祖鏈可見,否則計入舊持有殘留;地面 clone 每幀重建=可見)。
 const COUNT_EXPR = `(()=>{const s=__lab.labGroup.parent;let n=0;s.traverse(o=>{if(o.userData&&o.userData.__frost){let vis=o.visible,p=o.parent;while(vis&&p){vis=p.visible;p=p.parent;}if(vis)n++;}});return n;})()`;
