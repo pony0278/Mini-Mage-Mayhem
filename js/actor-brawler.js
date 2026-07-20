@@ -4,7 +4,7 @@
 // 屬 render 層(由 render-actors 呼叫);模擬層透過 fighter 欄位(punchFx/punchKind/punchArm/
 // flinch*/carrying/stunned...)驅動,永不 import 這裡(sim 保持 headless)。
 import { game } from './state.js';
-import { makeBox, frostBottleClone, frostBottleReady } from './render-core.js';
+import { makeBox, frostBottleClone, frostBottleReady, FROST_VIS_SCALE } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
@@ -239,7 +239,8 @@ function updateHeldBarrel(e, g, R) {
     bm = new THREE.Group(); bm.name = 'HELD_BARREL'; bm.userData.kindKey = kindKey;
     const clone = isIceBottle ? frostBottleClone() : null;          // 只在建構時 clone 一次(frostBottleReady 已擋未就緒)
     if (clone) {
-      clone.scale.setScalar(s * 1.05); clone.position.y = -s * 0.5; // 置中於 group 原點(比照方塊,握點=中點)
+      const hs = s * 1.05 * FROST_VIS_SCALE;                        // 握持也吃視覺放大倍率(不動碰撞;手機易讀)
+      clone.scale.setScalar(hs); clone.position.y = -hs * 0.5;      // 置中於 group 原點(比照方塊,握點=中點)
       bm.add(clone); bm.userData.isGlb = true;
     } else {
       const tint = e.carryObj.kind === 'bottle' ? (BOTTLE_TINT[e.carryObj.elem] || BOTTLE_TINT.ice) : [0xff7a3a, 0xff5a20, 0x9c4422];

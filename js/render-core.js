@@ -137,6 +137,9 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
       })
       .catch(e => console.warn('[core] 冰霜瓶 GLB 載入失敗,退方塊', e));
   }
+  // 冰瓶視覺放大倍率(item-1:使用者反饋碰撞半徑 r=9 太小、手機看不清)——**純視覺、不動碰撞**:
+  // 三狀態(握持/地面/飛行)的 GLB 掛載高度都 × 此值,底部仍貼地(不浮空)。碰撞維持 sim 的 pr.r。調這一個數即可。
+  export const FROST_VIS_SCALE = 1.7;
   // 回傳一個掛載用 clone(高度 1、底貼地、xz 置中);未載成回 null。呼叫端 setScalar(目標高)+定位+轉向。
   export function frostBottleClone() { return _frostProto ? _frostProto.clone(true) : null; }
   export function frostBottleReady() { return !!_frostProto; } // 測試/除錯 hook
