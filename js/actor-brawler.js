@@ -340,7 +340,7 @@ export function updateBrawler(e, g) {
     && e.lastHitT != null && (now - e.lastHitT) >= 0 && (now - e.lastHitT) * A.flinch.clipRate < CLIPS.hit_flinch.dur) {
     pose = evalClip(CLIPS.hit_flinch, (now - e.lastHitT) * A.flinch.clipRate); flinchClip = true; // clip 接管受擊姿勢(× clipRate 放慢=feel-3 演長)→ 下方 overlay 降權
   }
-  else if (free && e.running && CLIPS.run_cycle && u.amp > 0.3) {   // 跑步循環(可選槽,studio 排)
+  else if (free && !e.carryObj && e.running && CLIPS.run_cycle && u.amp > 0.3) {   // 跑步循環(可選槽,studio 排;!carryObj=扛物走路別播跑步 clip,否則手臂被拉下=丟了「舉物過頭移動」姿勢,退回下方程序 barrelHold)
     // tag 'run'=循環起點:0→run 是「起跑」過渡段只播一次,之後在 [run..最後實排 key] 無縫繞圈
     // (run 幀與最後 key 姿勢要一致;沒標 tag → 整條循環)。循環終點=lastKeyT,**不含**
     // prepClip 自動補的回-idle 收尾段(混進去=每圈垮回站姿)。位移驅動:一循環=stridePx px。
@@ -354,7 +354,7 @@ export function updateBrawler(e, g) {
       pose.root_py += A.runClip.bob * (0.5 - 0.5 * Math.cos(ph * Math.PI * 4));
     }
   }
-  else if (free && !e.running && CLIPS.walk_cycle && u.amp > 0.3) { // 走路循環(feel-1 可選槽;同 run_cycle 機制:tag walk(或 run)=循環起點)
+  else if (free && !e.carryObj && !e.running && CLIPS.walk_cycle && u.amp > 0.3) { // 走路循環(feel-1 可選槽;同 run_cycle 機制:tag walk(或 run)=循環起點;!carryObj=扛物走路退回程序 barrelHold 保「舉物過頭移動」)
     const cyc = CLIPS.walk_cycle, le = cyc.lastKeyT ?? cyc.dur;
     const ls = cyc.tags.walk ?? cyc.tags.run ?? 0, ll = Math.max(le - ls, 0.01);
     u.wkT = (u.wkT || 0) + disp / A.walkClip.stridePx * ll;

@@ -216,6 +216,20 @@ const s14 = await page.evaluate(() => { clearInterval(window.__push); const t = 
   return { alive: t.alive, maxSpd: Math.round(window.__maxSpd), frozen: !!f.frozen }; });
 R('連續推瓶=速度恆 ≤130 不碎、不自凍(set 不疊加)', s14.alive && s14.maxSpd <= 135 && !s14.frozen, JSON.stringify(s14));
 
+// ---------- ⑮ 扛物走路=手舉過頭(2026-07-20 修:walk/run clip 漏排 carryObj → 走路手放下、丟了舉物姿勢) ----------
+await page.evaluate(() => { const v = __v2; const f = v.fighters[0];
+  for (const t of v.bottles) { t.alive = false; t.respawn = 999; }
+  const t = v.bottles[0]; t.elem = 'ice'; t.x = f.x; t.y = f.y; t.z = 0; t.held = true; t.alive = true; f.carryObj = t; // 直接掛上握持
+  window.__hb = () => { const s = __lab.labGroup.parent; let y = -1; s.traverse(o => { if (o.name === 'HELD_BARREL' && o.visible) { const p = new THREE.Vector3(); o.getWorldPosition(p); y = p.y; } }); return y; };
+  window.__pinCarry = setInterval(() => { const g = v.fighters[0]; g.carryObj = t; t.held = true; t.alive = true;
+    g.x += (g.__dir || 0); if (g.x > 640) g.x = 340; }, 16); }); // 每幀微移=走路 disp>0
+await advance(1.2);
+const carryWalk = await page.evaluate(() => { const f = __v2.fighters[0]; f.__dir = 4; return null; }); // 開始走
+await advance(1.2);
+const held = await page.evaluate(() => { const y = window.__hb(); clearInterval(window.__pinCarry);
+  return { y: +y.toFixed(0), running: __v2.fighters[0].running, carrying: !!__v2.fighters[0].carryObj }; });
+R('扛物走路=握持物過頭(world Y>55=手舉著,非放下腰際)', held.y > 55 && held.carrying, JSON.stringify(held));
+
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
 await B.close();
