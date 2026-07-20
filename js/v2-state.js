@@ -146,6 +146,19 @@ export const CARRY_ESCAPE_NEED = 100, CARRY_MASH_AI = 30, CARRY_MASH_TAP = 8; //
 export const AI_PUNCH_CHANCE = 0.6;   // 進範圍時每次機會只有 6 成真的出拳(否則猶豫 0.3s 再說)
 export const AI_GRAB_DELAY = 0.55;    // 看到你暈 → 要 0.55s「反應時間」才抓(也給玩家看清教練提示的窗口)
 export const AI_BACKOFF_T = 0.55;     // 出拳後後撤喘息時間(給玩家反打窗口)
+// --- AI 階級檔案(tier-1,使用者拍板 2026-07-20:對手=實習生→快輸逃跑搬救兵→資深同事)---
+// 行為=旋鈕表(不寫 N 套 AI):aiMove 讀 AI_PROFILE[v2s.aiTier] 取代散常數。之後領班/廠長=加列(campaign)。
+// 旋鈕:punchChance 進範圍真出拳率 / hesitate 猶豫秒 / backoffT 打完後撤 / grabDelay 看到暈的反應 /
+// jumpChance 跳攻率 / guard 會不會讀起手舉防 / comboDrop 連段中途放棄率(實習生=連段不完整)。
+export const AI_PROFILE = {
+  intern: { name: '實習生',   punchChance: 0.35, hesitate: 0.6,  backoffT: 1.1, grabDelay: 1.2, jumpChance: 0,               guard: false, comboDrop: 0.5 },
+  senior: { name: '資深同事', punchChance: 0.75, hesitate: 0.22, backoffT: 0.4, grabDelay: 0.4, jumpChance: AI_JUMP_CHANCE,  guard: true,  comboDrop: 0 },
+};
+// 實習生逃跑(可被追擊,不是過場):被收容 WIN_TARGET−1 次後、穩定值 ≤ FLEE_STAB → 跑向最近場邊出口
+// (AI 逃跑=進跑速 ×FLEE_SPEED,略慢於玩家=衝刺/風壓/冰瓶才好攔;暈/抓/收容照常有效=追上他直接完賽)。
+// 到出口=白煙消失,CALL_T 後資深同事同點進場(比分保留,只差最後一收但對手變強)。一場一次(v2s.aiCalled)。
+export const FLEE_STAB = 50, FLEE_SPEED = 0.95, CALL_T = 2.0;
+export const FLEE_EXITS = [[44, H / 2], [W - 44, H / 2], [W / 2, 44], [W / 2, H - 44]]; // 四側牆內緣出口
 export const FUMBLE_T = 0.5, ESCAPE_STAB = 50;
 export const BODY_SEP = 0.8;   // 角色實心圈 = (r+r)*BODY_SEP:視覺貼近到體素肩碰肩才停
 export function inPod(x, y) { return Math.hypot(x - POD.x, y - POD.y) <= POD.r; }
@@ -306,6 +319,7 @@ export const v2s = {
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝
   hitstopMul: 1,                             // 頓點全域倍率(feel-3;?tune=1 打擊感滑桿,HIT_STOP 表 × 此值)
+  aiTier: 'intern', aiCalled: false, aiCallAt: 0, aiCallPos: null, // AI 階級(tier-1):現任檔案/逃跑已演過/資深進場排程時刻+位置
   fallReason: '', fallReasonT: 0,            // isles:「為什麼掉下去」讀出
   lowFlicker: false,                         // 減閃爍(光敏無障礙):L 鍵切換,localStorage 記憶;3D 脈動由 render 的 setLabFlicker 吃
   perform: null,                             // 收容演出狀態機(v2-combat startPerform/updatePerform;null=沒在演)
@@ -343,6 +357,7 @@ export function resetFighter(f) {
   f.pushWinT = 0; f.pushCd = 0; f.pushFrom = null; f._aiPushAt = 0; // 格擋推開:窗口/冷卻/攻擊者/AI排程
   f._aiGrabAt = 0; f._aiSkipUntil = 0; f._aiBackoffUntil = 0; // AI 人味缺陷計時器
   f._aiMode = 'fight';               // AI 對手=純戰鬥(B 款示範者/同事 AI 凍結在 4c92837)
+  f._fleeing = false; f._fleeTo = null; // 實習生逃跑(tier-1):逃跑中旗標+目標出口(FLEE_EXITS 之一)
   f._thrownT = -9; f._aiThrowAt = 0; // 被拋出的時間戳(翻滾入艙判定) / AI 投擲排程
   f.running = false;                 // 跑=預設:v2.js step 每幀裁定(有移動輸入+沒扛重物=跑;手機看推程)
   f._jumpT = -9; f.jumpCd = 0;       // 跳躍:起跳時戳(z=lobZ(t,JUMP_LOB),v2.js 每幀算)+ 再跳冷卻
