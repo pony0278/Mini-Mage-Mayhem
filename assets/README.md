@@ -14,11 +14,16 @@
   render-lab 開局 fetch(`recycling-pod.glb`=中央回收艙底座;`throw-in-sign.glb`=四方向
   「THROW IN!」地面指示牌——**2026-07-19 已下場**(使用者反饋太突兀,render-lab 不再載入;
   檔案留庫備用);`frost-bottle.glb`+`frost-bottle-tex.jpg`=**冰霜瓶 GLB**(item-1;render-core
-  `loadFrostBottleGlb` 載一次、三狀態 clone=握持/地面/飛行,油瓶留方塊)。**貼圖必外部化(踩過的坑)**:
+  `loadFrostBottleGlb` 載一次、三狀態 clone=握持/地面/飛行,油瓶留方塊);`oil-barrel.glb`+`oil-barrel-tex.jpg`=
+  **油桶(危險廢料桶)GLB**(對應 game.barrels 爆炸桶;2026-07-20 已入庫**尚未接入**——待接時三狀態同冰瓶、
+  充能/引信狀態靠疊加 makeGlowSphere 光暈表達不換貼圖;quantize 過 518KB)。**貼圖必外部化(踩過的坑)**:
   GLTFLoader 的內嵌 JPEG 在 SwiftShader(headless 測試/低端機)下上傳成**全黑**,外部 TextureLoader 就正常
   →入庫時把貼圖抽成 `*-tex.jpg`、GLB 去圖只留幾何,loader 端 TextureLoader 載回指派(`flipY=false`/sRGB)。
   **去圖別 prune(踩過)**:gltf-transform `prune()` 見「沒貼圖引用」會把 UV(TEXCOORD_0)一併砍掉→遊戲裡貼圖無 UV 對應=渲成素色;
   去圖只 `setBaseColorTexture(null)`+`tex.dispose()`,不 prune(保 UV)。
+  **Meshy 道具入庫四步(冰瓶/油桶實證)**:①`NodeIO.read`(解 Draco)②`doc.createExtension(KHRDraco…).dispose()`
+  (★卸 Draco 擴充,否則 `write` 又壓回=油桶漏這步的坑)③抽貼圖成 `*-tex.jpg`+`setBaseColorTexture(null)`/`tex.dispose()`
+  去圖(**不 prune** 保 UV)④選配 `quantize`(KHR_mesh_quantization,r149 原生支援;油桶 794→518KB 省 35%,無可見失真)。
   **入庫規範**:離線先
   `gltf-transform copy`(解 Draco——遊戲的 GLTFLoader 沒配 DRACOLoader,壓縮檔直接載會炸;
   未壓縮的小件如指示牌可省這步,直接 `optimize`)→ `simplify`(場景件抓 ~2-4 萬 tris)
