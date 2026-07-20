@@ -149,6 +149,36 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   export function frostBottleClone() { return _frostProto ? _frostProto.clone(true) : null; }
   export function frostBottleReady() { return !!_frostProto; } // 測試/除錯 hook
 
+  // 爆桶 GLB(item-2:使用者的 Violet Arcane Vessel = 紫色魔能桶;game.barrels 爆炸桶)。
+  // 同冰瓶四步入庫(解 Draco/去 Draco 擴充/貼圖外部化不 prune/quantize)+同一 helper 慣例:載一次存正規化 proto、三狀態 clone。
+  // 桶本體固定紫,充能/引信狀態靠呼叫端疊加 makeGlowSphere 光暈表達(使用者拍板 2026-07-20:疊加光暈,不換貼圖)。
+  let _barrelProto = null;
+  export function loadBarrelGlb() {
+    if (_barrelProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,爆桶退方塊'); return; }
+    const tex = new THREE.TextureLoader().load('assets/scene/barrel-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
+    tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
+    fetch('assets/scene/barrel.glb')
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
+      .then(gltf => {
+        const s = gltf.scene;
+        s.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.material.map = tex;
+          o.material.emissiveMap = tex; o.material.emissive = new THREE.Color(0x8a4ad0); o.material.emissiveIntensity = 0.55; // 紫魔能自發光(ACES 暗場貼圖洗灰→emissiveMap 同貼圖=符文/閃電紋處發紫冷光)
+          o.material.needsUpdate = true; } }); // 貼外部圖
+        s.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(s);
+        const h = (box.max.y - box.min.y) || 1, cx = (box.max.x + box.min.x) / 2, cz = (box.max.z + box.min.z) / 2;
+        s.scale.multiplyScalar(1 / h);                     // 高度正規化到 1
+        s.position.set(-cx / h, -box.min.y / h, -cz / h);  // 底部貼 y=0、xz 置中(scale 後座標)
+        _barrelProto = new THREE.Group(); _barrelProto.add(s); _barrelProto.userData.__barrel = true; // __barrel 旗=clone 繼承(測試精準計數用)
+        if (renderer) renderer.compile(scene, camera);       // perf-1 預熱
+        console.log('[core] 爆桶 GLB 就位');
+      })
+      .catch(e => console.warn('[core] 爆桶 GLB 載入失敗,退方塊', e));
+  }
+  export function barrelClone() { return _barrelProto ? _barrelProto.clone(true) : null; }
+  export function barrelReady() { return !!_barrelProto; } // 測試/除錯 hook
+
 // lab 場景(render-lab)接管燈光時,關掉單機的四盞常設燈(避免疊加過曝)
 export function setStockLights(on) {
   hemi.intensity = on ? 0.92 : 0;

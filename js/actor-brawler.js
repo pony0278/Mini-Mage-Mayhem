@@ -4,7 +4,7 @@
 // 屬 render 層(由 render-actors 呼叫);模擬層透過 fighter 欄位(punchFx/punchKind/punchArm/
 // flinch*/carrying/stunned...)驅動,永不 import 這裡(sim 保持 headless)。
 import { game } from './state.js';
-import { makeBox, frostBottleClone, frostBottleReady, ITEM_VIS_H } from './render-core.js';
+import { makeBox, frostBottleClone, frostBottleReady, barrelClone, barrelReady, ITEM_VIS_H } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
@@ -230,14 +230,16 @@ function updateHeldBarrel(e, g, R) {
   const holding = !!e.carryObj;
   let bm = g.userData.throwBarrel;
   if (!holding) { if (bm) bm.visible = false; return; }
-  const isIceBottle = e.carryObj.kind === 'bottle' && e.carryObj.elem === 'ice'; // item-1:冰瓶握持=GLB(其餘桶/油瓶=方塊 tint)
+  const isIceBottle = e.carryObj.kind === 'bottle' && e.carryObj.elem === 'ice'; // item-1:冰瓶握持=GLB(其餘油瓶=方塊 tint)
+  const isBarrel = e.carryObj.kind !== 'bottle';                    // item-2:爆桶握持=GLB(桶無 kind:'bottle' 旗)
+  const glbReady = isIceBottle ? frostBottleReady() : isBarrel ? barrelReady() : false;
   const kindKey = e.carryObj.kind === 'bottle' ? 'bottle:' + e.carryObj.elem : 'barrel';
-  const glbUpgrade = isIceBottle && bm && !bm.userData.isGlb && frostBottleReady(); // GLB 未就緒時先退方塊,載成後這幀升級重建
+  const glbUpgrade = (isIceBottle || isBarrel) && bm && !bm.userData.isGlb && glbReady; // GLB 未就緒時先退方塊,載成後這幀升級重建
   if (bm && (bm.userData.kindKey !== kindKey || glbUpgrade)) { g.remove(bm); bm = null; g.userData.throwBarrel = null; } // 桶↔瓶切換 或 GLB 就緒 → 重建
-  if (!bm) {                                                        // lazy 建(冰瓶=GLB;桶/油瓶/冰瓶未就緒=BOTTLE_TINT 方塊)
+  if (!bm) {                                                        // lazy 建(冰瓶/爆桶=GLB;油瓶/未就緒=方塊 tint)
     const s = (e.carryObj.r || 13) * 2;
     bm = new THREE.Group(); bm.name = 'HELD_BARREL'; bm.userData.kindKey = kindKey;
-    const clone = isIceBottle ? frostBottleClone() : null;          // 只在建構時 clone 一次(frostBottleReady 已擋未就緒)
+    const clone = isIceBottle ? frostBottleClone() : isBarrel ? barrelClone() : null; // 只在建構時 clone 一次(*Ready 已擋未就緒)
     if (clone) {
       const hs = ITEM_VIS_H;                                        // 統一道具高=等人高(舉等身瓶過頭=同扛人的卡通語言;不動碰撞)
       clone.scale.setScalar(hs); clone.position.y = -hs * 0.5;      // 置中於 group 原點(比照方塊,握點=中點)

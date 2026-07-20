@@ -16,8 +16,9 @@
   檔案留庫備用);`frost-bottle.glb`+`frost-bottle-tex.jpg`=**冰霜瓶 GLB**(item-1;render-core
   `loadFrostBottleGlb` 載一次、三狀態 clone=握持/地面/飛行,油瓶留方塊);
   `oil-bottle.glb`+`oil-bottle-tex.jpg`=**油瓶 GLB**(紅色 OIL 桶造型;bottles elem='oil',冰瓶的姊妹;518KB)、
-  `barrel.glb`+`barrel-tex.jpg`=**爆桶 GLB**(紫色魔能桶 Violet Arcane Vessel;game.barrels 爆炸桶;158KB 超精簡)——
-  兩顆 2026-07-20 **已入庫尚未接入**;待接時三狀態同冰瓶,充能/引信狀態靠疊加 makeGlowSphere 光暈表達(不換貼圖)。
+  `barrel.glb`+`barrel-tex.jpg`=**爆桶 GLB**(紫色魔能桶 Violet Arcane Vessel;game.barrels 爆炸桶;158KB 超精簡;
+  item-2 **已接入**:render-core `loadBarrelGlb`/`barrelClone`/`barrelReady`,三狀態同冰瓶,充能/引信靠疊加 makeGlowSphere 光暈表達
+  =充火橘/充電藍/引信 fuse 閃紅,不換貼圖);油瓶 2026-07-20 **已入庫尚未接入**。
   **貼圖必外部化(踩過的坑)**:
   GLTFLoader 的內嵌 JPEG 在 SwiftShader(headless 測試/低端機)下上傳成**全黑**,外部 TextureLoader 就正常
   →入庫時把貼圖抽成 `*-tex.jpg`、GLB 去圖只留幾何,loader 端 TextureLoader 載回指派(`flipY=false`/sRGB)。

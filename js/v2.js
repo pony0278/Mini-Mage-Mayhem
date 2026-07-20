@@ -319,10 +319,10 @@ function step(dt) {
   }
   // present live fighters for the renderer
   game.enemies = fighters.filter(f => f.state !== 'down' && !f._hidden); // _hidden=演出壓縮後(人已變成包裝方塊)
-  // alive barrels render as orange explosive crates (charge:'fire' → burning box in syncProps)
+  // alive barrels render as the Violet Arcane Vessel GLB (item-2);充能/引信靠疊加光暈(charge=橘/藍、fuse=閃紅)。未載成 barrelClone 回 null 退方塊。
   // 被扛的桶(b.held)由 actor-brawler 畫在雙手上(舉過頭頂/丟桶 heave),這裡略過免雙重繪
   // fly = sim 真高度(B 案彈道 b.z,updateBarrels 算);人的高度=f.z(actor-brawler 直接讀)
-  game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, charge: 'fire', hp: 1, maxHp: 1, held: false, fly: b.z || 0, vx: b.vx, vy: b.vy, roll: b.roll })); // vx/vy/roll → render 桶翻滾(繞運動法向水平軸)
+  game.props = barrels.filter(b => b.alive && !b.held).map(b => ({ x: b.x, y: b.y, r: b.r, barrel: true, charge: b.charge, fuse: b.state === 'fuse', fuseT: b.fuse, hp: 1, maxHp: 1, held: false, fly: b.z || 0, vx: b.vx, vy: b.vy, roll: b.roll })); // barrel=GLB 鎖定旗;charge(null/fire/lightning)+fuse/fuseT → 疊加光暈;vx/vy/roll → render 桶翻滾(繞運動法向水平軸)
   for (const sw of labSwitches) game.props.push({ x: sw.x, y: sw.y, r: sw.r, sw: true, armed: v2s.stationsArmed, hp: 1, maxHp: 1, held: false }); // 左右緊急拉桿(render-entities 畫拉桿:未啟動=琥珀立起、啟動=壓下變暗)
   for (const t of bottles) if (t.alive && !t.held) game.props.push({ x: t.x, y: t.y, r: t.r, wall: t.elem, bottle: t.elem, hp: 1, maxHp: 1, held: false, fly: t.z || 0, vx: t.vx, vy: t.vy, roll: t.roll }); // 場上投擲瓶(bottle=元素旗:render-entities 用它鎖定冰瓶掛 GLB,不與 v1 冰牆碎塊的 wall:'ice' 撞;油瓶留方塊 tint;vx/vy/roll → 翻滾)
   if (v2s.perform && v2s.perform.cube) game.props.push({ x: v2s.perform.cube.x, y: v2s.perform.cube.y, r: 12, hp: 1, maxHp: 1, held: false, fly: 0 }); // 壓縮包裝方塊(素木箱佔位)沿輸送方向滑走

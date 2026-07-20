@@ -5,7 +5,7 @@ import { W, H } from './constants.js';
 import { rnd, clamp } from './utils.js';
 import { game } from './state.js';
 import { ELEMENT_INFO, isEarthKind } from './data.js';
-import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaGeo, colorHex, basicMat, makeBox, makeGlowSphere, matLambert, tmpMat, actorShadow, vividFx, groundMarkers, frostBottleClone, ITEM_VIS_H } from './render-core.js';
+import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaGeo, colorHex, basicMat, makeBox, makeGlowSphere, matLambert, tmpMat, actorShadow, vividFx, groundMarkers, frostBottleClone, barrelClone, ITEM_VIS_H } from './render-core.js';
 
   // --- 冰霜瓶飄雪(item-1;使用者拍板 2026-07-20:換掉青色光圈)---
   // 共享 geometry+material+sprite(每幀 propGroup.clear() 重建也「不」新建 buffer→零洩漏);
@@ -74,6 +74,33 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
           propGroup.add(wrap);
           updateSnowGeo();                                        // 飄雪(取代青色光圈):共享 geo 每幀更新一次,每瓶掛一個輕量 Points
           const snow = new THREE.Points(_snowGeo, _snowMat); snow.position.set(pr.x, lift, pr.y); propGroup.add(snow);
+          continue;
+        }
+      }
+      // item-2:爆桶 GLB(地面+飛行狀態;鎖 pr.barrel)。桶本體固定紫,充能/引信靠疊加 makeGlowSphere 光暈表達
+      // (使用者拍板 2026-07-20:充火=橘光暈、充電=藍光暈、引信快爆=閃紅發光)。未載成=barrelClone 回 null 退方塊。
+      if (pr.barrel) {
+        const bc = barrelClone();
+        if (bc) {
+          const s = ITEM_VIS_H, half = s / 2;                      // 統一道具高=等人高(純視覺,不動碰撞)
+          const lift = (pr.fly || 0), sp = Math.hypot(pr.vx || 0, pr.vy || 0);
+          bc.scale.setScalar(s); bc.position.y = -half;
+          const wrap = new THREE.Group(); wrap.add(bc);
+          wrap.position.set(pr.x, half + lift, pr.y);              // wrap 抬到桶心=底部貼地(放大也不沉入/浮空)
+          if (sp > 8) wrap.quaternion.setFromAxisAngle(new THREE.Vector3(-(pr.vy || 0), 0, (pr.vx || 0)).normalize(), pr.roll || 0); // 飛行=繞運動法向翻滾
+          else wrap.rotation.y = (pr.x + pr.y) * 0.008 + game.time * 0.4; // 靜置=慢 yaw 漂移(桶=活體魔能,轉快一點)
+          propGroup.add(wrap);
+          // 疊加光暈:引信快爆最優先(閃紅發光),否則依 charge 上橘/藍光暈
+          if (pr.fuse) {
+            const near = Math.min(1, (pr.fuseT || 1) / 1.0);        // fuseT 越小=越接近爆炸=閃越快
+            const rate = 6 + (1 - near) * 22;                       // 引信倒數把閃爍頻率從 6 加到 ~28 Hz
+            const blink = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(game.time * rate));
+            const g = makeGlowSphere(s * 0.62, 0xff3020, blink); g.position.set(pr.x, half + lift, pr.y); propGroup.add(g);
+          } else if (pr.charge === 'fire') {
+            const g = makeGlowSphere(s * 0.55, 0xff7a3a, 0.34); g.position.set(pr.x, half + lift, pr.y); propGroup.add(g);
+          } else if (pr.charge === 'lightning') {
+            const g = makeGlowSphere(s * 0.55, 0x6fb8d8, 0.34); g.position.set(pr.x, half + lift, pr.y); propGroup.add(g);
+          }
           continue;
         }
       }
