@@ -4,7 +4,7 @@
 // 屬 render 層(由 render-actors 呼叫);模擬層透過 fighter 欄位(punchFx/punchKind/punchArm/
 // flinch*/carrying/stunned...)驅動,永不 import 這裡(sim 保持 headless)。
 import { game } from './state.js';
-import { makeBox, frostBottleClone, frostBottleReady, FROST_VIS_SCALE } from './render-core.js';
+import { makeBox, frostBottleClone, frostBottleReady, ITEM_VIS_H } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
@@ -239,7 +239,7 @@ function updateHeldBarrel(e, g, R) {
     bm = new THREE.Group(); bm.name = 'HELD_BARREL'; bm.userData.kindKey = kindKey;
     const clone = isIceBottle ? frostBottleClone() : null;          // 只在建構時 clone 一次(frostBottleReady 已擋未就緒)
     if (clone) {
-      const hs = s * 1.05 * FROST_VIS_SCALE;                        // 握持也吃視覺放大倍率(不動碰撞;手機易讀)
+      const hs = ITEM_VIS_H;                                        // 統一道具高=等人高(舉等身瓶過頭=同扛人的卡通語言;不動碰撞)
       clone.scale.setScalar(hs); clone.position.y = -hs * 0.5;      // 置中於 group 原點(比照方塊,握點=中點)
       bm.add(clone); bm.userData.isGlb = true;
     } else {
@@ -260,7 +260,7 @@ function updateHeldBarrel(e, g, R) {
   else { R.armL.wr.getWorldPosition(_wlp); R.armR.wr.getWorldPosition(_wrp); }  // getWorldPosition 會更新 g 及祖鏈 matrixWorld
   _wlp.add(_wrp).multiplyScalar(0.5);
   g.worldToLocal(_wlp); bm.position.copy(_wlp);                       // 世界中點 → g 局部(g 的位移/朝向/擠壓已在本幀套好)
-  bm.position.y += (e.carryObj.r || 13) * 2 * ANIM.heldBarrel.liftK;  // 桶心=手中點會蓋住頭 → 抬半桶高+餘裕,桶底貼掌心
+  bm.position.y += (bm.userData.isGlb ? ITEM_VIS_H : (e.carryObj.r || 13) * 2) * ANIM.heldBarrel.liftK; // 桶心=手中點會蓋住頭 → 抬半高+餘裕,底貼掌心(GLB=等人高瓶,按 ITEM_VIS_H 抬)
   bm.rotation.y = game.time * 1.2;
 }
 

@@ -125,7 +125,9 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
       .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
       .then(gltf => {
         const s = gltf.scene;
-        s.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.material.map = tex; o.material.needsUpdate = true; } }); // 貼外部圖
+        s.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.material.map = tex;
+          o.material.emissiveMap = tex; o.material.emissive = new THREE.Color(0x6ab8e0); o.material.emissiveIntensity = 0.6; // 冰藍自發光(比照 lab 元素色 boost:ACES 暗場會把貼圖洗灰,emissiveMap=同貼圖=藥水藍處發冷光、銀框處弱)
+          o.material.needsUpdate = true; } }); // 貼外部圖
         s.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(s);
         const h = (box.max.y - box.min.y) || 1, cx = (box.max.x + box.min.x) / 2, cz = (box.max.z + box.min.z) / 2;
@@ -137,9 +139,10 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
       })
       .catch(e => console.warn('[core] 冰霜瓶 GLB 載入失敗,退方塊', e));
   }
-  // 冰瓶視覺放大倍率(item-1:使用者反饋碰撞半徑 r=9 太小、手機看不清)——**純視覺、不動碰撞**:
-  // 三狀態(握持/地面/飛行)的 GLB 掛載高度都 × 此值,底部仍貼地(不浮空)。碰撞維持 sim 的 pr.r。調這一個數即可。
-  export const FROST_VIS_SCALE = 1.7;
+  // 統一道具視覺高度(item-1;使用者拍板 2026-07-20:道具 GLB 一律等人物高度——1.7× 仍看不清,
+  // 且本作本來就是「把人扛頭上丟」的卡通比例,道具=地標級才讀得出)。**純視覺、不動碰撞**(sim 維持 pr.r):
+  // 所有道具 GLB 三狀態(握持/地面/飛行)都正規化到此世界高度;量測角色 standH≈78。之後每顆新道具模型自動吃這個值。
+  export const ITEM_VIS_H = 78;
   // 回傳一個掛載用 clone(高度 1、底貼地、xz 置中);未載成回 null。呼叫端 setScalar(目標高)+定位+轉向。
   export function frostBottleClone() { return _frostProto ? _frostProto.clone(true) : null; }
   export function frostBottleReady() { return !!_frostProto; } // 測試/除錯 hook
