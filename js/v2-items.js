@@ -374,7 +374,10 @@ export function updateBottles(dt) {
       const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy) || 1;
       if (d > f.r + t.r) continue;
       if ((air || spd > BOTTLE_BREAK_V) && f.pid !== t.thrownBy) { t.x = f.x; t.y = f.y; shatterBottle(t, f); break; } // 任何高度碰到都算(同舊直擊規則)
-      if (!air) { t.vx += dx / d * BARREL_PUSH; t.vy += dy / d * BARREL_PUSH; t.x = f.x + dx / d * (f.r + t.r); t.y = f.y + dy / d * (f.r + t.r); } // 走進靜止/慢瓶=頂開(同桶 BARREL_PUSH)
+      // 走進靜止/慢瓶=頂開。**設定不疊加**(2026-07-20 修):舊 += 會在連續接觸幀疊速(130+130…>170 門檻)
+      // → 跑著踢瓶兩三幀就「在自己腳下碎」還被冰凍——違反設計意圖「走路推不碎」。set=恆 130<170 永不碎;
+      // 丟出/風吹的高速瓶(>170)在上一行就碎了,不會進到這裡=行為保留。
+      if (!air) { t.vx = dx / d * BARREL_PUSH; t.vy = dy / d * BARREL_PUSH; t.x = f.x + dx / d * (f.r + t.r); t.y = f.y + dy / d * (f.r + t.r); }
     }
     if (!t.alive) continue;
     if (!t.landed && game.time - t.flyT0 >= BOTTLE_LOB.T) {          // 自然落地即碎(脆;桶=悶,落地閃 1s 才爆——材質對比)

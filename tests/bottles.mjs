@@ -202,6 +202,20 @@ await advance(1.0);
 const s13b = await page.evaluate(() => __v2.bottles[0].alive);
 R('弱風瓶滑進空地=不碎(換位存活)', s13b);
 
+// ---------- ⑭ 連續接觸推瓶=速度恆 ≤ BARREL_PUSH,不碎(2026-07-20 修:舊 += 疊速兩三幀就 >170 在腳下碎+冰凍自己) ----------
+await page.evaluate(() => { const v = __v2; const f = v.fighters[0], t = v.bottles[0];
+  for (const b of v.bottles) { b.alive = false; b.respawn = 999; }
+  t.elem = 'ice'; t.r = 9; t.x = 500; t.y = 540; t.z = 0; t.vx = 0; t.vy = 0; t.held = false; t.alive = true; t.flyT0 = -9; t.landed = true; t.thrownBy = -1;
+  f.invuln = 0; f.frozen = false; f.stunned = false;
+  window.__maxSpd = 0;
+  window.__push = setInterval(() => { f.x = t.x - (f.r + t.r) + 2; f.y = t.y; // 每幀貼回瓶邊=模擬跑著連續頂(重疊接觸)
+    window.__maxSpd = Math.max(window.__maxSpd, Math.hypot(t.vx, t.vy)); }, 16);
+});
+await advance(1.0);
+const s14 = await page.evaluate(() => { clearInterval(window.__push); const t = __v2.bottles[0], f = __v2.fighters[0];
+  return { alive: t.alive, maxSpd: Math.round(window.__maxSpd), frozen: !!f.frozen }; });
+R('連續推瓶=速度恆 ≤130 不碎、不自凍(set 不疊加)', s14.alive && s14.maxSpd <= 135 && !s14.frozen, JSON.stringify(s14));
+
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
 await B.close();
