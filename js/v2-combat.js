@@ -133,7 +133,11 @@ export function moveFighter(f, dt) {
   let sp = SPEED * ((f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;瓶=輕(全速);跑=預設(v2.js 每幀裁定)
   if (f._fleeing) sp *= FLEE_SPEED;                                               // 逃跑略慢於玩家跑速(tier-1:衝刺才好追=移動技術的舞台)
   if (f._diveT0 > -5) { m.x = Math.cos(f._diveDir); m.y = Math.sin(f._diveDir); sp = DIVE_FWD / DIVE_T; } // 俯衝:鎖方向自動前撲(承諾,無操控)
-  else if (f._dashT0 > -5) { m.x = Math.cos(f._dashDir); m.y = Math.sin(f._dashDir); sp = DASH_LUNGE / DASH_T; } // 衝刺攻擊:鎖方向滑步前衝(揮空=滑過頭)
+  else if (f._dashT0 > -5) { // 衝刺攻擊:鎖方向前衝(揮空=滑過頭)。feel-5b 使用者反饋「像溜冰」:等速 330px/s 到 impact 瞬停=滑。
+    // 改爆發→減速→煞停(線性衰減:起點 2× 平均速 ≈660px/s → impact 時歸零;積分=DASH_LUNGE 不變)——拳=煞停後打出,空拍讀得出。
+    const dp = Math.min(1, (game.time - f._dashT0) / DASH_T);
+    m.x = Math.cos(f._dashDir); m.y = Math.sin(f._dashDir); sp = (DASH_LUNGE / DASH_T) * 2 * (1 - dp);
+  }
   else if (airborne(f)) { m.x *= AIR_CTRL; m.y *= AIR_CTRL; }                     // 空中操控率(起跳動量為主)
   // --- 冰面=鎖滑(玩家反饋 2026-07):帶動量踩上 → 鎖原始方向直線滑行,直到撞牆(暈)/撞人/滑出冰面。
   //     滑行中無操控;速度 ≥ SLIDE_MIN(> 失控收容門檻)→ 滑進艙=收容(cause 'ice')。
@@ -372,7 +376,7 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
   const stage = f._strikeKind, fin = stage === 2, dash = stage === 4; // dash=衝刺攻擊(feel-1):走同一條命中管線,差異=削 DASH_STAB+帶推
   if (stage === 3) { resolveDive(f); return; } // 下壓拳:落地幀 AoE(自帶取消守衛)
   f._strikeAt = 0;
-  if (dash) f._dashT0 = -9;                    // 前衝結束(被打斷也要停,免鬼滑)
+  if (dash) { f._dashT0 = -9; addRing(f.x, f.y, 22, '#cbb9a2', 0.26, 3); game.sfx.push('thud'); } // 前衝結束(被打斷也要停,免鬼滑)+煞停塵土(feel-5b:把「停下來」賣出來,同落地滑行語言)
   if (f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return; // 被打斷:這拳不存在
   f._recoverT = game.time + PUNCH_RECOVER[stage]; // 收招承諾:鎖到 clip 播完(揮空=真懲罰窗)。衝刺拳也蓋章(使用者拍板 2026-07-21:攻擊完停一空拍不能馬上接移動;PUNCH_RECOVER[4]=dash clip 尾巴自動導出,再疊 DASH_CD+滑過頭)
   const a = f._strikeDir; let hit = false;
