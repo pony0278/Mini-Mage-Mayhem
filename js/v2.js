@@ -191,7 +191,6 @@ function step(dt) {
     if (v2s.tutorial) { v2s.tutorial = false; try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* 隱私模式 */ } } // 首局打完 → 記「玩過」,下次不再教學
     return; // freeze gameplay while the incident report is up
   }
-  game.time += dt; inc.matchT += dt;
   if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
   if (v2s.introT > INTRO_GO && (keys.size > 0 || (touchInput.enabled && touchInput.active))) v2s.introT = INTRO_GO; // 等不及的玩家按任何鍵=直接「開始!」
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
@@ -201,6 +200,10 @@ function step(dt) {
   syncTouchLabels(); // 情境按鈕字(每幀,只在變動時寫 DOM)
   if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); pollTouchGuard(); } // 定格中也收格擋輸入:玩家的反應常落在凍結幀裡,不能吃掉
   else {
+    // 頓點=時間真的停(feel-4 治「打飛跳幀」):game.time 只在非頓點推進。舊版時鐘照走、sim 凍結,
+    // 導致所有「絕對時間」系統解凍即跳——挑飛彈道 lobZ(t) 瞬移 1/3 弧、clip 動畫跳 ~12 格。
+    // 凍結時鐘後飛行弧/clip/排程打擊/反擊窗一致暫停無縫續播,且出拳動畫正確凍在 impact 幀(格鬥標準頓點)。
+    game.time += dt; inc.matchT += dt;
     pollAction(); pollItem(); pollGuard(); pollContext(); pollJump();
     pollTouchButtons(); pollTouchGuard();
     if (TEST_CLIP) {                                   // ?clip= 試播:循環播放 + 凍結對手 AI

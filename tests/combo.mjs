@@ -1,5 +1,6 @@
-// 連段系統(brawl-3;使用者拍板 2026-07-15:連段黏臉→暈→挑飛→風壓接送進艙)驗收:
-// ①三連擊全中=一次暈,且暈在原地不飛走(連段黏得住)②連段中每一拳都不位移(有穩定值時純踉蹌)
+// 連段系統(brawl-3;使用者拍板 2026-07-15:連段黏臉→暈→挑飛→風壓接送進艙;
+// feel-4 增修 2026-07-21:三段「終結技」打暈=連帶挑飛(GetAmped 式);前段打暈仍原地=停兩段可就地抓)驗收:
+// ①三連擊全中=一次暈+終結挑飛 ①b 前段(非終結)打暈=原地暈 ②連段中每一拳都不位移(有穩定值時純踉蹌)
 // ③對已暈者出拳=挑飛 launcher ④風壓打空中目標=乾淨接送(往瞄準方向直送/不墊穩定/換 WIND_CARRY_LOB)
 // ⑤風壓打地面目標=維持吹翻滾(墊穩定防站樁,不搶連段接送)⑥全鏈:挑飛→風壓接送→進艙(記 wind)
 // ⑦出拳承諾(feel-2):面向硬鎖+不能跳/舉防——起手+收招=整段揮拳(⑦b _recoverT 蓋章/演完放開)⑧本機起手鎖腳→收招恢復 ⑨無錯
@@ -15,17 +16,25 @@ await page.bringToFront();
 let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };
 await page.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false; });
 
-// ---------- ① 三連擊全中=一次暈,暈在原地(不飛走) ----------
+// ---------- ① 三連擊全中=一次暈,終結技連帶挑飛(feel-4) ----------
 const combo = await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
   a.carryObj = null; a.carrying = null; a.stunned = false;
   a.x = 470; a.y = 540; o.x = 500; o.y = 540; o.vx = o.vy = 0; o.invuln = 0; o.restunT = 0; o.stability = 100; o.stunned = false; o.fumbleT = 0; o._lob = null; o._thrownT = -9;
-  const ox0 = o.x;
   const drift = [];
   for (let k = 0; k < 3; k++) { a._strikeKind = k; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a); drift.push(o.fumbleT > 0); if (k < 2) { o.x = 500; o.y = 540; } }
-  return { stunned: o.stunned, stab: Math.round(o.stability), thrown: o.fumbleT > 0, driftX: Math.round(Math.abs(o.x - ox0)), midFlung: drift[0] || drift[1] };
+  return { stunned: o.stunned, stab: Math.round(o.stability), thrown: o.fumbleT > 0, lob: o._lob === v.PUNCH_LAUNCH_LOB, midFlung: drift[0] || drift[1] };
 });
 R('三連擊全中=一次暈(25+25+50=100)', combo.stunned && combo.stab === 0, JSON.stringify(combo));
-R('打暈那拳=暈在原地(不飛走,連段黏得住)', !combo.thrown && combo.driftX < 20, JSON.stringify(combo));
+R('第三段終結打暈=連帶挑飛(PUNCH_LAUNCH_LOB)', combo.thrown && combo.lob, JSON.stringify(combo));
+
+// ---------- ①b 前段(非終結)打暈=原地暈(停在兩段暈=就地抓的窗口) ----------
+const early = await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
+  o.stunned = false; o.restunT = 0; o.stability = 20; o.invuln = 0; o.fumbleT = 0; o._lob = null; o._thrownT = -9; o.vx = o.vy = 0;
+  a.x = 470; a.y = 540; o.x = 500; o.y = 540;
+  a._strikeKind = 0; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a); // 第一段就打暈(穩定值只剩 20)
+  return { stunned: o.stunned, thrown: o.fumbleT > 0 };
+});
+R('前段(非終結)打暈=原地暈不飛(就地抓窗口保留)', early.stunned && !early.thrown, JSON.stringify(early));
 
 // ---------- ② 連段中的拳(有穩定值)都不位移 ----------
 R('連段中每拳都純踉蹌不位移(前兩拳不觸發翻滾)', combo.midFlung === false);
@@ -121,6 +130,12 @@ await page.waitForFunction('__v2.fighters[0].x > 310', { timeout: 15000 }).catch
 const freed = await page.evaluate(() => Math.round(__v2.fighters[0].x));
 await page.keyboard.up('d');
 R('出拳承諾:起手鎖腳(按住方向不滑步)+收招恢復移動', Math.abs(rooted - 300) <= 4 && freed > 310, `起手 x=${rooted} 收招後 x=${freed}`);
+
+// ---------- ⑨ 頓點=時間停(feel-4 治打飛跳幀):hitstop 期間 game.time 凍結,絕對時間彈道/clip 不被偷時鐘 ----------
+const t0 = await page.evaluate(() => { __v2.game.hitstop = 60; return __v2.game.time; }); // 直塞大值(addHitstop 帽 0.45 擋不到直寫)
+await new Promise(r => setTimeout(r, 400));
+const t1 = await page.evaluate(() => { const t = __v2.game.time; __v2.game.hitstop = 0; return t; });
+R('頓點期間 game.time 凍結(打飛彈道不再解凍瞬移)', t1 === t0, `t0=${t0.toFixed(3)} t1=${t1.toFixed(3)}`);
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);

@@ -421,11 +421,14 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     }
     const stunsNow = o.stability <= 0 && !o.stunned && o.restunT <= 0;
     if (stunsNow) stunFighter(o);                                       // 穩定值歸零 → 擊暈(無能量閘)
+    // 挑飛條件(2026-07-21 使用者拍板):①命中前已暈=補拳挑飛(原規則)②「三段終結技」打暈的那拳=連帶挑飛
+    // (GetAmped 式打滿三連送飛收尾;前兩段打暈仍原地=停在兩段暈可就地抓,打滿三段=送飛——玩家自選節奏)。
+    const launches = wasStunned || (stunsNow && fin);
     // 漫畫打擊爆花(hitfx-1):單發挑檔(挑飛>打暈>終結>鉤拳),開在拳頭接觸點、線往擊退反向甩
-    addBurst(cpx, cpy, { ...HIT_BURST[wasStunned ? 'launch' : stunsNow ? 'stun' : dash ? 'dash' : fin ? 'fin' : 'hook'], streakA: a });
-    // brawl-3 打飛三分層:①命中前已暈=挑飛 launcher(接風壓吹進艙的入口)②這拳打暈=原地暈(連段黏臉、不飛走)
-    // ③還有穩定值=純踉蹌不位移(連段接得到暈,鉤拳/終結技皆然)。空中被鉤拳=拍蚊子小翻滾(brawl-2 空中規則)。
-    if (wasStunned) {                                                   // 對「已暈」的對手出拳 → 大挑飛(瞄向艙那側,接風壓接送)
+    addBurst(cpx, cpy, { ...HIT_BURST[launches ? 'launch' : stunsNow ? 'stun' : dash ? 'dash' : fin ? 'fin' : 'hook'], streakA: a });
+    // brawl-3 打飛三分層(fin 打暈=挑飛 之外維持):①已暈/終結打暈=挑飛 launcher(接風壓吹進艙的入口)
+    // ②前段打暈=原地暈(連段黏臉、不飛走)③還有穩定值=純踉蹌不位移。空中被鉤拳=拍蚊子小翻滾(brawl-2 空中規則)。
+    if (launches) {                                                     // 挑飛(瞄向出拳方向,接追擊/風壓接送/瞄艙)
       const F = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;            // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
       o.vx = Math.cos(a) * F; o.vy = Math.sin(a) * F;
       o._thrownT = game.time; o._lob = PUNCH_LAUNCH_LOB; o.fumbleT = PUNCH_LAUNCH_LOB.T + 0.1;
