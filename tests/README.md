@@ -53,8 +53,9 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 1. **rAF 節流**:headless 下 `requestAnimationFrame` 只走實時的 4~36%。等時間**一律輪詢 `__v2.game.time`**,
    別用 `setTimeout` 當遊戲時鐘;引信/冷卻類邏輯**直接呼叫**(如 `__v2.explodeBarrel(b)`)別等它自然到。
    套件裡的 `advance(sec)` helper 就是 game.time 輪詢。
-2. **本機玩家 `fighters[0]` 的 facing 每幀吃滑鼠重算**(桌機瞄準)→ 施放者測試**一律用 `fighters[1]`**,
-   或每 tick 重新釘 facing。
+2. ~~本機玩家 facing 每幀吃滑鼠重算~~ **keys-1(2026-07-21)滑鼠退役**:facing=移動方向(8 向,停下保留最後面向)
+   → 直接設 `f.facing` 即可久留(沒按方向鍵就不會被蓋);施放者用 `fighters[1]` 的舊慣例仍可沿用。
+   鍵盤驅動測試範式見 `keys.mjs`(C=攻擊/X=互動/Z=道具/方向鍵 8 向)。
 3. **POD 在 (480,320) r46**:凍住/高速的角色進艙半徑=捕捉(拒收吐回演出 ~2.5s,受害者被釘艙心+受保護)
    →污染測試。測冰凍/擊飛時把角色擺**南邊空地**(如 y=540)避開。**反過來要測「滑進艙=捕捉」**:冰帶必須 `stampElement` **蓋過艙心**
    (非只到艙邊)——鎖滑貫穿入艙才在艙半徑內仍 >`slideContainCur` 門檻;停在艙前=洩速到門檻下=永不收容,

@@ -37,7 +37,7 @@ function drawContainHud() {
       hctx.save();
       hctx.strokeStyle = COLORS[f.pid]; hctx.globalAlpha = isMe ? 0.95 : 0.5; hctx.lineWidth = isMe ? 3 : 2;
       hctx.beginPath(); hctx.ellipse(gc.x, gc.y, gr, gr * 0.5, 0, 0, Math.PI * 2); hctx.stroke();
-      if (isMe) { // 朝向箭頭(配合滑鼠瞄準,畫在地面橢圓上)＋「你」標
+      if (isMe) { // 朝向箭頭(面向=移動方向,畫在地面橢圓上)＋「你」標
         hctx.globalAlpha = 1;
         const ax = Math.cos(f.facing), ay = Math.sin(f.facing) * 0.5;         // y 壓扁對齊橢圓地面
         const al = Math.hypot(ax, ay) || 1, nx = ax / al, ny = ay / al;        // 單位方向
@@ -181,17 +181,17 @@ function drawCoachLine() {
   let msg = null, col = '#ffd36d';
   // 爽鬥動態教學:依玩家實際行為即時切提示——一路引到「打暈→抓→丟進回收口」;待機時永遠給核心目標。
   if (me.carriedBy) { msg = '連打 ◀A D▶ 掙脫！'; col = '#9affd0'; }
-  else if (me.carrying) { msg = '拖進中央回收口！或 左鍵拋擲'; col = '#c98cff'; }
-  else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '♻ 對手可回收了！右鍵 / E 抓住 → 拖進回收口'; col = '#9affd0'; }
+  else if (me.carrying) { msg = '拖進中央回收口！或 C 拋擲'; col = '#c98cff'; }
+  else if (o.state === 'alive' && o.stunned && !o.carriedBy && o.invuln <= 0) { msg = '♻ 對手可回收了！X 抓住 → 拖進回收口'; col = '#9affd0'; }
   else if (me.pushWinT > 0 && me.pushCd <= 0 && !me.stunned) { msg = 'Shift 推開！'; col = '#9affd0'; }
   else if (me.stunned) { msg = '你被打暈了…！'; col = '#ff9a9a'; }
   else if (o.state === 'alive' && !o.stunned && o.stability < STAB_MAX * 0.55) { msg = '⚡ 對手即將可回收！繼續打'; col = '#ffd36d'; } // 快暈了
   else if (o.state === 'alive' && (o.flinchT > 0 || (me.punchFx > 0 && game.time - me.punchFx < 0.7))) { msg = '有效！繼續攻擊讓他失衡'; col = '#ffd36d'; } // 剛命中
-  else if (me.carryObj && me.carryObj.kind === 'bottle') { msg = '左鍵把' + (GARBAGE_NAME[me.carryObj.elem] || '瓶子') + '砸向對手！'; col = '#9ee6ff'; }
-  else if (!me.item && !me.carryObj && nearPickup(me)) { msg = '右鍵 / E 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
+  else if (me.carryObj && me.carryObj.kind === 'bottle') { msg = 'C 把' + (GARBAGE_NAME[me.carryObj.elem] || '瓶子') + '砸向對手！'; col = '#9ee6ff'; }
+  else if (!me.item && !me.carryObj && nearPickup(me)) { msg = 'X 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
   else if (!me.carrying && !me.carryObj && nearBottle(me)) { msg = 'E 撿元素瓶 → 砸人（冰凍／著火／電擊／毒地板）'; col = '#9ee6ff'; }
   else if (nearSwitch(me)) { msg = '⚠ 揍拉桿＝四角元素站開始洩漏（高風險高娛樂）'; col = '#ffab5a'; }
-  else { msg = '左鍵三連擊 → 打暈對手 → 抓去中央回收口 ×' + WIN_TARGET; col = '#9ee6ff'; }
+  else { msg = 'C 三連擊 → 打暈對手 → 抓去中央回收口 ×' + WIN_TARGET; col = '#9ee6ff'; }
   if (!msg) return;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
@@ -239,7 +239,7 @@ function drawItems() {
   }
   const me = fighters[LOCAL]; // 本機持有 HUD
   hctx.textAlign = 'left'; hctx.font = '800 14px system-ui, sans-serif';
-  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + ' ×' + me.itemUses + '（右鍵 / E 使用）', 24, VH - 40); }
+  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + ' ×' + me.itemUses + '（Z 使用）', 24, VH - 40); }
   else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, VH - 40); }
 }
 function drawPips(pid, x0, dir) { // 三格收容進度:填色=收容方式
@@ -386,9 +386,9 @@ export function drawHud() {
   // controls hint
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
-  hctx.fillText('藍（你）：WASD 移動（＝跑）· 左鍵三連擊（跑久＝衝刺拳／空中＝下壓拳）· 空白＝跳 · Shift 按住＝防禦 · 右鍵＝抓／放技能 · E＝撿（裝備·瓶·桶）／抓 · 扛著左鍵＝丟　B：AI　L：減閃爍', VW / 2, VH - 18);
+  hctx.fillText('藍（你）：方向鍵／WASD 移動（＝跑，面向＝移動方向）· C＝攻擊（三連擊／跑久＝衝刺拳／空中＝下壓拳／扛著＝丟）· X＝抓／撿（裝備·瓶·桶）· Z＝道具 · Shift 按住＝防禦 · 空白＝跳　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: field-2', VW - 10, VH - 4);
+  hctx.fillText('build: keys-1', VW - 10, VH - 4);
 }

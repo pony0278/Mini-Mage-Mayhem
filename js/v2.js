@@ -9,7 +9,7 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
 import { updateDeathTheater, addText, addRing, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, updateMouseWorld, mouseScreen } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -90,29 +90,16 @@ function updateCamRig(dt) {
   camRig.x += (tx - camRig.x) * e; camRig.y += (ty - camRig.y) * e;
 }
 
-// --- 輸入:情境動作(J)/道具(K)/跳躍(空白)/格擋(Shift),邊緣觸發;滑鼠=瞄準+左鍵連擊+右鍵情境 ---
-function mouseLeft(f) {                                                         // 左鍵=揮拳;扛人=拋擲;扛桶=丟桶
+// --- 輸入(keys-1 滑鼠退役,使用者拍板 2026-07-21:雙端一致的 GetAmped 式鍵位)---
+// C=攻擊(揮拳/拋投/空中下壓/反擊)、X=互動(抓/撿瓶桶裝備/放下)、Z=道具施放、Shift=按住防禦、空白=跳;
+// 方向鍵+WASD 移動(8 向,面向=移動方向)。J/K/E 留作舊鍵位別名。攻擊裝備開火與撿瓶不再搶鍵(Z/X 分工)。
+function attackAction(f) {                                                      // C=攻擊;扛人=拋擲;扛桶/瓶=丟
   if (f.state !== 'alive') return;
   if (f.carryObj) { throwBarrel(f); return; }
   if (f.carrying) { throwCarried(f); return; }
   punch(f);
 }
-// 右鍵=攻擊直覺(玩家反饋 2026-07:拿噴火帽想引爆瓶,右鍵卻變舉瓶):持攻擊裝備(kind blast)→ 直接開火,
-// 不被撿桶/瓶搶走;逃脫類(傳送 mobility)不佔右鍵優先=拿著傳送照樣右鍵撿桶。撿/抓的互動優先版在 E(contextAction)。
-function mouseRight(f) {
-  if (f.state !== 'alive') return;
-  if (f.carryObj) { dropBarrel(f); return; }                                   // 扛桶/瓶中 → 放下
-  if (f.carrying) { dropCarry(f); return; }                                    // 搬運中 → 放下
-  if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {
-    const o = fighters[1 - f.pid];                                              // 抓暈眩對手=最高優先(收容主動詞)
-    if (o.state === 'alive' && (o.stunned || GRAB_ANY) && !o.carriedBy && o.invuln <= 0 && Math.hypot(o.x - f.x, o.y - f.y) <= GRAB_RANGE + o.r) { startCarry(f, o); return; }
-    if (f.item && ITEM_SPEC[f.item].kind === 'blast') { useItem(f); return; }   // 攻擊裝備=右鍵開火(引爆桶/瓶靠這下)
-    if (pickupItem(f)) return;                                                   // 空手 → 撿補給座/地上掉落道具
-    const b = grabbableBarrel(f); if (b) { pickUpBarrel(f, b); return; }        // → 撿桶/瓶
-  }
-  useItem(f); // 否則放技能(useItem 自帶守衛:無道具直接略過;被抓/暈時只有傳送可用)
-}
-// E/觸控情境鍵=互動優先(舊右鍵順序):撿/抓照舊——持攻擊裝備時也能撿桶/瓶(跟右鍵開火分工)。
+// X/E/觸控情境鍵=互動優先:撿/抓/放——持攻擊裝備時也能撿桶/瓶(開火在 Z,不搶鍵)。
 function contextAction(f) {
   if (f.state !== 'alive') return;
   if (f.carryObj) { dropBarrel(f); return; }
@@ -134,8 +121,15 @@ function pollAction() {
 }
 const itemPrev = [false, false];
 function pollItem() {
-  const pressed = [keys.has('k'), keys.has('.')];
+  const pressed = [keys.has('z') || keys.has('k'), keys.has('.')]; // Z=道具施放(keys-1 主鍵;K=舊別名)
   for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
+}
+let attackPrev = false; // C=攻擊(keys-1 主鍵,舊左鍵語意)。頓點中也收邊緣——反擊拳的按壓常落在擋下頓點的凍結幀(舊滑鼠是事件監聽天然不漏,鍵盤 poll 要補)
+function pollAttack() {
+  const pressed = keys.has('c');
+  const f = fighters[LOCAL];
+  if (pressed && !attackPrev && !f.ai) attackAction(f);
+  attackPrev = pressed;
 }
 let guardPrev = false; // 格擋鍵=Shift(本機玩家;brawl-2 空白讓給跳)。按下瞬間 doGuard(黃金窗=反暈/挨打後=推開);按住=防禦架式(f.guarding)
 function pollGuard() { // brawl-2 鍵位重排(使用者拍板):防禦=Shift(空白讓給跳躍=高頻動作佔最好的鍵)
@@ -146,22 +140,22 @@ function pollGuard() { // brawl-2 鍵位重排(使用者拍板):防禦=Shift(空
   guardPrev = pressed;
 }
 let jumpPrev = false;
-function pollJump() { // 空白=跳(edge);空中再按攻擊=下壓拳(mouseLeft→punch→dive 分派)
+function pollJump() { // 空白=跳(edge);空中再按攻擊 C=下壓拳(attackAction→punch→dive 分派)
   const pressed = keys.has(' ');
   const f = fighters[LOCAL];
   if (pressed && !jumpPrev) jump(f);
   jumpPrev = pressed;
   if (touchInput.press.jump) { touchInput.press.jump = false; jump(f); }
 }
-const contextPrev = [false, false]; // E 鍵=互動優先情境(contextAction:撿/抓照舊;與右鍵開火分工)。Mac 觸控板/無滑鼠也靠這鍵
+const contextPrev = [false, false]; // X=互動情境(contextAction:抓/撿/放;E=舊別名)。開火在 Z,不搶鍵
 function pollContext() {
-  const pressed = [keys.has('e'), false];
+  const pressed = [keys.has('x') || keys.has('e'), false];
   for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !contextPrev[i]) contextAction(fighters[i]); contextPrev[i] = pressed[i]; }
 }
 // 觸控動作按鈕(Phase C):v2-touch 按下時設 press 閂鎖,這裡消費=一次一擊(等同鍵鼠的邊緣觸發)。
 // 揮拳/情境走一般幀;格擋另抽一支,定格(hitstop)中也要收(反應常落在凍結幀)——同 pollGuard。
 function pollTouchButtons() {
-  if (touchInput.press.punch)   { touchInput.press.punch = false;   mouseLeft(fighters[LOCAL]); }
+  if (touchInput.press.punch)   { touchInput.press.punch = false;   attackAction(fighters[LOCAL]); }
   if (touchInput.press.context) { touchInput.press.context = false; contextAction(fighters[LOCAL]); } // 觸控=互動優先(單鍵難分工,保住撿桶瓶玩法)
 }
 function pollTouchGuard() {
@@ -198,13 +192,13 @@ function step(dt) {
   if (v2s.fallReasonT > 0) v2s.fallReasonT -= dt;
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   syncTouchLabels(); // 情境按鈕字(每幀,只在變動時寫 DOM)
-  if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); pollTouchGuard(); } // 定格中也收格擋輸入:玩家的反應常落在凍結幀裡,不能吃掉
+  if (game.hitstop > 0) { game.hitstop -= dt; pollGuard(); pollTouchGuard(); pollAttack(); } // 定格中也收格擋+攻擊輸入:反擊拳/接段的按壓常落在凍結幀裡,不能吃掉
   else {
     // 頓點=時間真的停(feel-4 治「打飛跳幀」):game.time 只在非頓點推進。舊版時鐘照走、sim 凍結,
     // 導致所有「絕對時間」系統解凍即跳——挑飛彈道 lobZ(t) 瞬移 1/3 弧、clip 動畫跳 ~12 格。
     // 凍結時鐘後飛行弧/clip/排程打擊/反擊窗一致暫停無縫續播,且出拳動畫正確凍在 impact 幀(格鬥標準頓點)。
     game.time += dt; inc.matchT += dt;
-    pollAction(); pollItem(); pollGuard(); pollContext(); pollJump();
+    pollAction(); pollAttack(); pollItem(); pollGuard(); pollContext(); pollJump();
     pollTouchButtons(); pollTouchGuard();
     if (TEST_CLIP) {                                   // ?clip= 試播:循環播放 + 凍結對手 AI
       fighters[1 - LOCAL].ai = false;
@@ -274,7 +268,7 @@ function step(dt) {
       // 手機:搖桿推程 < RUN_STICK=走(微操走位)、到底=跑;AI 維持走速(可預測的難度)。
       const mvIn = (!f.ai && f.pid === LOCAL)
         ? (touchInput.enabled ? (touchInput.active && touchInput.mag >= RUN_STICK)
-          : (keys.has('w') || keys.has('a') || keys.has('s') || keys.has('d')))
+          : (keys.has('w') || keys.has('a') || keys.has('s') || keys.has('d') || keys.has('arrowup') || keys.has('arrowdown') || keys.has('arrowleft') || keys.has('arrowright'))) // keys-1:方向鍵同計
         : !!f._fleeing; // AI 平時走速(可預測);逃跑=進跑速(tier-1,moveFighter 再 ×FLEE_SPEED 讓玩家衝刺追得上)
       f.running = !!(mvIn && !f.carrying && !(f.carryObj && f.carryObj.kind !== 'bottle') && !f.stunned && f.fumbleT <= 0);
       f._runT = f.running ? (f._runT || 0) + dt : 0; // 衝刺狀態計時:持續跑 ≥ DASH_RUN_T 出拳=衝刺攻擊(feel-1)
@@ -292,7 +286,7 @@ function step(dt) {
       if (inPod(o.x, o.y)) { containByCarry(f, o); continue; }                 // 失控入艙 → 收容
       if ((o.ai || o.pid !== LOCAL) && !GRAB_ANY) o.escape += CARRY_MASH_AI * dt; // AI / 被動假人:固定填速(不吃玩家的 A/D 移動鍵);?grabany=1 測試時不自動掙脫,好舉著慢慢看
       else {                                                                    // 本機玩家被扛: 左右交替點按 A/D 掙脫(按指示)
-        const aDown = keys.has('a'), dDown = keys.has('d');
+        const aDown = keys.has('a') || keys.has('arrowleft'), dDown = keys.has('d') || keys.has('arrowright'); // keys-1:方向鍵同計(掙脫左右交替)
         const aEdge = aDown && !o._aPrev, dEdge = dDown && !o._dPrev;
         if (o.mashSide === 0 && aEdge) { o.escape += CARRY_MASH_TAP; o.mashSide = 1; }
         else if (o.mashSide === 1 && dEdge) { o.escape += CARRY_MASH_TAP; o.mashSide = 0; }
@@ -403,7 +397,6 @@ function frame(now) {
   last = now;
   if (slowmo < 1) dt *= slowmo;   // 慢動作觀察:整場模擬按倍率放慢(動畫/判定同步慢,可看清出拳過程)
   // 反擊拳改制(brawl-3.1):不再有慢動作/灰屏提示——反擊靠「擋下瞬間 hitstop」的手感抓時機(讓玩家自己體會)。
-  updateMouseWorld(); // 滑鼠螢幕座標 → 地面世界座標(供本地玩家瞄準)
   for (let i = 0; i < TURBO; i++) step(dt);
   if (touchMod) touchMod.setReportVisible(v2s.matchOver); // 結算畫面亮觸控「再戰/複製」、收起對戰控制(桌機 no-op)
   render3D();
@@ -419,7 +412,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, bottles, shatterBottle, roundWins, containLog, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, mouseRight, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, attackAction, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB,
   NAMES, AI_PROFILE, applyAiTier, updateAiCall, // AI 階級(tier-1):檔案表+進場排程(測試/控制台)
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
@@ -480,21 +473,10 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('pointerdown', unlockAudio);
 
-// --- 滑鼠:游標→瞄準(存螢幕像素,每幀 raycast 成地面世界座標),左鍵連擊,右鍵情境(抓/道具) ---
+// --- 滑鼠退役(keys-1,使用者拍板 2026-07-21:雙端一致):v2 不再吃滑鼠瞄準/點擊——
+// 面向=移動方向(8 向)、C=攻擊、X=互動、Z=道具。只留 contextmenu 阻擋(誤右鍵不彈選單)。
 const gameCanvas = document.getElementById('game');
-gameCanvas.addEventListener('mousemove', (e) => {
-  const rect = gameCanvas.getBoundingClientRect();
-  mouseScreen.x = (e.clientX - rect.left) / rect.width * gameCanvas.width;   // 視圖像素(16:9 畫布),非世界座標
-  mouseScreen.y = (e.clientY - rect.top) / rect.height * gameCanvas.height;
-});
-gameCanvas.addEventListener('mousedown', (e) => {
-  unlockAudio();
-  if (v2s.matchOver) return;                    // 報告畫面:用鍵盤 R 再戰 / C 複製
-  const f = fighters[LOCAL]; if (!f || f.ai) return;
-  if (e.button === 2) mouseRight(f);            // 右鍵
-  else if (e.button === 0) mouseLeft(f);        // 左鍵
-});
-gameCanvas.addEventListener('contextmenu', (e) => e.preventDefault()); // 右鍵不彈出選單
+gameCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 game.state = 'v2';      // not 'playing' → render's capstone/HUD branches stay off
 game.player = null;     // camera centres on the arena, no player voxel

@@ -1,9 +1,9 @@
-// 右鍵=攻擊、E=互動 + 道具引爆桶/瓶(玩家反饋:拿火帽/水錘想引爆瓶,右鍵卻變舉瓶)驗收:
-// ①持火帽近瓶按右鍵=開火不撿瓶(排程施放、瓶沒被舉) ②同況按 E=撿瓶(互動優先分工)
-// ③空手右鍵近瓶=照舊撿瓶 ④持傳送(mobility)右鍵近桶=照舊撿桶(逃脫類不佔右鍵優先)
+// Z=道具開火、X=互動(keys-1 滑鼠退役:Z/X 分工取代舊右鍵優先序)+ 道具引爆桶/瓶驗收:
+// ①持火帽近瓶按 Z=開火不撿瓶(useItem 排程施放、瓶沒被舉) ②同況按 X=撿瓶(互動優先分工)
+// ③空手 X 近瓶=撿瓶 ④持傳送(mobility)X 近桶=照舊撿桶(逃脫類不擋互動)
 // ⑤火帽引爆油瓶=瓶碎+油膜同一發點燃(火海) ⑥火帽扇內桶=升壓 ⑦水錘 AoE=瓶碎+桶升壓(水蓋掉潑出的油)
 // ⑧電鞭線上=瓶碎+桶升壓
-// 陷阱:LOCAL(fighters[0]) facing 吃滑鼠 → 施放者一律 fighters[1];POD(480,320,r46) 污染 → 擺南邊;rAF 節流 → game.time 輪詢
+// 陷阱:POD(480,320,r46) 污染 → 擺南邊;rAF 節流 → game.time 輪詢(keys-1 後 facing=移動方向,直接設 f.facing 即可)
 import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
 const page = await B.newPage();
@@ -25,19 +25,19 @@ const resetAll = () => page.evaluate(async () => {
 });
 await page.evaluate(() => { __v2.fighters[1].ai = false; });
 
-// ---------- ① 持火帽近瓶按右鍵 = 開火不撿瓶 ----------
+// ---------- ① 持火帽近瓶按 Z = 開火不撿瓶 ----------
 await resetAll();
 let s1; // 重試×3(陷阱 #11)+ 補 cd/castAt 重置(原缺=前案殘留 cd 會讓 useItem 空轉)
 for (let i = 0; i < 3 && !(s1 && s1.casting); i++) s1 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], t = v.bottles[0];
   t.x = 340; t.y = 540; f.x = 300; f.y = 540; f.facing = 0; f.item = 'fire'; f.itemUses = 2;
   f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.fumbleT = 0; f.carrying = null; f.carryObj = null;
-  v.mouseRight(f);
+  v.useItem(f);
   return { casting: f._itemCastAt > 0, type: f._itemCastType, uses: f.itemUses, pickedUp: !!f.carryObj, bottleHeld: t.held };
 });
-R(`持火帽近瓶右鍵=開火(排程 ${s1.type}、uses 2→${s1.uses})不撿瓶`, s1.casting && s1.type === 'fire' && s1.uses === 1 && !s1.pickedUp && !s1.bottleHeld);
+R(`持火帽近瓶 Z=開火(排程 ${s1.type}、uses 2→${s1.uses})不撿瓶`, s1.casting && s1.type === 'fire' && s1.uses === 1 && !s1.pickedUp && !s1.bottleHeld);
 
-// ---------- ② 同況按 E = 撿瓶(互動優先) ----------
+// ---------- ② 同況按 X = 撿瓶(互動優先) ----------
 await resetAll();
 const s2 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], t = v.bottles[0];
@@ -45,27 +45,27 @@ const s2 = await page.evaluate(() => {
   v.contextAction(f);
   return { pickedUp: f.carryObj === t, held: t.held, casting: f._itemCastAt > 0, item: f.item };
 });
-R('同況按 E=撿瓶(裝備仍在手、沒開火)', s2.pickedUp && s2.held && !s2.casting && s2.item === 'fire');
+R('同況按 X=撿瓶(裝備仍在手、沒開火)', s2.pickedUp && s2.held && !s2.casting && s2.item === 'fire');
 
-// ---------- ③ 空手右鍵近瓶 = 照舊撿瓶 ----------
+// ---------- ③ 空手 X 近瓶 = 撿瓶 ----------
 await resetAll();
 const s3 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], t = v.bottles[0];
   t.x = 340; t.y = 540; f.x = 300; f.y = 540; f.facing = 0; f.item = null;
-  v.mouseRight(f);
+  v.contextAction(f);
   return { pickedUp: f.carryObj === t };
 });
-R('空手右鍵近瓶=照舊撿瓶', s3.pickedUp);
+R('空手 X 近瓶=撿瓶', s3.pickedUp);
 
-// ---------- ④ 持傳送(mobility)右鍵近桶 = 照舊撿桶 ----------
+// ---------- ④ 持傳送(mobility)X 近桶 = 照舊撿桶 ----------
 await resetAll();
 const s4 = await page.evaluate(() => {
   const v = __v2, f = v.fighters[1], b = v.barrels[0];
   b.x = 340; b.y = 540; f.x = 300; f.y = 540; f.facing = 0; f.item = 'teleport'; f.itemUses = 1;
-  v.mouseRight(f);
+  v.contextAction(f);
   return { pickedUp: f.carryObj === b, item: f.item };
 });
-R('持傳送(逃脫類)右鍵近桶=照舊撿桶(傳送不被誤放)', s4.pickedUp && s4.item === 'teleport');
+R('持傳送(逃脫類)X 近桶=照舊撿桶(傳送不被誤放)', s4.pickedUp && s4.item === 'teleport');
 
 // ---------- ⑤ 火帽引爆油瓶 = 瓶碎 + 油膜同一發點燃(火海) ----------
 await resetAll();
