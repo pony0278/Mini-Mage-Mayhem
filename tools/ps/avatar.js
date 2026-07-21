@@ -35,7 +35,7 @@ const AVATAR_REQUIRED = ['root','torso','head',
 
 async function loadAvatarBuffer(ab, label){
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功,無法載入角色。'); return false; }
-  const gltf = await new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej));
+  const gltf = await new Promise((res, rej) => psMakeGltfLoader().parse(ab, '', res, rej));
   const sc = gltf.scene; sc.updateMatrixWorld(true);
 
   // ① 收骨頭:字樣分型別(calf=shin 同義;字樣測試順序避免 'forearm' 撞 'arm')

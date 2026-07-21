@@ -45,12 +45,15 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 ## 陷阱(踩過的)
 
 1. **per-file hoisting**(README 規則):載入期程式碼只能呼叫更早載入的檔;跨檔前向引用用 `typeof fn==='function'` 守衛。
-2. **GLTFLoader 名稱淨化**:`Hand.L`→`HandL`、`geo_Hand.L.002`→`geo_HandL`(點會被吃掉)。找節點用淨化後的名字。
-3. **`window.__ps` 屬於 game-bridge**(整個物件重新賦值,最後載入)——別的檔要加 hook 用**自己的命名空間**(如 `__psEquip`)。
-4. **hand slot 出廠 cfg 不是 identity**(rx:180,socket-local 慣例)——判斷「使用者沒調過」要比對 `partDefaultConfig(slot)`,不能比零。
-5. **同 rig 的資產掛骨頭要歸零旋轉**(骨頭已帶 rest 旋轉,再疊=轉兩次);跨 rig(假人)才保留 rest 旋轉+手動校準。
-6. **three 版本**:studio 用 r128(CDN),遊戲 vendored r149——API 有差(如 sRGB 常數),程式碼不能直接互抄。
-7. localStorage keys:`PUNCH_STUDIO_AUTOSAVE_V2`(姿勢/timeline)、`PUNCH_STUDIO_PART_KIT_CFG_V3_SOCKETLOCAL_MOUNT`(部位對位)、
+2. **GLB 載入一律走 `psMakeGltfLoader()`(rig.js)**,別直接 `new THREE.GLTFLoader()`——Meshy 模型預設
+   Draco 壓縮,裸 loader 直接炸(「掛載沒顯示」的頭號病因,2026-07-21 火帽案);工廠會配 DRACOLoader
+   (HTML 掛 r128 UMD 版,decoder wasm 同 CDN 懶載共用);CDN 沒載到=退回裸 loader,未壓縮檔照常。
+3. **GLTFLoader 名稱淨化**:`Hand.L`→`HandL`、`geo_Hand.L.002`→`geo_HandL`(點會被吃掉)。找節點用淨化後的名字。
+4. **`window.__ps` 屬於 game-bridge**(整個物件重新賦值,最後載入)——別的檔要加 hook 用**自己的命名空間**(如 `__psEquip`)。
+5. **hand slot 出廠 cfg 不是 identity**(rx:180,socket-local 慣例)——判斷「使用者沒調過」要比對 `partDefaultConfig(slot)`,不能比零。
+6. **同 rig 的資產掛骨頭要歸零旋轉**(骨頭已帶 rest 旋轉,再疊=轉兩次);跨 rig(假人)才保留 rest 旋轉+手動校準。
+7. **three 版本**:studio 用 r128(CDN),遊戲 vendored r149——API 有差(如 sRGB 常數),程式碼不能直接互抄。
+8. localStorage keys:`PUNCH_STUDIO_AUTOSAVE_V2`(姿勢/timeline)、`PUNCH_STUDIO_PART_KIT_CFG_V3_SOCKETLOCAL_MOUNT`(部位對位)、
    `PUNCH_STUDIO_PART_KIT_HIDE_DUMMY_V2_14PARTS_AXISFIX`、`PUNCH_STUDIO_CLIP_LIB_V1`(招式庫)、`PS_JOINT_FILL*`、`PS_ANKLE_FOLLOW`、`PS_SHOW_*`、`PUNCH_HITFEEL`。
    改資料形狀=換 key 版本號,別原地變形。
 

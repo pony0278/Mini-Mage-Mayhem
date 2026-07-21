@@ -1,5 +1,17 @@
 // punch-studio — rig:Three.js 場景+方向指示、DIM 角色比例、狀態存檔(undo/autosave/JSON IO)、素體建構、applyPose/lerp、播放段
 // 古典 script(非 module):所有 ps/*.js 共享同一個全域作用域,載入順序由 punch-studio.html 決定(見 ps/README.md)。
+// ===== GLB loader 工廠(2026-07-21:使用者常從 Meshy 拿模型,Meshy 預設 Draco 壓縮)=====
+// 所有 new THREE.GLTFLoader() 一律改走這裡:有 DRACOLoader(HTML 已掛 CDN UMD 版)就配上=Meshy 原檔直載;
+// 沒載到(斷網/CDN 擋)退回裸 loader,未壓縮 GLB 照常。decoder(wasm)同 CDN 懶載,只建一次共用。
+let psDraco=null;
+function psMakeGltfLoader(){
+  const loader=new THREE.GLTFLoader();
+  if(THREE.DRACOLoader){
+    if(!psDraco){ psDraco=new THREE.DRACOLoader(); psDraco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/gltf/'); }
+    loader.setDRACOLoader(psDraco);
+  }
+  return loader;
+}
 // ===== Three.js =====
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});

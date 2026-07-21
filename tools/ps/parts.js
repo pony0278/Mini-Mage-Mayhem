@@ -347,7 +347,7 @@ function applyBundleDim(gltf){
 async function loadPartBundle(file){
   if(!file) return false;
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功；請確認網路可連 CDN，或把 GLTFLoader.js 放到本機。'); return false; }
-  const loader = new THREE.GLTFLoader();
+  const loader = psMakeGltfLoader();
   const url = URL.createObjectURL(file);
   try{
     const gltf = await new Promise((resolve,reject)=>loader.load(url, resolve, undefined, reject));
@@ -386,7 +386,7 @@ async function loadPartFile(file){
   const slot = inferPartSlot(file.name);
   // 檔名對不到 slot 時不直接放棄:可能是合併部件包(內部子節點名對 slot),先載入再判斷
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功；請確認網路可連 CDN，或把 GLTFLoader.js 放到本機。'); return false; }
-  const loader = new THREE.GLTFLoader();
+  const loader = psMakeGltfLoader();
   const url = URL.createObjectURL(file);
   try{
     const gltf = await new Promise((resolve,reject)=>loader.load(url, resolve, undefined, reject));
@@ -432,7 +432,7 @@ async function loadEquipFile(file){
   const sel = document.getElementById('partSlotSelect');
   const slot = (sel && sel.value) || window.__PS_EQUIP_TARGET_SLOT;
   if(!getPartTarget(slot)){ updatePartsStatus(`slot「${slot}」在目前 rig 沒有掛點,無法掛裝備。`); return false; }
-  const loader = new THREE.GLTFLoader();
+  const loader = psMakeGltfLoader();
   const url = URL.createObjectURL(file);
   try{
     const gltf = await new Promise((res,rej)=>loader.load(url,res,undefined,rej));
@@ -545,7 +545,7 @@ async function loadRiggedHandsFile(file){
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
   const url = URL.createObjectURL(file);
   try{
-    const gltf = await new Promise((res,rej)=>new THREE.GLTFLoader().load(url,res,undefined,rej));
+    const gltf = await new Promise((res,rej)=>psMakeGltfLoader().load(url,res,undefined,rej));
     mountRiggedHands(gltf); return true;
   }catch(err){ console.error(err); updatePartsStatus('rigged 手載入失敗:'+(err.message||err)); return false; }
   finally{ URL.revokeObjectURL(url); }
@@ -557,7 +557,7 @@ async function loadRiggedHandsBuiltin(){
     const r = await fetch('../assets/rigs/chibi-hands-rigged.glb');
     if(!r.ok) throw new Error('HTTP '+r.status);
     const ab = await r.arrayBuffer();
-    await new Promise((res,rej)=>new THREE.GLTFLoader().parse(ab, '', (g)=>{ try{ mountRiggedHands(g); res(); }catch(e){ rej(e); } }, rej));
+    await new Promise((res,rej)=>psMakeGltfLoader().parse(ab, '', (g)=>{ try{ mountRiggedHands(g); res(); }catch(e){ rej(e); } }, rej));
     return true;
   }catch(err){
     console.warn('builtin hands load failed', err);
@@ -590,7 +590,7 @@ function tintGhost(obj, hex, op){
 async function _loadGhostAvatar(){
   const r = await fetch('../assets/rigs/base-avatar.glb'); if(!r.ok) throw new Error('HTTP '+r.status);
   const ab = await r.arrayBuffer();
-  return await new Promise((res,rej)=>new THREE.GLTFLoader().parse(ab,'',res,rej));
+  return await new Promise((res,rej)=>psMakeGltfLoader().parse(ab,'',res,rej));
 }
 async function toggleCarriedGhost(){
   if(REF_GHOSTS.carried){ scene.remove(REF_GHOSTS.carried); REF_GHOSTS.carried = null; return false; }
@@ -741,11 +741,11 @@ window.__psEquip = {
   loadEquipBuffer: (ab, slot='headgear')=> new Promise((resolve,reject)=>{
     if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
     const s=document.getElementById('partSlotSelect'); if(s) s.value=slot;
-    new THREE.GLTFLoader().parse(ab, '', (gltf)=>{ const obj=gltf.scene||gltf.scenes[0]; obj.name='PUNCH_EQUIP_'+slot; try{ attachPart(slot,obj); resolve(true); }catch(e){ reject(e); } }, reject);
+    psMakeGltfLoader().parse(ab, '', (gltf)=>{ const obj=gltf.scene||gltf.scenes[0]; obj.name='PUNCH_EQUIP_'+slot; try{ attachPart(slot,obj); resolve(true); }catch(e){ reject(e); } }, reject);
   }),
   loadHandsBuffer: (ab)=> new Promise((resolve,reject)=>{
     if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
-    new THREE.GLTFLoader().parse(ab, '', (gltf)=>{ try{ mountRiggedHands(gltf); resolve(true); }catch(e){ reject(e); } }, reject);
+    psMakeGltfLoader().parse(ab, '', (gltf)=>{ try{ mountRiggedHands(gltf); resolve(true); }catch(e){ reject(e); } }, reject);
   }),
   // 逐關鍵格手指:寫進當前 key 的姿勢軸(side='L'/'R'),套用後回傳指骨四元數供驗證
   setFingerPose: (partial, side='L')=>{
