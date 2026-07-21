@@ -65,7 +65,7 @@ export const STRIKE_DELAY = PUNCH_CLIPS.map((n, i) => CLIPS[n]?.impactT ?? [0.28
 // 終結技=打飛:命中後小拋物線(最後一擊→擊中→打飛→落地),取代舊滑行擊退(FINISHER_KNOCK 240)。
 // 與丟人同一條彈道管線(f._lob 記 profile);調性=「挑空」:往前短、往上明顯、滯空久掛在空中。
 // 調參史:100/18/0.35(zmax≈34,嫌飛遠不夠高)→ 55/50/0.4(zmax≈65)→ 現值=使用者 ?tune 實測定稿(zmax≈115)。
-export const PUNCH_LAUNCH_LOB = { range: 80, apex: 100, T: 0.6, h0: 30 };
+export const PUNCH_LAUNCH_LOB = { range: 18, apex: 100, T: 0.6, h0: 30 }; // feel-6 使用者反饋:range 80 拋太遠(落地相距 ~130px vs 拳觸及 65)連擊接不上——改豎直挑空(GetAmped launcher):對手在面前被挑上天,全程在拳觸及內=可浮空補拳/落地接抓
 // --- 跳躍+下壓拳(brawl-2,使用者拍板 2026-07-15:空白=跳/Shift=防;走位技術入遊戲)---
 // 跳躍=自發小 lob(z 走 v2.js 同一套 lobZ 管線;range 0=垂直,水平位移靠移動+空中操控)。
 // 空中規則:免地板化學+免冰面鎖滑(=冰滑主動解)、不可防/抓/被抓;空中挨拳=AIR_HIT_LOB 小翻滾落地。

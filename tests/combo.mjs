@@ -46,7 +46,7 @@ const launch = await page.evaluate(() => { const v = __v2; const a = v.fighters[
   a._strikeKind = 0; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a);
   return { lob: o._lob === v.PUNCH_LAUNCH_LOB, fumble: +o.fumbleT.toFixed(2), speed: Math.round(Math.hypot(o.vx, o.vy)) };
 });
-R('對已暈者出拳=挑飛(PUNCH_LAUNCH_LOB)', launch.lob && launch.fumble > 0 && launch.speed > 100, JSON.stringify(launch));
+R('對已暈者出拳=挑飛(PUNCH_LAUNCH_LOB)', launch.lob && launch.fumble > 0 && launch.speed > 20, JSON.stringify(launch)); // feel-6 豎直挑空:range 80→18,F=30px/s(舊斷言 >100 配 range 80;挑飛主體在垂直 apex,水平速度小是特性)
 
 // ---------- ④ 風壓打空中目標=乾淨接送 ----------
 const carry = await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
