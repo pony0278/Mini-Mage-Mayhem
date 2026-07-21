@@ -69,7 +69,7 @@ function restartMatch() {
 // 開場高視角 vs 戰鬥低視角(使用者拍板 2026-07-21:開場保留舊高俯角運鏡框全場,
 // 「開始!」後平滑降到戰鬥視角)。CAM_FIGHT=戰鬥定案(=boot 那組);CAM_INTRO=舊 v2 高視角+拉遠。
 // intro 期間整組參數 smoothstep 混合(fov 由 render.js 偵測變化自動 updateProjectionMatrix)。
-const CAM_FIGHT = { fov: 27, angle: 37, dist: 630, lookY: 14 }; // GetAmped 式中俯角(使用者 2026-07-21 對照截圖定案)
+const CAM_FIGHT = { fov: 27, angle: 31, dist: 630, lookY: 14 }; // GetAmped 式中俯角(使用者 2026-07-21 對照截圖定案;angle 37→31 再放平)
 const CAM_INTRO = { fov: 32, angle: 44, dist: 780, lookY: 14 };
 let _camBlending = false; // intro 混合中旗標(結束時一次性歸位戰鬥值,之後不再碰=不干擾 ?tune 調參)
 function updateCamRig(dt) {
