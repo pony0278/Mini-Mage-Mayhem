@@ -20,7 +20,7 @@ const s1 = await page.evaluate(() => ({
   n: __v2.bottles.length, elems: __v2.bottles.map(t => t.elem).sort().join(','),
   padPool: __v2.pads.map(p => p.item), badPad: __v2.pads.some(p => p.item === 'ice' || p.item === 'oil'),
 }));
-R(`開場 6 瓶四型齊備(${s1.elems})`, s1.n === 6 && ['fire', 'ice', 'lightning', 'poison'].every(e => s1.elems.includes(e))); // 憲章供料:6 瓶位、開局四型齊+兩補位,oil 退出
+R(`開場 4 瓶全冰、四象限散開(${s1.elems})`, s1.n === 4 && s1.elems.split(',').every(e => e === 'ice')); // 2026-07-21 供料收斂:場上投擲物=冰瓶×4+爆桶×2(重心讓給肉搏+道具連招;元素多樣性走元素站/桶充能)
 R(`補給座只出裝備類(${s1.padPool})`, !s1.badPad);
 
 // ---------- ② 撿瓶 + 扛瓶全速 ----------

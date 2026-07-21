@@ -268,8 +268,10 @@ export const BOTTLE_LOB = { range: 180, apex: 34, T: 0.5, h0: 58 }; // 丟瓶拋
 export const BOTTLE_BREAK_V = 170;   // 地面硬撞碎裂門檻(px/s):走路推(BARREL_PUSH 130)不碎、風吹/丟出滑行必碎
 // 瓶 respawn 時長改走 bottleRespawnT()(4~6s 隨機=稀缺窗;見下方憲章供料模型)
 // §12.5 羅盤分區:對角中帶(桶=東西中線、補給座=南北中線、元素站=四角、艙=中心)。對角配對:油-冰交叉。
-// 供料:6 個瓶位、開局四型齊備+兩個補位;碎/清運後 respawn 走 randGarbage 換型(v2-items)
-export const BOTTLE_SPOTS = [[300, 180, 'fire'], [660, 180, 'ice'], [300, 460, 'poison'], [660, 460, 'lightning'], [180, 320, 'ice'], [780, 320, 'fire']];
+// 供料(2026-07-21 使用者拍板:場上投擲物收斂=冰霜瓶+爆桶,重心讓給肉搏+道具連招):
+// 4 個瓶位全冰、四象限散開(舊 6 位裡東西線兩位貼著爆桶 20px=擠;元素多樣性交給元素站/桶充能/裝備道具);
+// respawn 同型不換(randGarbage 退役,表留給 HUD 名稱)。
+export const BOTTLE_SPOTS = [[300, 180, 'ice'], [660, 180, 'ice'], [300, 460, 'ice'], [660, 460, 'ice']];
 export const bottles = BOTTLE_SPOTS.map(([x, y, elem]) => ({ kind: 'bottle', x, y, x0: x, y0: y, r: 9, elem, alive: true, respawn: 0, held: false, vx: 0, vy: 0, thrownBy: -1, flyT0: -9, landed: true, z: 0, roll: 0, _smash: false }));
 export function resetBottles() { for (const t of bottles) { t.x = t.x0; t.y = t.y0; t.alive = true; t.respawn = 0; t.held = false; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; t._smash = false; } }
 

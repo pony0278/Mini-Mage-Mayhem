@@ -7,7 +7,7 @@ import { game } from './state.js';
 import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod,
-  GARBAGE_ELEMS, GARBAGE_NAME, randGarbage, bottleRespawnT,
+  GARBAGE_NAME, bottleRespawnT,
   pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, WIND_CARRY_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
@@ -350,7 +350,7 @@ function recycleGarbage(t) {
 }
 export function updateBottles(dt) {
   for (const t of bottles) {
-    if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.elem = randGarbage(t.elem); t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; }
+    if (!t.alive) { t.respawn -= dt; if (t.respawn <= 0) { t.alive = true; t.x = t.x0; t.y = t.y0; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; addRing(t.x, t.y, 18, elemColor(t.elem), 0.3, 4); } continue; } // respawn 同型不換(場上瓶=全冰;randGarbage 換型退役 2026-07-21)
     if (t._smash) { shatterBottle(t); continue; }                    // 被拳打碎(v2-combat 只立旗,免 DAG 反向 import)
     if (t.held) continue;                                            // 被扛的瓶由 carry loop 定位
     if (t.z <= 2 && inPod(t.x, t.y)) { recycleGarbage(t); continue; } // Route A:落進回收口 = 清運(優先於碎裂;丟得進去才算,空中飛越不算)

@@ -23,7 +23,7 @@ const boot = await page.evaluate(() => { const v = __v2; return {
   aiMode: v.fighters[1]._aiMode,
   charterGone: v.v2s.seq === undefined && v.v2s.energy === undefined && v.v2s.clockT === undefined && v.v2s.propsFull === undefined && v.v2s.ending === undefined,
 }; });
-R('開局系統全醒(桶2/補給座2/瓶6/拉桿2,無 ?props=full)', boot.barrels === 2 && boot.pads === 2 && boot.bottles === 6 && boot.switches === 2, JSON.stringify(boot));
+R('開局系統全醒(桶2/補給座2/瓶4/拉桿2,無 ?props=full)', boot.barrels === 2 && boot.pads === 2 && boot.bottles === 4 && boot.switches === 2, JSON.stringify(boot)); // 瓶 6→4:2026-07-21 供料收斂(全冰、四象限)
 R('AI=純戰鬥模式(分類同事凍結在 B 款)', boot.aiMode === 'fight');
 R('charter 純量殘留清除(v2s 無 seq/energy/clockT/propsFull/ending)', boot.charterGone);
 
