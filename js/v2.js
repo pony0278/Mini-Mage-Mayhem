@@ -274,6 +274,12 @@ function step(dt) {
       f._runT = f.running ? (f._runT || 0) + dt : 0; // 衝刺狀態計時:持續跑 ≥ DASH_RUN_T 出拳=衝刺攻擊(feel-1)
       floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
       if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
+      // 腳步塵土(run-1):跑動貼地時每步(≈stridePx/2=54px)腳下冒一小撮土——把「踩在地上」賣給眼睛(跑=預設,常駐回饋)
+      if (f.state === 'alive' && f.running && (f.z || 0) <= 0 && f.fumbleT <= 0) {
+        f._dustAcc = (f._dustAcc || 0) + Math.hypot(f.x - (f._dustPx ?? f.x), f.y - (f._dustPy ?? f.y));
+        if (f._dustAcc >= 54) { f._dustAcc = 0; addRing(f.x - Math.cos(f.facing) * 9, f.y - Math.sin(f.facing) * 9, 9, '#b3a48c', 0.2, 2); }
+      } else f._dustAcc = 0;
+      f._dustPx = f.x; f._dustPy = f.y;
     }
     drainFloorEvents(); // 毒爆等一次性事件 AoE(本幀 stepFloor/道具注入產生的)
     updateAiCall();     // tier-1:實習生跑掉後的資深同事進場排程(CALL_T 到=同點進場,比分保留)

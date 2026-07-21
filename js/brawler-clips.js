@@ -236,17 +236,35 @@ export const CLIPS = {
   // 使用者 PUNCH STUDIO 初稿 + 接入時的節奏修正:①run_3=run_1 完全一致(原殘差 kx 0↔42 → 接縫跳)
   // ②循環段 ease lin(原全 out=每步頓一下)③lags 全 0(原 lR 0.1≈整圈相位,繞回點會取樣到起跑段)。
   // idle 略去 → COMBAT_IDLE 起跑。
-  run_cycle: prepClip({
+  run_cycle: prepClip({ // 跑步循環 v3(2026-07-21 使用者授權代編;基於使用者 v2 的手臂擺動,重做腿+重量起伏):
+    // 舊 v2=2 格剪刀腿(±60° 開合、直膝、等高)=滑行感;v3=標準四段×左右 8 格:
+    // contact(前腿伸直踩地/後腿蹬尾)→ down(重量壓上:膝彎+root_py 最低;root_py=studio 單位 1≈25px 故用小數)→ pass(後腿摺膝 115° 掃過/身體回升)
+    // → up(蹬地騰空:root_py 最高+前膝高抬)。前傾 spine_x 18~22 貫穿;觸地格 contact=1 踩實。
+    // root_py 起伏編進格子 → ANIM.runClip.bob 已關(0)讓位,免雙重彈跳。手臂=使用者 v2 兩極值+中間格內插。
     seq: [
       { name: 'idle', frame: 0, frames: 10, ease: 'out', tag: 'idle' },
-      { name: 'run_1', frame: 4, ease: 'out', tag: 'run' },
-      { name: 'run_2', frame: 7, ease: 'lin', tag: 'run' },
-      { name: 'run_3', frame: 10, ease: 'lin', tag: 'run' },
+      { name: 'contact_L', frame: 4, ease: 'out', tag: 'run' },
+      { name: 'down_L', frame: 6, ease: 'lin', tag: 'run' },
+      { name: 'pass_L', frame: 8, ease: 'lin', tag: 'run' },
+      { name: 'up_L', frame: 10, ease: 'lin', tag: 'run' },
+      { name: 'contact_R', frame: 12, ease: 'lin', tag: 'run' },
+      { name: 'down_R', frame: 14, ease: 'lin', tag: 'run' },
+      { name: 'pass_R', frame: 16, ease: 'lin', tag: 'run' },
+      { name: 'up_R', frame: 18, ease: 'lin', tag: 'run' },
+      { name: 'loop_end', frame: 20, ease: 'lin', tag: 'run' },
     ],
-    phases: { // 腿部 v2(使用者:擺幅加大+踝角);run_3=run_1 完全複製(接縫規則)
-      run_1: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lL_kx: 24, lL_ax: 60, lR_hx: -60, lR_kx: 26, lR_ax: -41 },
-      run_2: { aL_sx: 120, aL_sz: 26, aL_ex: 68, aR_sx: -45, aR_sz: 25, aR_ex: 74, lL_hx: -60, lL_kx: 19, lL_ax: -46, lR_hx: 60, lR_kx: 44, lR_ax: 60 },
-      run_3: { aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 60, lL_kx: 24, lL_ax: 60, lR_hx: -60, lR_kx: 26, lR_ax: -41 },
+    phases: {
+      // 左腳領跑半循環(手臂=使用者 run_1 極值起步)
+      contact_L: { spine_x: 18, root_py: -0.08, aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 55, lL_kx: 10, lL_ax: -25, lL_contact: 1, lR_hx: -50, lR_kx: 60, lR_ax: 45 },
+      down_L:    { spine_x: 20, root_py: -0.24, aL_sx: -20, aL_sz: 26, aL_ex: 68, aR_sx: 80, aR_sz: 25, aR_ex: 74, lL_hx: 35, lL_kx: 55, lL_ax: 10, lL_contact: 1, lR_hx: -30, lR_kx: 95, lR_ax: 50 },
+      pass_L:    { spine_x: 20, root_py: 0.02, aL_sx: 30, aL_sz: 26, aL_ex: 68, aR_sx: 30, aR_sz: 25, aR_ex: 74, lL_hx: 5, lL_kx: 25, lL_ax: 10, lL_contact: 1, lR_hx: 10, lR_kx: 115, lR_ax: 55 },
+      up_L:      { spine_x: 22, root_py: 0.2, aL_sx: 90, aL_sz: 26, aL_ex: 68, aR_sx: -20, aR_sz: 25, aR_ex: 74, lL_hx: -35, lL_kx: 40, lL_ax: 50, lR_hx: 45, lR_kx: 80, lR_ax: 0 },
+      // 右腳領跑半循環(鏡像;手臂=使用者 run_2 極值)
+      contact_R: { spine_x: 18, root_py: -0.08, aL_sx: 120, aL_sz: 26, aL_ex: 68, aR_sx: -45, aR_sz: 25, aR_ex: 74, lR_hx: 55, lR_kx: 10, lR_ax: -25, lR_contact: 1, lL_hx: -50, lL_kx: 60, lL_ax: 45 },
+      down_R:    { spine_x: 20, root_py: -0.24, aL_sx: 85, aL_sz: 26, aL_ex: 68, aR_sx: -15, aR_sz: 25, aR_ex: 74, lR_hx: 35, lR_kx: 55, lR_ax: 10, lR_contact: 1, lL_hx: -30, lL_kx: 95, lL_ax: 50 },
+      pass_R:    { spine_x: 20, root_py: 0.02, aL_sx: 35, aL_sz: 26, aL_ex: 68, aR_sx: 35, aR_sz: 25, aR_ex: 74, lR_hx: 5, lR_kx: 25, lR_ax: 10, lR_contact: 1, lL_hx: 10, lL_kx: 115, lL_ax: 55 },
+      up_R:      { spine_x: 22, root_py: 0.2, aL_sx: -25, aL_sz: 26, aL_ex: 68, aR_sx: 95, aR_sz: 25, aR_ex: 74, lR_hx: -35, lR_kx: 40, lR_ax: 50, lL_hx: 45, lL_kx: 80, lL_ax: 0 },
+      loop_end:  { spine_x: 18, root_py: -0.08, aL_sx: -51, aL_sz: 26, aL_ex: 68, aR_sx: 107, aR_sz: 25, aR_ex: 74, lL_hx: 55, lL_kx: 10, lL_ax: -25, lL_contact: 1, lR_hx: -50, lR_kx: 60, lR_ax: 45 },
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0 },
   }),
