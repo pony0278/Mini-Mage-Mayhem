@@ -48,7 +48,7 @@ export const ANIM = {
     aR_fbase: -48, aR_fmid: 0, aR_ftip: 0, aR_fthumb: 0,
   },
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
-  thrown:  { lift: 8, rate: 10 },                                                          // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下的平滑速率
+  thrown:  { lift: 8, rate: 10, center: 36, lean: 0.42 },                                  // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下平滑速率 / center=趴姿繞「身體中心」的軸心補償(≈半身長;feel-4b 治「頭前伸半身→落地彈回」的視覺差)/ lean=挑飛直立後仰角(rad)
   heldBarrel: { liftK: 0.9 },                                                              // 扛桶/瓶:物心抬高 = 邊長×此係數(0.5=底貼掌心;45° 俯視鏡頭下要再高些頭才不被蓋)
   guard: { // 按住防禦:使用者 studio 定稿的舉防定格(guard 幀非零軸→值直接蓋在戰鬥站姿上;側身含胸、右臂高舉護頭、左臂護體、屈膝穩樁)
     spine_x: -13, spine_y: -86, pelvis_y: -63,
@@ -436,13 +436,28 @@ export function updateBrawler(e, g) {
   g.position.y = lift;              // root_py 已進姿勢層;airY/lift 是世界層的疊加
   if (u.shadow) u.shadow.position.y = 1.6 - lift;   // 影子留地面讀高度
   if (u.lie > 0.01) {
-    if (u.lieYaw === undefined) {                   // 起飛瞬間鎖定朝向:撞牆反彈/落地滑行速度突變時身體不亂轉
+    if (u.lieYaw === undefined || u.lieLob !== e._lob) { // 起飛瞬間鎖定朝向(彈道 profile 換了=風壓改送/接力,重新鎖)
       const va = (Math.hypot(e.vx || 0, e.vy || 0) > 20) ? Math.atan2(e.vy, e.vx) : (e.facing || 0);
       u.lieYaw = Math.atan2(Math.cos(va), Math.sin(va));
+      u.lieDir = va; u.lieLob = e._lob;
+      u.lieMode = e._launched ? 'up' : 'prone';     // 挑飛=直立後仰;丟人/拍落/風壓接送=超人趴姿
     }
-    g.quaternion.setFromAxisAngle(_upAxis, u.lieYaw);
-    g.rotateX(Math.PI / 2 * u.lie);                 // 頭前腳後、面朝地;u.lie 內插=起身動畫
-  } else { u.lieYaw = undefined; g.rotation.set(0, yaw, wob); }
+    if (u.lieMode === 'up') {
+      // 挑飛直立(feel-4b 使用者反饋):90° 朝上飛、面向不動(正面被打=面對攻擊者、背面被打=維持背對),
+      // 只微後仰(頭在後、腳領先飛行方向=格鬥挑空語言)。無趴姿前伸 → 落點所見即所得。
+      g.rotation.set(0, yaw, wob);
+      _tip.set(Math.sin(u.lieDir), 0, -Math.cos(u.lieDir));
+      g.rotateOnWorldAxis(_tip, -A.thrown.lean * u.lie); // 負角=往攻擊者那側後仰(飛離方向的反向)
+    } else {
+      g.quaternion.setFromAxisAngle(_upAxis, u.lieYaw);
+      g.rotateX(Math.PI / 2 * u.lie);               // 頭前腳後、面朝地;u.lie 內插=起身動畫
+      // 軸心補償(feel-4b):繞「身體中心」趴而非繞腳——原本趴平=整身(~78px)往前伸出 sim 點,
+      // 視覺質心前移半身 → 玩家誤判落點、落地起身像「彈回」。往後挪半身讓質心=sim 點(影子隨掛)。
+      const cc = A.thrown.center * u.lie;
+      g.position.x -= Math.cos(u.lieDir) * cc;
+      g.position.z -= Math.sin(u.lieDir) * cc;
+    }
+  } else { u.lieYaw = undefined; u.lieMode = undefined; u.lieLob = undefined; g.rotation.set(0, yaw, wob); }
   const fmul = flinchClip ? A.flinch.clipMul : 1;   // hit_flinch clip 播放時降權(clip 已做軀幹後仰,overlay 只留一點方向傾斜+impact 壓扁)
   const fk = (e.flinchT > 0 ? Math.min(1, e.flinchT / A.flinch.window) : 0) * fmul;
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }

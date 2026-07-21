@@ -238,6 +238,8 @@ function step(dt) {
         f.z = z;
         // 被丟打橫旗:飛行中+落地滑行都趴著,滑停(fumbleT 歸零)才站起(render 讀,actor-brawler 平滑旋轉)
         f._lying = !!(f._thrownT > -5 && game.time - f._thrownT < lob.T + 0.15 && (z > 0 || f.fumbleT > 0));
+        // 挑飛旗(feel-4b):挑飛=直立後仰飛(面向不動、90° 朝上),非超人趴姿——actor-brawler 讀此旗分姿勢
+        f._launched = f._lying && f._lob === PUNCH_LAUNCH_LOB;
       }
       if (f.restunT > 0) f.restunT -= dt;
       if (f.invuln > 0) f.invuln -= dt;

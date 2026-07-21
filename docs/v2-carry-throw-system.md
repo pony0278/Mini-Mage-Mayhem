@@ -148,7 +148,7 @@ BARREL_LAND_FUSE = 1.0     // 被丟的桶落地閃 1s 才爆(反制窗)
 |---|---|---|
 | 人:`slideKnock` 身體阻擋 | **跳過**(飛越對手) | v2-combat `air` gate |
 | 人:`slideKnock` 摩擦 | **跳過**(等速直線);落地幀 ×LAND_SKID 短滑 0.1s(實測 ~8px) | 同上 + v2.js 落地偵測 |
-| 人:飛行姿態 | **打橫趴飛**(超人式:頭朝速度方向、面朝地+四肢亂踢)→ 落地滑行仍趴 → **滑停才平滑站起**(`f._lying` 旗=v2.js 算;actor-brawler `u.lie` 內插旋轉+`ANIM.thrown.lift` 抬半身厚)。**趴姿朝向凍結在起飛瞬間**(`u.lieYaw`)——撞牆反彈/滑行速度突變時身體不亂轉 | v2.js `_lying` + actor-brawler 世界層 |
+| 人:飛行姿態 | **分二(feel-4b 使用者反饋)**:①**挑飛**(`_lob===PUNCH_LAUNCH_LOB` → `f._launched` 旗)=**直立後仰飛**(90° 朝上、面向不動——正面被打=面對攻擊者、背面被打=維持背對;`ANIM.thrown.lean` 後仰角)②**丟人/拍落/風壓接送=打橫趴飛**(超人式:頭朝速度方向、面朝地)→ 落地滑行仍趴 → **滑停才平滑站起**(`f._lying` 旗=v2.js 算;actor-brawler `u.lie` 內插旋轉+`ANIM.thrown.lift` 抬半身厚)。**趴姿繞「身體中心」**(`ANIM.thrown.center` 軸心補償;舊版繞腳=整身前伸半身,玩家誤判落點+落地起身像「彈回」)。**朝向凍結在起飛瞬間**(`u.lieYaw`;彈道 profile 換了=風壓改送,重新鎖) | v2.js `_lying`/`_launched` + actor-brawler 世界層 |
 | 人:撞牆 | **小反彈**(法向速度 ×−WALL_BOUNCE)→ `_thrownT` 夾成 0.1s z 快落 → 落地 LAND_SKID+摩擦=很快停。⚠ 夾出的時戳開場可為小負數 → **`_thrownT` 哨兵一律用 `> -5`**(-9=未被丟),用 `> 0` 會把有效時戳當沒被丟(踩過) | slideKnock |
 | 人:入艙(`thrown && inPod`) | **算**(空中灌籃,決策 B)——照舊掃過艙半徑即收容 | v2.js(零改動) |
 | 人:空中被拳打/風/元素站噴發 | **忽略 z**(0.6s 窗口極短;混亂是招牌) | 零改動 |
