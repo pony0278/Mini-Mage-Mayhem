@@ -66,21 +66,26 @@ function restartMatch() {
 // --- 有界跟隨(bounded follow):鏡頭跟一個「平滑 + 夾在內縮框裡」的代理點(camRig),
 // 而不是直接黏在角色上。X 夾在 [ix, W-ix]:玩家貼牆仍在畫面內、又不越過側牆露黑邊;
 // 垂直同樣夾 ny/sy。只用在平台場;浮島/格子場直接跟角色。數值可用 __v2.CAMB 即時微調。
-let _camDist0 = 0; // 開場拉遠用的基準 dist(boot 設定後記住;intro 結束還原)
+// 開場高視角 vs 戰鬥低視角(使用者拍板 2026-07-21:開場保留舊高俯角運鏡框全場,
+// 「開始!」後平滑降到戰鬥視角)。CAM_FIGHT=戰鬥定案(=boot 那組);CAM_INTRO=舊 v2 高視角+拉遠。
+// intro 期間整組參數 smoothstep 混合(fov 由 render.js 偵測變化自動 updateProjectionMatrix)。
+const CAM_FIGHT = { fov: 27, angle: 25, dist: 630, lookY: 14 };
+const CAM_INTRO = { fov: 32, angle: 44, dist: 780, lookY: 14 };
+let _camBlending = false; // intro 混合中旗標(結束時一次性歸位戰鬥值,之後不再碰=不干擾 ?tune 調參)
 function updateCamRig(dt) {
   const lf = fighters[LOCAL];
   let tx = Math.min(Math.max(lf.x, CAMB.ix), W - CAMB.ix), ty = Math.min(Math.max(lf.y, CAMB.ny), CAMB.sy);
-  // 開場帶場(使用者拍板 2026-07:雙方就位靜止,鏡頭框住「兩人」+拉遠 →「開始!」後平滑回玩家;
+  // 開場帶場(使用者拍板 2026-07:雙方就位靜止,鏡頭框住「兩人」+高視角拉遠 →「開始!」後平滑回玩家;
   // 不再飛去對手那邊——AI 一開工到處回收垃圾,玩家看著就懂)。
   if (v2s.introT > 0) {
-    if (!_camDist0) _camDist0 = CAM.dist;
+    _camBlending = true;
     const o = fighters[1 - LOCAL];
     const back = Math.min(1, Math.max(0, (INTRO_GO - v2s.introT) / INTRO_GO));   // 0=就位期,→1=「開始!」期間回到玩家
     const e = back * back * (3 - 2 * back);                                       // smoothstep
     const mx = (lf.x + o.x) / 2, my = (lf.y + o.y) / 2;                           // 兩人中點
     tx = mx + (tx - mx) * e; ty = my + (ty - my) * e;
-    CAM.dist = _camDist0 + 130 * (1 - e);                                         // 拉遠框住雙方,回程收回
-  } else if (_camDist0) { CAM.dist = _camDist0; _camDist0 = 0; }                  // intro 結束還原(不干擾 sandbox 調參)
+    for (const k in CAM_FIGHT) CAM[k] = CAM_INTRO[k] + (CAM_FIGHT[k] - CAM_INTRO[k]) * e; // 高視角→戰鬥視角整組混
+  } else if (_camBlending) { Object.assign(CAM, CAM_FIGHT); _camBlending = false; } // intro 結束一次性歸位(不干擾 ?tune 調參)
   const e = Math.min(1, dt * CAMB.ease);
   camRig.x += (tx - camRig.x) * e; camRig.y += (ty - camRig.y) * e;
 }
@@ -517,7 +522,7 @@ if (TERRAIN === 'isles') {
   setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target
   // north, so the player (south of it) rides low in frame → less black void below, more arena ahead. (Live-tune via __v2.CAM.)
-  CAM.fov = 27; CAM.angle = 25; CAM.dist = 630; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -25; CAM.lookY = 14; // v2 相機定案(使用者 ?tune 拉定;此行=v2 flat/lab 的唯一相機來源,蓋掉 state.js 的單機預設。改 v2 視角改這裡,不是 state.js)
+  Object.assign(CAM, { azimuth: 0, panX: 0, panZ: -25 }, CAM_FIGHT); // v2 相機定案(使用者 ?tune 拉定;戰鬥視角=CAM_FIGHT、開場高視角=CAM_INTRO,都在 updateCamRig 上方。改 v2 視角改那裡,不是 state.js——state.js 的 CAM 只是單機預設,v2 開機即蓋掉)
 }
 // flat mode uses the smoothed/bounded camRig; isles/grid follow the fighter directly (their framing differs)
 game.camTarget = TERRAIN === 'flat' ? camRig : fighters[0];
