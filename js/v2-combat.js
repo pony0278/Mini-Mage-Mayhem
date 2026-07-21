@@ -374,7 +374,7 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
   f._strikeAt = 0;
   if (dash) f._dashT0 = -9;                    // 前衝結束(被打斷也要停,免鬼滑)
   if (f.stunned || f.carrying || f.carriedBy || f.fumbleT > 0 || f.state !== 'alive') return; // 被打斷:這拳不存在
-  if (!dash) f._recoverT = game.time + PUNCH_RECOVER[stage]; // 收招承諾:鎖到 clip 播完(揮空=真懲罰窗;衝刺有 DASH_CD+滑過頭自己的懲罰)
+  f._recoverT = game.time + PUNCH_RECOVER[stage]; // 收招承諾:鎖到 clip 播完(揮空=真懲罰窗)。衝刺拳也蓋章(使用者拍板 2026-07-21:攻擊完停一空拍不能馬上接移動;PUNCH_RECOVER[4]=dash clip 尾巴自動導出,再疊 DASH_CD+滑過頭)
   const a = f._strikeDir; let hit = false;
   // 出拳衝步只留終結技(玩家反饋:每拳都滑一步不自然)。鉤拳原地,進拳靠走位。
   if (fin) { f.vx += Math.cos(a) * 150; f.vy += Math.sin(a) * 150; }

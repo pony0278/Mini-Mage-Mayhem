@@ -36,10 +36,14 @@ const dash = await page.evaluate(`(() => { ${fresh}
   return { kind: a._strikeKind, dashing: a._dashT0 > -5, comboReset: a.comboN === 0 && a.comboT === 0, punchKind: a.punchKind }; })()`);
 R('持續跑 ≥ 門檻出拳=衝刺攻擊(kind 4+不入連段)', dash.kind === 4 && dash.dashing && dash.comboReset && dash.punchKind === 4, JSON.stringify(dash));
 
-// ---------- ③ 命中=削 DASH_STAB+推(等 impact 幀) ----------
-await W('!(__v2.fighters[1]._dashT0 > -5)', 30); // 前衝結束=已判定
-const hit = await page.evaluate(() => { const v = __v2; const o = v.fighters[0];
-  return { stab: Math.round(o.stability), pushed: Math.hypot(o.vx, o.vy) > 100 || Math.abs(o.x - 500) > 10, burst: v.game.bursts.length > 0 }; });
+// ---------- ③ 命中=削 DASH_STAB+推(同步直呼 resolveStrike:爆花在同一 evaluate 讀——
+// turbo 一批 8 步=0.26s 遊戲時間 ≥ 爆花壽命,輪詢讀會 race;且 fx 每幀 filter 重建 bursts 陣列=push hook 也掛不住) ----------
+await W('!(__v2.fighters[1]._dashT0 > -5)', 30); // 讓 ② 的自然排程先落地(清場)
+const hit = await page.evaluate(`(() => { ${fresh}
+  o.stunned = false; o.restunT = 9; o.stability = 100; v.game.hitstop = 0;
+  a._strikeAt = v.game.time; a._strikeKind = 4; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); a._dashT0 = v.game.time - 0.1;
+  v.resolveStrike(a);
+  return { stab: Math.round(o.stability), pushed: Math.hypot(o.vx, o.vy) > 100 || Math.abs(o.x - 500) > 10, burst: v.game.bursts.length > 0 }; })()`);
 R('衝刺命中=削穩定 30+推+爆花', hit.stab === 70 && hit.pushed && hit.burst, JSON.stringify(hit));
 
 // ---------- ④ 可擋+擋下開反擊窗 ----------
@@ -86,6 +90,21 @@ const slots = await page.evaluate(async () => {
     hitSlot: 'hit_flinch' in M.CLIPS || true, walkSlot: 'walk_cycle' in M.CLIPS || true }; // 槽可缺(fallback 已驗:遊戲跑到這=沒炸)
 });
 R('clip 槽位就緒(PUNCH_CLIPS[4]=dash_punch;hit_flinch/walk_cycle 缺槽安全)', slots.punchClips === 5 && slots.dash, JSON.stringify(slots));
+
+// ---------- ⑨ 衝刺拳 clip 已裝 + 收招空拍(feel-5 使用者拍板:攻擊完停一拍不能馬上接移動) ----------
+const rec = await page.evaluate(async () => {
+  const C = await import('./js/brawler-clips.js');
+  const S = await import('./js/v2-state.js');
+  const v = __v2, f = v.fighters[1], o = v.fighters[0];
+  o.x = 100; o.y = 100;                                          // 對手挪遠=揮空
+  f.x = 480; f.y = 540; f.stunned = false; f.fumbleT = 0; f._recoverT = 0; v.game.hitstop = 0;
+  f._strikeAt = v.game.time; f._strikeKind = 4; f._strikeDir = 0; f._dashT0 = v.game.time - 0.3;
+  v.resolveStrike(f);
+  return { impactT: +C.CLIPS.dash_punch.impactT.toFixed(3), recover: +S.PUNCH_RECOVER[4].toFixed(3),
+    locked: f._recoverT > v.game.time, dashCleared: f._dashT0 < -5 };
+});
+R('dash_punch clip 裝載(impact 0.267s=DASH_T 自動導出)', rec.impactT === 0.267, JSON.stringify(rec));
+R('衝刺拳收招空拍:impact 後鎖移動 ~0.217s(揮空也鎖)', rec.locked && rec.recover > 0.15 && rec.recover < 0.3 && rec.dashCleared, JSON.stringify(rec));
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);

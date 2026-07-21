@@ -278,5 +278,25 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0, lL: 0, lR: 0.1 },
   }),
+  dash_punch: prepClip({ // 衝刺突進拳(使用者 studio 定稿 2026-07-21;跑≥0.4s 出拳=前衝直拳):
+    // impact @16f≈0.267s(自動成為 DASH_T/STRIKE_DELAY[4]);尾巴=impact_hold 3f 定格+回站姿 10f
+    // = PUNCH_RECOVER[4]≈0.217s 收招空拍(使用者拍板:攻擊完停一拍,不能馬上接移動——resolveStrike 對 dash 也蓋章)
+    seq: [
+      { name: 'idle', frame: 0, frames: 10, returnFrames: 10, ease: 'out' },
+      { name: 'anti', frame: 7, ease: 'out' },
+      { name: 'strike', frame: 10, ease: 'out' },
+      { name: 'strike_hold', frame: 13, ease: 'out' },
+      { name: 'impact', frame: 16, ease: 'out', impact: true },
+      { name: 'impact_hold', frame: 19, ease: 'out' },
+    ],
+    phases: {
+      anti: { spine_x: -24, spine_y: 90, pelvis_y: -12, aL_sx: 40, aL_sy: 41, aL_sz: 90, aL_ex: 122, aR_sz: 90, lL_hx: -60, lR_hx: 36, lR_hy: 40, aR_stretch: 2.68 },
+      strike: { spine_x: -24, spine_y: 90, pelvis_y: -12, aL_sx: 40, aL_sy: 41, aL_sz: 90, aL_ex: 122, aR_sz: 90, aR_ex: 117, lL_hx: 3, lR_hx: 36, lR_hy: 40, aR_stretch: 2.68 },
+      strike_hold: { spine_x: -3, spine_y: 59, pelvis_y: -12, aL_sx: 40, aL_sy: 41, aL_sz: 90, aL_ex: 122, aR_sx: -2, aR_sz: 91, aR_ex: 159, lL_hx: 3, lR_hx: 24, lR_hy: 40, aR_stretch: 2.68 },
+      impact: { spine_x: 54, aL_sx: -15, aL_sy: -25, aL_sz: 90, aL_ex: 122, aR_sx: -48, aR_sy: -97, aR_sz: 105, aR_ex: -5, lL_hx: 55, lL_hy: 14, lR_hx: 53, lR_hy: 40, aR_stretch: 2.68 },
+      impact_hold: { spine_x: 62, aL_sx: -15, aL_sy: -25, aL_sz: 90, aL_ex: 122, aR_sx: -48, aR_sy: -97, aR_sz: 105, aR_ex: -5, lL_hx: 60, lL_hy: 14, lR_hx: 60, lR_hy: 40, aR_stretch: 2.68 },
+    },
+    lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
+  }),
 };
 export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand', 'dive_punch', 'dash_punch']; // punchKind 0/1/2 → 三連擊;3=下壓拳(空中)/4=衝刺拳(跑)——皆為可選槽,使用者編好貼入即播(缺槽時 actor-brawler 暫用 overhand/rhook)
