@@ -176,7 +176,7 @@ export const BARREL_THROW_DELAY = CLIPS.barrel_throw?.tags.release ?? 22 / 60;
 // 撞牆彈跳騰空(玩家反饋:桶被吹亂但沒翻—讓「夠快的桶撞牆反彈」那段騰空跳起翻滾):地面高速桶撞牆 → 短弧跳起(空中=快速自旋)→ 落地。
 // apex·4p(1−p)=貼地起落純跳弧(h0=0);min=觸發下限(慢滾不跳);T=騰空時長。
 export const BARREL_WALL_HOP = { min: 250, apex: 45, T: 0.4 };
-export const BARREL_SPOTS = [[200, 320], [760, 320]];   // §12.5 羅盤分區:東西中線(避開補給台南北/元素站角/艙中)
+export const BARREL_SPOTS = [[110, 235], [850, 235]];   // 2026-07-21 貼牆:左右牆邊(元素站角與側閘拉桿之間的空檔;讓開中央戰鬥區)
 export const barrels = BARREL_SPOTS.map(([x, y]) => ({ x, y, r: 13, state: 'idle', fuse: 0, alive: true, respawn: 0, charge: null, held: false, vx: 0, vy: 0, thrownBy: -1, armGrace: 0, flyT0: -9, landed: true, z: 0, dropT0: -9, dropZ0: 0, hopT0: -9, roll: 0 }));
 export function resetBarrels() { for (const b of barrels) { b.state = 'idle'; b.fuse = 0; b.alive = true; b.respawn = 0; b.charge = null; b.held = false; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; b.dropT0 = -9; b.dropZ0 = 0; b.hopT0 = -9; b.roll = 0; } }
 
@@ -268,10 +268,9 @@ export const BOTTLE_LOB = { range: 180, apex: 34, T: 0.5, h0: 58 }; // 丟瓶拋
 export const BOTTLE_BREAK_V = 170;   // 地面硬撞碎裂門檻(px/s):走路推(BARREL_PUSH 130)不碎、風吹/丟出滑行必碎
 // 瓶 respawn 時長改走 bottleRespawnT()(4~6s 隨機=稀缺窗;見下方憲章供料模型)
 // §12.5 羅盤分區:對角中帶(桶=東西中線、補給座=南北中線、元素站=四角、艙=中心)。對角配對:油-冰交叉。
-// 供料(2026-07-21 使用者拍板:場上投擲物收斂=冰霜瓶+爆桶,重心讓給肉搏+道具連招):
-// 4 個瓶位全冰、四象限散開(舊 6 位裡東西線兩位貼著爆桶 20px=擠;元素多樣性交給元素站/桶充能/裝備道具);
-// respawn 同型不換(randGarbage 退役,表留給 HUD 名稱)。
-export const BOTTLE_SPOTS = [[300, 180, 'ice'], [660, 180, 'ice'], [300, 460, 'ice'], [660, 460, 'ice']];
+// 供料(2026-07-21 使用者拍板:場上投擲物收斂=冰霜瓶+爆桶,重心讓給肉搏+道具連招;再收:全貼牆散角落,中央淨空):
+// 4 個瓶位全冰、塞四角深袋(外於角落元素站;元素多樣性交給元素站/桶充能/裝備道具);respawn 同型不換(randGarbage 退役,表留給 HUD 名稱)。
+export const BOTTLE_SPOTS = [[95, 95, 'ice'], [865, 95, 'ice'], [95, 545, 'ice'], [865, 545, 'ice']];
 export const bottles = BOTTLE_SPOTS.map(([x, y, elem]) => ({ kind: 'bottle', x, y, x0: x, y0: y, r: 9, elem, alive: true, respawn: 0, held: false, vx: 0, vy: 0, thrownBy: -1, flyT0: -9, landed: true, z: 0, roll: 0, _smash: false }));
 export function resetBottles() { for (const t of bottles) { t.x = t.x0; t.y = t.y0; t.alive = true; t.respawn = 0; t.held = false; t.vx = 0; t.vy = 0; t.thrownBy = -1; t.flyT0 = -9; t.landed = true; t.z = 0; t.roll = 0; t._smash = false; } }
 
