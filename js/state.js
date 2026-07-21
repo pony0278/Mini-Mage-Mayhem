@@ -97,4 +97,4 @@ export const touch = {
 // so the (still-inline) sim can read CAM.azimuth without a render↔sim import
 // cycle. Moves into render.js once the intent adapter removes sim's CAM read.
 // Mutated in place (camera-sandbox sliders); never reassigned.
-export const CAM = { fov: 27, angle: 25, dist: 630, azimuth: 0, panX: 0, panZ: -25, lookY: 14 };
+export const CAM = { fov: 33, angle: 41, dist: 720, azimuth: -35, panX: 10, panZ: -10, lookY: -10 };

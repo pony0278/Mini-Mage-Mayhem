@@ -517,7 +517,7 @@ if (TERRAIN === 'isles') {
   setVividFx(true);
   // pulled in (dist↓) and panned so the followed player sits in the lower third: panZ<0 pushes the look-target
   // north, so the player (south of it) rides low in frame → less black void below, more arena ahead. (Live-tune via __v2.CAM.)
-  CAM.fov = 32; CAM.angle = 44; CAM.dist = 650; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -25; CAM.lookY = 14;
+  CAM.fov = 27; CAM.angle = 25; CAM.dist = 630; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -25; CAM.lookY = 14; // v2 相機定案(使用者 ?tune 拉定;此行=v2 flat/lab 的唯一相機來源,蓋掉 state.js 的單機預設。改 v2 視角改這裡,不是 state.js)
 }
 // flat mode uses the smoothed/bounded camRig; isles/grid follow the fighter directly (their framing differs)
 game.camTarget = TERRAIN === 'flat' ? camRig : fighters[0];
