@@ -99,7 +99,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];
-  g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap)) { av.hidden.push(o); o.visible = false; } });
+  g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap) && !o.userData.__equip) { av.hidden.push(o); o.visible = false; } }); // __equip=頭戴裝備(火帽),別跟方塊人一起藏
 
   // rigged 手:掛到 avatar 手骨(async 載入,可能還沒好 → retargetAvatar 會 lazy 重試)
   if (riggedHandsReady()) mountRiggedHands(av);

@@ -18,7 +18,10 @@
   `oil-bottle.glb`+`oil-bottle-tex.jpg`=**油瓶 GLB**(紅色 OIL 桶造型;bottles elem='oil',冰瓶的姊妹;518KB)、
   `barrel.glb`+`barrel-tex.jpg`=**爆桶 GLB**(紫色魔能桶 Violet Arcane Vessel;game.barrels 爆炸桶;158KB 超精簡;
   item-2 **已接入**:render-core `loadBarrelGlb`/`barrelClone`/`barrelReady`,三狀態同冰瓶,充能/引信靠疊加 makeGlowSphere 光暈表達
-  =充火橘/充電藍/引信 fuse 閃紅,不換貼圖);油瓶 2026-07-20 **已入庫尚未接入**。
+  =充火橘/充電藍/引信 fuse 閃紅,不換貼圖);油瓶 2026-07-20 **已入庫尚未接入**;
+  `fire-hat.glb`+`fire-hat-tex.jpg`=**火帽 GLB**(The Golden Maw 金色大嘴帽;item-3 **已接入**:render-core
+  `loadFireHatGlb`,actor-brawler `updateHeadgear` 掛 headPivot=持噴火帽(item='fire')時戴頭上、跟頭動;
+  對位=使用者 punch-studio 校準 scale0.69/y0.23 → HAT_CAL;clone 網格帶 `__equip` 旗=avatar 藏方塊人掃描跳過)。
   **貼圖必外部化(踩過的坑)**:
   GLTFLoader 的內嵌 JPEG 在 SwiftShader(headless 測試/低端機)下上傳成**全黑**,外部 TextureLoader 就正常
   →入庫時把貼圖抽成 `*-tex.jpg`、GLB 去圖只留幾何,loader 端 TextureLoader 載回指派(`flipY=false`/sRGB)。

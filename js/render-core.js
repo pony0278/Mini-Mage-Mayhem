@@ -179,6 +179,34 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   export function barrelClone() { return _barrelProto ? _barrelProto.clone(true) : null; }
   export function barrelReady() { return !!_barrelProto; } // 測試/除錯 hook
 
+  // 火帽 GLB(item-3:使用者的 The Golden Maw 金色大嘴帽;持有噴火帽時戴頭上)。同冰瓶四步入庫+同 helper 慣例。
+  let _hatProto = null;
+  export function loadFireHatGlb() {
+    if (_hatProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,火帽不顯示'); return; }
+    const tex = new THREE.TextureLoader().load('assets/scene/fire-hat-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
+    tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
+    fetch('assets/scene/fire-hat.glb')
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
+      .then(gltf => {
+        const s = gltf.scene;
+        s.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.material.map = tex;
+          o.material.emissiveMap = tex; o.material.emissive = new THREE.Color(0xd8a24a); o.material.emissiveIntensity = 0.5; // 金色自發光 boost(ACES 暗場防洗灰)
+          o.material.needsUpdate = true; } });
+        s.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(s);
+        const h = (box.max.y - box.min.y) || 1, cx = (box.max.x + box.min.x) / 2, cz = (box.max.z + box.min.z) / 2;
+        s.scale.multiplyScalar(1 / h);                     // 高度正規化到 1
+        s.position.set(-cx / h, -box.min.y / h, -cz / h);  // 底部貼 y=0、xz 置中
+        _hatProto = new THREE.Group(); _hatProto.add(s); _hatProto.userData.__hat = true; // __hat 旗=clone 繼承(測試計數)
+        if (renderer) renderer.compile(scene, camera);       // perf-1 預熱
+        console.log('[core] 火帽 GLB 就位');
+      })
+      .catch(e => console.warn('[core] 火帽 GLB 載入失敗', e));
+  }
+  export function fireHatClone() { return _hatProto ? _hatProto.clone(true) : null; }
+  export function fireHatReady() { return !!_hatProto; } // 測試/除錯 hook
+
 // lab 場景(render-lab)接管燈光時,關掉單機的四盞常設燈(避免疊加過曝)
 export function setStockLights(on) {
   hemi.intensity = on ? 0.92 : 0;

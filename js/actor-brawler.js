@@ -4,7 +4,7 @@
 // 屬 render 層(由 render-actors 呼叫);模擬層透過 fighter 欄位(punchFx/punchKind/punchArm/
 // flinch*/carrying/stunned...)驅動,永不 import 這裡(sim 保持 headless)。
 import { game } from './state.js';
-import { makeBox, frostBottleClone, frostBottleReady, barrelClone, barrelReady, ITEM_VIS_H } from './render-core.js';
+import { makeBox, frostBottleClone, frostBottleReady, barrelClone, barrelReady, fireHatClone, fireHatReady, ITEM_VIS_H } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
@@ -225,6 +225,26 @@ const BOTTLE_TINT = { ice: [0x9fd8e8, 0x2a6a88, 0x6aa8c0], oil: [0x9a8a5a, 0x2a2
 
 // ===== 扛投擲物(桶/瓶共用):畫在雙手腕中點(舉過頭頂;丟時隨 heave clip 走)。遊戲端 v2.js 對 held 物略過 ground prop,
 // 交由這裡畫,甩出/放下瞬間(carryObj 清空)交還給地面/飛行 prop。桶=橘箱+蓋、瓶=元素 tint 縮小版(換扛物種類時重建)。=====
+// ===== 頭戴裝備(item-3 火帽):持有噴火帽(e.item==='fire')時把 GLB 掛 headPivot=自動跟頭動。
+// 對位來源=使用者 punch-studio 校準(scale 0.69/y 0.23;studio 單位×~25px 換算,HAT_CAL 收尾微調)。
+// clone 網格帶 __equip 旗:avatar 建構的「藏方塊人」掃描要跳過裝備(不然帽子被誤藏)。
+const HAT_CAL = { h: 33, y: 20, rz: 0 }; // h=世界高 px、y=headPivot local 抬高(頭頂)、rz=朝向補正
+function updateHeadgear(e, g, R) {
+  const u = g.userData;
+  const want = e.item === 'fire' && e.state === 'alive';
+  let hw = u.headgear;
+  if (!want) { if (hw) hw.visible = false; return; }
+  if (!hw && fireHatReady()) {
+    const clone = fireHatClone();
+    clone.traverse(o => { if (o.isMesh) o.userData.__equip = true; });
+    hw = new THREE.Group(); hw.name = 'HEADGEAR';
+    clone.scale.setScalar(HAT_CAL.h); hw.add(clone);
+    hw.position.y = HAT_CAL.y; hw.rotation.z = HAT_CAL.rz;
+    R.headPivot.add(hw); u.headgear = hw;
+  }
+  if (hw) hw.visible = true;
+}
+
 const _wlp = new THREE.Vector3(), _wrp = new THREE.Vector3();
 function updateHeldBarrel(e, g, R) {
   const holding = !!e.carryObj;
@@ -463,6 +483,7 @@ export function updateBrawler(e, g) {
   if (fk > 0) { _tip.set(Math.sin(e.flinchA), 0, -Math.cos(e.flinchA)); g.rotateOnWorldAxis(_tip, A.flinch.tip * fk * fk); }
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
   updateHeldBarrel(e, g, R);   // 扛投擲物(桶/瓶):貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
+  updateHeadgear(e, g, R);     // 頭戴裝備(item-3 火帽):持有噴火帽=戴頭上
   updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
   updateGuardShield(e, g);     // 防禦架式:舉防時身前半透明護盾弧
 }
