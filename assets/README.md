@@ -25,7 +25,7 @@
   `wind-gauntlet.glb`+`wind-gauntlet-tex.jpg`=**風壓手套 GLB**(Meshy Azure Turbine Gauntlet 渦輪手套;掛玩家右手=持風壓手套 item='wind';
   item-4 **已接入**:render-core `loadWindGauntletGlb`,actor-brawler `updateGauntlet` 掛 armR.wr(右腕)=持風壓手套(item='wind')時戴右手、跟手動;
   對位=`WIND_CAL`(起始預設,使用者可在 punch-studio 道具庫 bow slot 校準回填);clone 網格帶 `__equip` 旗=avatar 藏方塊人掃描跳過。
-  Meshy 四步=596KB/~10k tris、貼圖 azure/金外部化。**simplify 不適用**——Meshy「textureoptimized」
+  Meshy 四步=596KB/~10k tris、貼圖 azure/金外部化;**原模型是左手→入庫時沿 X 軸鏡像成右手**(negate pos.x/normal.x + 反轉三角繞序保面朝外;貼圖隨之左右鏡像,機械對稱件看不出)。**simplify 不適用**——Meshy「textureoptimized」
   匯出把每個三角形頂點全拆開(26734 verts,weld 只併 4 個=全硬邊),edge-collapse 無共享邊可縮;硬 position-weld 會沿 UV 縫撕裂貼圖=不值,596KB 與油瓶 518KB 同級可接受)。
   **貼圖必外部化(踩過的坑)**:
   GLTFLoader 的內嵌 JPEG 在 SwiftShader(headless 測試/低端機)下上傳成**全黑**,外部 TextureLoader 就正常
