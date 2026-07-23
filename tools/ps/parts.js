@@ -444,6 +444,65 @@ async function loadEquipFile(file){
   }catch(err){ console.error(err); updatePartsStatus(`裝備載入失敗:${file.name} — ${err.message||err}`); return false; }
   finally{ URL.revokeObjectURL(url); }
 }
+// ===== 道具庫(入庫 GLB 一鍵掛載,供動作編排)=====
+// 使用者反饋 2026-07-23:想在 studio「自由選用」入庫道具編動作(不用每次手動找檔+重記對位)。
+// 一張表把 repo assets/scene/ 的道具對到自然掛點:火帽=headgear(頭骨,套使用者 studio 校準)、
+// 桶/瓶=bow(右腕武器掛點——避開 hand_r 的 rigged 手,不互相清掉)。載入=fetch→parse→attachPart。
+// 對位「每道具各自記憶」(桶/瓶共用 bow slot 也不互蓋):存 localStorage PROP_CAL,掛載時套回、
+// 校準滑桿改動時鏡射回該道具(見 buildPartSlotUI 的 write() 尾巴)。無記錄的握持類=首次自動 fit 尺寸。
+const PROP_LIB_CAL_KEY = 'PS_PROP_LIB_CAL_V1';
+const PROP_LIBRARY = {
+  fire_hat:     { file:'fire-hat.glb',     tex:'fire-hat-tex.jpg',     slot:'headgear', label:'🔥 火帽 The Golden Maw', cal:{ s:0.69, x:0, y:0.23, z:0, rx:0, ry:0, rz:0 } }, // 使用者 studio 校準值
+  barrel:       { file:'barrel.glb',       tex:'barrel-tex.jpg',       slot:'bow',      label:'🛢 爆桶 Violet Vessel',    autoFit:true }, // 握持類=右腕,首次自動 fit
+  frost_bottle: { file:'frost-bottle.glb', tex:'frost-bottle-tex.jpg', slot:'bow',      label:'❄ 冰霜瓶 Frost Bottle',    autoFit:true },
+  oil_bottle:   { file:'oil-bottle.glb',   tex:'oil-bottle-tex.jpg',   slot:'bow',      label:'🛢 油瓶 Oil Bottle',        autoFit:true },
+};
+// 貼圖外部化(遊戲同坑):GLB 已去圖只留幾何 → 這裡 TextureLoader 載回 *-tex.jpg 指派(flipY=false=GLB 慣例、sRGB),
+// 不然道具渲成素白、編動作看不出朝向。r128 用 sRGBEncoding(遊戲 r149 是 colorSpace,不能互抄)。
+function applyPropTexture(obj, texFile){
+  const tex = new THREE.TextureLoader().load('../assets/scene/'+texFile);
+  tex.flipY = false; if(THREE.sRGBEncoding!==undefined) tex.encoding = THREE.sRGBEncoding;
+  obj.traverse(o=>{ if(o.isMesh && o.material){ o.material.map = tex; o.material.needsUpdate = true; } });
+}
+const PROP_FIT_H = 0.7;   // 自動 fit 目標高(素體單位;角色≈2.4 → 握持道具約 0.7)
+let PROP_CAL = {};        // { propId: {s,x,y,z,rx,ry,rz} };使用者調過的對位
+let PROP_ACTIVE = null;   // { id, slot };目前掛在庫上的道具(校準鏡射用)
+function loadPropCal(){ try{ const raw=localStorage.getItem(PROP_LIB_CAL_KEY); if(raw) PROP_CAL=JSON.parse(raw)||{}; }catch(e){ PROP_CAL={}; } }
+function savePropCal(){ try{ localStorage.setItem(PROP_LIB_CAL_KEY, JSON.stringify(PROP_CAL)); }catch(e){} }
+// 校準滑桿改動時:若動到的正是目前庫道具的 slot,把對位鏡射回該道具(共用 bow 也各記各的)
+function mirrorPropCal(slot){
+  if(!PROP_ACTIVE || PROP_ACTIVE.slot!==slot) return;
+  PROP_CAL[PROP_ACTIVE.id] = Object.assign({}, partCfg(slot)); savePropCal();
+}
+function fitPropToHand(obj, slot){
+  const box = new THREE.Box3().setFromObject(obj); const size = new THREE.Vector3(); box.getSize(size);
+  const h = Math.max(size.x, size.y, size.z) || 1;
+  const c = partCfg(slot); c.s = +(PROP_FIT_H / h).toFixed(3); c.x=0; c.y=0; c.z=0; c.rx=0; c.ry=0; c.rz=0;
+}
+// 一鍵掛庫道具:fetch repo GLB → parse → 掛自然 slot → 套對位(記錄 > 預設 > 自動 fit)。回 Promise。
+async function mountPropFromLibrary(id){
+  const def = PROP_LIBRARY[id];
+  if(!def){ updatePartsStatus(`道具庫沒有「${id}」。`); return false; }
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
+  if(!getPartTarget(def.slot)){ updatePartsStatus(`slot「${def.slot}」在目前 rig 沒有掛點。`); return false; }
+  try{
+    const ab = await fetch('../assets/scene/'+def.file).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); });
+    const gltf = await new Promise((res,rej)=> psMakeGltfLoader().parse(ab, '', res, rej));
+    const obj = gltf.scene || gltf.scenes[0];
+    obj.name = 'PUNCH_PROP_'+id;
+    if(def.tex) applyPropTexture(obj, def.tex);         // 貼外部圖(素白→真色,編動作看得出朝向)
+    attachPart(def.slot, obj);                         // 先掛上(applyPartConfig 會用到現有 cfg)
+    if(PROP_CAL[id])       Object.assign(partCfg(def.slot), PROP_CAL[id]);   // 使用者記錄優先
+    else if(def.cal)       Object.assign(partCfg(def.slot), def.cal);        // 表內預設(火帽)
+    else if(def.autoFit)   fitPropToHand(obj, def.slot);                     // 握持類首次:自動 fit 尺寸
+    applyPartConfig(def.slot);
+    PROP_ACTIVE = { id, slot:def.slot };
+    const sel=document.getElementById('partSlotSelect'); if(sel){ sel.value=def.slot; sel.dispatchEvent(new Event('change')); } // 校準滑桿跳到此 slot
+    updatePartsStatus(`已掛載道具「${def.label}」→ ${def.slot}。可用 scale/x/y/z/rot 微調(自動記憶此道具),或「匯出對位 JSON」給遊戲 EQUIP_CAL。`);
+    return true;
+  }catch(err){ console.error(err); updatePartsStatus(`道具載入失敗:${def.file} — ${err.message||err}`); return false; }
+}
+
 // ===== Rigged 手(chibi-hands-rigged.glb):自動拆左右掛手腕 + 手勢庫(GetAmped 式預設姿勢+插值的編輯端)=====
 // rig 事實(解析自 GLB):骨鏈 Hand→Fingers→FingerMid→FingerTips(+Thumb),手指沿骨局部 +Y 生長,
 // 彎曲軸=骨局部 X(rest 已帶 -2.4° 自然微彎,左右同號 → 同一組角度兩手對稱)。剛性分段(無蒙皮),轉骨即彎。
@@ -743,6 +802,9 @@ window.__psEquip = {
     const s=document.getElementById('partSlotSelect'); if(s) s.value=slot;
     psMakeGltfLoader().parse(ab, '', (gltf)=>{ const obj=gltf.scene||gltf.scenes[0]; obj.name='PUNCH_EQUIP_'+slot; try{ attachPart(slot,obj); resolve(true); }catch(e){ reject(e); } }, reject);
   }),
+  props: ()=>Object.keys(PROP_LIBRARY),
+  mountProp: (id)=>mountPropFromLibrary(id),   // 一鍵掛庫道具(headless 測用;回 Promise<bool>)
+  activeProp: ()=>PROP_ACTIVE ? { id:PROP_ACTIVE.id, slot:PROP_ACTIVE.slot, cfg:partCfg(PROP_ACTIVE.slot) } : null,
   loadHandsBuffer: (ab)=> new Promise((resolve,reject)=>{
     if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
     psMakeGltfLoader().parse(ab, '', (gltf)=>{ try{ mountRiggedHands(gltf); resolve(true); }catch(e){ reject(e); } }, reject);
@@ -780,7 +842,7 @@ function buildPartSlotUI(){
   PART_SLOT_DEFS.forEach(d=>{ const opt=document.createElement('option'); opt.value=d.slot; opt.textContent=d.label; sel.appendChild(opt); });
   const syncPair=(rangeId,numId,key)=>{
     const r=document.getElementById(rangeId), n=document.getElementById(numId); if(!r||!n) return;
-    const write=(val)=>{ const slot=sel.value; const c=partCfg(slot); c[key]=Number(val)||0; if(key==='s' && c[key]<=0) c[key]=0.01; r.value=c[key]; n.value=c[key]; applyPartConfig(slot); savePartConfig(); };
+    const write=(val)=>{ const slot=sel.value; const c=partCfg(slot); c[key]=Number(val)||0; if(key==='s' && c[key]<=0) c[key]=0.01; r.value=c[key]; n.value=c[key]; applyPartConfig(slot); savePartConfig(); mirrorPropCal(slot); };
     r.addEventListener('input',e=>write(e.target.value));
     n.addEventListener('input',e=>write(e.target.value));
   };
@@ -802,6 +864,10 @@ function buildPartSlotUI(){
   });
   document.getElementById('partsFiles')?.addEventListener('change',e=>loadPartFiles(e.target.files));
   document.getElementById('partsEquip')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadEquipFile(f); e.target.value=''; }); // 裝備→選定 slot
+  // 道具庫:下拉列入庫道具,「掛上」一鍵 fetch repo GLB 掛自然 slot(火帽=頭、桶/瓶=右腕)
+  const propSel=document.getElementById('propLibSelect');
+  if(propSel){ propSel.innerHTML=''; Object.entries(PROP_LIBRARY).forEach(([id,d])=>{ const o=document.createElement('option'); o.value=id; o.textContent=d.label; propSel.appendChild(o); }); }
+  document.getElementById('propLibMount')?.addEventListener('click',()=>{ const id=propSel&&propSel.value; if(id) mountPropFromLibrary(id); });
   document.getElementById('partsHandsRig')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadRiggedHandsFile(f); e.target.value=''; }); // rigged 手→自動拆左右
   document.getElementById('handsBuiltin')?.addEventListener('click',()=>loadRiggedHandsBuiltin()); // 內建一鍵載入
   document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
@@ -859,6 +925,7 @@ function buildPartSlotUI(){
   const b=document.getElementById('partsDummyToggle'); if(b) b.textContent=PARTS_HIDE_DUMMY?'顯示假人':'隱藏假人';
 }
 loadPartConfig();
+loadPropCal();
 buildPartSlotUI();
 setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
 updatePartsStatus();

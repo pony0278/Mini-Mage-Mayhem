@@ -96,6 +96,11 @@
         <button id="partInspectTpose" title="暫時把手臂平舉成 T-pose,讓上臂離開肋廓,確認肩→肘→腕→手接合(不影響存的 phases)">組裝檢視 T-pose</button>
         <button id="partsClear">清除部位</button>
       </div>
+      <div class="ref-row" title="道具庫:一鍵載入 repo 內入庫的道具 GLB(assets/scene/)掛到自然位置——火帽戴頭、爆桶/瓶握右腕。掛上後用下方 scale/x/y/z/rot 校準(每道具各自記憶),就能戴著道具編動作。需以本機伺服器開啟(fetch repo 檔)">
+        <span style="font-size:10.5px;color:var(--mut)">🎒 道具庫</span>
+        <select id="propLibSelect" title="選一個入庫道具"></select>
+        <button id="propLibMount" title="從 repo 載入並掛到自然位置(火帽=頭、桶/瓶=右腕)">掛上</button>
+      </div>
       <div class="ref-row">
         <select id="partSlotSelect" title="選擇要微調的部位 slot"></select>
         <button id="partResetSlot">重設本部位</button>
