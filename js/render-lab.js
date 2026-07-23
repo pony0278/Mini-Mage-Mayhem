@@ -4,7 +4,7 @@
 // 原型單位:1 unit = 1 tile;我們的世界:1 tile = 32px → 一律乘 LAB_SCALE 換算,
 // builder 幾乎逐字移植。碰撞/模擬完全不動(牆的碰撞仍在 30×20 核心邊界)。
 import { W, H, TILE, COLS, ROWS } from './constants.js';
-import { renderer, scene, camera, IS_MOBILE, loadFrostBottleGlb, frostBottleReady, loadBarrelGlb, barrelReady, loadFireHatGlb, fireHatReady } from './render-core.js';
+import { renderer, scene, camera, IS_MOBILE, loadFrostBottleGlb, frostBottleReady, loadBarrelGlb, barrelReady, loadFireHatGlb, fireHatReady, loadWindGauntletGlb, windGauntletReady } from './render-core.js';
 import { floor as floorGrid, FL } from './v2-floor.js'; // 地板化學狀態(唯讀);render→v2-floor 同 render→sim 方向,無循環
 
 const LAB_SCALE = TILE;                 // 1 原型單位 = 32 世界px
@@ -423,6 +423,7 @@ export function initLabScene() {
   loadFrostBottleGlb();                                     // 冰霜瓶 GLB(item-1;async 載一次,握持/地面/飛行三狀態 clone;未載成退方塊)
   loadBarrelGlb();                                          // 爆桶 GLB(item-2;同冰瓶三狀態;充能/引信靠疊加光暈)
   loadFireHatGlb();                                         // 火帽 GLB(item-3;持有噴火帽時戴頭上)
+  loadWindGauntletGlb();                                    // 風壓手套 GLB(item-4;持風壓手套時戴右手)
   // 四色地面箭頭/「THROW IN!」指示牌:2026-07-19 使用者反饋太突兀,整組拆除(歷史+替代方向見 js/CLAUDE.md;實作在 git c63a0cf 前)
   buildIndustrialFloorMarkings();
   buildCoreCombatGuide();
@@ -1349,7 +1350,7 @@ export function setPodPerform(p) {
   if (p.phase === 'scan') _scanRing.position.y = (DOME_R * 0.9 * (1 - p.pk) + 4) / Math.max(0.05, sy); // 掃描環頭→腳(除以 sy 抵銷 group 縮放)
 }
 
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, frostBottleReady: () => frostBottleReady(), barrelReady: () => barrelReady(), fireHatReady: () => fireHatReady(), domeVisible: () => _domeShown, fxLow: () => FX_LOW }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, frostBottleReady: () => frostBottleReady(), barrelReady: () => barrelReady(), fireHatReady: () => fireHatReady(), windGauntletReady: () => windGauntletReady(), domeVisible: () => _domeShown, fxLow: () => FX_LOW }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

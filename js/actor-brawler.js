@@ -4,7 +4,7 @@
 // 屬 render 層(由 render-actors 呼叫);模擬層透過 fighter 欄位(punchFx/punchKind/punchArm/
 // flinch*/carrying/stunned...)驅動,永不 import 這裡(sim 保持 headless)。
 import { game } from './state.js';
-import { makeBox, frostBottleClone, frostBottleReady, barrelClone, barrelReady, fireHatClone, fireHatReady, ITEM_VIS_H } from './render-core.js';
+import { makeBox, frostBottleClone, frostBottleReady, barrelClone, barrelReady, fireHatClone, fireHatReady, windGauntletClone, windGauntletReady, ITEM_VIS_H } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
@@ -246,6 +246,28 @@ function updateHeadgear(e, g, R) {
   if (hw) hw.visible = true;
 }
 
+// ===== 右手裝備(item-4 風壓手套):持風壓手套(e.item==='wind')時把 GLB 掛右腕=自動跟手動。
+// 掛 R.armR.wr(box 腕節點=studio 的 bow slot 同一個掛點,studio 校準值可直搬)。手套繞手/前臂,
+// WIND_CAL:size=世界最大邊 px、位移(px,腕 local:−y=沿前臂往拳頭)、旋轉(度,rx=90 把模型長軸轉成順著前臂)。
+// clone 網格帶 __equip 旗:avatar 建構的「藏方塊人」掃描要跳過裝備。
+const WIND_CAL = { size: 17, x: 0, y: -4, z: 0, rx: 90, ry: 0, rz: 0 };
+function updateGauntlet(e, g, R) {
+  const u = g.userData;
+  const want = e.item === 'wind' && e.state === 'alive';
+  let gw = u.gauntlet;
+  if (!want) { if (gw) gw.visible = false; return; }
+  if (!gw && windGauntletReady()) {
+    const clone = windGauntletClone();
+    clone.traverse(o => { if (o.isMesh) o.userData.__equip = true; });
+    gw = new THREE.Group(); gw.name = 'GAUNTLET';
+    clone.scale.setScalar(WIND_CAL.size); gw.add(clone);
+    gw.position.set(WIND_CAL.x, WIND_CAL.y, WIND_CAL.z);
+    gw.rotation.set(WIND_CAL.rx * D2R, WIND_CAL.ry * D2R, WIND_CAL.rz * D2R);
+    R.armR.wr.add(gw); u.gauntlet = gw;
+  }
+  if (gw) gw.visible = true;
+}
+
 const _wlp = new THREE.Vector3(), _wrp = new THREE.Vector3();
 function updateHeldBarrel(e, g, R) {
   const holding = !!e.carryObj;
@@ -485,6 +507,7 @@ export function updateBrawler(e, g) {
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
   updateHeldBarrel(e, g, R);   // 扛投擲物(桶/瓶):貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
   updateHeadgear(e, g, R);     // 頭戴裝備(item-3 火帽):持有噴火帽=戴頭上
+  updateGauntlet(e, g, R);     // 右手裝備(item-4 風壓手套):持風壓手套=戴右手
   updateWhip(e, g, R);         // 魔導電鞭(whip-1):持電鞭=右手垂鞭,施放=甩鞭演出(判定仍在 sim)
   updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
   updateGuardShield(e, g);     // 防禦架式:舉防時身前半透明護盾弧

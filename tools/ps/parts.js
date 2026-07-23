@@ -456,6 +456,7 @@ const PROP_LIBRARY = {
   barrel:       { file:'barrel.glb',       tex:'barrel-tex.jpg',       slot:'bow',      label:'🛢 爆桶 Violet Vessel',    autoFit:true }, // 握持類=右腕,首次自動 fit
   frost_bottle: { file:'frost-bottle.glb', tex:'frost-bottle-tex.jpg', slot:'bow',      label:'❄ 冰霜瓶 Frost Bottle',    autoFit:true },
   oil_bottle:   { file:'oil-bottle.glb',   tex:'oil-bottle-tex.jpg',   slot:'bow',      label:'🛢 油瓶 Oil Bottle',        autoFit:true },
+  wind_gauntlet:{ file:'wind-gauntlet.glb',tex:'wind-gauntlet-tex.jpg',slot:'bow',      label:'🌀 風壓手套 Azure Gauntlet', autoFit:true }, // item-4:右腕(遊戲掛 armR.wr=同 bow slot,校準值可回填遊戲 WIND_CAL)
 };
 // 貼圖外部化(遊戲同坑):GLB 已去圖只留幾何 → 這裡 TextureLoader 載回 *-tex.jpg 指派(flipY=false=GLB 慣例、sRGB),
 // 不然道具渲成素白、編動作看不出朝向。r128 用 sRGBEncoding(遊戲 r149 是 colorSpace,不能互抄)。

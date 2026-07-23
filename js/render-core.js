@@ -207,6 +207,36 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   export function fireHatClone() { return _hatProto ? _hatProto.clone(true) : null; }
   export function fireHatReady() { return !!_hatProto; } // 測試/除錯 hook
 
+  // 風壓手套 GLB(item-4:使用者的 Azure Turbine Gauntlet 渦輪手套;持風壓手套 item='wind' 時戴右手)。
+  // 同冰瓶四步入庫+同 helper 慣例。手套=裝備(掛右腕跟手動),非道具地標→不吃 ITEM_VIS_H,由 updateGauntlet 的
+  // WIND_CAL 縮到貼手大小。emissive=azure 冷光(ACES 暗場防洗灰;渦輪扇/管線發青光)。
+  let _gauntletProto = null;
+  export function loadWindGauntletGlb() {
+    if (_gauntletProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,風壓手套不顯示'); return; }
+    const tex = new THREE.TextureLoader().load('assets/scene/wind-gauntlet-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
+    tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
+    fetch('assets/scene/wind-gauntlet.glb')
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(ab => new Promise((res, rej) => new THREE.GLTFLoader().parse(ab, '', res, rej)))
+      .then(gltf => {
+        const s = gltf.scene;
+        s.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.material.map = tex;
+          o.material.emissiveMap = tex; o.material.emissive = new THREE.Color(0x4aa8d8); o.material.emissiveIntensity = 0.5; // azure 自發光 boost(ACES 暗場防洗灰)
+          o.material.needsUpdate = true; } });
+        s.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(s);
+        const h = (box.max.y - box.min.y) || 1, cx = (box.max.x + box.min.x) / 2, cy = (box.max.y + box.min.y) / 2, cz = (box.max.z + box.min.z) / 2;
+        s.scale.multiplyScalar(1 / h);                     // 最大維度正規化到 1(掛端 setScalar 目標大小)
+        s.position.set(-cx / h, -cy / h, -cz / h);         // 正中置心(裝備繞腕,非底貼地=不用 box.min.y)
+        _gauntletProto = new THREE.Group(); _gauntletProto.add(s); _gauntletProto.userData.__gauntlet = true; // __gauntlet 旗=clone 繼承(測試計數)
+        if (renderer) renderer.compile(scene, camera);       // perf-1 預熱
+        console.log('[core] 風壓手套 GLB 就位');
+      })
+      .catch(e => console.warn('[core] 風壓手套 GLB 載入失敗', e));
+  }
+  export function windGauntletClone() { return _gauntletProto ? _gauntletProto.clone(true) : null; }
+  export function windGauntletReady() { return !!_gauntletProto; } // 測試/除錯 hook
+
 // lab 場景(render-lab)接管燈光時,關掉單機的四盞常設燈(避免疊加過曝)
 export function setStockLights(on) {
   hemi.intensity = on ? 0.92 : 0;
