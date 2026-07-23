@@ -64,7 +64,9 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
 - **裝備載入**:UI 走 `#partsEquip`(掛「選定 slot」);程式走 `__psEquip.loadEquipBuffer(ab, slot)`。
 - **道具庫(戴道具編動作)**:UI=`#propLibSelect`+`#propLibMount`(道具庫下拉+掛上);程式=`__psEquip.mountProp(id)`。
   加一個入庫道具=`PROP_LIBRARY` 加一列(`file`/`tex`/`slot`/`cal` 或 `autoFit`)——頭戴類給 slot `headgear`+已知 studio `cal`,
-  握持類給 slot `bow`(=右腕 armR.wr,**故意不掛 hand_l/hand_r**:那是 rigged 手的家,會被清掉)+`autoFit:true`(首次量 bbox 縮到 `PROP_FIT_H`)。
+  握持類給 slot `bow`(**avatar 在場=avatar 手骨 `AVATAR.by.hand_r.bone`、無 avatar 退假人腕 armR.wr**;2026-07-23 病 3 修正:
+  假人腕是隱形 driver,重定向後可見的手在別處、偏差隨姿勢變大=調右手動作道具脫手,掛手骨=永遠貼手。
+  **故意不用 hand_l/hand_r slot**:那是 rigged 手的家,會被清掉)+`autoFit:true`(首次量 bbox 縮到 `PROP_FIT_H`)。
   對位「每道具各記各的」:`PROP_CAL[id]` 存 localStorage `PS_PROP_LIB_CAL_V1`,滑桿改動經 `mirrorPropCal(slot)`(掛在 buildPartSlotUI 的 write() 尾)鏡射回目前 `PROP_ACTIVE` 道具——所以桶/瓶共用 bow slot 也不互蓋。貼圖走外部化(`applyPropTexture`,同遊戲坑:去圖 GLB+`*-tex.jpg` TextureLoader flipY=false/sRGB)。**headless 測**:`__psEquip.mountProp(id)`(回 Promise),fetch `../assets/scene/` 需本機 server(scratchpad `proplib.mjs` 範式)。
 - **rigged 手**:`#handsBuiltin` 一鍵載 `assets/rigs/chibi-hands-rigged.glb`;骨=Hand→Fingers→FingerMid→FingerTips(+Thumb),彎曲軸=骨局部 X、負=往掌心。
   **手指彎曲=逐關鍵格姿勢(左右獨立)**:8 軸 `aL_/aR_ f{base,mid,tip,thumb}` 進 POSE_KEYS,沿時間軸內插(接近幀張開→抓取幀捲起);

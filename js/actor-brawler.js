@@ -246,11 +246,14 @@ function updateHeadgear(e, g, R) {
   if (hw) hw.visible = true;
 }
 
-// ===== 右手裝備(item-4 風壓手套):持風壓手套(e.item==='wind')時把 GLB 掛右腕=自動跟手動。
-// 掛 R.armR.wr(box 腕節點=studio 的 bow slot 同一個掛點,studio 校準值可直搬)。手套繞手/前臂,
-// WIND_CAL:size=世界最大邊 px、位移(px,腕 local:−y=沿前臂往拳頭)、旋轉(度,rx=90 把模型長軸轉成順著前臂)。
-// clone 網格帶 __equip 旗:avatar 建構的「藏方塊人」掃描要跳過裝備。
+// ===== 右手裝備(item-4 風壓手套):持風壓手套(e.item==='wind')時戴右手=跟手動。
+// **掛點=avatar 手骨優先**(病 3 修正,2026-07-23 使用者反饋「調右手動作手套脫手」):box 腕只是隱形
+// driver,avatar 重定向+比例差(av.S)+出拳 aR_stretch 整臂放大後,看得見的手在別處且偏差隨姿勢變大
+// → 靜態校準補不了。av.by.hand_r.bone=rigged 手同一掛點=永遠貼手;方塊人(?avatar=0)退回 R.armR.wr。
+// WIND_CAL(box 腕)/WIND_CAL_AV(avatar 手骨)各自對位:size=世界 px;avatar 骨局部單位=px÷av.S,
+// 伸臂 stretch 的骨縮放自然流入=手套跟手一起放大(戴著的手感)。clone 網格帶 __equip 旗(avatar 藏方塊人跳過)。
 const WIND_CAL = { size: 17, x: 0, y: -4, z: 0, rx: 90, ry: 0, rz: 0 };
+const WIND_CAL_AV = { size: 17, x: 0, y: 0, z: 0, rx: 0, ry: -90, rz: 0 };
 function updateGauntlet(e, g, R) {
   const u = g.userData;
   const want = e.item === 'wind' && e.state === 'alive';
@@ -259,13 +262,23 @@ function updateGauntlet(e, g, R) {
   if (!gw && windGauntletReady()) {
     const clone = windGauntletClone();
     clone.traverse(o => { if (o.isMesh) o.userData.__equip = true; });
-    gw = new THREE.Group(); gw.name = 'GAUNTLET';
-    clone.scale.setScalar(WIND_CAL.size); gw.add(clone);
-    gw.position.set(WIND_CAL.x, WIND_CAL.y, WIND_CAL.z);
-    gw.rotation.set(WIND_CAL.rx * D2R, WIND_CAL.ry * D2R, WIND_CAL.rz * D2R);
-    R.armR.wr.add(gw); u.gauntlet = gw;
+    gw = new THREE.Group(); gw.name = 'GAUNTLET'; gw.add(clone);
+    u.gauntlet = gw; u.gauntletOn = null;
   }
-  if (gw) gw.visible = true;
+  if (!gw) return;
+  const av = u.avatar;
+  const bone = av && av.by && av.by.hand_r && av.by.hand_r.bone;
+  const target = bone || R.armR.wr;
+  if (u.gauntletOn !== target) {           // 首掛 / avatar 事後就緒(async)→(重)掛+套該掛點的對位
+    if (gw.parent) gw.parent.remove(gw);
+    const C = bone ? WIND_CAL_AV : WIND_CAL;
+    const k = bone ? 1 / (av.S || 1) : 1;  // avatar 骨局部單位換算
+    gw.scale.setScalar(C.size * k);
+    gw.position.set(C.x * k, C.y * k, C.z * k);
+    gw.rotation.set(C.rx * D2R, C.ry * D2R, C.rz * D2R);
+    target.add(gw); u.gauntletOn = target;
+  }
+  gw.visible = true;
 }
 
 const _wlp = new THREE.Vector3(), _wrp = new THREE.Vector3();

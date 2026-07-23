@@ -34,7 +34,10 @@ const PS_RIG_TARGET = {
   armguard_r:  ()=>armR && armR.el,
   cloak:       ()=>headPivot,
   pouch:       ()=>spine,
-  bow:         ()=>armR && armR.wr,
+  // bow=右手持/戴裝備:avatar 在場時掛 avatar 手骨(病 3:box 腕是隱形 driver,重定向後可見的手在別處、
+  // 偏差隨姿勢變大=調右手動作道具脫手;掛手骨=永遠貼手,rigged 手同款)。無 avatar 退回假人腕。
+  // typeof 守衛:avatar.js 在本檔之後載入(per-file hoisting),此函式只在掛載時呼叫=安全。
+  bow:         ()=>(typeof AVATAR!=='undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_r && AVATAR.by.hand_r.bone) || (armR && armR.wr),
   headgear:    ()=>headPivot,                 // 頭戴道具(火帽…);掛頭骨,對位用校準滑桿
 };
 
