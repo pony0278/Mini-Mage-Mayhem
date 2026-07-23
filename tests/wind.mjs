@@ -1,5 +1,5 @@
 // 風壓手套=遠距扇形放射狀衝擊波 驗收:
-// ①排程施法(uses3→2、rhook、延遲才發動)②施法中被暈=取消不退次數 ③距離衰減(近>遠)④角度衰減(中軸>邊緣)
+// ①排程施法(uses3→2、item_wind 專屬 clip、延遲才發動)②施法中被暈=取消不退次數 ③距離衰減(近>遠)④角度衰減(中軸>邊緣)
 // ⑤放射狀方向(偏軸目標被斜著吹歪)⑥吹動桶(idle 桶被吹走+升壓)⑦無貼臉自反噬 ⑧反彈冰瓶+凍原主 ⑨穿防
 // 陷阱:LOCAL(fighters[0]) facing 吃滑鼠 → 風施放者一律用 fighters[1];rAF 節流 → game.time 輪詢
 import puppeteer from 'puppeteer';
@@ -26,7 +26,7 @@ const blastImpulse = (cx, cy, face, ox, oy) => page.evaluate(([cx, cy, face, ox,
 // ---------- ① 排程施法 ----------
 await page.evaluate(() => { const v = __v2, C = v.fighters[1], O = v.fighters[0]; C.x = 400; C.y = 540; C.facing = 0; C.item = 'wind'; C.itemUses = 3; C.itemCastCd = 0; C._itemCastAt = 0; C.stunned = false; O.x = 480; O.y = 540; O.vx = O.vy = 0; O.invuln = 0; O.stunned = false; });
 const s1 = await page.evaluate(() => { const v = __v2; v.useItem(v.fighters[1]); const C = v.fighters[1]; return { uses: C.itemUses, clip: C.itemClip, pending: C._itemCastAt > 0, oVx: Math.round(v.fighters[0].vx) }; });
-R(`起手扣次數(3→${s1.uses})+排程 rhook`, s1.uses === 2 && s1.clip === 'rhook' && s1.pending && s1.oVx === 0);
+R(`起手扣次數(3→${s1.uses})+排程 item_wind`, s1.uses === 2 && s1.clip === 'item_wind' && s1.pending && s1.oVx === 0);
 await advance(0.4);
 const s1b = await page.evaluate(() => ({ oVx: Math.round(__v2.fighters[0].vx), pending: __v2.fighters[1]._itemCastAt > 0 }));
 R(`impact 幀才發動擊退(oVx ${s1b.oVx}>0)`, s1b.oVx > 0 && !s1b.pending);

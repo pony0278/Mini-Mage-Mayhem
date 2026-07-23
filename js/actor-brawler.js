@@ -253,7 +253,11 @@ function updateHeadgear(e, g, R) {
 // WIND_CAL(box 腕)/WIND_CAL_AV(avatar 手骨)各自對位:size=世界 px;avatar 骨局部單位=px÷av.S,
 // 伸臂 stretch 的骨縮放自然流入=手套跟手一起放大(戴著的手感)。clone 網格帶 __equip 旗(avatar 藏方塊人跳過)。
 const WIND_CAL = { size: 17, x: 0, y: -4, z: 0, rx: 90, ry: 0, rz: 0 };
-const WIND_CAL_AV = { size: 17, x: 0, y: 0, z: 0, rx: 0, ry: -90, rz: 0 };
+// WIND_CAL_AV = 使用者 punch-studio 匯出的 bow slot 對位**原樣**(2026-07-23 定稿)。studio 與遊戲掛同一根
+// avatar 手骨(item-4b)→ 位移/旋轉=骨局部 GLB 單位,直搬零換算;只有 scale 要 ×GAUNT_RAW_H(遊戲 proto
+// 把原始 GLB 高度正規化成 1,studio 掛的是 raw 檔——乘回原始高=同一個世界尺寸)。
+const WIND_CAL_AV = { s: 0.3, x: 0.02, y: 0.26, z: 0.04, rx: -85, ry: -5, rz: 85 };
+const GAUNT_RAW_H = 1.064;   // wind-gauntlet.glb 原始高(y);proto 正規化除掉的係數
 function updateGauntlet(e, g, R) {
   const u = g.userData;
   const want = e.item === 'wind' && e.state === 'alive';
@@ -271,11 +275,15 @@ function updateGauntlet(e, g, R) {
   const target = bone || R.armR.wr;
   if (u.gauntletOn !== target) {           // 首掛 / avatar 事後就緒(async)→(重)掛+套該掛點的對位
     if (gw.parent) gw.parent.remove(gw);
-    const C = bone ? WIND_CAL_AV : WIND_CAL;
-    const k = bone ? 1 / (av.S || 1) : 1;  // avatar 骨局部單位換算
-    gw.scale.setScalar(C.size * k);
-    gw.position.set(C.x * k, C.y * k, C.z * k);
-    gw.rotation.set(C.rx * D2R, C.ry * D2R, C.rz * D2R);
+    if (bone) {                            // avatar 手骨:studio 對位直搬(骨局部=GLB 單位,兩邊同空間)
+      gw.scale.setScalar(WIND_CAL_AV.s * GAUNT_RAW_H);
+      gw.position.set(WIND_CAL_AV.x, WIND_CAL_AV.y, WIND_CAL_AV.z);
+      gw.rotation.set(WIND_CAL_AV.rx * D2R, WIND_CAL_AV.ry * D2R, WIND_CAL_AV.rz * D2R);
+    } else {                               // box 腕(?avatar=0):px 對位
+      gw.scale.setScalar(WIND_CAL.size);
+      gw.position.set(WIND_CAL.x, WIND_CAL.y, WIND_CAL.z);
+      gw.rotation.set(WIND_CAL.rx * D2R, WIND_CAL.ry * D2R, WIND_CAL.rz * D2R);
+    }
     target.add(gw); u.gauntletOn = target;
   }
   gw.visible = true;

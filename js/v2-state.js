@@ -209,7 +209,7 @@ export const ITEM_INFO = { wind: { name: '風壓手套', color: '#bfeaff' }, tel
 //   uses=次數 · clip/delay=施放動畫與 impact · whileDisabled=被抓/暈可用(取代寫死的 !=='teleport')
 //   aim=facing/self/target(未來瞄準用) · kind=純標籤(HUD/AI/文件分組;機制不靠它)
 export const ITEM_SPEC = {
-  wind:     { uses: 3, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // rhook=出拳送氣浪暫代動畫(之後換專屬 item_wind);delay=前鉤 impact 幀=預告窗+可被打斷
+  wind:     { uses: 3, clip: 'item_wind', delay: CLIPS.item_wind?.impactT ?? STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 專屬施放動畫(使用者 studio 定稿 2026-07-23,腕 Z 側掌外推);delay=clip impact 幀自動導出,未標 impact=維持 0.283s 原時序(預告窗+可被打斷)
   fire:     { uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 噴火帽=噴流(rhook 暫代;點燃油海=R1)
   water:    { uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 工業重錘=前方砸壓(rhook 暫代砸下 clip;造濕地=R2 接雷、砸中短擊倒)
   lightning:{ uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 魔導電鞭=直線電擊(rhook 暫代;命中線內=電擊暈、沿線給水充電 R2)

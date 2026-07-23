@@ -317,5 +317,18 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
   }),
+  item_wind: prepClip({ // 風壓手套施放(使用者 studio 定稿 2026-07-23;首個用上腕 Z 的 clip:aR_wz 75°=右手側掌外推):
+    // 右臂側伸(sy -74/sz 110/stretch 1.98)+ 左臂反向配重 + 弓步(lL -42/lR 57)。7f 起手 → 10f 回落=全長 17f
+    // ≈ 0.283s = ITEM_SPEC.wind.delay(v2-state:有 impact 幀自動吃 impactT,目前無=維持 STRIKE_DELAY[0] 原時序)。
+    // 想「手伸出瞬間開火」:studio 把 WIND_UP 幀勾 impact 重貼,delay 自動改吃該幀。
+    seq: [
+      { name: 'idle', frame: 0, frames: 10, returnFrames: 10, ease: 'out' },
+      { name: 'WIND_UP', frame: 7, ease: 'out', tag: 'strike' },
+    ],
+    phases: {
+      WIND_UP: { aL_sx: 44, aL_sy: -2, aL_sz: 26, aR_sx: 21, aR_sy: -74, aR_sz: 110, aR_ex: 10, lL_hx: -42, lL_kx: 38, lR_hx: 57, aR_wx: -7, aR_wy: -6, aR_wz: 75, aR_stretch: 1.98 },
+    },
+    lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
+  }),
 };
 export const PUNCH_CLIPS = ['rhook', 'lhook', 'overhand', 'dive_punch', 'dash_punch']; // punchKind 0/1/2 → 三連擊;3=下壓拳(空中)/4=衝刺拳(跑)——皆為可選槽,使用者編好貼入即播(缺槽時 actor-brawler 暫用 overhand/rhook)

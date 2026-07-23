@@ -27,19 +27,18 @@ await pin('wind');
 const worn = await page.waitForFunction(`${COUNT} >= 1`, { timeout: 15000 }).then(() => true).catch(() => false);
 R('持風壓手套=右手戴 GLB(__gauntlet 可見)', worn);
 
-// ---------- ②b 掛點=avatar 手骨(病 3:掛 box 腕=調姿勢脫手;掛手骨=出拳中也貼手) ----------
+// ---------- ②b 掛點=avatar 手骨(病 3:掛 box 腕=調姿勢脫手;掛手骨=局部對位恆定=永遠貼手) ----------
+// 斷言不變量:parent=手骨 + 局部位置=WIND_CAL_AV 校準值(姿勢無關;世界距離會隨校準偏移×骨縮放變,不能當尺)
 await page.waitForFunction('window.__avatars && __avatars.length > 0', { timeout: 20000 }).catch(() => { /* avatar 未開時跳過 */ });
 const follow = await page.evaluate(() => {
   const av = window.__avatars && __avatars[0]; if (!av) return { skip: true };
   const s = __lab.labGroup.parent; let gw = null; s.traverse(o => { if (o.name === 'GAUNTLET') gw = o; });
-  if (!gw) return { onBone: false, dist: -1 };
-  const onBone = gw.parent === av.by.hand_r.bone;
-  __v2.punch(__v2.fighters[0]);                                     // 出拳中量距離(掛 box 腕時這裡會拉開)
-  const gp = gw.getWorldPosition(gw.position.clone());
-  const hp = av.by.hand_r.bone.getWorldPosition(av.by.hand_r.bone.position.clone());
-  return { onBone, dist: Math.hypot(gp.x - hp.x, gp.y - hp.y, gp.z - hp.z) };
+  if (!gw) return { onBone: false };
+  __v2.punch(__v2.fighters[0]);                                     // 出拳中量(掛 box 腕的舊寫法=parent 不是手骨)
+  return { onBone: gw.parent === av.by.hand_r.bone, lp: [gw.position.x, gw.position.y, gw.position.z] };
 });
-R('掛 avatar 手骨+出拳中貼手(dist<3px)', follow.skip || (follow.onBone && follow.dist < 3), JSON.stringify(follow));
+const calOk = follow.skip || (follow.onBone && Math.hypot(follow.lp[0] - 0.02, follow.lp[1] - 0.26, follow.lp[2] - 0.04) < 0.001);
+R('掛 avatar 手骨+局部對位=校準值(出拳中不變)', calOk, JSON.stringify(follow));
 
 // ---------- ③ 無道具 = 手套隱藏 ----------
 await pin(null);
