@@ -432,9 +432,9 @@ function applyPose(p){
   // 整肢伸展:肩節點等比放大 → 整條手臂從肩膀變長變大(遠鏡頭下伸手更明顯)
   armL.sh.scale.setScalar(p.aL_stretch||1);
   armR.sh.scale.setScalar(p.aR_stretch||1);
-  // 腕關節:wx 屈伸 · wy 沿前臂軸扭轉(旋前旋後)
-  armL.wr.rotation.set((p.aL_wx||0)*aLw*D2R, (p.aL_wy||0)*aLw*D2R, 0);
-  armR.wr.rotation.set((p.aR_wx||0)*aRw*D2R, (p.aR_wy||0)*aRw*D2R, 0);
+  // 腕關節:wx 屈伸 · wy 沿前臂軸扭轉(旋前旋後)· wz 左右擺腕(尺橈偏;×side 正=往外,同肩 Z 慣例)
+  armL.wr.rotation.set((p.aL_wx||0)*aLw*D2R, (p.aL_wy||0)*aLw*D2R, (p.aL_wz||0)*aLw*armL.side*D2R);
+  armR.wr.rotation.set((p.aR_wx||0)*aRw*D2R, (p.aR_wy||0)*aRw*D2R, (p.aR_wz||0)*aRw*armR.side*D2R);
   // 髖:X=前後擺、Z=橫向張開(×side → 正值兩腿都往外張成 O 型腿);膝 X=蹲
   // 蹲下 macro:整體屈膝(膝 +squat、髖 -0.7×squat),身體靠自動踩地自然下沉
   const sqd = p.squat||0;

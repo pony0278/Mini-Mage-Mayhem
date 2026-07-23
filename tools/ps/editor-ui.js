@@ -549,7 +549,7 @@ document.getElementById('presetSel').addEventListener('change',e=>{
 // mirror L<->R (swap aL/aR, lL/lR, negate Y rotations)
 function mirrorPose(p){
   const swap=(a,b)=>{const t=p[a]; p[a]=p[b]; p[b]=t;};
-  swap('aL_sx','aR_sx'); swap('aL_sz','aR_sz'); swap('aL_ex','aR_ex'); swap('aL_idle','aR_idle'); swap('aL_scale','aR_scale'); swap('aL_wx','aR_wx');
+  swap('aL_sx','aR_sx'); swap('aL_sz','aR_sz'); swap('aL_ex','aR_ex'); swap('aL_idle','aR_idle'); swap('aL_scale','aR_scale'); swap('aL_wx','aR_wx'); swap('aL_wz','aR_wz');  // wz 同 sz:×side 已處理左右,直接互換
   swap('lL_hx','lR_hx'); swap('lL_hy','lR_hy'); swap('lL_hz','lR_hz'); swap('lL_kx','lR_kx'); swap('lL_ax','lR_ax'); swap('lL_idle','lR_idle'); swap('lL_scale','lR_scale'); swap('lL_contact','lR_contact'); swap('lL_ty','lR_ty');
   swap('aL_fbase','aR_fbase'); swap('aL_fmid','aR_fmid'); swap('aL_ftip','aR_ftip'); swap('aL_fthumb','aR_fthumb');  // 手指彎曲同號鏡像(左右皆負=往掌心)
   p.carry_ox = -(p.carry_ox||0); p.carry_yaw = -(p.carry_yaw||0);   // 被扛者掛點 X + 轉向 yaw 鏡像反號;傾角/Y/Z 不變

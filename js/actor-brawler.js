@@ -135,8 +135,8 @@ export function applyBrawlerPose(rig, p) {
   R.armL.el.rotation.x = -(p.aL_ex || 0) * aLw * D2R;      // 負號:正值=手肘往前彎(解剖正確)
   R.armR.sh.rotation.set((p.aR_sx || 0) * aRw * D2R, (p.aR_sy || 0) * aRw * D2R, (p.aR_sz || 0) * aRw * R.armR.side * D2R);
   R.armR.el.rotation.x = -(p.aR_ex || 0) * aRw * D2R;
-  R.armL.wr.rotation.set((p.aL_wx || 0) * aLw * D2R, (p.aL_wy || 0) * aLw * D2R, 0);
-  R.armR.wr.rotation.set((p.aR_wx || 0) * aRw * D2R, (p.aR_wy || 0) * aRw * D2R, 0);
+  R.armL.wr.rotation.set((p.aL_wx || 0) * aLw * D2R, (p.aL_wy || 0) * aLw * D2R, (p.aL_wz || 0) * aLw * R.armL.side * D2R);
+  R.armR.wr.rotation.set((p.aR_wx || 0) * aRw * D2R, (p.aR_wy || 0) * aRw * D2R, (p.aR_wz || 0) * aRw * R.armR.side * D2R);
   const sqd = p.squat || 0;    // 蹲下 macro:膝 +squat、髖 -0.7×squat
   const hxL = (p.lL_hx || 0) - sqd * 0.7, kxL = (p.lL_kx || 0) + sqd;
   const hxR = (p.lR_hx || 0) - sqd * 0.7, kxR = (p.lR_kx || 0) + sqd;

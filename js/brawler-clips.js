@@ -19,6 +19,7 @@ export const POSE_KEYS = [
   'lR_hx', 'lR_hy', 'lR_hz', 'lR_kx', 'lR_ax', 'lR_idle', 'lR_scale',
   'lL_contact', 'lR_contact',
   'aL_wx', 'aL_wy', 'aR_wx', 'aR_wy',
+  'aL_wz', 'aR_wz',   // 腕 Z 左右擺腕(尺橈偏;×side 正=往外,同肩 Z 慣例)— 2026-07-23 補軸,舊 clip 缺省=0
   'lL_ty', 'lR_ty',
   // rigged 手手指彎曲(逐關鍵格、左右獨立;骨局部 X 角度,負=往掌心捲)。與 punch-studio 同軸名,clip 直接帶。
   // 消費者:actor-hands-rigged.applyFingerPose(只在 ?avatar=1 且 rigged 手掛載時)。方塊人/舊 chibi 手無視這些軸。
