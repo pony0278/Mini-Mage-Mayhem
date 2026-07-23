@@ -1,0 +1,51 @@
+// 魔導電鞭 Verlet 垂鞭/甩鞭視覺(whip-1;使用者 Whip Lab v2.5 移植,判定不動=sim 直線)驗收:
+// ①持電鞭(item='lightning')=右手垂鞭(__whip 可見)②無道具=鞭隱藏 ③Z 施放走完(inc.itemUses+施放解決)
+// ④最後一發:useItem 已清 item,甩完(STRIKE+RECOVER)後鞭自動收=隱藏 ⑤無 console 錯誤
+// 陷阱:鞭 group 掛 scene(非 actor g 內、非 propGroup);可見性查祖鏈。判定線本體歸 lightning.mjs 管。
+import puppeteer from 'puppeteer';
+const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
+const page = await B.newPage();
+const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
+await page.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
+await page.goto('http://localhost:8099/v2.html?turbo=8', { waitUntil: 'networkidle0' });
+await page.waitForFunction('window.__v2 && window.__lab && __gl', { timeout: 20000 });
+let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };
+
+await page.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false; v.fighters[1].x = 100; v.fighters[1].y = 100; v.fighters[0].x = 480; v.fighters[0].y = 320; });
+
+// 可見 __whip 計數(祖鏈全可見;鞭三層管網格帶 __whip 旗)
+const COUNT = `(()=>{const s=__lab.labGroup.parent;let n=0;s.traverse(o=>{if(o.userData&&o.userData.__whip){let vis=o.visible,p=o.parent;while(vis&&p){vis=p.visible;p=p.parent;}if(vis)n++;}});return n;})()`;
+const pin = (item) => page.evaluate((item) => {
+  if (window.__pin) clearInterval(window.__pin);
+  window.__pin = setInterval(() => { const f = __v2.fighters[0]; f.item = item; if (item) f.itemUses = 3; }, 16);
+  if (!item) { const f = __v2.fighters[0]; f.item = null; }
+}, item);
+
+// ---------- ① 持電鞭 = 右手垂鞭 ----------
+await pin('lightning');
+const worn = await page.waitForFunction(`${COUNT} >= 1`, { timeout: 15000 }).then(() => true).catch(() => false);
+R('持電鞭=右手垂鞭(__whip 可見)', worn);
+
+// ---------- ② 無道具 = 鞭隱藏 ----------
+await pin(null);
+const hidden = await page.waitForFunction(`${COUNT} === 0`, { timeout: 15000 }).then(() => true).catch(() => false);
+R('無道具=鞭隱藏(__whip 不可見)', hidden);
+
+// ---------- ③ 施放走完 + ④ 最後一發甩完自動收 ----------
+await page.evaluate(() => { if (window.__pin) clearInterval(window.__pin); });
+const cast = await page.evaluate(() => {
+  const f = __v2.fighters[0];
+  f.item = 'lightning'; f.itemUses = 1; f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false;
+  const before = __v2.inc.itemUses.lightning || 0;
+  __v2.useItem(f);
+  return { scheduled: f._itemCastAt > 0, itemCleared: f.item === null, before };
+});
+const resolved = await page.waitForFunction(`__v2.fighters[0]._itemCastAt === 0 && (__v2.inc.itemUses.lightning || 0) > ${cast.before}`, { timeout: 20000 }).then(() => true).catch(() => false);
+R('Z 施放排程+走完(最後一發 item 即清、施放解決)', cast.scheduled && cast.itemCleared && resolved);
+const tucked = await page.waitForFunction(`${COUNT} === 0`, { timeout: 20000 }).then(() => true).catch(() => false);
+R('最後一發甩完(STRIKE+RECOVER)=鞭自動收', tucked);
+
+R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
+console.log(`== ${pass} pass / ${fail} fail ==`);
+await B.close();
+process.exit(fail ? 1 : 0);

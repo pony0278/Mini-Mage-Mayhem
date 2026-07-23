@@ -9,6 +9,7 @@ import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } f
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
 import { setRiggedHandsVisible } from './actor-hands-rigged.js';
+import { updateWhip } from './render-whip.js';
 
 // ===== 建模規格表:尺寸/位置(世界 px)/配色。關節鏈長 Lu/Ll(腿)、Au/Al(臂)給自動踩地/組裝用 =====
 export const BRAWLER_SPEC = {
@@ -484,6 +485,7 @@ export function updateBrawler(e, g) {
   g.scale.set(1 + A.flinch.squashXZ * fk, 1 - A.flinch.squashY * fk, 1 + A.flinch.squashXZ * fk);
   updateHeldBarrel(e, g, R);   // 扛投擲物(桶/瓶):貼雙手腕中點(g 世界變換已套好,可讀手骨世界座標)
   updateHeadgear(e, g, R);     // 頭戴裝備(item-3 火帽):持有噴火帽=戴頭上
+  updateWhip(e, g, R);         // 魔導電鞭(whip-1):持電鞭=右手垂鞭,施放=甩鞭演出(判定仍在 sim)
   updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
   updateGuardShield(e, g);     // 防禦架式:舉防時身前半透明護盾弧
 }
