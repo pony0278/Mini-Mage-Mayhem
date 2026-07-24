@@ -122,14 +122,20 @@ export function drainFloorEvents() {
 }
 // 出拳承諾期(feel-2):起手(_strikeAt>0)+收招(_recoverT 未到)=整段揮拳動畫,身體跟拳一起承諾。
 export function punchLocked(f) { return f._strikeAt > 0 || f._recoverT > game.time; }
+// 道具施法承諾期(item-4g,使用者反饋「用道具應像揮拳 combo 不能邊走邊攻擊」):itemCastCd>0=整段施法
+// (起手→蓄力→發動→收招;teleport 瞬發不設 itemCastCd=不鎖=保留 whileDisabled 逃脫機動)。**只鎖腳不鎖面向**
+// (可原地轉身瞄準,保留蓄力中轉向的連招),並擋跳(否則跳=air-move 繞過鎖腳)。
+export function itemLocked(f) { return f.itemCastCd > 0; }
 export function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
   const m = f.ai ? (v2s.introT > INTRO_GO ? { x: 0, y: 0 } : aiMove(f)) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 開場就位期 AI 靜止,「開始!」(introT<=INTRO_GO)才開工;被動假人不吃方向鍵原地站
   if (m.x || m.y) f.facing = Math.atan2(m.y, m.x); // 面向=移動方向(keys-1 滑鼠退役:桌機=手機同一模型;停下保留最後面向,GetAmped 式 8 向);AI/熱座同條路
   if (punchLocked(f)) f.facing = f._strikeDir;                                    // 出拳承諾(feel-2):整段揮拳(起手+收招=clip 播完)面向硬鎖在出拳方向(本機滑鼠/AI 皆蓋回)
+  // 道具施法(item-4g):鎖腳不鎖面向——可原地轉身瞄準(保留「挑飛→風壓接送」等靠蓄力中轉向的連招;預告扇形/直線隨面向即時更新),只是不能位移
   if (f.guarding) { m.x *= GUARD_MOVE; m.y *= GUARD_MOVE; }                       // 舉防=定身(GUARD_MOVE 0);想拉開就得放防。擊退/被推仍照 f.vx/vy 走
   if (f._diveLagT > 0) { m.x = 0; m.y = 0; }                                      // 下壓落空硬直:短暫定身(v2.js 倒數)
   if (punchLocked(f) && !(f._dashT0 > -5) && !(f._diveT0 > -5)) { m.x *= PUNCH_MOVE; m.y *= PUNCH_MOVE; } // 出拳承諾:整段揮拳鎖腳(衝刺/下壓走自己的承諾位移,不吃這條)
+  if (itemLocked(f)) { m.x *= PUNCH_MOVE; m.y *= PUNCH_MOVE; }                    // 道具施法承諾(item-4g):同出拳鎖腳=不能邊走邊施法(teleport 瞬發不鎖)
   let sp = SPEED * ((f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) ? CARRY_SLOW : 1) * (f.running ? RUN_MULT : 1); // 搬運人/扛桶時變慢;瓶=輕(全速);跑=預設(v2.js 每幀裁定)
   if (f._fleeing) sp *= FLEE_SPEED;                                               // 逃跑略慢於玩家跑速(tier-1:衝刺才好追=移動技術的舞台)
   if (f._diveT0 > -5) { m.x = Math.cos(f._diveDir); m.y = Math.sin(f._diveDir); sp = DIVE_FWD / DIVE_T; } // 俯衝:鎖方向自動前撲(承諾,無操控)
@@ -243,7 +249,7 @@ export function freezeFighter(o, byPid) {
 export function jumping(f) { return f._jumpT > -5 && game.time - f._jumpT < JUMP_LOB.T + 0.02; }
 export function airborne(f) { return jumping(f) || f._diveT0 > -5 || f.z > 1; } // z>1 含被拋飛(對空中規則一視同仁)
 export function jump(f) { // 自發小 lob(z 在 v2.js 每幀由 lobZ(t,JUMP_LOB) 算);冰面鎖滑的主動解
-  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || f.guarding || f._performing || punchLocked(f)) return; // 出拳承諾中不能跳(起手+收招)
+  if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || f.guarding || f._performing || punchLocked(f) || itemLocked(f)) return; // 出拳/施法承諾中不能跳(跳=取消承諾的洞,item-4g 補上)
   if (f.carrying || (f.carryObj && f.carryObj.kind !== 'bottle')) return; // 扛人/扛桶跳不動(重量感);瓶=輕
   if (airborne(f) || f.jumpCd > 0) return;
   if (f._slideVx || f._slideVy) { // 鎖滑中起跳=解鎖:動量帶上天(落地乾淨,不續滑)
@@ -330,7 +336,7 @@ export function doGuard(f) {
 export function canGuard(f) {
   return f.state === 'alive' && !f.stunned && !f.carriedBy && !f.carrying && !f.carryObj
     && f.fumbleT <= 0 && f.guardLock <= 0 && f.guardStam > 0 && !(f._slideVx || f._slideVy) && !airborne(f)
-    && !punchLocked(f); // 出拳承諾中不能舉防(起手+收招=整段揮拳;揮空=真懲罰窗)
+    && !punchLocked(f); // 出拳承諾中不能舉防(起手+收招=整段揮拳;揮空=真懲罰窗)。道具施法不擋舉防(舉防本就定身、不繞過鎖腳;施法轉向瞄準+可急停舉防=保留手感)
 }
 // 每幀:耐力衰退/回充。舉防中純守衰退;放開後延遲才回充。v2.js step 於 pollGuard 設好 f.guarding 後呼叫。
 export function updateGuard(f, dt) {
