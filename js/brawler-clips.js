@@ -318,15 +318,18 @@ export const CLIPS = {
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
   }),
   item_wind: prepClip({ // 風壓手套施放(使用者 studio 定稿 2026-07-23;首個用上腕 Z 的 clip:aR_wz 75°=右手側掌外推):
-    // 右臂側伸(sy -74/sz 110/stretch 1.98)+ 左臂反向配重 + 弓步(lL -42/lR 57)。7f 起手 → 10f 回落=全長 17f
-    // ≈ 0.283s = ITEM_SPEC.wind.delay(v2-state:有 impact 幀自動吃 impactT,目前無=維持 STRIKE_DELAY[0] 原時序)。
-    // 想「手伸出瞬間開火」:studio 把 WIND_UP 幀勾 impact 重貼,delay 自動改吃該幀。
+    // 右臂側伸(sy -74/sz 110/stretch 1.98)+ 左臂反向配重 + 弓步(lL -42/lR 57)。
+    // **節奏(使用者拍板 2026-07-23):手伸到最遠(7f≈0.117s)→ 定格 0.5s(30f 同姿勢=凍結)→ 開火**。
+    // impact 幀 = WIND_HOLD @37f ≈ 0.617s = ITEM_SPEC.wind.delay(v2-state 自動吃 impactT)。開火時手還在最遠處
+    // (不是回落瞬間);開火後 10f 收回站姿。定格窗內 game.windAims 扇形預告脈動=蓄力讀條+對手閃避窗。
     seq: [
       { name: 'idle', frame: 0, frames: 10, returnFrames: 10, ease: 'out' },
-      { name: 'WIND_UP', frame: 7, ease: 'out', tag: 'strike' },
+      { name: 'WIND_UP', frame: 7, ease: 'out' },                              // 伸到最遠
+      { name: 'WIND_HOLD', frame: 37, ease: 'lin', impact: true, tag: 'strike' }, // 定格 0.5s → 幀 37 開火
     ],
     phases: {
-      WIND_UP: { aL_sx: 44, aL_sy: -2, aL_sz: 26, aR_sx: 21, aR_sy: -74, aR_sz: 110, aR_ex: 10, lL_hx: -42, lL_kx: 38, lR_hx: 57, aR_wx: -7, aR_wy: -6, aR_wz: 75, aR_stretch: 1.98 },
+      WIND_UP:   { aL_sx: 44, aL_sy: -2, aL_sz: 26, aR_sx: 21, aR_sy: -74, aR_sz: 110, aR_ex: 10, lL_hx: -42, lL_kx: 38, lR_hx: 57, aR_wx: -7, aR_wy: -6, aR_wz: 75, aR_stretch: 1.98 },
+      WIND_HOLD: { aL_sx: 44, aL_sy: -2, aL_sz: 26, aR_sx: 21, aR_sy: -74, aR_sz: 110, aR_ex: 10, lL_hx: -42, lL_kx: 38, lR_hx: 57, aR_wx: -7, aR_wy: -6, aR_wz: 75, aR_stretch: 1.98 }, // 同 WIND_UP=定格凍結
     },
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
   }),

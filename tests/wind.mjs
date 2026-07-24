@@ -27,7 +27,7 @@ const blastImpulse = (cx, cy, face, ox, oy) => page.evaluate(([cx, cy, face, ox,
 await page.evaluate(() => { const v = __v2, C = v.fighters[1], O = v.fighters[0]; C.x = 400; C.y = 540; C.facing = 0; C.item = 'wind'; C.itemUses = 3; C.itemCastCd = 0; C._itemCastAt = 0; C.stunned = false; O.x = 480; O.y = 540; O.vx = O.vy = 0; O.invuln = 0; O.stunned = false; });
 const s1 = await page.evaluate(() => { const v = __v2; v.useItem(v.fighters[1]); const C = v.fighters[1]; return { uses: C.itemUses, clip: C.itemClip, pending: C._itemCastAt > 0, oVx: Math.round(v.fighters[0].vx) }; });
 R(`起手扣次數(3→${s1.uses})+排程 item_wind`, s1.uses === 2 && s1.clip === 'item_wind' && s1.pending && s1.oVx === 0);
-await advance(0.4);
+await advance(0.7);   // item_wind 定格開火 delay≈0.617s(伸最遠 0.117s + 定格 0.5s),等它過
 const s1b = await page.evaluate(() => ({ oVx: Math.round(__v2.fighters[0].vx), pending: __v2.fighters[1]._itemCastAt > 0 }));
 R(`impact 幀才發動擊退(oVx ${s1b.oVx}>0)`, s1b.oVx > 0 && !s1b.pending);
 
