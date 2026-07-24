@@ -124,6 +124,19 @@
 - **調手感**:只開 `v2-state.js`;階段升級改 `applyStage`。
 - **大檔結構性搬移**(sim/render-lab):Python splice(anchor 斷言 count==1),別用長 Edit。
 
+## 特效 perf 鐵則(加任何視覺特效前過一遍;違反=卡頓/凍幀,實測病史在下方)
+
+> 背景:render 熱路徑本身不差(燈數 perf-1 已 18→6、FX_LOW 分級、每幀暫用幾何有 dispose、手機降 dpr)。
+> 卡頓幾乎都來自「新加的特效踩到 GPU/GC 反模式」。加特效=先照這張清單自檢,別事後救火。
+
+1. **絕不動態增減場景燈數**(Three.js program key 含燈數 → 燈數一變=**全場景所有材質重編譯**,lab 材質多=秒級凍幀)。
+   `PointLight`/`DirectionalLight` 開場建一次就固定,**只動 `.intensity`**(改亮度不重編);要「開火點亮」用加法混色的發光 mesh,別加燈。**踩過:item-4f 風壓開火掛槍口 PointLight 在會隱↔顯的 rig 內,每發 ±1 燈=每發 3s 凍幀**。
+2. **ShaderMaterial / 惰性建的重物**:編譯落在「首次可見」那幀=首用凍幀。開機 `prewarm()`+`renderer.compile(scene,camera)` 預編譯(compile 跳過 `visible=false` → 暫亮再藏;GLB 道具 loader 也是這慣例)。**踩過:item-4f 火舌 15 張 shader**。
+3. **每幀別 `new` 材質/`computeVertexNormals`/重建大幾何**。持久特效(鞭/開火爆發)=**建一次+池化+per-frame 只改 transform/uniform**(比照 `render-whip`/`render-wind-blast` rig),**不要進 `zoneGroup`/`projGroup` 那種每幀重建的即時模式**(那模式限「便宜的 MeshBasic/Line 暫用幾何」,且要 `__tmp` 旗+`clearDynamic` dispose)。**踩過:item-4f 煙圈每幀 computeVertexNormals ~800 頂點**。
+4. **FX_LOW 一定要分級**(`import { FX_LOW } from './render-lab.js'`):手機砍掉 fill/CPU 大戶(火舌張數、逐幀變形、粒子、transmission 玻璃)。**踩過(手機卡頓診斷):18 點光+13 transmission=主因,FX_LOW 後主執行緒 2.1×、p99 3770→15.5ms**。
+5. **加法混色(AdditiveBlending)+關 depthWrite** 的透明層很吃 fill rate:大面積全螢幕級的別疊太多層,FX_LOW 要砍。
+6. **驗收 perf**:開火/觸發型特效用「基線 vs 第一發 vs 第二發」量 rAF 幀間隔(scratchpad `wb_perf.mjs` 範式)——第一發卡=編譯/建構型(prewarm 修),每發都卡=每幀成本或動態燈(池化/拔燈修)。
+
 ## 陷阱(踩過的)
 
 1. headless rAF 節流(見上)——測試「沒反應」先懷疑這個,不是程式壞。
