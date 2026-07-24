@@ -232,7 +232,8 @@ const BOTTLE_TINT = { ice: [0x9fd8e8, 0x2a6a88, 0x6aa8c0], oil: [0x9a8a5a, 0x2a2
 const HAT_CAL = { h: 33, y: 20, rz: 0 }; // h=世界高 px、y=headPivot local 抬高(頭頂)、rz=朝向補正
 function updateHeadgear(e, g, R) {
   const u = g.userData;
-  const want = e.item === 'fire' && e.state === 'alive';
+  // item-4h:持火帽 OR 正在放火(_itemVisType+itemCastCd>0)=顯示——最後一發按下即扣次數清 f.item,靠施法窗撐到動畫播完才收
+  const want = e.state === 'alive' && (e.item === 'fire' || (e._itemVisType === 'fire' && e.itemCastCd > 0));
   let hw = u.headgear;
   if (!want) { if (hw) hw.visible = false; return; }
   if (!hw && fireHatReady()) {
@@ -260,7 +261,8 @@ const WIND_CAL_AV = { s: 0.3, x: 0.02, y: 0.26, z: 0.04, rx: -85, ry: -5, rz: 85
 const GAUNT_RAW_H = 1.064;   // wind-gauntlet.glb 原始高(y);proto 正規化除掉的係數
 function updateGauntlet(e, g, R) {
   const u = g.userData;
-  const want = e.item === 'wind' && e.state === 'alive';
+  // item-4h:持風壓手套 OR 正在放風壓(_itemVisType+itemCastCd>0)=顯示——最後一發按下即扣次數清 f.item,靠施法窗撐到動畫播完才收
+  const want = e.state === 'alive' && (e.item === 'wind' || (e._itemVisType === 'wind' && e.itemCastCd > 0));
   let gw = u.gauntlet;
   if (!want) { if (gw) gw.visible = false; return; }
   if (!gw && windGauntletReady()) {

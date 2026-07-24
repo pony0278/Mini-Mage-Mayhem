@@ -40,6 +40,20 @@ const follow = await page.evaluate(() => {
 const calOk = follow.skip || (follow.onBone && Math.hypot(follow.lp[0] - 0.02, follow.lp[1] - 0.26, follow.lp[2] - 0.04) < 0.001);
 R('掛 avatar 手骨+局部對位=校準值(出拳中不變)', calOk, JSON.stringify(follow));
 
+// ---------- ②c 最後一發:useItem 清 item,但施法未走完(itemCastCd>0)手套仍在(item-4h) ----------
+await page.evaluate(() => { if (window.__pin) clearInterval(window.__pin); });
+const lastUse = await page.evaluate(() => {
+  const f = __v2.fighters[0];
+  f.item = 'wind'; f.itemUses = 1; f.itemCastCd = 0; f._itemCastAt = 0; f._itemVisType = null; f.stunned = false;
+  __v2.useItem(f);
+  return { itemCleared: f.item === null, visType: f._itemVisType, cd: f.itemCastCd > 0 };
+});
+const stillWorn = await page.waitForFunction(`${COUNT} >= 1`, { timeout: 5000 }).then(() => true).catch(() => false);
+R('item-4h:最後一發 item 已清但施法中(_itemVisType+cd)手套仍在', lastUse.itemCleared && lastUse.visType === 'wind' && lastUse.cd && stillWorn);
+// 施法走完(itemCastCd 歸零)手套才收
+const tucked = await page.waitForFunction(`${COUNT} === 0`, { timeout: 20000 }).then(() => true).catch(() => false);
+R('施法完成後(itemCastCd→0)手套自動收', tucked);
+
 // ---------- ③ 無道具 = 手套隱藏 ----------
 await pin(null);
 const hidden = await page.waitForFunction(`${COUNT} === 0`, { timeout: 15000 }).then(() => true).catch(() => false);

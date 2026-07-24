@@ -373,7 +373,7 @@ export function updateWhip(e, g, R) {
   const now = game.time;
   const casting = e._itemCastType === 'lightning' && (e._itemCastAt || 0) > now;
   const holding = e.item === 'lightning';
-  const after = !!ws && (ws.phase === STRIKE || ws.phase === RECOVER);   // 最後一發:useItem 已清 item,甩完才收
+  const after = !!ws && ws.phase !== IDLE;   // item-4h:任何非 IDLE 相位都撐可見——最後一發清 item 後,發動幀 casting 轉 false 而相位還在 WINDUP(轉 STRIKE 在下方相位機,晚於此 want 檢查),舊寫法只認 STRIKE/RECOVER=在這一幀 want 掉 false 提早收鞭;改認「非 IDLE」讓相位機跑完 WINDUP→STRIKE→RECOVER→IDLE 才收
   const want = e.state === 'alive' && (holding || casting || after);
   if (!ws) { if (!want) return; ws = u.whip = buildWhip(); }
   if (!want) { ws.grp.visible = false; ws.phase = IDLE; ws.shown = false; ws.lastT = null; return; }

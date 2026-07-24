@@ -42,6 +42,9 @@ const cast = await page.evaluate(() => {
 });
 const resolved = await page.waitForFunction(`__v2.fighters[0]._itemCastAt === 0 && (__v2.inc.itemUses.lightning || 0) > ${cast.before}`, { timeout: 20000 }).then(() => true).catch(() => false);
 R('Z 施放排程+走完(最後一發 item 即清、施放解決)', cast.scheduled && cast.itemCleared && resolved);
+// item-4h:施放解決後(item 已 null)鞭仍在甩(STRIKE/RECOVER)=可見——舊 phase-gap bug 會在發動幀提早收鞭
+const stillSwinging = await page.waitForFunction(`${COUNT} >= 1`, { timeout: 5000 }).then(() => true).catch(() => false);
+R('item-4h:發動後 item=null 但鞭仍甩完(未提早收)', stillSwinging);
 const tucked = await page.waitForFunction(`${COUNT} === 0`, { timeout: 20000 }).then(() => true).catch(() => false);
 R('最後一發甩完(STRIKE+RECOVER)=鞭自動收', tucked);
 

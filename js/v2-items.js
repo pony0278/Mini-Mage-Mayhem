@@ -76,6 +76,7 @@ export function useItem(f) {
   f._recoverT = 0;                                                          // 接道具=取消出拳收招承諾(施法可轉向瞄準;挑飛→風壓接送要在收招窗內瞄)
   f._itemCastAt = game.time + spec.delay; f._itemCastType = type;
   f.itemCastCd = spec.delay + ITEM_CAST_RECOVER;
+  f._itemVisType = type;  // item-4h:裝備可見性錨(火帽/風壓手套)——起手即扣次數把 f.item 清 null 後,靠這個+itemCastCd>0 撐到施法動畫播完才收(不然最後一發按下瞬間裝備就消失)
 }
 function castItem(type, f) {
   if (type === 'wind') castWind(f);
