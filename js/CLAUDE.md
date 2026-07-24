@@ -47,7 +47,11 @@
 > **判定不動**=純演出:sim `castWind` 在槍口 `fx.addWindBlast` push `game.windBlasts`,render-wind-blast 首見即從 **pool(2)** 生成
 > 一個實例、之後自管播放(clock=game.time−spawn),不進 zoneGroup 每幀重建。座標:世界(x,y)→3D(x,高,z=y)、外層 group
 > `scale=SCALE(16)`+`rotation.y=−facing`+`position=(x,0,y)`;`MUZY(1.9)×SCALE`=槍口世界高。由 `render3D` 幀尾呼叫 `updateWindBlasts`。
-> **FX_LOW**:只留閃光+衝擊波環+塵環,砍火舌張數/砍火舌尾/煙圈/火花/點光(fill+CPU 大戶)。r128→r149 shader/API 相容。
+> **FX_LOW**:只留閃光+衝擊波環+塵環,砍火舌尾/煙圈/火花(fill+CPU 大戶)。r128→r149 shader/API 相容。
+> **⚠ 卡頓病史(item-4f,2026-07-23)**:①原版掛槍口 PointLight 在 rig 內=隱形↔可見讓場景燈數每發 ±1 →
+> Three.js **全場景材質重編譯**(program key 含燈數)=每發 3s 級凍幀(量測 3228/3065ms→修後 768/592ms 低於基線);
+> **動態燈禁入 fx rig**。②池+shader 編譯改開機 `prewarm()`(renderer.compile 慣例;compile 跳過 invisible → 暫亮再藏)。
+> ③煙圈不每幀 computeVertexNormals(~800 頂點重算=CPU 大戶,toon 4 階色階看不出差)。
 > hook:`window.__windBlast()`(pool/active/low)。**視覺調參**:SCALE(大小)、RATE(節奏)、AZ_* 配色、BLAST_DUR(壽命)全在檔頭常數。
 
 **actor 家族(brawler 動作/角色)**

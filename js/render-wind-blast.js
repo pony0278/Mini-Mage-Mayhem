@@ -1,12 +1,12 @@
 // render-wind-blast.js — 風壓手套開火 3D 爆發(item-4e):使用者「火砲衝擊波」demo 移植 + azure 風系 recolor。
 // 內容:槍口閃光 + 程序火舌(Gabriel 風 shader:交叉平面+Voronoi 溶解+cel 色階,改 azure 氣流羽)+
-// 漫畫衝擊波環(3 環+16 錐刃)+ 地面塵環 + 卡通煙圈(逐幀頂點變形)+ 火花 + 短暫槍口點光。
+// 漫畫衝擊波環(3 環+16 錐刃)+ 地面塵環 + 卡通煙圈(逐幀頂點變形)+ 火花。(槍口點光已拔=item-4f 卡頓病因,見 buildRig 尾註)
 // **判定不動**:純演出。觸發=sim castWind 在槍口 push game.windBlasts(fx.addWindBlast),這裡首見即生成一個
 // 池中實例、之後自管播放(clock=game.time−spawn,hitstop 一致);render→sim/state 唯讀,不破不變式。
 // 座標:世界(x,y)→3D(x,高,z=y);rig 外層 group 縮 SCALE(px/demo 單位)+ rotation.y=−facing 對齊發射方向。
-// FX_LOW(手機):只留閃光+衝擊波環+塵環,砍火舌/煙圈/火花/點光(fill/CPU 大戶)。r128→r149 相容。
+// FX_LOW(手機):只留閃光+衝擊波環+塵環,砍火舌尾/煙圈/火花(fill/CPU 大戶)。r128→r149 相容。開機 prewarm 預編譯=開火幀零編譯。
 import { game } from './state.js';
-import { scene } from './render-core.js';
+import { scene, renderer, camera } from './render-core.js';
 import { FX_LOW } from './render-lab.js';
 
 const SCALE = 16;      // px / demo 單位(火舌前伸 ~4 單位≈64px=手噴一小段;衝擊波 ~5.7≈91px;風扇形預告已示 WIND_RANGE 260,爆發只是槍口拳)
@@ -22,7 +22,7 @@ const C_WAVE_OUTLINE = 0x0a1a33, C_WAVE_OUTER = 0x2f9fff, C_WAVE_INNER = 0xdff4f
 const C_BLADE_A = 0x8fe0ff, C_BLADE_B = 0x2f9fff, C_BLADE_OUTLINE = 0x0a1a33;
 const C_DUST = 0xbcd8e8;
 const C_SMOKE = 0x9fb4c4, C_SMOKE_OUT = 0x1a2530, C_PUFF = 0x9fb4c4, C_PUFF_OUT = 0x1f2a35;
-const C_SPARK = 0xbfeaff, C_MUZLIGHT = 0x6fc0ff;
+const C_SPARK = 0xbfeaff;
 
 function toonGradient(cols) {
   const c = document.createElement('canvas'); c.width = cols.length; c.height = 1;
@@ -181,8 +181,9 @@ function buildRig() {
     for (let i = 0; i < SPARKS; i++) { sparkPos[i * 3 + 1] = -40; const a = h3(i, 2, 4) * Math.PI * 2, r = h3(i, 3, 5) * 0.55; rig.sparkV.push([7 + h3(i, 4, 6) * 7, Math.cos(a) * r * 4 + 1.2, Math.sin(a) * r * 4]); }
     sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
     rig.sparkGeo = sparkGeo; rig.sparks = new THREE.Points(sparkGeo, new THREE.PointsMaterial({ color: C_SPARK, size: 0.11, transparent: true, depthWrite: false })); grp.add(rig.sparks);
-    // 槍口點光(短暫;暗場提亮,遊戲已亮→強度收斂)
-    rig.light = new THREE.PointLight(C_MUZLIGHT, 0, SCALE * 4); rig.light.position.copy(MUZ); grp.add(rig.light);
+    // ⚠ 槍口 PointLight 已拔除(item-4f 卡頓病因):rig 隱形↔可見會讓場景燈數 ±1 → Three.js 對**全場景
+    // 所有材質**重編譯/重綁(program key 含燈數),每一發開火都全場重編=3s 級凍幀(量測:第一發 3228ms/
+    // 第二發 3065ms=每發都卡,非首用編譯)。加法混色閃光已夠亮;同手機 18 燈=主因的前科,別再加動態燈。
   }
   scene.add(grp);
   return rig;
@@ -199,7 +200,9 @@ function deformSmokeRing(rig, t) {
     const rad = TUBE * 1.05 + Math.sign(n1) * Math.abs(n1) * 0.22 + n2 * 0.09 + Math.sin(a * 6 + t * 4) * 0.02;
     pos.array[i * 3] = cx + dx * rad; pos.array[i * 3 + 1] = cy + dy * rad; pos.array[i * 3 + 2] = cz + dz * rad;
   }
-  pos.needsUpdate = true; rig.smokeGeo.computeVertexNormals();
+  pos.needsUpdate = true;
+  // ⚠ 不每幀 computeVertexNormals(item-4f):~800 頂點索引幾何重算法線=每幀 CPU 大戶;
+  // 變形只是小半徑噪聲,沿用原始 torus 法線在 4 階 toon 色階下看不出差。
 }
 
 // ── 播放一幀(demo frame() body 移植:去掉相機/後座/砲身/地板;t=elapsed×RATE)──
@@ -290,12 +293,20 @@ function playRig(rig, elapsed) {
     } else rig.sparks.visible = false;
   }
 
-  // 槍口點光
-  if (rig.light) rig.light.intensity = t < 0.24 ? Math.pow(1 - t / 0.24, 2) * 8 : 0;
 }
 
-let pool = null;
+let pool = null, _warmed = false;
 function ensurePool() { if (!pool) { pool = []; for (let i = 0; i < POOL; i++) pool.push(buildRig()); } }
+// 預熱(item-4f 卡頓修正):開機第一個 render 幀就建池+renderer.compile 預編譯火舌 shader 等全部材質
+// (perf-1 慣例)。renderer.compile 會跳過 visible=false 的物件 → 暫時亮起、compile、再藏回(不會畫出來)。
+// 若不預熱:池建構+15 張 ShaderMaterial 編譯全落在「第一次開火」那一幀=首用凍幀。
+function prewarm() {
+  if (_warmed) return; _warmed = true;
+  ensurePool();
+  for (const r of pool) r.grp.visible = true;
+  try { renderer.compile(scene, camera); } catch (e) { /* headless 無 GL 等罕例:退回惰性編譯 */ }
+  for (const r of pool) r.grp.visible = false;
+}
 
 function spawn(x, y, angle) {
   ensurePool();
@@ -309,7 +320,7 @@ const _seen = new WeakSet();
 // 每幀由 render3D 呼叫:首見的 windBlast 生成實例、推進所有 active 實例、播完隱藏。
 export function updateWindBlasts() {
   if (!game.windBlasts) return;
-  if (game.windBlasts.length && !pool) ensurePool();
+  prewarm();   // 首個 render 幀:建池+預編譯(開火幀零編譯;v1 也載但只付一次小記憶體)
   for (const b of game.windBlasts) if (!_seen.has(b)) { _seen.add(b); spawn(b.x, b.y, b.angle); }
   if (!pool) return;
   for (const rig of pool) {
