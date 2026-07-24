@@ -41,6 +41,7 @@ export const game = {
   fireAims: [],   // 噴火帽起手預告:短扇形+外緣射程弧(教攻擊範圍;同 windAims 每幀重建,火色)
   boltAims: [],   // 魔導電鞭起手預告:直線+末端點(每幀重建;教直線射程)
   bolts: [],      // 魔導電鞭發射閃:直線電擊亮束(fx.addBolt;render-entities 畫亮束+末端爆)
+  windBlasts: [], // 風壓手套開火 3D 爆發(fx.addWindBlast;render-wind-blast 消費=閃光+火舌+衝擊波環+塵環+煙塵,azure)
   floatingTexts: [],
   bursts: [],     // 漫畫打擊爆花(hitfx-1:fx.addBurst 推、v2-hud drawBursts 用 project() 畫最上層;拳=橘/反擊=金/下壓=紅)
   upgrades: [],

@@ -4,7 +4,7 @@
 import { W, H, TILE } from './constants.js';
 import { clamp } from './utils.js';
 import { game } from './state.js';
-import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt } from './fx.js';
+import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt, addWindBlast } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod,
   GARBAGE_NAME, bottleRespawnT,
@@ -164,6 +164,7 @@ export function castWind(f) { // 遠距扇形放射狀衝擊波:轟一片(對手
   // 爆風加料(Tier A,全平台):槍口白閃 + 沿扇形往外噴的飛塵 + 方向性鏡頭踹 + 加重震動
   const mx = f.x + Math.cos(a) * (f.r + 10), my = f.y + Math.sin(a) * (f.r + 10);
   hitSpark(mx, my, '#eaffff', 1.8); addRing(mx, my, 18, '#ffffff', 0.14, 3); // 槍口白閃
+  addWindBlast(mx, my, a);                                                  // 3D 開火爆發(render-wind-blast:閃光+火舌+衝擊波環+塵環+煙塵,azure)
   for (let i = 0; i < 16; i++) {                                            // 飛塵:沿扇形錐往外噴(近槍口;高摩擦=噴一小段就散)
     const ang = a + (Math.random() * 2 - 1) * WIND_CONE, sp = 260 + Math.random() * 340;
     game.particles.push({ x: mx, y: my, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 1.4 + Math.random() * 2.6, life: 0.22 + Math.random() * 0.22, maxLife: 0.44, color: '#dff3ff' });

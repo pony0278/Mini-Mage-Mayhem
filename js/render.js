@@ -13,6 +13,7 @@ export { setPodPerform } from './render-lab.js'; // 收容演出玻璃罩+掃描
 export { FX_LOW } from './render-lab.js'; // 低效能旗(手機自動/?fx= 覆蓋;v2-hud 用來砍爆花速度線/集中線)
 import { syncActors } from './render-actors.js';
 import { syncProps, syncProjectiles, syncZones } from './render-entities.js';
+import { updateWindBlasts } from './render-wind-blast.js';
 
 // 公開 API re-export(引用方 import 零改動)
 export { project, mouseScreen, updateMouseWorld, camera, setActorShadow, setVividFx, setGroundMarkers } from './render-core.js';
@@ -57,6 +58,7 @@ export function setLabTheme(on) {
     syncActors();
     syncProjectiles();
     syncZones();
+    updateWindBlasts(); // 風壓手套開火 3D 爆發(item-4e;persistent pool,不進 zoneGroup 每幀重建)
     updateWallFade(); // see-through walls: fade any wall between camera and the followed character
     renderer.render(scene, camera);
   }

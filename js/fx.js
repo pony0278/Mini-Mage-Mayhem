@@ -87,6 +87,11 @@ export function addBurst(x, y, opts = {}) {
 export function addBolt(x, y, angle, range, life = 0.22) {
   game.bolts.push({ x, y, angle, range, life, maxLife: life });
 }
+// 風壓手套開火 3D 爆發(azure;render-wind-blast 消費=閃光+程序火舌+衝擊波環+塵環+煙塵)。
+// 只是「觸發訊號」:render 首見即生成一個 3D 爆發實例、之後自管播放,故 life 短(撐一個 render 幀即可)。
+export function addWindBlast(x, y, angle, life = 0.8) {   // >turbo 批次(8×max-dt≈0.4s):render(每 rAF 一次,在 step 批次後)仍看得到=不漏生成;純觸發旗,WeakSet 去重只生成一次,3D 壽命另走 BLAST_DUR
+  game.windBlasts.push({ x, y, angle, life, maxLife: life });
+}
 export function updateRings(dt) {
   for (const r of game.rings) r.life -= dt;
   game.rings = game.rings.filter(r => r.life > 0);
@@ -96,6 +101,8 @@ export function updateRings(dt) {
   game.windFans = game.windFans.filter(w => w.life > 0);
   for (const b of game.bolts) b.life -= dt;
   game.bolts = game.bolts.filter(b => b.life > 0);
+  for (const b of game.windBlasts) b.life -= dt;
+  game.windBlasts = game.windBlasts.filter(b => b.life > 0);
   for (const b of game.bursts) b.t += dt;                // 漫畫爆花老化(壽命到=直接消失,不淡出=跳格感)
   game.bursts = game.bursts.filter(b => b.t < b.life);
 }
