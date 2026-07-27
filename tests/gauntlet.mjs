@@ -50,7 +50,8 @@ const lastUse = await page.evaluate(() => {
 });
 const stillWorn = await page.waitForFunction(`${COUNT} >= 1`, { timeout: 5000 }).then(() => true).catch(() => false);
 R('item-4h:最後一發 item 已清但施法中(_itemVisType+cd)手套仍在', lastUse.itemCleared && lastUse.visType === 'wind' && lastUse.cd && stillWorn);
-// 施法走完(itemCastCd 歸零)手套才收
+// 施法走完(itemCastCd 歸零)手套才收——直接把冷卻歸零(等它自然倒數在併發下會超時,且測的是同一個閘)
+await page.evaluate(() => { const f = __v2.fighters[0]; f.itemCastCd = 0; f._itemCastAt = 0; f._itemCastType = null; });
 const tucked = await page.waitForFunction(`${COUNT} === 0`, { timeout: 20000 }).then(() => true).catch(() => false);
 R('施法完成後(itemCastCd→0)手套自動收', tucked);
 

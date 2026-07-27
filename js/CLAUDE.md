@@ -35,7 +35,16 @@
 > **魔導電鞭視覺(whip-1)**:`render-whip.js`——使用者 Whip Lab v2.5(上傳檔)的 Verlet 鞭 1:1 移植
 > (直化+FTL+鞭梢爆發+三層加法電流管+分岔電弧;碰撞只留地板)。**判定不動**:sim `castLightning`
 > 直線=唯一真相,鞭=純演出。持電鞭(item='lightning')=右手垂鞭+微電紋;排程施放=WINDUP(往後鋪鞭)
-> →施放幀=STRIKE(方向貝茲 back→top→fwd 甩向 facing,施放幀鎖 aim=判定同角)→RECOVER→垂鞭;
+> →**判定幀前 TIP_LAG**=STRIKE(方向貝茲 back→top→fwd 甩向 facing,起甩幀鎖 aim=判定同角)→RECOVER→垂鞭;
+> **⚠ 鞭梢到位對齊判定幀(whip-2,2026-07-27)**:鞭的判定時刻 **≠ clip 的 impact 幀**。拳的 impact=拳到位=打到人;
+> 鞭的 impact 只是「手甩到底並急停」(LAB `handStopAt` 就是這原理:手急停,動量才沿鞭身傳出去),鞭梢還要再飛
+> `TIP_LAG`(=0.96×tStrike≈0.23s,實測逐幀追鞭尖峰值)才抽到人。所以 **`ITEM_SPEC.lightning.delay` = clip impact
+> + `WHIP_TIP_LAG`**(v2-state;全道具唯一 delay≠impactT 的一列),且 **STRIKE 提早 TIP_LAG 起跑**(`ws.strikeAt`)。
+> 舊寫法 delay 直接借 `STRIKE_DELAY[0]`、STRIKE 起於判定幀 → 實測**人先暈 231ms 鞭才甩到**,而且整段後甩
+> (飛蠅釣 back cast,佔前甩前 40%)被擠到判定之後才演=**動力鏈整條倒著跑**;修後落差 0ms、後甩在判定前。
+> 兩個常數跨 DAG 對偶(sim 不能 import render),改一邊要看另一邊。相位機另有 **u 夾 1 延一幀轉相位**的閂:
+> 掉幀/turbo 批次讓 u 一次跨過 1 時,鞭梢爆發(`frontAt(u)≥1`)會被整個跳過(turbo=8 下 100% 跳)。
+> 使用者編好 `lightning_cast` 後 clip 名+時序自動接管——**impact 幀要標在「手甩到底急停」那格,不是鞭梢到人那格**。
 > 最後一發 useItem 已清 item,靠 after 旗甩完才收。鞭根=右腕世界座標(avatar 手骨優先,同扛物病 3),
 > clip 揮臂自動帶動——使用者之後在 punch-studio 編 `lightning_cast` 填 ITEM_SPEC 即換裝,這裡零改動。
 > 參數=使用者 lab 匯出 JSON(LAB 原樣保存)×K=118 px 換算(等比縮放動力學不變;K 取鞭長≈LIGHTNING_RANGE)。

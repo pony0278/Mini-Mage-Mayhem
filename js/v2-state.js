@@ -208,11 +208,20 @@ export const ITEM_INFO = { wind: { name: '風壓手套', color: '#bfeaff' }, tel
 // = 全部瞬發(行為不變),等 studio 動畫到位再逐列填 clip+delay(=impact 幀÷60,同 STRIKE_DELAY)。
 //   uses=次數 · clip/delay=施放動畫與 impact · whileDisabled=被抓/暈可用(取代寫死的 !=='teleport')
 //   aim=facing/self/target(未來瞄準用) · kind=純標籤(HUD/AI/文件分組;機制不靠它)
+// 鞭梢飛行時間(whip-2)。**鞭子的判定時刻 ≠ 動作 clip 的 impact 幀**:
+// 拳的 impact=拳到位=打到人;鞭的 impact 幀只是「手甩到底並停住」(LAB 的 handStopAt=0.46 就是這個原理
+// ——手急停,動量才沿鞭身傳出去),鞭梢還要再飛 WHIP_TIP_LAG 才甩到最遠、真正抽到人。
+// 所以電鞭的 delay = clip impact + 這段飛行,而不是像其他道具直接=impact。
+// 舊寫法 delay 直接借 STRIKE_DELAY[0](0.283)=判定落在手甩到底那一幀 → 實測玩家先看到人暈,231ms 後鞭才甩到;
+// 而且整段後甩(飛蠅釣 back cast,佔前甩前 40%)被擠到判定之後才演=整條動力鏈倒著跑。
+// 值=render-whip 的 TIP_LAG(0.96×tStrike;實測逐幀追鞭尖峰值),兩邊要一起看——DAG 不讓 v2-state import render。
+// 代價=高承諾慢招:起手預告線(game.boltAims)亮滿 ~0.51s、鎖腳同長;對 260px 直線穿防擊暈是合理的可讀窗。
+export const WHIP_TIP_LAG = 0.23;
 export const ITEM_SPEC = {
   wind:     { uses: 3, clip: 'item_wind', delay: CLIPS.item_wind?.impactT ?? STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 專屬施放動畫(使用者 studio 定稿 2026-07-23,腕 Z 側掌外推);delay=clip impact 幀自動導出,未標 impact=維持 0.283s 原時序(預告窗+可被打斷)
   fire:     { uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 噴火帽=噴流(rhook 暫代;點燃油海=R1)
   water:    { uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 工業重錘=前方砸壓(rhook 暫代砸下 clip;造濕地=R2 接雷、砸中短擊倒)
-  lightning:{ uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 魔導電鞭=直線電擊(rhook 暫代;命中線內=電擊暈、沿線給水充電 R2)
+  lightning:{ uses: 2, clip: CLIPS.lightning_cast ? 'lightning_cast' : 'rhook', delay: (CLIPS.lightning_cast?.impactT ?? STRIKE_DELAY[0]) + WHIP_TIP_LAG, whileDisabled: false, aim: 'facing', kind: 'blast' }, // 魔導電鞭=直線電擊(命中線內=電擊暈、沿線給水充電 R2)。**唯一 delay ≠ clip impact 的道具**:+WHIP_TIP_LAG=鞭梢飛行(見上)。rhook 暫代到使用者在 punch-studio 編好 lightning_cast——**impact 幀標在「手甩到底並急停」那格**(不是鞭梢到人那格),貼進 CLIPS 即自動接管 clip 名+時序
   teleport: { uses: 1, clip: null, delay: 0, whileDisabled: true,  aim: 'self',   kind: 'mobility' },
 };
 export const ITEM_CAST_RECOVER = 0.18; // 排程施放後的恢復(承諾冷卻);瞬發道具(delay:0)不套用

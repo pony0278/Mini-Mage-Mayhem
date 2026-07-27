@@ -48,6 +48,18 @@ R('item-4h:發動後 item=null 但鞭仍甩完(未提早收)', stillSwinging);
 const tucked = await page.waitForFunction(`${COUNT} === 0`, { timeout: 20000 }).then(() => true).catch(() => false);
 R('最後一發甩完(STRIKE+RECOVER)=鞭自動收', tucked);
 
+// ---------- ⑤ whip-2:鞭梢到位對齊判定幀 ----------
+// 鞭的判定時刻 ≠ clip impact(手甩到底)——鞭梢還要飛 WHIP_TIP_LAG 才抽到人。舊寫法 STRIKE 起於判定幀,
+// 實測「人先暈 231ms 鞭才甩到」+ 後甩整段跑到判定之後。現在 STRIKE 提早 TIP_LAG 起跑。
+const ws = await page.evaluate(() => {
+  const s = __lab.labGroup.parent; let r = null; s.traverse(o => { if (o.userData && o.userData.whip) r = o.userData.whip; });
+  return r ? { strikeAt: r.strikeAt, castAt: r.castAt, cracked: !!(r.sim && r.sim.cracked) } : null;
+});
+const lead = ws ? ws.castAt - ws.strikeAt : -1;
+R('whip-2:前甩提早鞭梢飛行時間起跑(strikeAt 早於判定幀 ≈0.23s)', lead > 0.18 && lead < 0.28, `lead=${lead.toFixed(3)}s`);
+// 舊相位機 u 一跨過 1 就轉 RECOVER,掉幀/turbo 批次下鞭梢爆發(frontAt(u)≥1)會被整個跳過(turbo=8 下 100% 跳過)。
+R('whip-2:鞭梢爆發必觸發(turbo 批次跨過 u=1 也不跳)', !!(ws && ws.cracked));
+
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
 await B.close();

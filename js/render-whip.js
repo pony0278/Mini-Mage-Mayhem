@@ -263,7 +263,7 @@ function buildWhip() {
     lines.frustumCulled = false; lines.renderOrder = 24; grp.add(lines);
   }
   scene.add(grp);
-  return { grp, layers, brGeo, brMat, sim: null, phase: IDLE, u: 0, t0: -9, castStart: 0, castAt: 0, aim: 0, lastT: null, acc: 0, lastTick: -1, shown: false };
+  return { grp, layers, brGeo, brMat, sim: null, phase: IDLE, u: 0, t0: -9, castStart: 0, castAt: 0, strikeAt: 0, done: false, aim: 0, lastT: null, acc: 0, lastTick: -1, shown: false };
 }
 
 const _t = []; for (let i = 0; i < SEC; i++) _t.push(new THREE.Vector3());
@@ -366,6 +366,11 @@ const _hand = new THREE.Vector3();
 const _fwd = new THREE.Vector3(), _back = new THREE.Vector3(), _top = new THREE.Vector3();
 const _dA = new THREE.Vector3(), _dB = new THREE.Vector3(), _dir = new THREE.Vector3();
 const FIXED = 1 / 120;
+// 鞭梢延遲(whip-2):前甩起跑 → 鞭梢甩到最遠的時間=「真正打到人」那一刻。波前 frontAt(u)=u×frontSpeed
+// 抵梢在 u=1/frontSpeed(0.83),但鞭梢吃了爆發衝量還要再飛一段才到最遠——實測逐幀追鞭尖 x,峰值在
+// u≈0.96(246px≈判定射程 260)。判定幀由 v2-state LIGHTNING_CAST_DELAY 給,兩邊要一起看(DAG 不讓 sim import render)。
+const TIP_HIT_U = 0.96;
+const TIP_LAG = TIP_HIT_U * P.tStrike;   // ≈0.23s
 
 export function updateWhip(e, g, R) {
   const u = g.userData;
@@ -392,19 +397,29 @@ export function updateWhip(e, g, R) {
   }
   const sim = ws.sim;
 
-  // ---- 相位機:施放排程(WINDUP)→ 施放幀(STRIKE)→ RECOVER → IDLE(時間軸=game.time,hitstop 凍結一致)----
-  if (casting) {
-    if (ws.phase !== WINDUP) { ws.phase = WINDUP; ws.castStart = now; ws.castAt = e._itemCastAt; }
-    ws.u = clamp01((now - ws.castStart) / Math.max(ws.castAt - ws.castStart, 0.01));
-  } else if (ws.phase === WINDUP) {
-    if (e.stunned || e.carriedBy || e.state !== 'alive') ws.phase = IDLE;   // 施法被打斷(鏡射 resolveItemCast 守衛)=不出鞭
-    else {
-      ws.phase = STRIKE; ws.t0 = now; ws.u = 0; ws.aim = e.facing || 0;    // 鎖定出鞭方向=施放幀 facing(=判定用的同一個角)
+  // ---- 相位機(whip-2:鞭梢到位對齊判定幀)----
+  // 鞭子的「打到」不是手開始甩那一刻,而是鞭梢甩到最遠那一刻(TIP_LAG 之後)。所以 STRIKE 要**提早
+  // TIP_LAG 起跑**,讓鞭梢爆發落在 _itemCastAt=判定幀上。舊寫法 STRIKE 起於判定幀 → 實測人先暈 231ms
+  // 鞭才甩到,而且整段後甩(飛蠅釣 back cast,佔 STRIKE 前 40%)被擠到判定之後才演=動力鏈整條倒著跑。
+  const broken = e.stunned || e.carriedBy || e.state !== 'alive';          // 施法被打斷(鏡射 resolveItemCast 守衛)
+  if (casting && ws.phase !== WINDUP && ws.phase !== STRIKE) {             // 新一次施放進 WINDUP(STRIKE 期間 casting 仍為 true=不重入)
+    ws.phase = WINDUP; ws.castStart = now; ws.castAt = e._itemCastAt; ws.strikeAt = ws.castAt - TIP_LAG;
+  }
+  if (ws.phase === WINDUP) {
+    if (broken) { ws.phase = IDLE; ws.u = 0; }                             // 打斷=不出鞭
+    else if (now >= ws.strikeAt) {                                         // 提早 TIP_LAG 起甩
+      ws.phase = STRIKE; ws.t0 = ws.strikeAt;                              // t0 釘在排程時刻(非 now)=爆發不隨幀界飄
+      ws.done = false; ws.aim = e.facing || 0;                             // 鎖定出鞭方向=判定用的同一個角
+      ws.u = Math.min((now - ws.t0) / P.tStrike, 1);
       sim.cracked = false; sim.impacted = false; sim.impactAge = 0;
-    }
+    } else ws.u = clamp01((now - ws.castStart) / Math.max(ws.strikeAt - ws.castStart, 0.01));
   } else if (ws.phase === STRIKE) {
-    ws.u = (now - ws.t0) / P.tStrike;
-    if (ws.u >= 1) { ws.phase = RECOVER; ws.t0 = now; ws.u = 0; }
+    if (broken && now < ws.castAt) { ws.phase = RECOVER; ws.t0 = now; ws.u = 0; }   // 判定前被打斷=收鞭,不假裝甩到(畫面不撒謊)
+    else if (ws.done) { ws.phase = RECOVER; ws.t0 = now; ws.u = 0; ws.done = false; }
+    else {                                                                 // 夾 u≤1 並延一幀才轉相位=保證有一幀跑在 u=1:
+      const raw = (now - ws.t0) / P.tStrike;                               // 掉幀時 u 直接跨過 1 會讓鞭梢爆發(frontAt(u)≥1)整個被跳過
+      ws.u = Math.min(raw, 1); if (raw >= 1) ws.done = true;
+    }
   } else if (ws.phase === RECOVER) {
     ws.u = (now - ws.t0) / P.tRecover;
     if (ws.u >= 1) { ws.phase = IDLE; ws.u = 0; }
