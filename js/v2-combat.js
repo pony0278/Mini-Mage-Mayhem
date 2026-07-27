@@ -14,7 +14,7 @@ import {
   AI_PROFILE, FLEE_STAB, FLEE_SPEED, CALL_T, FLEE_EXITS,
   COUNTER_DELAY, COUNTER_WIN, HIT_BURST,
   DASH_RUN_T, DASH_T, DASH_LUNGE, DASH_STAB, DASH_KNOCK, DASH_CD,
-  STUN_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
+  STUN_T, SHOCK_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS, INTRO_GO,
   JUMP_LOB, AIR_CTRL, JUMP_CD, AIR_HIT_LOB, DIVE_T, DIVE_R, DIVE_STAB, DIVE_FWD, DIVE_LAG, DIVE_CD, AI_JUMP_CHANCE, AI_JUMP_CD,
@@ -92,7 +92,7 @@ export function floorHazards(f, dt) {
   if (airborne(f)) return; // 空中=腳不沾地:地板化學(電水/火海/毒區)不作用(跳過危險地板=走位技術;著火 DoT 在身上,照燒)
   const st = stateAtPixel(f.x, f.y);
   if (st === FL.CHARGED) {
-    if (!f.stunned && f.restunT <= 0) { stunFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); }
+    if (!f.stunned && f.restunT <= 0) { stunFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); f.shockT = game.time + SHOCK_T; } // 觸電演出(shock-1):踩電水跟電鞭直擊同一套
     return;
   }
   if (st === FL.FIRE || st === FL.POISON) {

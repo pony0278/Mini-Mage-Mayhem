@@ -203,7 +203,8 @@ import { buildBrawler, updateBrawler, BRAWLER_SPEC } from './actor-brawler.js';
     else if (e.type === 'charger') g.rotation.y = Math.atan2(Math.cos(e.facing), Math.sin(e.facing));
     else g.rotation.y = Math.atan2((game.player ? game.player.x - e.x : 0), (game.player ? game.player.y - e.y : 1));
     const tintHex = e.hurt > 0 ? 0xffffff : (e.slowTimer > 0 ? 0xd8fbff : null);
-    for (const t of g.userData.tints) t.mesh.material.color.setHex(tintHex != null ? tintHex : t.base);
+    // X 光閃現幀(shock-1):角色整組已換成剪影材質,tint 會把顏色寫回去 → 這幀跳過(updateBrawler 早於此行,旗是本幀的)
+    if (!g.userData.xray) for (const t of g.userData.tints) t.mesh.material.color.setHex(tintHex != null ? tintHex : t.base);
   }
 
   export function syncActors() {

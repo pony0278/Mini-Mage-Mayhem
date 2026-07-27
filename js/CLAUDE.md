@@ -51,6 +51,25 @@
 > 時間軸=game.time(hitstop 鞭凍結與世界一致)、電流閃變吃真實時鐘(hitstop 時仍滋滋作響=lab 設計)。
 > 由 actor-brawler 幀尾呼叫 `updateWhip`;鞭 group 掛 scene(世界座標),網格帶 `__whip` 旗=測試計數。
 
+> **觸電命中演出(shock-1)**:`render-shock.js`——使用者「電擊命中特效 v1.1(X光閃現)」移植。
+> **判定不動**=純演出:**三個電擊擊暈來源共用一套**(電鞭直擊 `castLightning` / 元素站雷 `eruptStation` /
+> 踩電水 `floorHazards` FL.CHARGED)只設 `f.shockT = game.time + SHOCK_T`(=`STUN_T`),由 actor-brawler
+> 幀尾 `updateShock(e,g,R)` 讀旗演出。**演出時長=擊暈時長 → 特效本身就是「他還在暈」的告示**
+> (舊況被電暈跟被打暈畫面上都只有頭上一顆 ★,分不出來)。四層:包裹電弧(橢球取兩點+中點位移鋸齒,
+> 15% 機率放大 2.2 倍=突發大跳變)/節點光點/星芒爆裂(billboard,**沿視線推到角色後方**讓角色壓在星芒前)/
+> **X光閃現**(每 45ms 抽一次:角色整組換扁平深色剪影 + 骷髏浮現)。配色=使用者定稿黃白(拍板:武器藍/觸電黃白不強求一致)。
+> **⚠ 骨架必須掛 avatar 骨,不能掛 box rig(病 3,2026-07-27 又踩一次)**:avatar 預設開,box rig 是隱形
+> driver——掛 `R.headPivot` 的話骷髏頭會出現在胸口(實測截圖抓到)。同 item-4b 手套掛 `av.by.hand_r.bone` 的修法;
+> avatar 非同步 → `rig.onAvatar` 追蹤、一出現就重掛。**骨長不寫死**:從 avatar 骨鏈實測(子骨在父骨局部的位移),
+> 換角色模型自動對齊。**五官另掛 `face` 子群組每幀偏航對鏡頭**——鏡頭固定+角色八向轉身,真 3D 朝向會讓臉常背對=只剩白球,gag 讀不出來。
+> **⚠ 剪影用「換 `mesh.material` 指標」不是改材質顏色**:avatar 是 `TEMPLATE.clone(true)`,Three 的 clone
+> **共用材質引用**,改顏色會把兩個角色一起變黑。另外 render-actors 的 tint pass(`g.userData.tints`)在
+> updateBrawler **之後**跑會把顏色寫回去 → 該行加了 `if (!g.userData.xray)` 守衛。
+> perf:**不加燈**(demo 的 shockLight PointLight 拿掉)、電弧/星芒/節點全預配置 buffer(demo 每 45ms
+> `dispose()+new BufferGeometry` 已改掉)、鋸齒路徑 ping-pong Float32Array 零配置(demo 每次 new 150~300 個 Vector3)、
+> 幾何/材質 module 級共用 + 開機 prewarm。FX_LOW 砍節點光點+分支+外暈層。
+> hook:`window.__shock()`、**`window.__shockForce(true/false/null)`**(閃爍 45ms 一擲,截圖/斷言抓不到指定相位,測試靠這支釘住)。
+
 > **風壓開火 3D 爆發(item-4e)**:`render-wind-blast.js`——使用者「火砲衝擊波」demo 移植 + **azure recolor**
 > (閃光+程序火舌 Gabriel shader/Voronoi 溶解/cel 色階+衝擊波環 3 環+16 錐刃+地面塵環+卡通煙圈逐幀變形+火花+短暫槍口點光)。
 > **判定不動**=純演出:sim `castWind` 在槍口 `fx.addWindBlast` push `game.windBlasts`,render-wind-blast 首見即從 **pool(2)** 生成

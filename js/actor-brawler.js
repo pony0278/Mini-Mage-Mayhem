@@ -10,6 +10,7 @@ import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor
 import { handsReady, getHandMesh } from './actor-hands.js';
 import { setRiggedHandsVisible } from './actor-hands-rigged.js';
 import { updateWhip } from './render-whip.js';
+import { updateShock } from './render-shock.js';
 
 // ===== 建模規格表:尺寸/位置(世界 px)/配色。關節鏈長 Lu/Ll(腿)、Au/Al(臂)給自動踩地/組裝用 =====
 export const BRAWLER_SPEC = {
@@ -532,6 +533,7 @@ export function updateBrawler(e, g) {
   updateHeadgear(e, g, R);     // 頭戴裝備(item-3 火帽):持有噴火帽=戴頭上
   updateGauntlet(e, g, R);     // 右手裝備(item-4 風壓手套):持風壓手套=戴右手
   updateWhip(e, g, R);         // 魔導電鞭(whip-1):持電鞭=右手垂鞭,施放=甩鞭演出(判定仍在 sim)
+  updateShock(e, g, R);        // 觸電演出(shock-1):被電擊暈時包裹電弧+星芒+X光骨架(判定仍在 sim;骨架掛 rig=跟姿勢)
   updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
   updateGuardShield(e, g);     // 防禦架式:舉防時身前半透明護盾弧
 }

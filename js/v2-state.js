@@ -111,6 +111,10 @@ export const GUARD_REGEN = 28, GUARD_REGEN_DELAY = 0.4; // 放開後 delay 才�
 export const GUARD_BLOCK_PUSH = 130, GUARD_BLOCK_FLINCH = 0.14; // 擋下=防守方輕微後仰+被推一小步
 export const GUARD_BREAK_FUMBLE = 0.6, GUARD_BREAK_LOCK = 1.2;  // 破防:踉蹌 + 之後不能再舉防的鎖定
 export const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
+// 觸電演出時長(shock-1)=擊暈時長:三個電擊來源(電鞭直擊/元素站雷/踩電水)命中即設
+// `f.shockT = game.time + SHOCK_T`,render-shock 讀旗演出。演出=「他還在暈」的告示——舊況被電暈
+// 跟被打暈畫面上都只有頭上一顆 ★,分不出來。純演出,不影響任何判定。
+export const SHOCK_T = STUN_T;
 export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 // 投擲(B 案:sim 真高度彈道)。三參數語言(人/桶/未來道具同一套,加投擲物=加一行):
 //   range=落點距離(px)、apex=弧頂追加高(px)、T=滯空秒、h0=離手高(過頂丟的手高)。
@@ -357,6 +361,7 @@ export function resetFighter(f) {
   f.faceT = 0; f.falling = false; f.fallT = 0; f.spin = 0; f.voidT = 0;
   f.hurt = 0; f.lastHitBy = -1; f.lastHitT = -9;
   f.burnT = 0; f.burnBy = -1;        // 著火 DoT(噴火帽直擊殘留;不靠地形):floorHazards 每幀削穩定→歸零暈
+  f.shockT = 0;                      // 觸電演出到期時刻(shock-1,純視覺)
   f.stability = STAB_MAX; f.stabCd = 0;
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;

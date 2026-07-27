@@ -8,7 +8,7 @@ import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt, 
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod,
   GARBAGE_NAME, bottleRespawnT,
-  pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, PICKUP_R, groundItems, GROUND_ITEM_TTL,
+  pads, randItem, ITEM_INFO, ITEM_SPEC, ITEM_CAST_RECOVER, SHOCK_T, PICKUP_R, groundItems, GROUND_ITEM_TTL,
   WIND_RANGE, WIND_CONE, WIND_FORCE, WIND_TUMBLE_MIN, WIND_TUMBLE_JITTER, WIND_TUMBLE_LOB, WIND_CARRY_LOB, TP_BLINK, TP_JITTER, ICE_R, OIL_R,
   FIRE_RANGE, FIRE_CONE, FIRE_HIT_STAB, FIRE_BURN_T,
   WATER_SLAM_DIST, WATER_R, WATER_KNOCK, WATER_STAB,
@@ -306,6 +306,7 @@ export function castLightning(f) {
     o.stabCd = 0.8; o.hurt = 0.14; o.faceT = 0.4; o.lastHitBy = f.pid; o.lastHitT = game.time;
     if (o.carrying) dropCarry(o);
     if (!o.stunned && o.restunT <= 0) stunFighter(o);                       // 電擊=直接擊暈(同元素站雷;元素穿防)
+    o.shockT = game.time + SHOCK_T;                                        // 觸電演出(shock-1,純視覺):電弧包身+X光骨架,長度=擊暈時長
     flinch(o, a, 0.28);
     addText(o.x, o.y - 34, '電擊！', '#9fd0ff'); hitSpark(o.x, o.y, '#dff3ff', 1.8);
     if (o.pid === LOCAL) v2s.localFlash = 0.3;
@@ -551,6 +552,7 @@ function eruptStation(s) {
     f.stability = Math.max(0, f.stability - ERUPT_STAB); f.stabCd = 0.6; f.lastHitBy = -5; f.lastHitT = game.time; // -5 = 元素站
     flinch(f, a, 0.3);
     if (light && !f.stunned && f.restunT <= 0) stunFighter(f);       // 雷=電擊擊暈
+    if (light) f.shockT = game.time + SHOCK_T;                        // 觸電演出(shock-1):跟電鞭直擊同一套
     else if (f.stability <= 0 && !f.stunned && f.restunT <= 0) stunFighter(f);
     if (f.pid === LOCAL) v2s.localFlash = 0.3;
   }
