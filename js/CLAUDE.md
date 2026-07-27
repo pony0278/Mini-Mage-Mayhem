@@ -73,6 +73,16 @@
 > 幾何/材質 module 級共用 + 開機 prewarm。FX_LOW 砍節點光點+分支+外暈層。
 > hook:`window.__shock()`、**`window.__shockForce(true/false/null)`**(閃爍 45ms 一擲,截圖/斷言抓不到指定相位,測試靠這支釘住)。
 
+> **下方狀態卡+頭像快照(hud-1,2026-07-27 使用者拍板)**:身上數值條全集中畫面下方——v2-hud `drawCards`
+> (玩家卡左/對手卡右鏡像:GLB 頭像+**YOU 標**(玩家卡,避免不知道看哪張)+名字+穩定條+防耐條+收容三格+持有道具;
+> 頂角 pips/左下「持有:」文字列一併併入)。**手機錨上方兩角**(下方被 v2-touch 搖桿+四鈕佔用,`touchInput.enabled` 判斷)。
+> **留在身上的=動作提示/空間狀態**(掙脫條+交替鍵/Shift 推開窗/暈眩★/無敵盾環/頭頂道具球)——移走必漏看,別再搬。
+> 頭像=`render-portrait.js` `getPortrait(e,color)`(facade 匯出):用現有 renderer 對 avatar 開小 WebGLRenderTarget
+> 拍 96×96、readRenderTargetPixels 回讀進 2D canvas 快取(**一次性**,不進每幀)。**構圖=半身像**:8 方位×4 俯仰
+> 實測 base-avatar 素體**無五官**(任何角度都是色塊),臉朝向=actor local **−Z**(+Z 側=後腦勺)、取景點下移露肩;
+> 之後換有臉的模型同構圖自動拍到臉。temp scene 烘 matrixWorld、共用幾何材質零拷貝、跳過隱藏零件+`__equip`/`__shockbone`。
+> 退路:?avatar=0/載失敗/回讀炸 → 2D 風格化臉(永不空白)。hook:`window.__hud`(卡片幾何+頭像 kind)。
+
 > **風壓開火 3D 爆發(item-4e)**:`render-wind-blast.js`——使用者「火砲衝擊波」demo 移植 + **azure recolor**
 > (閃光+程序火舌 Gabriel shader/Voronoi 溶解/cel 色階+衝擊波環 3 環+16 錐刃+地面塵環+卡通煙圈逐幀變形+火花+短暫槍口點光)。
 > **判定不動**=純演出:sim `castWind` 在槍口 `fx.addWindBlast` push `game.windBlasts`,render-wind-blast 首見即從 **pool(2)** 生成

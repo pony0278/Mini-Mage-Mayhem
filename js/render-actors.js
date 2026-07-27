@@ -45,6 +45,7 @@ import { buildBrawler, updateBrawler, BRAWLER_SPEC } from './actor-brawler.js';
   }
   // drop cached voxel meshes so syncActors rebuilds them from the entity's current r (e.g. after resizing fighters)
   export function refreshActors() { for (const g of actorMeshes.values()) scene.remove(g); actorMeshes.clear(); }
+  export function actorOf(e) { return actorMeshes.get(e); }   // 頭像快照(hud-1)要拿 fighter 的 actor group(唯讀)
 
   function tintable(group, list, m) { group.add(m); list.push({ mesh: m, base: m.material.color.getHex() }); return m; }
 

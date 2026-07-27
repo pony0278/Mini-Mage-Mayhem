@@ -3,8 +3,8 @@
 // 3D 世界點 → 螢幕座標用 render.js 的 project()。
 
 import { clamp } from './utils.js';
-import { game } from './state.js';
-import { project, FX_LOW } from './render.js';
+import { game, touchInput } from './state.js';
+import { project, FX_LOW, getPortrait } from './render.js';
 import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
@@ -53,11 +53,10 @@ function drawContainHud() {
     }
     const s = project(f.x, f.y, (f.r || 14) * 2.2 + 16);
     if (s.behind) continue;
-    const bw = 30, p = clamp(f.stability / STAB_MAX, 0, 1);
+    const bw = 30;
     hctx.textAlign = 'center';
-    hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y, bw, 4);
-    // 血條:暈眩=黃、低穩定=橘(危險色,刻意不用紅色以免撞到紅方身分色)、其餘=自身身分色
-    hctx.fillStyle = f.stunned ? '#ffd36d' : (f.stability < 30 ? '#ff9a4a' : COLORS[f.pid]); hctx.fillRect(s.x - bw / 2, s.y, bw * p, 4);
+    // 穩定條/防禦耐力條已移到下方卡片(hud-1,使用者拍板 2026-07-27:身上不放數值條);
+    // 留在身上的=動作提示/空間狀態:暈眩★、無敵盾環、掙脫條+交替鍵、Shift 推開窗(移走必漏看)。
     if (f.stunned) { hctx.fillStyle = '#ffd36d'; hctx.font = '900 16px system-ui, sans-serif'; hctx.fillText('★', s.x, s.y - 6); }
     if (f.invuln > 0 && (v2s.lowFlicker || Math.floor(game.time * 12) % 2 === 0)) { // 出艙無敵:閃爍護盾環(減閃爍=常亮)
       const g = project(f.x, f.y, 10);
@@ -68,12 +67,6 @@ function drawContainHud() {
       hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw, 5);
       hctx.fillStyle = '#9affd0'; hctx.fillRect(s.x - bw / 2, s.y - 13, bw * ep, 5);
       if (f.pid === LOCAL) { hctx.fillStyle = '#fff'; hctx.font = '900 13px system-ui, sans-serif'; hctx.fillText(f.mashSide === 0 ? '◀ A' : 'D ▶', s.x, s.y - 18); }
-    }
-    // 防禦耐力條(本機玩家):舉防中或耐力未滿時顯示;破防鎖定=紅、正常=藍
-    if (f.pid === LOCAL && (f.guarding || f.guardStam < GUARD_STAM_MAX)) {
-      const gp = clamp(f.guardStam / GUARD_STAM_MAX, 0, 1), locked = f.guardLock > 0;
-      hctx.fillStyle = 'rgba(0,0,0,.5)'; hctx.fillRect(s.x - bw / 2, s.y - 20, bw, 4);
-      hctx.fillStyle = locked ? '#ff6b6b' : (f.guarding ? '#7fd0ff' : '#4a7fa0'); hctx.fillRect(s.x - bw / 2, s.y - 20, bw * gp, 4);
     }
     // 格擋推開提示:被打中的短窗內亮起(像掙脫指示),按對=把攻擊方推開(只對本機玩家顯示)
     if (f.pid === LOCAL && f.pushWinT > 0 && f.pushCd <= 0 && !f.stunned && !f.carriedBy) {
@@ -237,19 +230,72 @@ function drawItems() {
     hctx.strokeStyle = 'rgba(255,255,255,.8)'; hctx.lineWidth = 1.5; hctx.stroke();
     if (f.itemUses > 1) { hctx.textAlign = 'left'; hctx.font = '800 11px system-ui, sans-serif'; hctx.fillStyle = '#eafaff'; hctx.fillText('×' + f.itemUses, s.x + 10, s.y + 4); } // 多次數:球旁標剩餘
   }
-  const me = fighters[LOCAL]; // 本機持有 HUD
-  hctx.textAlign = 'left'; hctx.font = '800 14px system-ui, sans-serif';
-  if (me.item) { hctx.fillStyle = ITEM_INFO[me.item].color; hctx.fillText('持有：' + ITEM_INFO[me.item].name + ' ×' + me.itemUses + '（Z 使用）', 24, VH - 40); }
-  else { hctx.fillStyle = 'rgba(234,250,255,.45)'; hctx.fillText('持有：無（走到補給座撿）', 24, VH - 40); }
 }
-function drawPips(pid, x0, dir) { // 三格收容進度:填色=收容方式
-  const size = 22, gap = 6, y0 = 26;
+// 「持有:」文字列已併入下方卡片(hud-1);補給座球/頭頂小球=空間資訊,留在世界裡。
+function drawPips(pid, x0, y0, size, gap, dir) { // 三格收容進度:填色=收容方式(hud-1 併入下方卡片)
   const mine = containLog.filter(c => c.winner === pid);
   for (let i = 0; i < WIN_TARGET; i++) {
     const px = dir === 1 ? x0 + i * (size + gap) : x0 - size - i * (size + gap);
     hctx.fillStyle = mine[i] ? (METHOD_COL[mine[i].method] || COLORS[pid]) : 'rgba(255,255,255,.12)';
     hctx.fillRect(px, y0, size, size);
-    hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 2; hctx.strokeRect(px + 1, y0 + 1, size - 2, size - 2);
+    hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 1.5; hctx.strokeRect(px + 0.5, y0 + 0.5, size - 1, size - 1);
+  }
+}
+/* ==== 下方狀態卡(hud-1,使用者拍板 2026-07-27):身上數值條全部集中到畫面下方——
+   頭像(GLB 真臉快照,render-portrait)+ YOU 標(玩家卡;避免不知道看哪張)+ 名字 +
+   穩定條 + 防禦耐力條 + 收容進度三格 + 持有道具。左=玩家(藍)、右=對手(紅,鏡像佈局)。
+   **手機錨在上方兩角**:下方被虛擬搖桿(左)+四鈕(右)佔用,放下面會疊住(touchInput.enabled 判斷)。
+   留在身上的=動作提示/空間狀態(掙脫條+交替鍵/Shift 推開窗/暈眩★/無敵盾環),移走必漏看。 */
+const CW = 252, CH = 64, PSZ = 52;
+function drawCard(f, x, y, dir) {
+  const pid = f.pid, isMe = pid === LOCAL;
+  hctx.fillStyle = 'rgba(10,14,22,.74)'; hctx.fillRect(x, y, CW, CH);
+  hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 2; hctx.strokeRect(x + 1, y + 1, CW - 2, CH - 2);
+  // 頭像(快照未好=佔位框;暈眩=壓暗+★)
+  const px = dir === 1 ? x + 6 : x + CW - 6 - PSZ, py = y + 6;
+  const port = getPortrait(f, COLORS[pid]);
+  hctx.fillStyle = '#0c1018'; hctx.fillRect(px, py, PSZ, PSZ);
+  if (port) hctx.drawImage(port.canvas, px, py, PSZ, PSZ);
+  if (f.stunned) {
+    hctx.fillStyle = 'rgba(0,0,0,.55)'; hctx.fillRect(px, py, PSZ, PSZ);
+    hctx.fillStyle = '#ffd36d'; hctx.font = '900 22px system-ui, sans-serif'; hctx.textAlign = 'center';
+    hctx.fillText('★', px + PSZ / 2, py + PSZ / 2 + 8);
+  }
+  hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 1.5; hctx.strokeRect(px + 0.5, py + 0.5, PSZ - 1, PSZ - 1);
+  if (isMe) {                                       // YOU 小標(玩家卡;蓋頭像左上角)
+    hctx.fillStyle = '#ffd36d'; hctx.fillRect(px - 2, py - 2, 30, 13);
+    hctx.fillStyle = '#1a1408'; hctx.font = '900 9px system-ui, sans-serif'; hctx.textAlign = 'left';
+    hctx.fillText('YOU', px + 3, py + 8);
+  }
+  // 條區(對手卡鏡像=條在頭像左邊)
+  const bx = dir === 1 ? px + PSZ + 8 : x + 8, bw = CW - PSZ - 22;
+  hctx.textAlign = dir === 1 ? 'left' : 'right'; const tx = dir === 1 ? bx : bx + bw;
+  hctx.font = '800 11px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
+  hctx.fillText(NAMES[pid], tx, y + 16);
+  drawPips(pid, dir === 1 ? bx + bw - 3 * 14 + 4 : bx + 3 * 14 - 4, y + 7, 10, 4, dir); // 收容進度:名字列右端(鏡像=左端)
+  const sp = clamp(f.stability / STAB_MAX, 0, 1);   // 穩定條(=舊身上血條配色:暈=黃/低=橘/其餘=陣營色)
+  const sbx = dir === 1 ? bx : bx + bw * (1 - sp);
+  hctx.fillStyle = 'rgba(0,0,0,.55)'; hctx.fillRect(bx, y + 22, bw, 9);
+  hctx.fillStyle = f.stunned ? '#ffd36d' : (f.stability < 30 ? '#ff9a4a' : COLORS[pid]); hctx.fillRect(sbx, y + 22, bw * sp, 9);
+  const gp = clamp(f.guardStam / GUARD_STAM_MAX, 0, 1), locked = f.guardLock > 0; // 防禦耐力條
+  const gbx = dir === 1 ? bx : bx + bw * (1 - gp);
+  hctx.fillStyle = 'rgba(0,0,0,.55)'; hctx.fillRect(bx, y + 34, bw, 5);
+  hctx.fillStyle = locked ? '#ff6b6b' : (f.guarding ? '#7fd0ff' : '#4a7fa0'); hctx.fillRect(gbx, y + 34, bw * gp, 5);
+  hctx.font = '800 11px system-ui, sans-serif';     // 持有道具列
+  if (f.item) { hctx.fillStyle = ITEM_INFO[f.item].color; hctx.fillText(ITEM_INFO[f.item].name + ' ×' + f.itemUses + (isMe ? '（Z）' : ''), tx, y + 54); }
+  else if (isMe) { hctx.fillStyle = 'rgba(234,250,255,.4)'; hctx.fillText('無道具（補給座撿）', tx, y + 54); }
+}
+function drawCards() {
+  const touch = touchInput.enabled;                 // 手機:下方被搖桿/按鈕佔用 → 錨上方兩角
+  const y = touch ? 58 : VH - CH - 34;
+  drawCard(fighters[0], 16, y, 1);
+  drawCard(fighters[1], VW - 16 - CW, y, -1);
+  if (typeof window !== 'undefined') {              // 測試 hook:卡片幾何+頭像種類
+    const p0 = getPortrait(fighters[0], COLORS[0]), p1 = getPortrait(fighters[1], COLORS[1]);
+    window.__hud = { anchor: touch ? 'top' : 'bottom', cards: [
+      { pid: 0, x: 16, y, w: CW, h: CH, you: true, portrait: p0 ? p0.kind : null },
+      { pid: 1, x: VW - 16 - CW, y, w: CW, h: CH, you: false, portrait: p1 ? p1.kind : null },
+    ] };
   }
 }
 // 事故報告結算(分享引擎;規格 E 北極星「輸了也好笑」——分家後 A 款的招牌收尾,docs/game-split.md)
@@ -369,11 +415,10 @@ export function drawHud() {
   hctx.font = '800 13px system-ui, sans-serif';
   hctx.fillStyle = aiOn ? 'rgba(255,140,140,.92)' : 'rgba(154,255,208,.96)';
   hctx.fillText(aiOn ? '紅方：AI 同事　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', VW / 2, 48);
-  // 三格收容進度(每格填色=收容方式)= 勝利進度
-  drawPips(0, 24, 1); drawPips(1, VW - 24, -1);
   drawContainHud();
   drawItems();
-  drawBursts(); // 漫畫打擊爆花:最上層蓋過角色/血條(hitfx-1;白閃/集中線也在這層)
+  drawBursts(); // 漫畫打擊爆花:最上層蓋過角色(hitfx-1;白閃/集中線也在這層)
+  drawCards(); // 下方狀態卡(hud-1):頭像+YOU+穩定/防耐條+收容進度+道具(手機=上方兩角)
   drawSwitchLabels();
   if (v2s.introT <= INTRO_GO) drawCoachLine(); // 就位期讓位給開場字幕(反擊提示已移除=玩家自己體會)
   // stage / seal banner
@@ -390,5 +435,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: shock-1b', VW - 10, VH - 4);
+  hctx.fillText('build: hud-1', VW - 10, VH - 4);
 }

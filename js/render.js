@@ -19,6 +19,7 @@ import { updateWindBlasts } from './render-wind-blast.js';
 export { project, mouseScreen, updateMouseWorld, camera, setActorShadow, setVividFx, setGroundMarkers } from './render-core.js';
 export { setRichFloor, setFloorParams, getFloorParams, setFloorSubtle, setWallFade, setIslandMode, setIslandShapes, setApron } from './render-world.js';
 export { refreshActors } from './render-actors.js';
+export { getPortrait } from './render-portrait.js'; // 角色頭像快照(hud-1;v2-hud 下方卡片用)
 export { ANIM } from './actor-brawler.js'; // 程序動作參數表(?tune=1 跑步彈跳/stridePx 等 live 調參用;物件可變)
 export { draw, drawPanicFaces } from './render-hud.js';
 

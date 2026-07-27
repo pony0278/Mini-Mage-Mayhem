@@ -1,0 +1,14 @@
+import puppeteer from 'puppeteer';
+const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox'] });
+const page = await B.newPage();
+await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 3 });
+await page.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played','1'); } catch {} });
+await page.goto('http://localhost:8099/v2.html?turbo=8', { waitUntil: 'networkidle0' });
+await page.waitForFunction('window.__v2 && window.__lab && __gl', { timeout: 20000 });
+await page.evaluate(() => { const v=__v2; v.v2s.introT=0; v.fighters[1].ai=false;
+  v.fighters[0].item='wind'; v.fighters[0].itemUses=3; v.fighters[1].stability=42; });
+await page.waitForFunction(`window.__hud && __hud.cards[0].portrait === 'glb'`, { timeout: 20000 });
+await new Promise(r => setTimeout(r, 300));
+await page.screenshot({ path: '/tmp/card_L.png', clip: { x: 16, y: 583, width: 350, height: 96 } });
+await page.screenshot({ path: '/tmp/card_R.png', clip: { x: 914, y: 583, width: 350, height: 96 } });
+await B.close();
