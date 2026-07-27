@@ -73,7 +73,8 @@ export function useItem(f) {
   if (!spec.clip || spec.delay <= 0) { castItem(type, f); return; }         // 瞬發(傳送)→ 直接生效、無動畫
   // 排程施放:動畫時鐘 + impact 幀 + 承諾冷卻
   f.itemFx = game.time; f.itemClip = spec.clip;
-  f._recoverT = 0;                                                          // 接道具=取消出拳收招承諾(施法可轉向瞄準;挑飛→風壓接送要在收招窗內瞄)
+  f._recoverT = 0;                                                          // 接道具=取消出拳收招承諾(道具動畫自己的 itemCastCd 接手承諾)
+  f._itemDir = f.facing;                                                    // item-4i:施法方向在按下的那一刻定案 —— 整段動畫面向硬鎖(moveFighter 每幀蓋回),不能瞬間轉向
   f._itemCastAt = game.time + spec.delay; f._itemCastType = type;
   f.itemCastCd = spec.delay + ITEM_CAST_RECOVER;
   f._itemVisType = type;  // item-4h:裝備可見性錨(火帽/風壓手套)——起手即扣次數把 f.item 清 null 後,靠這個+itemCastCd>0 撐到施法動畫播完才收(不然最後一發按下瞬間裝備就消失)

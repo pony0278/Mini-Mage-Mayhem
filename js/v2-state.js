@@ -408,6 +408,7 @@ export function resetFighter(f) {
   f.carryObj = null;                                    // 扛著的物件(廢料桶;與 carrying=扛人 互斥)
   f._barrelThrowAt = 0;                                 // 排程丟桶(release 幀甩出;0=沒在丟)
   f._itemCastAt = 0; f._itemCastType = null;            // 排程施放(impact 幀觸發效果)
+  f._itemDir = 0;                                       // item-4i:施法面向承諾(按下當刻定案,整段動畫鎖住)
   f.itemFx = -9; f.itemClip = null; f.itemCastCd = 0;   // 施放動畫時鐘/clip + 承諾冷卻
   f.state = 'alive';
 }

@@ -123,15 +123,16 @@ export function drainFloorEvents() {
 // 出拳承諾期(feel-2):起手(_strikeAt>0)+收招(_recoverT 未到)=整段揮拳動畫,身體跟拳一起承諾。
 export function punchLocked(f) { return f._strikeAt > 0 || f._recoverT > game.time; }
 // 道具施法承諾期(item-4g,使用者反饋「用道具應像揮拳 combo 不能邊走邊攻擊」):itemCastCd>0=整段施法
-// (起手→蓄力→發動→收招;teleport 瞬發不設 itemCastCd=不鎖=保留 whileDisabled 逃脫機動)。**只鎖腳不鎖面向**
-// (可原地轉身瞄準,保留蓄力中轉向的連招),並擋跳(否則跳=air-move 繞過鎖腳)。
+// (起手→蓄力→發動→收招;teleport 瞬發不設 itemCastCd=不鎖=保留 whileDisabled 逃脫機動)。**鎖腳也鎖面向**
+// (item-4i 使用者反饋「道具施放不該瞬間轉向,要等動畫播完」:面向在按下那刻定案=_itemDir,同出拳的
+// _strikeDir 承諾模型;代價是「挑飛→風壓接送」等連招要先瞄好再按),並擋跳(否則跳=air-move 繞過鎖腳)。
 export function itemLocked(f) { return f.itemCastCd > 0; }
 export function moveFighter(f, dt) {
   if (f.stunned || f.fumbleT > 0) { slideKnock(f, dt); return; } // 暈眩/踉蹌:不能自走,仍受擊退慣性
   const m = f.ai ? (v2s.introT > INTRO_GO ? { x: 0, y: 0 } : aiMove(f)) : (f.pid === LOCAL ? readMove(f.pid) : { x: 0, y: 0 }); // 開場就位期 AI 靜止,「開始!」(introT<=INTRO_GO)才開工;被動假人不吃方向鍵原地站
   if (m.x || m.y) f.facing = Math.atan2(m.y, m.x); // 面向=移動方向(keys-1 滑鼠退役:桌機=手機同一模型;停下保留最後面向,GetAmped 式 8 向);AI/熱座同條路
   if (punchLocked(f)) f.facing = f._strikeDir;                                    // 出拳承諾(feel-2):整段揮拳(起手+收招=clip 播完)面向硬鎖在出拳方向(本機滑鼠/AI 皆蓋回)
-  // 道具施法(item-4g):鎖腳不鎖面向——可原地轉身瞄準(保留「挑飛→風壓接送」等靠蓄力中轉向的連招;預告扇形/直線隨面向即時更新),只是不能位移
+  if (itemLocked(f)) f.facing = f._itemDir;                                       // 道具施法承諾(item-4i):整段施法動畫面向硬鎖在按下當刻的方向(預告扇形/直線因此是誠實的定格預警,不能中途甩向)
   if (f.guarding) { m.x *= GUARD_MOVE; m.y *= GUARD_MOVE; }                       // 舉防=定身(GUARD_MOVE 0);想拉開就得放防。擊退/被推仍照 f.vx/vy 走
   if (f._diveLagT > 0) { m.x = 0; m.y = 0; }                                      // 下壓落空硬直:短暫定身(v2.js 倒數)
   if (punchLocked(f) && !(f._dashT0 > -5) && !(f._diveT0 > -5)) { m.x *= PUNCH_MOVE; m.y *= PUNCH_MOVE; } // 出拳承諾:整段揮拳鎖腳(衝刺/下壓走自己的承諾位移,不吃這條)

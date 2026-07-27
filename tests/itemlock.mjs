@@ -1,6 +1,7 @@
-// 道具施法承諾鎖腳(item-4g;使用者反饋「用道具應像揮拳 combo 不能邊走邊攻擊」)驗收:
+// 道具施法承諾鎖腳+鎖面向(item-4g / item-4i)驗收:
 // ①控制組=無施法按方向鍵會走(確認輸入有效)②施法中(itemCastCd>0)按方向鍵=位移≈0(鎖腳)
-// ③施法中按上鍵=facing 仍轉(只鎖腳不鎖面向,保留蓄力中轉向瞄準的連招)④teleport 瞬發不設 itemCastCd=不鎖(逃脫機動保留)
+// ③施法中按上鍵=facing 不動(item-4i 使用者反饋「道具施放不該瞬間轉向,要等動畫播完」:
+//   面向在按下當刻定案=_itemDir,整段動畫硬鎖;承諾結束後才恢復可轉)④teleport 瞬發不設 itemCastCd=不鎖(逃脫機動保留)
 // 陷阱:鍵盤輸入要用真事件 page.keyboard.down(非塞 keys[]);rAF 節流→以 game.time 輪詢(?turbo=8)。
 import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
@@ -27,12 +28,18 @@ await page.keyboard.down('ArrowRight'); await adv(0.3); await page.keyboard.up('
 const lock = await page.evaluate(() => ({ dx: +(__v2.fighters[0].x - 300).toFixed(1), casting: __v2.fighters[0].itemCastCd > 0 }));
 R(`施法中鎖腳(dx=${lock.dx}≈0,仍施法中)`, Math.abs(lock.dx) < 3 && lock.casting);
 
-// ③ 施法中可轉身瞄準(不鎖面向)
+// ③ 施法中鎖面向(item-4i):按下當刻 facing=0 → 整段施法按上鍵也不轉;承諾一結束才恢復可轉
 await setup('f=>{f.item="wind";f.itemUses=3;}');
 await page.evaluate(() => __v2.useItem(__v2.fighters[0]));
-await page.keyboard.down('ArrowUp'); await adv(0.2); await page.keyboard.up('ArrowUp');
-const turn = await page.evaluate(() => +__v2.fighters[0].facing.toFixed(2));
-R(`施法中可轉身瞄準(facing=${turn}≠0)`, Math.abs(turn) > 0.3);
+await page.keyboard.down('ArrowUp'); await adv(0.2);
+const turn = await page.evaluate(() => ({ facing: +__v2.fighters[0].facing.toFixed(2), dir: +(__v2.fighters[0]._itemDir ?? -9).toFixed(2), casting: __v2.fighters[0].itemCastCd > 0 }));
+R(`施法中鎖面向(facing=${turn.facing}=_itemDir 0,仍施法中)`,
+  Math.abs(turn.facing) < 0.01 && Math.abs(turn.dir) < 0.01 && turn.casting, JSON.stringify(turn));
+// 承諾結束=解鎖(按鍵仍按著 → 應轉到上)
+await page.evaluate(() => new Promise(r => { const iv = setInterval(() => { if (__v2.fighters[0].itemCastCd <= 0) { clearInterval(iv); r(); } }, 15); }));
+await adv(0.15); await page.keyboard.up('ArrowUp');
+const after = await page.evaluate(() => +__v2.fighters[0].facing.toFixed(2));
+R(`承諾結束=面向解鎖(facing=${after}≠0)`, Math.abs(after) > 0.3);
 
 // ④ teleport 瞬發不鎖(逃脫機動保留)
 await setup('f=>{f.item="teleport";f.itemUses=1;}');
