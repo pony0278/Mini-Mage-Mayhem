@@ -94,6 +94,7 @@ async function loadAvatarBuffer(ab, label){
 
   AVATAR = { wrap, S, label, by, order, fillers: [] };
   buildJointFillers();
+  if(typeof remountHeadgear === 'function') remountHeadgear();   // item-3b:角色到位 → 已掛的頭戴道具改掛 avatar 頭骨(校準值語意不變)
   setSyntheticDummyVisible(false);
   if(typeof buildPropPanel === 'function') buildPropPanel();   // 刷新 PROPORTIONS 面板 → 進入角色模式鎖定態
   applyInspectOrPhase();                        // 回到目前 phase,hook 立即驅動角色
@@ -272,6 +273,7 @@ function clearAvatar(){
     if(o.material){ (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); }
   });
   AVATAR = null;
+  if(typeof remountHeadgear === 'function') remountHeadgear();   // item-3b:退回素體 headPivot(補償 group 隨之銷毀)
   setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
   if(typeof buildPropPanel === 'function') buildPropPanel();   // 刷新 PROPORTIONS 面板 → 解除鎖定
   updatePartsStatus('角色已清除,回到素體/部位模式。');

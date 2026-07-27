@@ -34,13 +34,23 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
   手指軸(`aL_/aR_ f*`)就住在 ARM L / ARM R 群組,由 parts `applyFingerPose` 消費驅動指骨。
   ⚠ `bindPoseSliders`/`refreshSliders` 對「無主面板滑桿的軸」有 `if(!r)return` 守衛——沒放進 `SLIDER_GROUPS` 的軸不會炸,但也沒 UI。
 - **`tick()`**(hitfeel)= 唯一 rAF 迴圈:播放進度(`playT`×`REF_FPS`)、scrub、渲染。要每幀跑的東西掛這裡(或它呼叫的函式)。
-- **`PART_MODELS[slot]` 的 parent 不固定**:一般部位=假人節點(`PS_RIG_TARGET`);rigged 手在 avatar 模式=**avatar 手骨**。
+- **`PART_MODELS[slot]` 的 parent 不固定**:一般部位=假人節點(`PS_RIG_TARGET`);rigged 手在 avatar 模式=**avatar 手骨**;
+  `bow`=avatar 手骨(病 3);**`headgear`=avatar 頭骨底下的補償 group `PS_HEADGEAR_MOUNT`**(item-3b,見下)。
   遍歷假人 mesh 判斷「是不是部位」用 `isInsidePartObject(o)`(靠 userData 標記),別用 parent 鏈猜。
 - **`setSyntheticDummyVisible`**(parts)被 attachPart/clearParts/avatar 呼叫;內含「rigged 手掛載期間抑制假人拳頭盒」邏輯。
 - **移除功能 checklist**(ref-solve 的教訓,兩次):HTML 元素/按鈕 + CSS 區塊 + script 標籤 + **其他檔的引用**——
   grep 該檔**全部**頂層符號到其他檔,注意 **`let a=1, b=2` 多重宣告只抓第一個名字會漏**(totalTime/scrub listener 就是這樣漏掉的;
   被刪檔可能還「寄宿」別人的功能,如 scrub 拖桿住在 ref-solve)+ README/本手冊更新 +
   headless 回歸必須**實際操作**:拖曳/滾輪 + **按 PLAY + 拖 SCRUB**(0 pageerror 不夠,死路徑要跑到)。
+
+- **`headgear` 掛 avatar 頭骨 + 補償 group(item-3b,2026-07-27)**:`headgearMountNode()`(parts.js)在 avatar 在場時
+  建/取一個掛在 `AVATAR.by.head.bone` 底下的 group,矩陣 = `headBone.matrixWorld⁻¹ × headPivot.matrixWorld`
+  → **group 內的局部空間與素體 `headPivot` 空間完全等價**(實測世界位置差 0.00000)。
+  為什麼要補償而不是直接換父節點:avatar 頭骨的原點/單位跟素體 headPivot 完全不同,直接換會讓使用者
+  **已存的校準值(localStorage + `PROP_LIBRARY.cal` + 遊戲的 `HAT_CAL_AV` 換算)全部跳位、得重調**。
+  有了補償層:滑桿刻度不變、存檔不用遷移、`PROP_LIBRARY.fire_hat.cal` 照舊,只是帽子改跟 avatar 的頭走。
+  每次取用重烘矩陣(`rebuildCharacter` 換過 headPivot 也自動跟上);avatar 載好/清掉時 avatar.js 呼叫
+  `remountHeadgear()` 把已掛的道具重掛。回歸:`tests/psheadgear.mjs`。
 
 ## 陷阱(踩過的)
 

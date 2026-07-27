@@ -12,6 +12,40 @@ const PART_HIDE_STORAGE_KEY = 'PUNCH_STUDIO_PART_KIT_HIDE_DUMMY_V2_14PARTS_AXISF
 // 不套用 sockets.json 的 skeleton-bone-local 旋轉(那是給 skeleton rig / assembler 用的)。
 
 // (1) 邏輯 slot/childPart -> PS DIM rig 節點存取器(唯一 PS-specific 適配層)
+// 頭戴裝備掛點(item-3b,2026-07-27 對齊遊戲):**avatar 在場時掛 avatar 頭骨**,帽子跟「畫面上真正的頭」走。
+// studio 目前把 avatar 縮到跟素體同高(avatar.js:S = standH/size.y,無放大係數)→ 素體頭 ≈ avatar 頭,
+// 掛哪邊看起來都對;但遊戲的 avatar 帶 AVATAR_SCALE 1.3,素體頭遠在 avatar 頭下方(病 3,已在 item-3b 修)。
+// studio 先把掛點對齊,之後若也要放大 avatar 預覽就不會再踩一次。
+// **關鍵:中間插一層補償 group**,變換 = headBone.matrixWorld⁻¹ × headPivot.matrixWorld
+// → group 內的局部空間與舊的 headPivot 空間**完全等價**:使用者已存的校準值(s/x/y/z/r*)語意不變、
+//    滑桿刻度不變、PROP_LIBRARY.cal 與遊戲的 HAT_CAL_AV 換算全部不用動;只是父節點換成頭骨。
+// 每次取用都重烘矩陣(rebuildCharacter 換過 headPivot 也自動跟上);avatar 不在=回傳 null 退素體 headPivot。
+let HEADGEAR_MOUNT = null;
+function headgearMountNode(){
+  const av = (typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.head && AVATAR.by.head.bone) ? AVATAR : null;
+  const bone = av && av.by.head.bone;
+  if(!bone || !headPivot){
+    if(HEADGEAR_MOUNT && HEADGEAR_MOUNT.parent) HEADGEAR_MOUNT.parent.remove(HEADGEAR_MOUNT);
+    HEADGEAR_MOUNT = null; return null;
+  }
+  if(!HEADGEAR_MOUNT || HEADGEAR_MOUNT.parent !== bone){
+    if(HEADGEAR_MOUNT && HEADGEAR_MOUNT.parent) HEADGEAR_MOUNT.parent.remove(HEADGEAR_MOUNT);
+    HEADGEAR_MOUNT = new THREE.Group(); HEADGEAR_MOUNT.name = 'PS_HEADGEAR_MOUNT';
+    HEADGEAR_MOUNT.matrixAutoUpdate = false;
+    bone.add(HEADGEAR_MOUNT);
+  }
+  if(root) root.updateMatrixWorld(true);
+  HEADGEAR_MOUNT.matrix.copy(bone.matrixWorld).invert().multiply(headPivot.matrixWorld);
+  HEADGEAR_MOUNT.matrixWorldNeedsUpdate = true;
+  return HEADGEAR_MOUNT;
+}
+// avatar 載好/清掉之後把已掛的頭戴道具重掛到新掛點(avatar.js 在本檔之後載入,直接呼叫=安全)
+function remountHeadgear(){
+  const obj = PART_MODELS && PART_MODELS.headgear;
+  if(!obj) return false;
+  try{ attachPart('headgear', obj); return true; }catch(e){ return false; }
+}
+
 const PS_RIG_TARGET = {
   torso:       ()=>spine,
   head:        ()=>headPivot,
@@ -38,7 +72,7 @@ const PS_RIG_TARGET = {
   // 偏差隨姿勢變大=調右手動作道具脫手;掛手骨=永遠貼手,rigged 手同款)。無 avatar 退回假人腕。
   // typeof 守衛:avatar.js 在本檔之後載入(per-file hoisting),此函式只在掛載時呼叫=安全。
   bow:         ()=>(typeof AVATAR!=='undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_r && AVATAR.by.hand_r.bone) || (armR && armR.wr),
-  headgear:    ()=>headPivot,                 // 頭戴道具(火帽…);掛頭骨,對位用校準滑桿
+  headgear:    ()=>headgearMountNode() || headPivot,   // 頭戴道具(火帽…):avatar 在場=頭骨下的補償 group(校準值語意不變),否則素體 headPivot
 };
 
 // (2) 中文標籤(未列者自動用 slot 名)
@@ -100,7 +134,7 @@ const PART_SLOT_DEFS_FALLBACK = [
   {slot:'cloak',label:'CLOAK 披風',target:()=>headPivot},
   {slot:'pouch',label:'POUCH 腰包',target:()=>spine},
   {slot:'bow',label:'BOW 弓/武器',target:()=>armR && armR.wr},
-  {slot:'headgear',label:'HEADGEAR 頭戴道具',target:()=>headPivot},
+  {slot:'headgear',label:'HEADGEAR 頭戴道具',target:()=>headgearMountNode() || headPivot},
 ];
 
 const SOCKETS_DATA = readSocketsJson();
