@@ -11,6 +11,7 @@ import { handsReady, getHandMesh } from './actor-hands.js';
 import { setRiggedHandsVisible } from './actor-hands-rigged.js';
 import { updateWhip } from './render-whip.js';
 import { updateShock } from './render-shock.js';
+import { updateBurnFx } from './render-burn.js';
 
 // ===== 建模規格表:尺寸/位置(世界 px)/配色。關節鏈長 Lu/Ll(腿)、Au/Al(臂)給自動踩地/組裝用 =====
 export const BRAWLER_SPEC = {
@@ -512,7 +513,8 @@ export function updateBrawler(e, g) {
       }
     }
     if (e.stunned) {
-      if ((e.shockT || 0) > now) {   // 觸電定格(shock-2):僵直張開+高頻抖動——電弧演出期,還沒進垮肩暈眩
+      if (e._burnCh) { wob = 0; }                                   // 燃燒動作鏈(burn-1):前五段不垮肩不搖晃(黑定格站樁/飛行打橫/熄滅趴姿各自表達);暈眩段 _burnCh 已清=正常垮肩
+      else if ((e.shockT || 0) > now) {   // 觸電定格(shock-2):僵直張開+高頻抖動——電弧演出期,還沒進垮肩暈眩
         const K = A.shock, j = Math.sin(now * K.rate) * K.amp;
         wob = 0;
         pose.spine_x = K.spine + j; pose.head_x = K.head - j;
@@ -579,6 +581,7 @@ export function updateBrawler(e, g) {
   updateGauntlet(e, g, R);     // 右手裝備(item-4 風壓手套):持風壓手套=戴右手
   updateWhip(e, g, R);         // 魔導電鞭(whip-1):持電鞭=右手垂鞭,施放=甩鞭演出(判定仍在 sim)
   updateShock(e, g, R);        // 觸電演出(shock-1):被電擊暈時包裹電弧+星芒+X光骨架(判定仍在 sim;骨架掛 rig=跟姿勢)
+  updateBurnFx(e, g, R);       // 火焰演出(burn-1):燃燒鏈火包身/DoT 小火/帽口常燃火苗(判定仍在 sim)
   updateIceBlock(e, g);        // 冰凍皮:frozen 時半透明冰塊包住人(醒來自動隱藏)
   updateGuardShield(e, g);     // 防禦架式:舉防時身前半透明護盾弧
 }

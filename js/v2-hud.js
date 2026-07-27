@@ -58,7 +58,7 @@ function drawContainHud() {
     // 穩定條/防禦耐力條已移到下方卡片(hud-1,使用者拍板 2026-07-27:身上不放數值條);
     // 留在身上的=動作提示/空間狀態:暈眩★、無敵盾環、掙脫條+交替鍵、Shift 推開窗(移走必漏看)。
     // ★ 只在暈眩期(shock-2):定格觸電期讓電弧演出說話,兩段分明——「電完了才是暈」
-    if (f.stunned && !((f.shockT || 0) > game.time)) { hctx.fillStyle = '#ffd36d'; hctx.font = '900 16px system-ui, sans-serif'; hctx.fillText('★', s.x, s.y - 6); }
+    if (f.stunned && !((f.shockT || 0) > game.time) && !f._burnCh) { hctx.fillStyle = '#ffd36d'; hctx.font = '900 16px system-ui, sans-serif'; hctx.fillText('★', s.x, s.y - 6); }
     if (f.invuln > 0 && (v2s.lowFlicker || Math.floor(game.time * 12) % 2 === 0)) { // 出艙無敵:閃爍護盾環(減閃爍=常亮)
       const g = project(f.x, f.y, 10);
       if (!g.behind) { hctx.strokeStyle = '#7fe9ff'; hctx.lineWidth = 3; hctx.beginPath(); hctx.arc(g.x, g.y, 22, 0, Math.PI * 2); hctx.stroke(); }
@@ -436,5 +436,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: item-3b', VW - 10, VH - 4);
+  hctx.fillText('build: burn-1', VW - 10, VH - 4);
 }

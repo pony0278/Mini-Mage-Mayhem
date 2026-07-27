@@ -317,6 +317,23 @@ export const CLIPS = {
     },
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
   }),
+  item_fire: prepClip({ // 噴火帽施放(使用者 studio 定稿 2026-07-27):深前傾壓頭(spine 70)把帽口對準前方、
+    // 雙臂往後張開(sz 90→31/35)=帽子是武器、人只是砲架。使用者匯出=idle→anti@7f 兩鍵;
+    // **FIRE_HOLD@17f 為接遊戲時序補的定格鍵**(同 item-4d 風壓的 reach→hold→fire 模式):前傾到位(7f)
+    // →壓住(7~17f=fireAims 扇形預告窗)→ impact@17f=0.283s 開火(=舊 STRIKE_DELAY[0],時序零變動)→回落。
+    // 使用者之後在 studio 重編(自標 impact)重貼即接管——刪掉這鍵即可。
+    seq: [
+      { name: 'idle', frame: 0, frames: 10, returnFrames: 10, ease: 'out' },
+      { name: 'anti', frame: 7, frames: 7, ease: 'out' },
+      { name: 'anti', frame: 17, frames: 1, ease: 'out', impact: true },
+    ],
+    lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
+    phases: {
+      idle: {},
+      anti: { spine_x: 70, aL_sz: 31, aR_sz: 35 },
+    },
+  }),
+
   item_wind: prepClip({ // 風壓手套施放(使用者 studio 定稿 2026-07-23;首個用上腕 Z 的 clip:aR_wz 75°=右手側掌外推):
     // 右臂側伸(sy -74/sz 110/stretch 1.98)+ 左臂反向配重 + 弓步(lL -42/lR 57)。
     // **節奏(使用者拍板 2026-07-23):手伸到最遠(7f≈0.117s)→ 定格 0.5s(30f 同姿勢=凍結)→ 開火**。

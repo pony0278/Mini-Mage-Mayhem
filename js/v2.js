@@ -17,11 +17,11 @@ import {
   POD, inPod, pads, barrels, bottles, resetBottles, ITEM_INFO, ITEM_SPEC, BARREL_BLAST, GRAB_RANGE,
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
-  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
+  PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, BURN_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
   camRig, CAMB, NAMES, AI_PROFILE,
 } from './v2-state.js';
 import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall } from './v2-combat.js';
 import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
@@ -216,6 +216,7 @@ function step(dt) {
       if (f.itemCastCd > 0) f.itemCastCd -= dt;
       if (f.regrabCd > 0) f.regrabCd -= dt;
       if (f.fumbleT > 0) f.fumbleT -= dt;
+      updateBurnChain(f);   // 燃燒動作鏈(burn-1):黑定格到點=點火挑飛(在 z 管線前,本幀 _thrownT 即生效)
       // B 案彈道:被拋飛的 sim 高度(判定 gate + render 都讀 f.z);落地幀 ×LAND_SKID 短滑 + 塵土
       {
         // 哨兵用 > -5(-9=未被丟):撞牆快落會把 _thrownT 夾成 game.time-T+0.1,開場 game.time 小時是小負數,仍屬有效時戳
@@ -231,7 +232,7 @@ function step(dt) {
         if (!z && f.z > 1) { f.vx *= LAND_SKID; f.vy *= LAND_SKID; addRing(f.x, f.y, 24, '#cbb9a2', 0.28, 3); game.sfx.push('thud'); }
         f.z = z;
         // 被丟打橫旗:飛行中+落地滑行都趴著,滑停(fumbleT 歸零)才站起(render 讀,actor-brawler 平滑旋轉)
-        f._lying = !!(f._thrownT > -5 && game.time - f._thrownT < lob.T + 0.15 && (z > 0 || f.fumbleT > 0));
+        f._lying = !!(f._thrownT > -5 && game.time - f._thrownT < lob.T + 0.15 && (z > 0 || f.fumbleT > 0)) || !!f._burnLie; // burn-1:熄滅段撐趴姿(倒地燒完才站起)
         // 挑飛旗(feel-4b):挑飛=直立後仰飛(面向不動、90° 朝上),非超人趴姿——actor-brawler 讀此旗分姿勢
         f._launched = f._lying && f._lob === PUNCH_LAUNCH_LOB;
       }
@@ -313,6 +314,7 @@ function step(dt) {
       const thrown = inThrowFlight(f);
       if ((f.stunned || thrown || Math.hypot(f.vx, f.vy) > v2s.slideContainCur) && inPod(f.x, f.y)) {
         const cause = (thrown && f._lob === WIND_CARRY_LOB) ? 'wind' // 風壓空中接送進艙=記 wind(連段收尾;brawl-3)
+          : (thrown && f._lob === BURN_LOB) ? 'fire' // 火焰挑飛滾進艙=記 fire(burn-1;pips 橘=燒)
           : thrown ? 'throw' : (onSlipperyIce(f.x, f.y) || game.time - (f._slideT || -9) < 0.5) ? 'ice' : (f.lastHitBy === -3 ? 'barrel' : 'wind'); // 剛滑出冰面衝進艙也算 ice
         containByEnviron(f, cause); break;
       }

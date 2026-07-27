@@ -14,7 +14,7 @@ import {
   AI_PROFILE, FLEE_STAB, FLEE_SPEED, CALL_T, FLEE_EXITS,
   COUNTER_DELAY, COUNTER_WIN, HIT_BURST,
   DASH_RUN_T, DASH_T, DASH_LUNGE, DASH_STAB, DASH_KNOCK, DASH_CD,
-  STUN_T, SHOCK_T, SHOCK_FLASH, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
+  STUN_T, SHOCK_T, SHOCK_FLASH, BURN_CHAIN, BURN_LOB, BURN_TOTAL, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS, INTRO_GO,
   JUMP_LOB, AIR_CTRL, JUMP_CD, AIR_HIT_LOB, DIVE_T, DIVE_R, DIVE_STAB, DIVE_FWD, DIVE_LAG, DIVE_CD, AI_JUMP_CHANCE, AI_JUMP_CD,
@@ -259,6 +259,38 @@ export function shockFighter(o) {
   stunFighter(o);
   o.stunT = SHOCK_T + STUN_T;
   o.shockT = game.time + SHOCK_T;
+}
+// 燃燒動作鏈(burn-1;使用者 elemental_hit v2.3 demo):火帽直擊=①全黑定格→②火焰包裹斜向挑飛
+// (走既有拋物線管線=牆彈/打橫/滾進艙全繼承)→③落地→④熄滅黑煙→⑤站起→⑥暈眩 STUN_T。
+// 同 shockFighter 模式:stunT 一次蓋滿 BURN_TOTAL+STUN_T;★/垮肩只在最後暈眩段(_burnCh 在=前五段)。
+// 已暈/restun 免疫:不重複暈(restun 鐵則),只補短著火視覺。挑飛方向=攻擊者 facing(往瞄準方向燒飛=可燒進艙,cause='fire')。
+export function burnFighter(o, byPid, a) {
+  o.lastHitBy = byPid; o.lastHitT = game.time; o.faceT = 0.4;
+  if (o.stunned || o.restunT > 0) { o.burnT = Math.max(o.burnT, 0.6); o.burnBy = byPid; return; }
+  if (o.carrying) dropCarry(o);
+  o._burnCh = { t0: game.time, a, launched: false };
+  o.stunned = true; o.frozen = false;
+  o.stunT = BURN_TOTAL + STUN_T;
+  o.burnT = BURN_CHAIN.black + BURN_LOB.T + BURN_CHAIN.out * 0.5;   // 身上火(render 火焰包裹+粒子)燒到熄滅段中途
+  o.burnBy = byPid;
+  o.vx *= 0.2; o.vy *= 0.2; o._slideVx = 0; o._slideVy = 0;
+  stopHit('stun'); addShake(6); game.sfx.push('hurt');
+  if (o.pid === LOCAL) v2s.localFlash = 0.3;
+}
+// 每幀(v2.js fighter 迴圈,z 管線之前):黑定格到點=點火挑飛;熄滅段撐住趴姿;鏈完清旗(剩餘 stunT=暈眩段)。
+export function updateBurnChain(f) {
+  const c = f._burnCh; if (!c) return;
+  const t = game.time - c.t0;
+  if (!c.launched && t >= BURN_CHAIN.black) {                       // ②點火挑飛(拋物線管線;fumbleT=moveFighter 只走 slideKnock)
+    c.launched = true;
+    const F = BURN_LOB.range / BURN_LOB.T;
+    f.vx = Math.cos(c.a) * F; f.vy = Math.sin(c.a) * F;
+    f.fumbleT = BURN_LOB.T + 0.1; f._thrownT = game.time; f._lob = BURN_LOB;
+    addShake(4); game.sfx.push('dash');
+  }
+  const lieEnd = BURN_CHAIN.black + BURN_LOB.T + BURN_CHAIN.out;
+  f._burnLie = c.launched && t >= BURN_CHAIN.black + BURN_LOB.T * 0.92 && t < lieEnd;  // ④熄滅段撐趴姿(v2.js _lying 補 OR)
+  if (t >= lieEnd + BURN_CHAIN.recover) { f._burnCh = null; f._burnLie = false; }      // ⑥剩餘 stunT=暈眩(現有 ★/垮肩)
 }
 // --- 跳躍+下壓拳(brawl-2:走位技術;空白=跳,空中攻擊=下壓)---
 export function jumping(f) { return f._jumpT > -5 && game.time - f._jumpT < JUMP_LOB.T + 0.02; }
@@ -518,6 +550,7 @@ export function doPushOff(o) {
 }
 export function startCarry(f, o) {
   if (airborne(f) || airborne(o)) return; // 空中不可抓/被抓(brawl-2 空中規則;呼叫端條件同幀可能過期,這裡守底)
+  if (o._burnCh) return; // 燃燒動作鏈中不可抓(burn-1:鏈=拋物線+倒地演出,抓走會撕裂;鏈完進暈眩段照常可抓)
   f._recoverT = 0; // 抓人=主動接的新動詞,取消出拳收招承諾(打暈→立刻抓走不卡腳)
   f.carrying = o; o.carriedBy = f; o.escape = 0; o.stunned = false; o.stunT = 0; o.mashSide = 0; o._aPrev = false; o._dPrev = false;
   f._carryThrowAt = 0; f.carryClip = 'person_throw'; f.carryFx = game.time; f.carryHold = PERSON_HOLD_T; // 抓起就播 0→hold(reach→抓→舉→翻橫)然後定格在 hold 幀扛著走

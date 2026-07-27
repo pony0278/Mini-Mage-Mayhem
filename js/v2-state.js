@@ -120,6 +120,15 @@ export const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
 // 值=使用者 electric_shock demo 的 shockDuration 原值(演出最完整,X 光閃現看得過癮)。
 export const SHOCK_T = 1.6;
 export const SHOCK_FLASH = 0.35;   // 已暈/restun 免疫中被電:不重複暈(restun 鐵則),只閃一下演出(比照 freezeFighter 的「冰晶四濺」)
+// 燃燒動作鏈(burn-1,使用者 elemental_hit v2.3 demo,拍板 2026-07-27):**火帽直擊=完整六段動作鏈**
+// (取代舊「直擊=DoT 慢燒到暈」;**地形火/油海維持 DoT**——走過火海就全套倒地太重):
+// ①全黑定格 black ②火焰包裹斜向挑飛(走既有拋物線管線 BURN_LOB:牆彈/打橫/滾進艙全繼承,入艙 cause='fire')
+// ③下墜 ④倒地熄滅 out(黑煙) ⑤復位站起 recover ⑥暈眩 STUN_T(=冰凍/電擊同一個值,玩家學一次;demo 1.5→1.2)。
+// 時長=使用者 demo 滑桿值原樣;總失控 = 2.6 + 1.2 = 3.8s(對比電鞭 2.8s;火只有 FIRE_RANGE 100 貼臉=高風險高報酬)。
+// stunT 一次蓋滿全鏈+暈眩(同 shockFighter 模式);★/垮肩只在最後暈眩段(v2-hud/actor-brawler 讀 _burnCh 分段)。
+export const BURN_CHAIN = { black: 0.4, out: 0.55, recover: 0.6 };            // 定格/熄滅/站起(demo btBlack/btOut/btRecover)
+export const BURN_LOB = { range: 85, apex: 75, T: 1.05, h0: 0 };              // 挑飛+下墜=拋物線一段(demo launch 0.6+fall 0.45=T;height 1.6×斜度 1.0 ≈ apex75/range85 px)
+export const BURN_TOTAL = BURN_CHAIN.black + BURN_LOB.T + BURN_CHAIN.out + BURN_CHAIN.recover; // 2.6(鏈長;+STUN_T=總失控)
 export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 // 投擲(B 案:sim 真高度彈道)。三參數語言(人/桶/未來道具同一套,加投擲物=加一行):
 //   range=落點距離(px)、apex=弧頂追加高(px)、T=滯空秒、h0=離手高(過頂丟的手高)。
@@ -228,7 +237,7 @@ export const ITEM_INFO = { wind: { name: '風壓手套', color: '#bfeaff' }, tel
 export const WHIP_TIP_LAG = 0.23;
 export const ITEM_SPEC = {
   wind:     { uses: 3, clip: 'item_wind', delay: CLIPS.item_wind?.impactT ?? STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 專屬施放動畫(使用者 studio 定稿 2026-07-23,腕 Z 側掌外推);delay=clip impact 幀自動導出,未標 impact=維持 0.283s 原時序(預告窗+可被打斷)
-  fire:     { uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 噴火帽=噴流(rhook 暫代;點燃油海=R1)
+  fire:     { uses: 2, clip: 'item_fire', delay: CLIPS.item_fire?.impactT ?? STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 噴火帽=深前傾壓頭噴流(使用者 studio 定稿 2026-07-27;impact=補的 FIRE_HOLD@17f=0.283s 原時序,studio 重編自動接管;點燃油海=R1)
   water:    { uses: 2, clip: 'rhook', delay: STRIKE_DELAY[0], whileDisabled: false, aim: 'facing', kind: 'blast' }, // 工業重錘=前方砸壓(rhook 暫代砸下 clip;造濕地=R2 接雷、砸中短擊倒)
   lightning:{ uses: 2, clip: CLIPS.lightning_cast ? 'lightning_cast' : 'rhook', delay: (CLIPS.lightning_cast?.impactT ?? STRIKE_DELAY[0]) + WHIP_TIP_LAG, whileDisabled: false, aim: 'facing', kind: 'blast' }, // 魔導電鞭=直線電擊(命中線內=電擊暈、沿線給水充電 R2)。**唯一 delay ≠ clip impact 的道具**:+WHIP_TIP_LAG=鞭梢飛行(見上)。rhook 暫代到使用者在 punch-studio 編好 lightning_cast——**impact 幀標在「手甩到底並急停」那格**(不是鞭梢到人那格),貼進 CLIPS 即自動接管 clip 名+時序
   teleport: { uses: 1, clip: null, delay: 0, whileDisabled: true,  aim: 'self',   kind: 'mobility' },
@@ -304,8 +313,8 @@ export const POISON_BURST_R = 72, POISON_BURST_STAB = 45, POISON_BURST_FORCE = 2
 // --- 三階段收容升級 (spec F §2.5) 的資料表 ---
 export const STAGE_NAME = ['普通', '黃色警戒', '全面失控'];
 export const STAGE_BANNER = ['臨時收容成功！樣本逃逸', '高危險樣本再收容！基地警戒升級'];
-export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff', ice: '#9fd8ff', barrel: '#ff9a4a', reverse: '#c98cff' };
-export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', reverse: '反向' };
+export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff', ice: '#9fd8ff', barrel: '#ff9a4a', fire: '#ff7a3a', reverse: '#c98cff' };
+export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', fire: '燒', reverse: '反向' };
 export const WIN_TARGET = 3;
 
 // --- 垃圾瓶=戰鬥道具(四型元素瓶:砸人=冰凍/著火/電弧/毒地板;分類玩法凍結在 B 款=4c92837,docs/game-split.md)---
@@ -367,6 +376,7 @@ export function resetFighter(f) {
   f.hurt = 0; f.lastHitBy = -1; f.lastHitT = -9;
   f.burnT = 0; f.burnBy = -1;        // 著火 DoT(噴火帽直擊殘留;不靠地形):floorHazards 每幀削穩定→歸零暈
   f.shockT = 0;                      // 觸電演出到期時刻(shock-1,純視覺)
+  f._burnCh = null; f._burnLie = false; // 燃燒動作鏈(burn-1:火帽直擊六段;_burnLie=熄滅段撐趴姿)
   f.stability = STAB_MAX; f.stabCd = 0;
   f.stunned = false; f.stunT = 0; f.restunT = 0;
   f.carrying = null; f.carriedBy = null; f.escape = 0; f.mashSide = 0; f._aPrev = false; f._dPrev = false;

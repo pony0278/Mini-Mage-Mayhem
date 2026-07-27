@@ -20,7 +20,7 @@ import {
   stations, STATION_WARN, ERUPT_PATCH_R, ERUPT_PULSE, ERUPT_STAB,
   FUMBLE_T, REGRAB_CD,
 } from './v2-state.js';
-import { flinch, camKick, dropCarry, stunFighter, shockFighter, freezeFighter, inThrowFlight } from './v2-combat.js';
+import { flinch, camKick, dropCarry, stunFighter, shockFighter, burnFighter, freezeFighter, inThrowFlight } from './v2-combat.js';
 import { CLIPS } from './brawler-clips.js';
 import { stampElement, applyElement, stateAt, stateAtPixel, FL } from './v2-floor.js';
 import { circleHitsSolid } from './fx.js';
@@ -225,11 +225,10 @@ export function castFire(f) {
     let da = Math.atan2(dy, dx) - a; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > FIRE_CONE) continue;
     hit = true;
-    o.stability = Math.max(0, o.stability - FIRE_HIT_STAB); o.stabCd = 0.8; o.hurt = 0.12; o.faceT = 0.3; o.lastHitBy = f.pid; o.lastHitT = game.time;
-    o.burnT = FIRE_BURN_T; o.burnBy = f.pid;                               // 著火:短時持續燒(floorHazards 削穩定+身上火粒子)
+    o.stability = Math.max(0, o.stability - FIRE_HIT_STAB); o.stabCd = 0.8; o.hurt = 0.12;
+    burnFighter(o, f.pid, a);                                              // burn-1:直擊=燃燒動作鏈(黑定格→火焰挑飛→倒地熄滅→站起→暈;取代舊 DoT 慢燒;地形火維持 DoT)
     flinch(o, a, 0.26);
     addText(o.x, o.y - 34, '著火！', '#ff7a3a'); hitSpark(o.x, o.y, '#ffb04a', 1.5);
-    if (o.stability <= 0 && !o.stunned && o.restunT <= 0) stunFighter(o);
     if (o.pid === LOCAL) v2s.localFlash = 0.25;
   }
   // 噴口火焰粒子(短射程扇形:噴慢一點、活短一點,約扇長內散開)

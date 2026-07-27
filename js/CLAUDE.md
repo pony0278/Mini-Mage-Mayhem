@@ -101,6 +101,23 @@
 > 之後換有臉的模型同構圖自動拍到臉。temp scene 烘 matrixWorld、共用幾何材質零拷貝、跳過隱藏零件+`__equip`/`__shockbone`。
 > 退路:?avatar=0/載失敗/回讀炸 → 2D 風格化臉(永不空白)。hook:`window.__hud`(卡片幾何+頭像 kind)。
 
+> **燃燒動作鏈+帽口火(burn-1,使用者 elemental_hit v2.3 demo + studio 施法 clip,拍板 2026-07-27)**:
+> **火帽直擊=六段鏈**(v2-combat `burnFighter(o,byPid,a)`,取代舊「直擊=DoT 慢燒到暈」;**地形火/油海維持 DoT**):
+> ①全黑定格 0.4(角色換炭黑材質)②火焰包裹斜向挑飛(**走既有拋物線管線** `BURN_LOB`:vx/vy+`_thrownT`+`_lob`
+> =牆彈/打橫/滾進艙全繼承,**入艙 cause='fire'**、pips 橘=燒)③下墜 ④倒地熄滅 0.55(`_burnLie` 撐趴姿+黑煙)
+> ⑤站起 0.6(焦黑還原)⑥暈眩 STUN_T(demo 1.5→1.2=冰凍/電擊同值)。stunT 一次蓋滿 `BURN_TOTAL+STUN_T`=3.8s
+> (同 shockFighter 模式;★/垮肩只在暈眩段=`_burnCh` 清掉之後)。restun 鐵則:已暈再被燒只補著火視覺。
+> 鏈中不可抓(startCarry 守衛);時長=demo 滑桿值原樣(`BURN_CHAIN`/`BURN_LOB`,v2-state)。
+> 施法姿勢=`CLIPS.item_fire`(使用者 studio 定稿:深前傾 spine 70 壓頭把帽口對準前方+雙臂後張;
+> **FIRE_HOLD@17f impact=接遊戲時序補的定格鍵**,0.283s=原時序零變動,使用者 studio 重編自標 impact 即接管)。
+> 視覺=`render-burn.js`(demo Gabriel 火舌 shader 移植):包身火/DoT 小火(小一號)/**帽口常燃火苗**
+> (使用者拍板:還沒攻擊也要冒火;施法窗火變大=蓄力讀條)三消費者共用 rig。
+> **⚠ 焦黑=換 `mesh.material` 指標到共用 `CHAR_MAT`**(同 shock 剪影);render-actors tint pass 要加
+> `u.charred` 閘(同 `u.xray`)——不然 tint 把顏色寫進共用炭黑材質=全場一起變色(實測 charred=true 但 dark=0)。
+> 尺寸照 `av.standH` 現算(shock-1b 同款教訓)。perf:不加燈(demo fireLight 拿掉)、pool+prewarm、FX_LOW 砍
+> 火舌數/黑煙/帽口只留核心。hook:`window.__burn()`;旗:`__burnfx`/`__hatflame`。
+> **測試陷阱:受害者別放艙邊**——burnFighter 一設 stunned,在 POD.r 內=當場失控入艙(這是功能:火焰挑飛滾進艙)。
+
 > **風壓開火 3D 爆發(item-4e)**:`render-wind-blast.js`——使用者「火砲衝擊波」demo 移植 + **azure recolor**
 > (閃光+程序火舌 Gabriel shader/Voronoi 溶解/cel 色階+衝擊波環 3 環+16 錐刃+地面塵環+卡通煙圈逐幀變形+火花+短暫槍口點光)。
 > **判定不動**=純演出:sim `castWind` 在槍口 `fx.addWindBlast` push `game.windBlasts`,render-wind-blast 首見即從 **pool(2)** 生成
