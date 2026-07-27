@@ -1,7 +1,7 @@
 // 火帽 GLB 頭戴裝備(item-3;使用者 The Golden Maw,studio 校準 scale0.69/y0.23)驗收:
 // ①GLB 載成(__lab.fireHatReady)②持有噴火帽(item='fire')=頭上掛 GLB(__hat 旗可見)
-// ③無道具=帽子隱藏 ④無 console 錯誤
-// 陷阱:帽 clone 掛在 headPivot(actor group 內)非 propGroup;可見性查祖鏈(wrap.visible 切換,不移除)。
+// ②b 掛 avatar 頭骨 + 尺寸/位置=使用者 studio 校準的頭高比例(item-3b)③無道具=帽子隱藏 ④無 console 錯誤
+// 陷阱:帽 clone 起初掛 box headPivot,avatar 非同步就緒後**改掛 av.by.head.bone**(病 3);可見性查祖鏈。
 import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
 const page = await B.newPage();
@@ -26,6 +26,29 @@ const pin = (item) => page.evaluate((item) => {
 await pin('fire');
 const worn = await page.waitForFunction(`${COUNT} >= 1`, { timeout: 15000 }).then(() => true).catch(() => false);
 R('持有噴火帽=頭上戴 GLB(__hat 可見)', worn);
+
+// ---------- ②b 掛點=avatar 頭骨 + 尺寸/位置照 studio 校準比例(item-3b) ----------
+// 病 3 第三次:studio 把 avatar 縮到跟素體同高(無放大係數)→ 掛 headPivot 正確;遊戲 avatar 是 box rig
+// 的 1.3 倍(AVATAR_SCALE)→ box headPivot 遠在 avatar 頭部下方。斷言:掛在 avatar 頭骨下,
+// 且帽高/帽底 = 使用者 studio 校準換算的頭高比例(hRatio 1.5476 / dropRatio 0.4986)。
+const fit = await page.evaluate(() => {
+  const s = __lab.labGroup.parent;
+  let hw = null, g = null;
+  s.traverse(o => { if (o.name === 'HEADGEAR') hw = o; });
+  s.traverse(o => { if (!g && o.userData && o.userData.avatar && o.userData.headgear) g = o; });
+  const av = g && g.userData.avatar;
+  if (!av) return { skip: true };
+  const hb = av.by.head && av.by.head.bone;
+  let onBone = false; for (let p = hw && hw.parent; p; p = p.parent) if (p === hb) { onBone = true; break; }
+  const hatBB = new THREE.Box3().setFromObject(hw);
+  const headBB = new THREE.Box3();
+  for (const m of (av.by.head.meshes || [])) headBB.expandByObject(m);
+  const headH = headBB.max.y - headBB.min.y;
+  return { onBone, hRatio: (hatBB.max.y - hatBB.min.y) / headH, dropRatio: (headBB.min.y - hatBB.min.y) / headH };
+});
+R('火帽掛 avatar 頭骨(不是 box headPivot 隱形 driver=病 3)', fit.skip || fit.onBone === true, JSON.stringify(fit));
+R('帽高/帽底=studio 校準比例(hRatio≈1.55 / dropRatio≈0.50)',
+  fit.skip || (Math.abs(fit.hRatio - 1.5476) < 0.06 && Math.abs(fit.dropRatio - 0.4986) < 0.06), JSON.stringify(fit));
 
 // ---------- ③ 無道具 = 帽子隱藏 ----------
 await pin(null);

@@ -231,7 +231,40 @@ const BOTTLE_TINT = { ice: [0x9fd8e8, 0x2a6a88, 0x6aa8c0], oil: [0x9a8a5a, 0x2a2
 // ===== 頭戴裝備(item-3 火帽):持有噴火帽(e.item==='fire')時把 GLB 掛 headPivot=自動跟頭動。
 // 對位來源=使用者 punch-studio 校準(scale 0.69/y 0.23;studio 單位×~25px 換算,HAT_CAL 收尾微調)。
 // clone 網格帶 __equip 旗:avatar 建構的「藏方塊人」掃描要跳過裝備(不然帽子被誤藏)。
-const HAT_CAL = { h: 33, y: 20, rz: 0 }; // h=世界高 px、y=headPivot local 抬高(頭頂)、rz=朝向補正
+const HAT_CAL = { h: 33, y: 20, rz: 0 }; // h=世界高 px、y=headPivot local 抬高(頭頂)、rz=朝向補正(方塊人 ?avatar=0 專用)
+// HAT_CAL_AV = 使用者 punch-studio part kit 校準(2026-07-27 定稿:headgear s=0.69 / y=0.23)換算成
+// **相對頭高的比例**。為什麼不能直接搬數字、也不能掛 box headPivot(病 3 第三次):
+//   · studio 把 avatar 縮到「跟素體同高」(tools/ps/avatar.js:S = standH/size.y,**無放大係數**)
+//     → studio 裡素體頭 ≈ avatar 頭,掛 headPivot 的帽子正好在頭上;
+//   · 遊戲的 avatar 帶 AVATAR_SCALE 1.3 = 比 box rig 高 1.3 倍 → box headPivot 遠在 avatar 頭部下方
+//     (舊 HAT_CAL.y=20 就是手動往上推的補償值,不是真校準)。
+// 換算(studio 素體頭高 DIM.headSize=0.84;帽 raw 高 1.8840863、raw 底 −0.9403754):
+//   帽高 = 0.69×1.8840863 = 1.30002 → hRatio  = 1.30002/0.84 = 1.5476
+//   帽底 = 0.23 + 0.69×(−0.9403754) = −0.41886 → dropRatio = 0.41886/0.84 = 0.4986(頭底往下幾個頭高)
+// 比例式=rig 無關:換角色模型/改 AVATAR_SCALE 都自動對齊(頭部 bbox 每次掛載現量)。
+const HAT_CAL_AV = { hRatio: 1.5476, dropRatio: 0.4986 };
+const _hbb = new THREE.Box3(), _hb2 = new THREE.Box3(), _hv = new THREE.Vector3();
+const _hq1 = new THREE.Quaternion(), _hq2 = new THREE.Quaternion();
+// 掛 avatar 頭骨:尺寸/位置由頭部網格在**骨局部**的 bbox 現量(姿勢無關),再套 HAT_CAL_AV 比例。
+// 朝向:頭骨的 rest 軸每個 GLB 不同 → 烘一次「角色朝上/朝前」的四元數進 wrapper,之後跟著骨轉。
+function mountHatOnAvatar(hw, g, av) {
+  const hb = av.by.head && av.by.head.bone; if (!hb) return false;
+  _hbb.makeEmpty();
+  for (const m of (av.by.head.meshes || [])) {
+    if (!m.geometry) continue;
+    m.geometry.computeBoundingBox();
+    _hbb.union(_hb2.copy(m.geometry.boundingBox).applyMatrix4(m.matrix));   // 骨局部
+  }
+  if (_hbb.isEmpty()) return false;
+  _hbb.getSize(_hv); const headH = _hv.y; if (headH < 1e-6) return false;
+  hw.children[0].scale.setScalar(HAT_CAL_AV.hRatio * headH);               // proto 高=1 → scale=帽高
+  _hbb.getCenter(_hv);
+  hw.position.set(_hv.x, _hbb.min.y - HAT_CAL_AV.dropRatio * headH, _hv.z); // 帽底=頭底往下 dropRatio×頭高
+  g.getWorldQuaternion(_hq1); hb.getWorldQuaternion(_hq2).invert();
+  hw.quaternion.copy(_hq2).multiply(_hq1);                                 // 骨 rest 軸 → 角色上/前
+  hb.add(hw);
+  return true;
+}
 function updateHeadgear(e, g, R) {
   const u = g.userData;
   // item-4h:持火帽 OR 正在放火(_itemVisType+itemCastCd>0)=顯示——最後一發按下即扣次數清 f.item,靠施法窗撐到動畫播完才收
@@ -244,8 +277,10 @@ function updateHeadgear(e, g, R) {
     hw = new THREE.Group(); hw.name = 'HEADGEAR';
     clone.scale.setScalar(HAT_CAL.h); hw.add(clone);
     hw.position.y = HAT_CAL.y; hw.rotation.z = HAT_CAL.rz;
-    R.headPivot.add(hw); u.headgear = hw;
+    R.headPivot.add(hw); u.headgear = hw; u.hatOnAvatar = false;
   }
+  // avatar 是非同步建好的 → 一出現就從 box headPivot 改掛 avatar 頭骨(病 3;同 item-4b 手套的重掛)
+  if (hw && !u.hatOnAvatar && u.avatar && mountHatOnAvatar(hw, g, u.avatar)) u.hatOnAvatar = true;
   if (hw) hw.visible = true;
 }
 

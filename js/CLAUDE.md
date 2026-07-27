@@ -21,6 +21,19 @@
 **render 家族(門面=`render.js`,外部只 import 它;邊界見 docs/render-module-boundaries.md)**
 `render-core`(renderer/scene/camera/快取/project)→ `render-world`(地板烘焙/牆/toybox decor)/`render-actors`(體素小人+brawler 委派)/`render-entities`(props/投射物/zones/粒子/地面標記;**風壓扇形/雷直線** `windSector`/`windStreak`=讀 `game.windFans`/`windAims`(風扇形)+`game.fireAims`(火扇形)+`game.boltAims`/`bolts`(雷直線起手預告+發射亮束))/`render-hud`(單機 2D HUD)/`render-lab`(**v2 專屬場景** 1175 行:工業回收中心、`labAnimated[]` 每幀 update、**地板化學動態 tile 層 `updateFloorFx`**(讀 v2-floor 格,粗色塊 MVP)、**四色地面指引:已整組拆除(2026-07-19 使用者反饋 GLB 箭頭牌太突兀)**——演進史:往外脈動導軌(違直覺+閃眼)→ 朝內靜態箭頭 buildSortingRoutes → THROW IN! 浮雕牌 loadSignGlb → 全拆(A 款艙=丟對手目標,四色元素語意屬凍結的 B 款分類玩法;實作找 git c63a0cf 前);`assets/scene/throw-in-sign.glb` 留庫未載入。**若要重加指引:走狀態驅動(扛人/對手暈時才亮的低調提示),別再放常駐地標**、**中央回收艙底座=使用者 GLB `assets/scene/recycling-pod.glb`(`loadPodGlb` async fetch+parse:轉平沉入近齊平微凸 ~4px、沉入基準=盤面 p90 非 bbox.max(輪頂不平,用 max 會全埋只露轂尖);載成拆舊分揀陣列貼圖(被輪盤蓋住);**舊環甲板保留**(使用者反饋:加回更立體)+ `buildRuneRing` 符文環帶(程序化符文 canvas,索引種子=確定性;雙層反向緩轉;**底下墊不透明深色艙底「環」y=0.4(RingGeometry 內2.55/外4.75)**——蓋住原始地磚格線(使用者反饋:符文縫隙透地面)、壓在地板化學 tile y=0.6 之下(艙內冰面/油膜照常顯示);**必須環形不能滿盤**:滿盤會蓋掉輪盤面 y=0.125 連中心回收標誌(使用者截圖抓到))填輪盤與甲板之間地面——三層:輪盤嵌件→符文帶→金屬甲板,失敗保留舊底座;場景 GLB 入庫規範=離線解 Draco+simplify+quantize,見 assets/README)**、**收容演出玻璃罩 `setPodPerform`**(v2.js 每幀驅動:加法薄殼+三圈緯線蝕刻+底圈+頂部反光點+掃描環;**不走 transmission**——SwiftShader/深色地板上近隱形,風格化力場玻璃到處都讀得出;LED 飄字在 v2-hud `drawPerformLED`)、`FX_LOW`=**手機自動開**(render-core `IS_MOBILE`:可觸控+粗指針/行動 UA;`?fx=low`/`?fx=full` 手動覆蓋;2026-07 手機卡頓診斷:18 點光+13 transmission 玻璃=主因,FX_LOW 主執行緒 2.1×、p99 3770ms→15.5ms;render-core 同時對手機把 dpr 2→1.5)、`window.__lab`(含 `podGlbReady()`、`domeVisible()`、`fxLow()`))。
 
+> **頭戴裝備(item-3 火帽 The Golden Maw)**:render-core `loadFireHatGlb`/`fireHatClone`/`fireHatReady`
+> (proto 高度正規化成 1、底貼 y=0、xz 置中)。actor-brawler `updateHeadgear`:持噴火帽(`e.item==='fire'`)時戴頭上。
+> **⚠ 掛點=avatar 頭骨(item-3b,2026-07-27;病 3 第三次)**:`av.by.head.bone`,方塊人(?avatar=0)退 `R.headPivot`;
+> avatar 非同步就緒自動重掛(`u.hatOnAvatar` 追蹤)。**為什麼 studio 的值不能直接搬**:
+> tools/ps 把 avatar 縮到「跟素體同高」(`S = standH/size.y`,**無放大係數**)→ studio 裡素體頭 ≈ avatar 頭,
+> 掛 `headPivot` 剛好在頭上;但遊戲的 avatar 帶 `AVATAR_SCALE 1.3` = 比 box rig 高 1.3 倍 → box headPivot 遠在
+> avatar 頭部下方(舊 `HAT_CAL.y=20` 是手動往上推的補償,不是真校準,帽子浮在頭頂上方)。
+> **校準換成「相對頭高的比例」`HAT_CAL_AV`**(rig 無關,換模型/改 AVATAR_SCALE 自動對齊;頭部 bbox 每次掛載
+> 在**骨局部**現量=姿勢無關):使用者 part kit `headgear s=0.69 / y=0.23` + 帽 raw 高 1.8840863/raw 底 −0.9403754
+> + studio 素體頭高 `DIM.headSize=0.84` → `hRatio = 1.5476`(帽高÷頭高)、`dropRatio = 0.4986`(帽底在頭底下方幾個頭高)。
+> 朝向:頭骨 rest 軸每個 GLB 不同 → 掛載時烘一次 `boneWorldQuat⁻¹ × gWorldQuat` 進 wrapper(之後跟著骨轉)。
+> clone 網格帶 `__equip`(avatar 藏方塊人掃描跳過)+ `__hat`(測試計數)旗。
+
 > **右手裝備(item-4 風壓手套)**:render-core `loadWindGauntletGlb`/`windGauntletClone`/`windGauntletReady`(Meshy Azure Turbine Gauntlet;
 > 同四步入庫,proto 正中置心非底貼地=裝備繞腕;**原模型左手→入庫時 X 鏡像成右手**)。actor-brawler `updateGauntlet`:
 > 持風壓手套(`e.item==='wind'`)時戴右手。**掛點=avatar 手骨優先**(`av.by.hand_r.bone`=rigged 手同一掛點),
