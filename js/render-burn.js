@@ -84,11 +84,11 @@ function smokeMat() {
     uniforms: { t: { value: 0 }, rot: { value: 0 }, al: { value: 0 }, scol: { value: new THREE.Color(0.10, 0.09, 0.085) } },
   });
 }
-function mkFlame(flag, tile) {
+function mkFlame(flag, tile, parent) {
   const m = new THREE.Mesh(quad, flameMat());
   if (tile) { m.material.uniforms.dAmt.value = 0.95; m.material.uniforms.dTile.value.set(2.6, 2.2); }
   m.visible = false; m.frustumCulled = false; m.renderOrder = 26; m.userData[flag] = true;
-  scene.add(m);
+  (parent || scene).add(m);
   return m;
 }
 
@@ -97,6 +97,10 @@ const SM = FX_LOW ? 0 : 4;          // 熄滅黑煙
 const rnd = Math.random;
 
 /* ==== 每 fighter 一副:包身火(core+火舌+黑煙)+ 帽口火(小 core+火舌)==== */
+// **錨=身體中心經身體變換(demo `_fireCenter` 原式),火掛 scene 永遠直立**(burn-1c)。
+// 為什麼不能掛 g 底下:拋飛/趴姿時 g **整個帶 pitch 旋轉**(層級 dump 實證),火會跟著身體翻滾,
+// 違反 demo 鐵則「火焰錨點=身體中心隨倒地姿態變換,**火焰本身永遠朝上**」;也不能錨 g 原點(腳)——
+// 趴姿時可見身體繞到別處(lieDir 軸心補償再偏 ~30px)=火不在人身上(使用者兩輪反饋的病根)。
 function buildRig() {
   const tongues = [];
   for (let i = 0; i < FT; i++) tongues.push({ m: mkFlame('__burnfx', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 1.1 * (0.7 + rnd() * 0.6), a0: rnd() * 6.283, r0: 0.42 * Math.sqrt(rnd()) });
@@ -118,7 +122,7 @@ function prewarm(rig) {
   for (const m of all) m.visible = false;
 }
 
-const _wp = new THREE.Vector3(), _hbb = new THREE.Box3();
+const _ctr = new THREE.Vector3(), _bAx = new THREE.Vector3(), _hbb = new THREE.Box3();
 // 全黑焦炭(demo 動作鏈第①段 applyCharColor):黑定格→熄滅全程角色換扁平炭黑,站起瞬間還原。
 // 同 render-shock 剪影的手法:**換 mesh.material 指標**不改顏色(avatar clone 共用材質,改色會兩人一起黑);
 // demo 的漸變還原需要 per-instance 材質=放棄(站起時火/煙蓋著,瞬間還原讀不出來)。
@@ -165,22 +169,23 @@ export function updateBurnFx(e, g, R) {
   const wantChar = !!e._burnCh && (now - e._burnCh.t0) < BC.black + BC.T + BC.out && !u.xray;
   if (wantChar && !rig.charred) { rig.charList = collectChar(g); CHAR_MAT.color.setHex(0x171310); for (const c of rig.charList) c.m.material = CHAR_MAT; rig.charred = true; u.charred = true; }
   else if (!wantChar && rig.charred) { for (const c of rig.charList) c.m.material = c.mat; rig.charList = null; rig.charred = false; u.charred = false; }   // u.charred=render-actors tint pass 的閘(同 u.xray)
-  g.getWorldPosition(_wp);
   const H = (u.avatar && u.avatar.standH) || 47.6;                         // 實際站高(方塊人退 47.6;shock-1b 教訓)
   const on = fireInt > 0.01;
-  // **包裹=整隻角色**(使用者反饋:只燒一小部分不行):火場從腳底舔到頭頂上方(demo 火核 1.95 ≳ 角色高 1.67
-  // 的比例);躺下(飛行/倒地)=火場壓扁+火舌沿身體軸(facing)水平散開=火沿著趴著的身體燒。
+  // **錨=身體中心經身體姿態變換**(demo _fireCenter=(0,0.85,0)×quaternion 的原式):
+  // 站立=胸口、拋飛翻滾/趴姿=跟著身體到正確位置;火在世界空間永遠直立。
+  _ctr.set(0, H * 0.52, 0); g.localToWorld(_ctr);
+  // 躺下身體軸=g local +Y(站立的「上」)投影到地面 → 火沿趴著的身體散開;站立時投影≈0 自然退化
+  _bAx.set(0, 1, 0).transformDirection(g.matrixWorld); _bAx.y = 0;
+  const axL = _bAx.length(); if (axL > 0.3) _bAx.divideScalar(axL); else _bAx.set(0, 0, 0);
   const k = sizeMul * (0.55 + 0.45 * fireInt);
-  const lying = !!e._lying;
-  const fH = (lying ? H * 0.6 : H * 1.1) * k;                              // 火場高
-  const base = _wp.y;                                                      // 腳底(g 世界座標已含拋飛高度 e.z——別再加一次,加了=飛行時火飄在頭上兩倍高)
-  const ax = Math.cos(e.facing || 0), az = Math.sin(e.facing || 0);        // 躺下時身體軸
+  const lying = axL > 0.5;                                                 // 身體躺平的程度(用姿態算,不猜旗)
+  const fH = (lying ? H * 0.72 : H * 1.1) * k;                             // 火場高
   rig.core.visible = on;
   if (on) {
     const uc = rig.core.material.uniforms;
     uc.t.value = tr; uc.inten.value = fireInt;
-    rig.core.position.set(_wp.x, base + fH * 0.5, _wp.z);
-    rig.core.scale.set(H * (lying ? 1.15 : 0.92) * k, fH * 1.35, 1);
+    rig.core.position.set(_ctr.x, _ctr.y + fH * 0.1, _ctr.z);
+    rig.core.scale.set(H * (lying ? 1.35 : 0.92) * k, fH * 1.35, 1);
   }
   for (const o of rig.tongues) {
     o.m.visible = on;
@@ -190,11 +195,11 @@ export function updateBurnFx(e, g, R) {
     uu.t.value = tr; uu.age.value = lf; uu.rot.value = o.rs * lf; uu.inten.value = fireInt;
     const sc = (0.21 + Math.sin(Math.min(lf / 0.27, 1) * 1.5708) * 0.79) * (1 - Math.max(0, (lf - 0.6) / 0.4));
     const rr = o.r0 * H * 0.7 * (1 - lf * 0.5) * k;                        // 環繞半徑(包住身體 ~15px 半徑)
-    const along = lying ? (o.seed * 2 - 1) * H * 0.42 : 0;                 // 躺下:沿身體軸散開
+    const along = lying ? (o.seed * 2 - 1) * H * 0.45 : 0;                 // 躺下:沿身體軸散開
     o.m.position.set(
-      _wp.x + Math.cos(o.a0) * rr + ax * along,
-      base + lf * fH * 1.2,
-      _wp.z + Math.sin(o.a0) * rr + az * along);
+      _ctr.x + Math.cos(o.a0) * rr + _bAx.x * along,
+      _ctr.y - fH * 0.45 + lf * fH * 1.15,
+      _ctr.z + Math.sin(o.a0) * rr + _bAx.z * along);
     const ts = H * 0.6 * k;
     o.m.scale.set((0.62 * sc + 0.05) * ts, (0.9 * sc + 0.05) * ts, 1);
   }
@@ -206,7 +211,7 @@ export function updateBurnFx(e, g, R) {
     const lf = (tr / o.life + o.seed * 9) % 1;
     uu.t.value = tr; uu.rot.value = o.rs * lf; uu.al.value = smokeK * Math.sin(lf * 3.1416) * 0.5;
     const sc = (0.45 + lf * 1.1) * H * 0.42;
-    o.m.position.set(_wp.x + Math.sin(o.seed * 20 + tr * 0.7) * 5, base + H * 0.2 + lf * H * 0.7, _wp.z + Math.cos(o.seed * 17) * 4);
+    o.m.position.set(_ctr.x + Math.sin(o.seed * 20 + tr * 0.7) * 5, _ctr.y + lf * H * 0.6, _ctr.z + Math.cos(o.seed * 17) * 4);
     o.m.scale.set(sc, sc, 1);
   }
 

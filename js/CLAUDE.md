@@ -114,8 +114,12 @@
 > (使用者拍板:還沒攻擊也要冒火;施法窗火變大=蓄力讀條)三消費者共用 rig。
 > **⚠ 焦黑=換 `mesh.material` 指標到共用 `CHAR_MAT`**(同 shock 剪影);render-actors tint pass 要加
 > `u.charred` 閘(同 `u.xray`)——不然 tint 把顏色寫進共用炭黑材質=全場一起變色(實測 charred=true 但 dark=0)。
-> **⚠ 包裹=整隻角色(burn-1b,使用者反饋「只有一小部分燃燒」)**:火場從腳底(`g` 世界座標,**已含拋飛
-> 高度 e.z 別再加**)舔到頭頂上方(站立火場高 1.1×standH),躺下(飛行/倒地)=壓扁+火舌沿身體軸(facing)散開。
+> **⚠ 包裹錨=身體中心經身體變換(burn-1c,使用者兩輪反饋定案)**:`g.localToWorld(0, 0.52×standH, 0)`
+> =demo `_fireCenter` 原式,火掛 scene **永遠直立**;躺下判定/散開軸=g local +Y 投影到地面(姿態算,不猜旗)。
+> **兩個都錯的錨**:①g 原點/腳——趴姿時 lieDir 軸心補償把 g 平移 ~30px,可見身體在別處=火不在人身上;
+> ②掛 g 底下——拋飛/趴姿 g **整個帶 pitch 旋轉**(層級 dump 實證),火跟著身體翻滾,違反 demo「火永遠朝上」。
+> 站立火場高 1.1×standH、躺下壓扁 0.72×+火舌沿身體軸散開。burn-1b 另修:DoT 分支誤黏焦炭 if 鏈,
+> 鏈中 burnT>0 把火強度蓋成 DoT 小火(0.62×)=「只有一小部分燃燒」——鏈與 DoT 是獨立的兩個 if。
 > 病根兩個:①DoT 分支誤黏在焦炭 if 鏈的 else if 上,鏈中 burnT>0 走進去把火強度蓋成 DoT 小火(0.62×)——
 > **鏈判斷與 DoT 判斷是獨立的兩個 if**;②尺寸/錨點未照站高包全身。尺寸照 `av.standH` 現算(shock-1b 同款教訓)。perf:不加燈(demo fireLight 拿掉)、pool+prewarm、FX_LOW 砍
 > 火舌數/黑煙/帽口只留核心。hook:`window.__burn()`;旗:`__burnfx`/`__hatflame`。

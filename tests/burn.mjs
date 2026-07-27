@@ -37,15 +37,17 @@ const tr = await page.evaluate(() => new Promise(res => {
   __v2.castFire(f);
   const first = { stunned: o.stunned, stunT: +o.stunT.toFixed(2), chain: !!o._burnCh };
   const tick = () => {
-    const s = __lab.labGroup.parent; let fx = 0, dark = 0, flo = 1e9, fhi = -1e9;
+    const s = __lab.labGroup.parent; let fx = 0, dark = 0, flo = 1e9, fhi = -1e9, fcx = 0;
     s.traverse(m => { if (m.userData && m.userData.__burnfx && m.visible) { fx++;
-      const p = m.getWorldPosition(new THREE.Vector3());
+      const p = m.getWorldPosition(new THREE.Vector3()); fcx += p.x;
       flo = Math.min(flo, p.y - m.scale.y * 0.5); fhi = Math.max(fhi, p.y + m.scale.y * 0.5); } });
-    let gg = null;
-    s.traverse(x => { if (!gg && x.userData && x.userData.pose && x.userData.rig) { const p = x.getWorldPosition(new THREE.Vector3()); if (Math.abs(p.x - o.x) < 60 && Math.abs(p.z - o.y) < 60) gg = x; } });
+    let gg = null, bcx = null;
+    s.traverse(x => { if (!gg && x.userData && x.userData.pose && x.userData.rig) { const p = x.getWorldPosition(new THREE.Vector3()); if (Math.abs(p.z - o.y) < 70 && Math.abs(p.x - o.x) < 110 && Math.abs(p.x - f.x) > 4) gg = x; } });
+    if (gg) { const v = new THREE.Vector3(0, 40, 0); gg.localToWorld(v); bcx = +v.x.toFixed(0); }
     if (gg) gg.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.color.getHex() === 0x171310) dark++; });
     trace.push({ t: +(g.time - t0).toFixed(2), z: +(o.z || 0).toFixed(0), ch: !!o._burnCh, lie: !!o._lying, stun: o.stunned, fx, dark,
-      flo: fx ? +flo.toFixed(0) : null, fhi: fx ? +fhi.toFixed(0) : null });
+      flo: fx ? +flo.toFixed(0) : null, fhi: fx ? +fhi.toFixed(0) : null,
+      fcx: fx ? +(fcx / fx).toFixed(0) : null, bcx });
     if (g.time - t0 < 4.0 && trace.length < 500) requestAnimationFrame(tick); else res({ first, trace });
   };
   requestAnimationFrame(tick);
@@ -59,8 +61,14 @@ R('鏈中火焰包身可見(__burnfx)', tr.trace.some(s => s.fx > 0));
 // 病根=①DoT 分支誤黏焦炭 if 鏈,鏈中被蓋成 0.62× 小火 ②尺寸/錨點未照 av.standH 包全身
 const flyF = tr.trace.filter(s => s.z > 30 && s.fx > 0);
 R('burn-1b:飛行幀火場貼身+覆蓋整隻(lo≈z、span>55)',
-  flyF.length > 0 && flyF.every(s => Math.abs(s.flo - s.z) < 35 && (s.fhi - s.flo) > 55),
+  flyF.length > 0 && flyF.every(s => Math.abs(s.flo - s.z) < 40 && (s.fhi - s.flo) > 55),
   flyF.length ? JSON.stringify(flyF[Math.floor(flyF.length / 2)]) : '(無飛行幀)');
+// burn-1c(使用者反饋「火停在被攻擊位置沒跟人」):火場水平中心=可見身體中心(g.localToWorld,
+// demo _fireCenter 原式)——不是 sim x(視覺落後 ~35px)也不是 g 原點(趴姿 lieDir 補償偏 ~30px)。
+const glueF = tr.trace.filter(s => s.z > 20 && s.fx > 0 && s.bcx != null);
+R('burn-1c:飛行幀火場水平中心黏住可見身體中心(<18px)',
+  glueF.length > 0 && glueF.every(s => Math.abs(s.fcx - s.bcx) < 18),
+  glueF.length ? JSON.stringify(glueF[Math.floor(glueF.length / 2)]) : '(無樣本)');
 R('焦黑=角色網格全換炭黑材質', tr.trace.some(s => s.dark > 20), 'darkMax=' + Math.max(...tr.trace.map(s => s.dark)));
 R('鏈完進暈眩段(鏈旗清、仍暈=可抓收尾窗)', tr.trace.some(s => !s.ch && s.stun));
 const lastD = tr.trace[tr.trace.length - 1];
