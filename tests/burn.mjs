@@ -37,12 +37,15 @@ const tr = await page.evaluate(() => new Promise(res => {
   __v2.castFire(f);
   const first = { stunned: o.stunned, stunT: +o.stunT.toFixed(2), chain: !!o._burnCh };
   const tick = () => {
-    const s = __lab.labGroup.parent; let fx = 0, dark = 0;
-    s.traverse(m => { if (m.userData && m.userData.__burnfx && m.visible) fx++; });
+    const s = __lab.labGroup.parent; let fx = 0, dark = 0, flo = 1e9, fhi = -1e9;
+    s.traverse(m => { if (m.userData && m.userData.__burnfx && m.visible) { fx++;
+      const p = m.getWorldPosition(new THREE.Vector3());
+      flo = Math.min(flo, p.y - m.scale.y * 0.5); fhi = Math.max(fhi, p.y + m.scale.y * 0.5); } });
     let gg = null;
     s.traverse(x => { if (!gg && x.userData && x.userData.pose && x.userData.rig) { const p = x.getWorldPosition(new THREE.Vector3()); if (Math.abs(p.x - o.x) < 60 && Math.abs(p.z - o.y) < 60) gg = x; } });
     if (gg) gg.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.color.getHex() === 0x171310) dark++; });
-    trace.push({ t: +(g.time - t0).toFixed(2), z: +(o.z || 0).toFixed(0), ch: !!o._burnCh, lie: !!o._lying, stun: o.stunned, fx, dark });
+    trace.push({ t: +(g.time - t0).toFixed(2), z: +(o.z || 0).toFixed(0), ch: !!o._burnCh, lie: !!o._lying, stun: o.stunned, fx, dark,
+      flo: fx ? +flo.toFixed(0) : null, fhi: fx ? +fhi.toFixed(0) : null });
     if (g.time - t0 < 4.0 && trace.length < 500) requestAnimationFrame(tick); else res({ first, trace });
   };
   requestAnimationFrame(tick);
@@ -52,6 +55,12 @@ const zmax = Math.max(...tr.trace.map(s => s.z));
 R('黑定格後挑飛(zmax 接近 apex 75)', zmax > 40, 'zmax=' + zmax);
 R('熄滅段趴姿(_lying 撐住)', tr.trace.some(s => s.lie && s.z === 0));
 R('鏈中火焰包身可見(__burnfx)', tr.trace.some(s => s.fx > 0));
+// burn-1b(使用者反饋「只有一小部分燃燒」):火場要包整隻——飛行幀火場底貼身(≈z)且縱向覆蓋>55px(躺身長級);
+// 病根=①DoT 分支誤黏焦炭 if 鏈,鏈中被蓋成 0.62× 小火 ②尺寸/錨點未照 av.standH 包全身
+const flyF = tr.trace.filter(s => s.z > 30 && s.fx > 0);
+R('burn-1b:飛行幀火場貼身+覆蓋整隻(lo≈z、span>55)',
+  flyF.length > 0 && flyF.every(s => Math.abs(s.flo - s.z) < 35 && (s.fhi - s.flo) > 55),
+  flyF.length ? JSON.stringify(flyF[Math.floor(flyF.length / 2)]) : '(無飛行幀)');
 R('焦黑=角色網格全換炭黑材質', tr.trace.some(s => s.dark > 20), 'darkMax=' + Math.max(...tr.trace.map(s => s.dark)));
 R('鏈完進暈眩段(鏈旗清、仍暈=可抓收尾窗)', tr.trace.some(s => !s.ch && s.stun));
 const lastD = tr.trace[tr.trace.length - 1];

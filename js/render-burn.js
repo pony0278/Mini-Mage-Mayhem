@@ -129,7 +129,6 @@ function collectChar(g) {
   g.traverse(o => { if (o.isMesh && !o.userData.__equip && !o.userData.__shockbone && !o.userData.__burnfx && !o.userData.__hatflame) list.push({ m: o, mat: o.material }); });
   return list;
 }
-const BODY_R = 0.42;                 // 包身火基準=站高×此比例(shock-1b 同款教訓:固定 px 只合方塊人,avatar 站高 1.3×)
 
 // 燃燒鏈相位 → 火強度/黑煙(時長=v2-state BURN_CHAIN/BURN_LOB;**不 import v2-state**=render 不進 sim DAG,
 // 由呼叫端 actor-brawler 也拿不到……直接讀 f._burnCh 時戳 + 這裡鏡射時長。改鏈時長要同步這兩個數。)
@@ -157,24 +156,31 @@ export function updateBurnFx(e, g, R) {
   }
 
   // ---- ①② 包身火/DoT 小火 ----
+  // ⚠ 鏈判斷和 DoT 判斷是**獨立的兩個 if**,不能鏈在焦炭的 if/else 上——burn-1 首版把 DoT 分支黏進
+  // 焦炭鏈的 else if,鏈中 burnT>0 走進去把火強度蓋成 DoT 小火(0.62×)=「只有一小部分燃燒」(使用者抓到)。
   let fireInt = 0, smokeK = 0, sizeMul = 1;
   if (e._burnCh) { const c = chainFire(e, now); fireInt = c.fire; smokeK = c.smoke; }
+  else if (e.burnT > 0) { fireInt = Math.min(0.8, e.burnT * 1.6); sizeMul = 0.62; }   // DoT=小一號(地形火/油海)
   // 全黑焦炭:黑定格→熄滅段全黑(站起=還原);觸電 X 光佔用材質時讓位(restun 鐵則下不會同時發生,守底)
   const wantChar = !!e._burnCh && (now - e._burnCh.t0) < BC.black + BC.T + BC.out && !u.xray;
   if (wantChar && !rig.charred) { rig.charList = collectChar(g); CHAR_MAT.color.setHex(0x171310); for (const c of rig.charList) c.m.material = CHAR_MAT; rig.charred = true; u.charred = true; }
   else if (!wantChar && rig.charred) { for (const c of rig.charList) c.m.material = c.mat; rig.charList = null; rig.charred = false; u.charred = false; }   // u.charred=render-actors tint pass 的閘(同 u.xray)
-  else if (e.burnT > 0) { fireInt = Math.min(0.8, e.burnT * 1.6); sizeMul = 0.62; }   // DoT=小一號(地形火/油海)
   g.getWorldPosition(_wp);
   const H = (u.avatar && u.avatar.standH) || 47.6;                         // 實際站高(方塊人退 47.6;shock-1b 教訓)
-  const cy = _wp.y + (e._lying ? H * 0.14 : H * 0.34);                     // 火焰錨=身體中心(趴=貼地;火永遠朝上)
-  const bs = H * BODY_R * sizeMul * (0.55 + 0.45 * fireInt);
   const on = fireInt > 0.01;
+  // **包裹=整隻角色**(使用者反饋:只燒一小部分不行):火場從腳底舔到頭頂上方(demo 火核 1.95 ≳ 角色高 1.67
+  // 的比例);躺下(飛行/倒地)=火場壓扁+火舌沿身體軸(facing)水平散開=火沿著趴著的身體燒。
+  const k = sizeMul * (0.55 + 0.45 * fireInt);
+  const lying = !!e._lying;
+  const fH = (lying ? H * 0.6 : H * 1.1) * k;                              // 火場高
+  const base = _wp.y;                                                      // 腳底(g 世界座標已含拋飛高度 e.z——別再加一次,加了=飛行時火飄在頭上兩倍高)
+  const ax = Math.cos(e.facing || 0), az = Math.sin(e.facing || 0);        // 躺下時身體軸
   rig.core.visible = on;
   if (on) {
     const uc = rig.core.material.uniforms;
     uc.t.value = tr; uc.inten.value = fireInt;
-    rig.core.position.set(_wp.x, cy + bs * 0.35, _wp.z);
-    rig.core.scale.set(1.35 * bs, 1.95 * bs, 1);
+    rig.core.position.set(_wp.x, base + fH * 0.5, _wp.z);
+    rig.core.scale.set(H * (lying ? 1.15 : 0.92) * k, fH * 1.35, 1);
   }
   for (const o of rig.tongues) {
     o.m.visible = on;
@@ -183,9 +189,14 @@ export function updateBurnFx(e, g, R) {
     const lf = (tr / o.life + o.seed * 7) % 1;
     uu.t.value = tr; uu.age.value = lf; uu.rot.value = o.rs * lf; uu.inten.value = fireInt;
     const sc = (0.21 + Math.sin(Math.min(lf / 0.27, 1) * 1.5708) * 0.79) * (1 - Math.max(0, (lf - 0.6) / 0.4));
-    const rr = o.r0 * (1 - lf * 0.6) * bs;
-    o.m.position.set(_wp.x + Math.cos(o.a0) * rr, cy - bs * 0.3 + lf * bs * 1.55, _wp.z + Math.sin(o.a0) * rr);
-    o.m.scale.set((0.62 * sc + 0.04) * bs, (0.9 * sc + 0.04) * bs, 1);
+    const rr = o.r0 * H * 0.7 * (1 - lf * 0.5) * k;                        // 環繞半徑(包住身體 ~15px 半徑)
+    const along = lying ? (o.seed * 2 - 1) * H * 0.42 : 0;                 // 躺下:沿身體軸散開
+    o.m.position.set(
+      _wp.x + Math.cos(o.a0) * rr + ax * along,
+      base + lf * fH * 1.2,
+      _wp.z + Math.sin(o.a0) * rr + az * along);
+    const ts = H * 0.6 * k;
+    o.m.scale.set((0.62 * sc + 0.05) * ts, (0.9 * sc + 0.05) * ts, 1);
   }
   for (const o of rig.smoke) {
     const vis = smokeK > 0.01;
@@ -194,8 +205,8 @@ export function updateBurnFx(e, g, R) {
     const uu = o.m.material.uniforms;
     const lf = (tr / o.life + o.seed * 9) % 1;
     uu.t.value = tr; uu.rot.value = o.rs * lf; uu.al.value = smokeK * Math.sin(lf * 3.1416) * 0.5;
-    const sc = (0.45 + lf * 1.1) * H * BODY_R;
-    o.m.position.set(_wp.x + Math.sin(o.seed * 20 + tr * 0.7) * 5, cy + 6 + lf * H * 0.55, _wp.z + Math.cos(o.seed * 17) * 4);
+    const sc = (0.45 + lf * 1.1) * H * 0.42;
+    o.m.position.set(_wp.x + Math.sin(o.seed * 20 + tr * 0.7) * 5, base + H * 0.2 + lf * H * 0.7, _wp.z + Math.cos(o.seed * 17) * 4);
     o.m.scale.set(sc, sc, 1);
   }
 

@@ -114,7 +114,10 @@
 > (使用者拍板:還沒攻擊也要冒火;施法窗火變大=蓄力讀條)三消費者共用 rig。
 > **⚠ 焦黑=換 `mesh.material` 指標到共用 `CHAR_MAT`**(同 shock 剪影);render-actors tint pass 要加
 > `u.charred` 閘(同 `u.xray`)——不然 tint 把顏色寫進共用炭黑材質=全場一起變色(實測 charred=true 但 dark=0)。
-> 尺寸照 `av.standH` 現算(shock-1b 同款教訓)。perf:不加燈(demo fireLight 拿掉)、pool+prewarm、FX_LOW 砍
+> **⚠ 包裹=整隻角色(burn-1b,使用者反饋「只有一小部分燃燒」)**:火場從腳底(`g` 世界座標,**已含拋飛
+> 高度 e.z 別再加**)舔到頭頂上方(站立火場高 1.1×standH),躺下(飛行/倒地)=壓扁+火舌沿身體軸(facing)散開。
+> 病根兩個:①DoT 分支誤黏在焦炭 if 鏈的 else if 上,鏈中 burnT>0 走進去把火強度蓋成 DoT 小火(0.62×)——
+> **鏈判斷與 DoT 判斷是獨立的兩個 if**;②尺寸/錨點未照站高包全身。尺寸照 `av.standH` 現算(shock-1b 同款教訓)。perf:不加燈(demo fireLight 拿掉)、pool+prewarm、FX_LOW 砍
 > 火舌數/黑煙/帽口只留核心。hook:`window.__burn()`;旗:`__burnfx`/`__hatflame`。
 > **測試陷阱:受害者別放艙邊**——burnFighter 一設 stunned,在 POD.r 內=當場失控入艙(這是功能:火焰挑飛滾進艙)。
 
