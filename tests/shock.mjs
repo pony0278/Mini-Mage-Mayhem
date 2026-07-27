@@ -48,6 +48,21 @@ R('電鞭直擊=受害者 shockT 被設(且照常擊暈=判定不動)', hit.shoc
 const arcsOn = await page.waitForFunction(`${CNT}.arcs > 0`, { timeout: 15000 }).then(() => true).catch(() => false);
 R('觸電中=包裹電弧/星芒可見', arcsOn);
 
+// ---------- ②b 電弧包裹全身(shock-1b:橢球照 av.standH 現算——舊固定 K=方塊人身高,avatar 高 1.3×
+// 只包到下半身=使用者反饋「電弧停在身體中央」) ----------
+// 斷定橢球「定值」不量活幾何——電弧頂點吃隨機取樣+閃爍縮放(s 可低到 ~0.5),量活幾何會抖。
+const wrap = await page.evaluate(() => {
+  const s = __lab.labGroup.parent; let g = null;
+  s.traverse(o => { if (!g && o.userData && o.userData.shock && o.userData.shock.shown) g = o; });
+  if (!g) return null;
+  const r = g.userData.shock, av = g.userData.avatar;
+  return { bodyH: r.bodyH, standH: av ? av.standH : null, top: r.cy + r.ey, bot: r.cy - r.ey };
+});
+// bodyH=avatar 真實站高(不是方塊人 47.6 寫死值)、橢球頂過頭(>0.95H)、底到腿(<0.15H)
+const wrapOk = wrap && (wrap.standH == null || Math.abs(wrap.bodyH - wrap.standH) < 0.01)
+  && wrap.top > wrap.bodyH * 0.95 && wrap.bot < wrap.bodyH * 0.15;
+R('電弧橢球照實際站高現算(bodyH=standH,覆蓋帶頭到腿)', !!wrapOk, JSON.stringify(wrap));
+
 // ---------- ⑤ 骨架掛 avatar 骨(病 3 回歸守衛) ----------
 await page.waitForFunction(`${VICT} && ${VICT}.sil > 0`, { timeout: 15000 });
 const mount = await page.evaluate(() => {

@@ -65,6 +65,9 @@
 > **⚠ 剪影用「換 `mesh.material` 指標」不是改材質顏色**:avatar 是 `TEMPLATE.clone(true)`,Three 的 clone
 > **共用材質引用**,改顏色會把兩個角色一起變黑。另外 render-actors 的 tint pass(`g.userData.tints`)在
 > updateBrawler **之後**跑會把顏色寫回去 → 該行加了 `if (!g.userData.xray)` 守衛。
+> **尺寸=×受害者實際站高現算(shock-1b)**:橢球/中心高/星芒全走 `refreshSize(rig, av.standH)`——一開始
+> 用固定 K=方塊人身高換算,avatar 帶 AVATAR_SCALE 站高 ~77px,固定橢球只包到下半身(使用者反饋
+> 「電弧停在身體中央」);比例=demo 值 ÷ demo 身高 1.67。
 > perf:**不加燈**(demo 的 shockLight PointLight 拿掉)、電弧/星芒/節點全預配置 buffer(demo 每 45ms
 > `dispose()+new BufferGeometry` 已改掉)、鋸齒路徑 ping-pong Float32Array 零配置(demo 每次 new 150~300 個 Vector3)、
 > 幾何/材質 module 級共用 + 開機 prewarm。FX_LOW 砍節點光點+分支+外暈層。

@@ -28,23 +28,28 @@ import { FX_LOW } from './render-lab.js';
 // 遊戲端時長由 sim 的 f.shockT 給=綁擊暈時長,不取用 shockDuration)=====
 const LAB = { "arcCount": 10, "arcJag": 0.35, "branchChance": 0.5, "regenMs": 45, "spikeCount": 14, "burstSize": 1.15, "pulseSpeed": 9, "pulseAmp": 0.35, "shockDuration": 1.6, "xrayRatio": 0.6, "colorCore": "#ffffff", "colorGlow": "#ffe14d" };
 
-// px / demo-公尺:demo 角色高約 1.6、遊戲 brawler 高約 45px(hipY14 + torso18 + head13)。
-const K = 28;
+// 尺寸換算(shock-1b):**全部按「×受害者實際站高」比例現算**,不走固定倍率——一開始用 K=28 是照
+// 方塊人身高(≈48px)換的,但 avatar 帶 AVATAR_SCALE 1.3 站高 ≈60px、中心也更高,固定橢球只包到
+// 下半身=使用者反饋「電弧停在身體中央,沒包住 GLB 角色」。比例=demo 值 ÷ demo 角色身高 1.67
+//(頭球頂 1.25+0.42):橢球 (0.62,0.88,0.55)、電效中心 0.95。每副 rig 的實際尺寸在 refreshSize 現算。
+const DEMO_H = 1.67;
 const P = {
   arcCount: LAB.arcCount, arcJag: LAB.arcJag, branchChance: LAB.branchChance, regenMs: LAB.regenMs,
-  spikeCount: LAB.spikeCount, burstSize: LAB.burstSize * K,
+  spikeCount: LAB.spikeCount, burstSize: LAB.burstSize / DEMO_H,
   pulseSpeed: LAB.pulseSpeed, pulseAmp: LAB.pulseAmp, xrayRatio: LAB.xrayRatio,
-  ex: 0.62 * K, ey: 0.88 * K, ez: 0.55 * K,        // 包裹橢球(demo ELLIPSOID)
-  burstBack: 0.9 * K,                               // 星芒沿視線往後推(角色壓在星芒前)
-  nodeSize: 0.16 * K,
+  ex: 0.62 / DEMO_H, ey: 0.88 / DEMO_H, ez: 0.55 / DEMO_H,   // 包裹橢球(×身高)
+  cy: 0.95 / DEMO_H,                                // 電效中心高(×身高;demo TARGET_CENTER y)
+  minArc: 0.75 / DEMO_H,                            // 橢球取點的最小間距(×身高)
+  burstBack: 0.9 / DEMO_H,                          // 星芒沿視線往後推(角色壓在星芒前)
+  nodeSize: 0.16 / DEMO_H,
   fade: 0.25,                                       // 尾段淡出秒數(demo envelope)
 };
+const BOX_H = 47.6;                                 // 方塊人站高(hipY14+torso18+head13+foot2.6;?avatar=0 退路)
 const CORE = 0xffffff, GLOW = 0xffe14d;             // 使用者定稿黃白(拍板 2026-07-27:武器藍/觸電黃白不強求一致)
 const BONE = 0xffffff, HOLE = 0x1a0e06, SIL = 0x33200f;
 
 // brawler rig 的骨長(鏡射 BRAWLER_SPEC;**不 import actor-brawler**=避免 actor-brawler→render-shock→actor-brawler 循環)
 const S = { torso: 18, torsoCy: 9, hipY: 14, upper: 7, fore: 6.5, thigh: 7.5, shin: 6.5, headCy: 7.5 };
-const CENTER_Y = S.hipY + S.torsoCy;                // 電效中心=軀幹中心(世界 y≈23)
 
 const clamp01 = v => v < 0 ? 0 : (v > 1 ? 1 : v);
 
@@ -176,7 +181,7 @@ function buildRig(R) {
     nodeGeo = new THREE.BufferGeometry();
     nodeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_NODE * 3), 3));
     nodeGeo.setDrawRange(0, 0);
-    nodeMat = new THREE.PointsMaterial({ size: P.nodeSize, map: glowTex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true, fog: false });
+    nodeMat = new THREE.PointsMaterial({ size: P.nodeSize * BOX_H, map: glowTex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true, fog: false });
     nodePoints = new THREE.Points(nodeGeo, nodeMat);
     nodePoints.frustumCulled = false; nodePoints.renderOrder = 21; nodePoints.userData.__shock = true;
     fx.add(nodePoints);
@@ -200,7 +205,7 @@ function buildRig(R) {
   return {
     fx, arcGeo, arcCore, arcGlow, arcMatCore, arcMatGlow, nodeGeo, nodeMat,
     burstGroup, bOuter, bInner,
-    skel: [], face: null, onAvatar: false, sil: null, xray: false, lastTick: -1, flicker: 1, shown: false,
+    skel: [], face: null, onAvatar: false, bodyH: 0, ex: 0, ey: 0, ez: 0, cy: 0, minArc: 0, burst: 0, back: 0, sil: null, xray: false, lastTick: -1, flicker: 1, shown: false,
   };
 }
 
@@ -366,10 +371,10 @@ function regenArcs(rig, intensity) {
     // 橢球面上取距離夠遠的兩點
     let ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0, tries = 0;
     do {
-      sampleEllipsoid(); ax = _samp[0]; ay = _samp[1]; az = _samp[2];
-      sampleEllipsoid(); bx = _samp[0]; by = _samp[1]; bz = _samp[2];
+      sampleEllipsoid(rig); ax = _samp[0]; ay = _samp[1]; az = _samp[2];
+      sampleEllipsoid(rig); bx = _samp[0]; by = _samp[1]; bz = _samp[2];
       tries++;
-    } while (Math.hypot(bx - ax, by - ay, bz - az) < 0.75 * K && tries < 8);
+    } while (Math.hypot(bx - ax, by - ay, bz - az) < rig.minArc && tries < 8);
     buildJaggedPath(ax, ay, az, bx, by, bz, P.arcJag * intensity);
     const buf = _pathBuf, n = _pathN;
     for (let i = 0; i < n - 1 && segIdx < MAX_SEG; i++) {
@@ -392,7 +397,7 @@ function regenArcs(rig, intensity) {
         if (Math.random() >= P.branchChance * 0.12) continue;
         const a3 = i * 3, sx = buf[a3], sy = buf[a3 + 1], sz = buf[a3 + 2];
         let dx = Math.random() * 2 - 1, dy = Math.random() * 2 - 1, dz = Math.random() * 2 - 1;
-        const m = Math.hypot(dx, dy, dz) || 1, len = (0.25 + Math.random() * 0.3) * K;
+        const m = Math.hypot(dx, dy, dz) || 1, len = (0.25 + Math.random() * 0.3) / DEMO_H * rig.bodyH;
         dx = dx / m * len; dy = dy / m * len; dz = dz / m * len;
         buildJaggedPath(sx, sy, sz, sx + dx, sy + dy, sz + dz, P.arcJag * 1.4);
         const bb = _pathBuf, bn = _pathN;
@@ -411,12 +416,22 @@ function regenArcs(rig, intensity) {
   if (rig.nodeGeo) { rig.nodeGeo.setDrawRange(0, nodeIdx); rig.nodeGeo.attributes.position.needsUpdate = true; }
 }
 const _samp = [0, 0, 0];
-function sampleEllipsoid() {
+function sampleEllipsoid(rig) {
   let x, y, z, l;
   do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; l = x * x + y * y + z * z; } while (l < 0.05);
   l = Math.sqrt(l);
-  _samp[0] = x / l * P.ex; _samp[1] = y / l * P.ey; _samp[2] = z / l * P.ez;
+  _samp[0] = x / l * rig.ex; _samp[1] = y / l * rig.ey; _samp[2] = z / l * rig.ez;
   return _samp;
+}
+// 身形量測(shock-1b):橢球/星芒/中心高全部照受害者實際站高現算——avatar=av.standH(渲染後真實站高,
+// 含 AVATAR_SCALE),方塊人退 BOX_H。avatar 非同步建好/換模型時 bodyH 一變就重算。
+function refreshSize(rig, H) {
+  if (rig.bodyH === H) return;
+  rig.bodyH = H;
+  rig.ex = P.ex * H; rig.ey = P.ey * H; rig.ez = P.ez * H;
+  rig.cy = P.cy * H; rig.minArc = P.minArc * H;
+  rig.burst = P.burstSize * H; rig.back = P.burstBack * H;
+  if (rig.nodeMat) rig.nodeMat.size = P.nodeSize * H;
 }
 
 /* ==== X光切換:角色整組換扁平深色剪影 + 骨架浮現 ==== */
@@ -459,6 +474,7 @@ export function updateShock(e, g, R) {
   }
   // 骨架掛點:avatar 是非同步建好的 → 一出現就把骨架從 box rig 改掛 avatar 骨(同 item-4b 手套的重掛)
   const av = u.avatar;
+  refreshSize(rig, av && av.standH ? av.standH : BOX_H);
   if (!!av !== rig.onAvatar || !rig.skel.length) {
     disposeSkel(rig.skel);
     if (rig.face && rig.face.parent) rig.face.parent.remove(rig.face);
@@ -504,14 +520,14 @@ export function updateShock(e, g, R) {
   }
 
   // 電效群組掛 scene(世界座標,不吃角色 yaw/squash);中心=軀幹中心
-  g.getWorldPosition(_wc); _wc.y += CENTER_Y;
+  g.getWorldPosition(_wc); _wc.y += rig.cy;
   rig.fx.position.copy(_wc);
   const s = Math.max(intensity, 0.001);
   rig.arcCore.scale.setScalar(s);
   if (rig.arcGlow) rig.arcGlow.scale.setScalar(s * 1.04);
-  rig.burstGroup.scale.setScalar(P.burstSize * s);    // writeBurst 頂點是單位半徑 ~1,縮放直接帶進 px
+  rig.burstGroup.scale.setScalar(rig.burst * s);      // writeBurst 頂點是單位半徑 ~1,縮放直接帶進 px
   rig.burstGroup.quaternion.copy(camera.quaternion);  // billboard(fx 掛 scene 且無旋轉 → local=world)
-  _off.subVectors(_wc, camera.position).normalize().multiplyScalar(P.burstBack);
+  _off.subVectors(_wc, camera.position).normalize().multiplyScalar(rig.back);
   rig.burstGroup.position.copy(_off);                 // 沿視線推到角色後方:角色壓在星芒前(depthTest true)
 
   rig.arcMatCore.opacity = envelope;
