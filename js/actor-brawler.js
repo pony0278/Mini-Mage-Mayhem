@@ -50,6 +50,7 @@ export const ANIM = {
     aR_fbase: -48, aR_fmid: 0, aR_ftip: 0, aR_fthumb: 0,
   },
   stun:    { wobRate: 9, wobAmp: 0.14, slump: 18 },                                        // 暈眩:搖晃+垮肩駝背
+  shock:   { rate: 47, amp: 3.4, arm: 64, elbow: 16, leg: 11, spine: -11, head: -17 },      // 觸電定格(shock-2):全身僵直張開+高頻抖動(卡通觸電);不垮肩不搖晃,跟暈眩期分開讀
   thrown:  { lift: 8, rate: 10, center: 36, lean: 0.42 },                                  // 被丟打橫:趴姿抬高(半個身厚,免沉地)/ 站起↔趴下平滑速率 / center=趴姿繞「身體中心」的軸心補償(≈半身長;feel-4b 治「頭前伸半身→落地彈回」的視覺差)/ lean=挑飛直立後仰角(rad)
   heldBarrel: { liftK: 0.9 },                                                              // 扛桶/瓶:物心抬高 = 邊長×此係數(0.5=底貼掌心;45° 俯視鏡頭下要再高些頭才不被蓋)
   guard: { // 按住防禦:使用者 studio 定稿的舉防定格(guard 幀非零軸→值直接蓋在戰鬥站姿上;側身含胸、右臂高舉護頭、左臂護體、屈膝穩樁)
@@ -475,7 +476,16 @@ export function updateBrawler(e, g) {
         pose.spine_x += br * A.breath.chest * rest;                                  // 下沉時含胸一點
       }
     }
-    if (e.stunned) { wob = e.frozen ? 0 : Math.sin(now * A.stun.wobRate) * A.stun.wobAmp; pose.spine_x = A.stun.slump; pose.head_x = -A.stun.slump * 0.6; } // 冰凍=冰雕:不搖晃
+    if (e.stunned) {
+      if ((e.shockT || 0) > now) {   // 觸電定格(shock-2):僵直張開+高頻抖動——電弧演出期,還沒進垮肩暈眩
+        const K = A.shock, j = Math.sin(now * K.rate) * K.amp;
+        wob = 0;
+        pose.spine_x = K.spine + j; pose.head_x = K.head - j;
+        pose.aL_sz = K.arm + j; pose.aR_sz = K.arm - j;              // 手臂張開(sz 帶 side 倍率=左右對開)
+        pose.aL_ex = K.elbow; pose.aR_ex = K.elbow;
+        pose.lL_hz = K.leg; pose.lR_hz = K.leg;                      // 腿張開(hz 同帶 side 倍率)
+      } else { wob = e.frozen ? 0 : Math.sin(now * A.stun.wobRate) * A.stun.wobAmp; pose.spine_x = A.stun.slump; pose.head_x = -A.stun.slump * 0.6; } // 冰凍=冰雕:不搖晃
+    }
   }
 
   // --- 平滑混合(狀態切換不瞬跳;clip 內插本身已平滑,這層只削接縫)---

@@ -111,10 +111,15 @@ export const GUARD_REGEN = 28, GUARD_REGEN_DELAY = 0.4; // 放開後 delay 才�
 export const GUARD_BLOCK_PUSH = 130, GUARD_BLOCK_FLINCH = 0.14; // 擋下=防守方輕微後仰+被推一小步
 export const GUARD_BREAK_FUMBLE = 0.6, GUARD_BREAK_LOCK = 1.2;  // 破防:踉蹌 + 之後不能再舉防的鎖定
 export const STUN_T = 1.2, STUN_RECOVER = 40, RESTUN_IMMUNE = 0.6;
-// 觸電演出時長(shock-1)=擊暈時長:三個電擊來源(電鞭直擊/元素站雷/踩電水)命中即設
-// `f.shockT = game.time + SHOCK_T`,render-shock 讀旗演出。演出=「他還在暈」的告示——舊況被電暈
-// 跟被打暈畫面上都只有頭上一顆 ★,分不出來。純演出,不影響任何判定。
-export const SHOCK_T = STUN_T;
+// 觸電定格(shock-2,使用者拍板 2026-07-27:被電的一方先定格觸電,演出結束後才暈 1.2 秒)。
+// 三個電擊來源(電鞭直擊/元素站雷/踩電水)全走 v2-combat `shockFighter` → `stunT = SHOCK_T + STUN_T`
+// = **總失控 2.8s**,兩段分開讀:定格期(電弧+全身僵直高頻抖動,不出 ★)→ 暈眩期(電弧停+垮肩搖晃+★)。
+// **為什麼要加這段**:實測電鞭在最遠射程「打得到但吃不到」——按 Z 後攻擊方鎖腳 0.693s(item-4g),
+// 對手 t=0.513 中招、t=1.713 醒,可移動窗只有 1.02s×跑速 268.8=274px,而要跑的是 260−46=214px,
+// 餘裕 0.224s 還會被 LIGHTNING_KNOCK 140 的推退吃光。加定格後追擊窗 →2.62s,電鞭才接得上自己的抓→丟進艙。
+// 值=使用者 electric_shock demo 的 shockDuration 原值(演出最完整,X 光閃現看得過癮)。
+export const SHOCK_T = 1.6;
+export const SHOCK_FLASH = 0.35;   // 已暈/restun 免疫中被電:不重複暈(restun 鐵則),只閃一下演出(比照 freezeFighter 的「冰晶四濺」)
 export const GRAB_RANGE = 46, CARRY_SLOW = 0.6, REGRAB_CD = 0.6;
 // 投擲(B 案:sim 真高度彈道)。三參數語言(人/桶/未來道具同一套,加投擲物=加一行):
 //   range=落點距離(px)、apex=弧頂追加高(px)、T=滯空秒、h0=離手高(過頂丟的手高)。

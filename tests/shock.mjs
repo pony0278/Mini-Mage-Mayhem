@@ -108,6 +108,40 @@ await page.evaluate(() => { clearInterval(window.__pin); __v2.fighters[1].shockT
 const off = await page.waitForFunction(`(()=>{const c=${CNT};return c.arcs===0 && c.bones===0;})()`, { timeout: 15000 }).then(() => true).catch(() => false);
 R('演出到期=電弧+骨架全收', off);
 
+// ---------- ⑧ shock-2:定格觸電 → 演出結束才暈 1.2s(使用者拍板 2026-07-27)----------
+await page.evaluate(() => { if (window.__pin) clearInterval(window.__pin); window.__shockForce(null); });
+const two = await page.evaluate(() => {
+  const f = __v2.fighters[0], o = __v2.fighters[1];
+  o.stunned = false; o.restunT = 0; o.stunT = 0; o.shockT = 0;
+  f.item = 'lightning'; f.itemUses = 5; f.itemCastCd = 0; f._itemCastAt = 0; f.facing = 0;
+  f.x = 430; f.y = 330; o.x = 560; o.y = 330;
+  const t0 = __v2.game.time;
+  __v2.castLightning(f);
+  return { lock: +(o.shockT - t0).toFixed(3), total: +o.stunT.toFixed(3), stunned: o.stunned };
+});
+R('shock-2:命中=定格 SHOCK_T(1.6),之後才接 STUN_T(1.2)=總失控 2.8',
+  Math.abs(two.lock - 1.6) < 0.01 && Math.abs(two.total - 2.8) < 0.01 && two.stunned, JSON.stringify(two));
+
+// 姿勢兩段分明:定格=挺直後仰(spine 負)、暈眩=垮肩(spine 正 ≈ ANIM.stun.slump 18)
+const SPINE = `(()=>{const s=__lab.labGroup.parent;const t=__v2.fighters[1];let g=null;s.traverse(o=>{if(!g&&o.userData&&o.userData.pose&&o.userData.rig){const p=o.getWorldPosition(new THREE.Vector3());if(Math.abs(p.x-t.x)<6&&Math.abs(p.z-t.y)<6)g=o;}});return g?g.userData.pose.spine_x:null;})()`;
+await page.evaluate(() => { window.__pin = setInterval(() => { const o = __v2.fighters[1]; o.stunned = true; o.stunT = 9; o.shockT = __v2.game.time + 2; }, 16); });
+const rigid = await page.waitForFunction(`${SPINE} < -4`, { timeout: 15000 }).then(() => true).catch(() => false);
+R('shock-2:定格期姿勢=挺直後仰(spine 負,不是垮肩)', rigid, 'spine=' + await page.evaluate(SPINE));
+await page.evaluate(() => { clearInterval(window.__pin); window.__pin = setInterval(() => { const o = __v2.fighters[1]; o.stunned = true; o.stunT = 9; o.shockT = 0; }, 16); });
+const slump = await page.waitForFunction(`${SPINE} > 8`, { timeout: 15000 }).then(() => true).catch(() => false);
+R('shock-2:定格結束=切回垮肩暈眩姿勢(spine 正)', slump, 'spine=' + await page.evaluate(SPINE));
+
+// 已暈者再被電:不重複暈(restun 鐵則,防鎖定)
+const restun = await page.evaluate(() => {
+  clearInterval(window.__pin);
+  const f = __v2.fighters[0], o = __v2.fighters[1];
+  o.stunned = true; o.stunT = 0.9; o.shockT = 0; o.restunT = 0;
+  f.item = 'lightning'; f.itemUses = 5; f.itemCastCd = 0; f._itemCastAt = 0; f.facing = 0;
+  __v2.castLightning(f);
+  return { after: +o.stunT.toFixed(3) };
+});
+R('shock-2:已暈者再被電=不重複暈(restun 鐵則,防鎖定)', Math.abs(restun.after - 0.9) < 0.01, JSON.stringify(restun));
+
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
 await B.close();

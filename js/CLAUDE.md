@@ -52,10 +52,15 @@
 > 由 actor-brawler 幀尾呼叫 `updateWhip`;鞭 group 掛 scene(世界座標),網格帶 `__whip` 旗=測試計數。
 
 > **觸電命中演出(shock-1)**:`render-shock.js`——使用者「電擊命中特效 v1.1(X光閃現)」移植。
-> **判定不動**=純演出:**三個電擊擊暈來源共用一套**(電鞭直擊 `castLightning` / 元素站雷 `eruptStation` /
-> 踩電水 `floorHazards` FL.CHARGED)只設 `f.shockT = game.time + SHOCK_T`(=`STUN_T`),由 actor-brawler
-> 幀尾 `updateShock(e,g,R)` 讀旗演出。**演出時長=擊暈時長 → 特效本身就是「他還在暈」的告示**
-> (舊況被電暈跟被打暈畫面上都只有頭上一顆 ★,分不出來)。四層:包裹電弧(橢球取兩點+中點位移鋸齒,
+> **三個電擊擊暈來源共用一套**(電鞭直擊 `castLightning` / 元素站雷 `eruptStation` / 踩電水 `floorHazards`
+> FL.CHARGED)全走 v2-combat **`shockFighter(o)`**,由 actor-brawler 幀尾 `updateShock(e,g,R)` 讀 `f.shockT` 演出。
+> **⚠ 兩段式失控(shock-2,使用者拍板 2026-07-27:「被電的一方應該定格觸電,動畫結束後才暈 1.2 秒」)**:
+> `stunT = SHOCK_T(1.6) + STUN_T(1.2)` = 總失控 2.8s。**定格期**=電弧演出+全身僵直高頻抖動(`ANIM.shock`,
+> actor-brawler 依 `e.shockT > now` 分支,比照 `frozen` 冰雕的做法)+**不出 ★**;**暈眩期**=電弧停+垮肩搖晃+★
+> (v2-hud 的 ★ 加了同一個閘)。已暈/restun 免疫中被電=**不重複暈**(restun 鐵則防鎖定),只放 `SHOCK_FLASH` 短演出。
+> **為什麼加定格**:實測電鞭在最遠射程「打得到但吃不到」——按 Z 後攻擊方鎖腳 0.693s(item-4g),對手 t=0.513
+> 中招 t=1.713 醒,可移動窗只有 1.02s×跑速 268.8=274px,而要跑 260−46=214px,餘裕 0.224s 還會被
+> `LIGHTNING_KNOCK` 140 的推退吃光;加定格後追擊窗 →2.62s,電鞭才接得上自己的抓→丟進艙。四層:包裹電弧(橢球取兩點+中點位移鋸齒,
 > 15% 機率放大 2.2 倍=突發大跳變)/節點光點/星芒爆裂(billboard,**沿視線推到角色後方**讓角色壓在星芒前)/
 > **X光閃現**(每 45ms 抽一次:角色整組換扁平深色剪影 + 骷髏浮現)。配色=使用者定稿黃白(拍板:武器藍/觸電黃白不強求一致)。
 > **⚠ 骨架必須掛 avatar 骨,不能掛 box rig(病 3,2026-07-27 又踩一次)**:avatar 預設開,box rig 是隱形

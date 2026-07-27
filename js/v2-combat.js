@@ -14,7 +14,7 @@ import {
   AI_PROFILE, FLEE_STAB, FLEE_SPEED, CALL_T, FLEE_EXITS,
   COUNTER_DELAY, COUNTER_WIN, HIT_BURST,
   DASH_RUN_T, DASH_T, DASH_LUNGE, DASH_STAB, DASH_KNOCK, DASH_CD,
-  STUN_T, SHOCK_T, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
+  STUN_T, SHOCK_T, SHOCK_FLASH, GRAB_RANGE, CARRY_SLOW, REGRAB_CD, FUMBLE_T, ESCAPE_STAB, BODY_SEP,
   PERSON_LOB, WALL_BOUNCE, PERSON_HOLD_T, PERSON_THROW_DELAY, AI_THROW_DIST, AI_THROW_PANIC, AI_THROW_DELAY,
   SLIDE_MIN, SLIDE_KNOCK_V, ICE_WALK, STAGE_NAME, STAGE_BANNER, PERFORM_T, PERFORM_DOME_R, WASTE_CLASS, INTRO_GO,
   JUMP_LOB, AIR_CTRL, JUMP_CD, AIR_HIT_LOB, DIVE_T, DIVE_R, DIVE_STAB, DIVE_FWD, DIVE_LAG, DIVE_CD, AI_JUMP_CHANCE, AI_JUMP_CD,
@@ -92,7 +92,7 @@ export function floorHazards(f, dt) {
   if (airborne(f)) return; // 空中=腳不沾地:地板化學(電水/火海/毒區)不作用(跳過危險地板=走位技術;著火 DoT 在身上,照燒)
   const st = stateAtPixel(f.x, f.y);
   if (st === FL.CHARGED) {
-    if (!f.stunned && f.restunT <= 0) { stunFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); f.shockT = game.time + SHOCK_T; } // 觸電演出(shock-1):踩電水跟電鞭直擊同一套
+    if (!f.stunned && f.restunT <= 0) { shockFighter(f); addText(f.x, f.y - 44, '電擊！', '#bfe6ff'); } // 踩電水=定格觸電→暈(shock-2:跟電鞭直擊同一套)
     return;
   }
   if (st === FL.FIRE || st === FL.POISON) {
@@ -244,6 +244,21 @@ export function freezeFighter(o, byPid) {
   } else {
     addText(o.x, o.y - 46, '冰晶四濺！', '#bfe6ff');
   }
+}
+// 電擊=「暈的觸電皮」(shock-2;同 freezeFighter 的模式:共用一套 STUN_T/restun 規則,玩家只學一次)。
+// 使用者拍板 2026-07-27:被電的一方**先定格觸電 SHOCK_T,演出結束後才進 STUN_T 暈眩**
+// → `stunT = SHOCK_T + STUN_T`(定格期也算失控,但姿勢/★/演出都跟暈眩期分開讀:
+//    定格=電弧+全身僵直高頻抖動不出 ★(actor-brawler 依 shockT 分支);暈眩=電弧停+垮肩搖晃+★)。
+// 三個來源共用:電鞭直擊 castLightning / 元素站雷 eruptStation / 踩電水 floorHazards。
+// 已暈/restun 免疫中:**不重複暈**(restun 鐵則,防鎖定),只放 SHOCK_FLASH 短演出(比照冰的「冰晶四濺」)。
+export function shockFighter(o) {
+  if (o.stunned || o.restunT > 0) {                       // 不重複暈:演出也夾在剩餘失控時間內,免電弧演到人已站起來
+    o.shockT = Math.max(o.shockT || 0, game.time + Math.min(SHOCK_FLASH, Math.max(o.stunT, 0.12)));
+    return;
+  }
+  stunFighter(o);
+  o.stunT = SHOCK_T + STUN_T;
+  o.shockT = game.time + SHOCK_T;
 }
 // --- 跳躍+下壓拳(brawl-2:走位技術;空白=跳,空中攻擊=下壓)---
 export function jumping(f) { return f._jumpT > -5 && game.time - f._jumpT < JUMP_LOB.T + 0.02; }
