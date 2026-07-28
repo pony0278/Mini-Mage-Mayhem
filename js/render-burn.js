@@ -115,13 +115,17 @@ const BODY = {
 const HAT = {
   idle: 0.68,                       // 閒置火苗基準 ÷ 帽口寬(舊固定 6.5px ≈ 0.13 → 火苗只有帽口 1/7 寬=看不見)
   cast: 1.05,                       // 施法火柱(蓄力讀條:一眼看出「要噴了」)
-  coreW: 1.25, coreH: 1.85,         // 火柱 quad 長寬(×hs;閒置火焰寬 ≈ 0.85×帽口寬=demo 火比帽寬的比例級)
-  ring: 0.60,                       // 火舌環繞半徑 ÷ hs(散到帽口內緣一圈舔,不是全擠在中軸)
-  rise: 1.5,                        // 火舌上竄行程 ÷ hs
+  ring: 0.52,                       // 火舌環繞半徑 ÷ hs(散在帽口內緣一圈舔,不是全擠在中軸)
+  rise: 1.45,                       // 火舌上竄行程 ÷ hs
+  sink: 0.12,                       // 火舌起點壓進帽口 ÷ hs(火從口裡竄出來,不是浮在口上方)
   inten: 1.35,                      // 亮度增益(同 BODY.inten 級)
   breathe: 0.16,                    // 閒置呼吸振幅(火苗活著的感覺)
 };
-const HTG = FX_LOW ? 2 : 5;         // 帽口火舌數(burn-2c:3→5;FX_LOW 留 2)
+// burn-2d(使用者:「取消燃燒中央那根靜止的火柱,看起來像有一根物體」):**帽口火拔掉 core**。
+// 病根=core 是一張**形狀完全不動**的大 quad(shader 只有 voronoi 在流,`flameTex` 剪影每幀相同)→
+// 一根不生不滅的柱子插在會生滅的火舌中間=讀成實體物件。火舌有 life 循環(生→竄→淡)才像火。
+// 補償:火舌數 5→9(FX_LOW 2→5)+ 壽命錯開(life 亂數範圍加大)→ 體積補回來、任一瞬間都有幾束正盛。
+const HTG = FX_LOW ? 5 : 9;         // 帽口火舌數(拔 core 後由火舌獨撐體積)
 
 /* ==== 每 fighter 一副:包身火(core+火舌+黑煙)+ 帽口火(小 core+火舌)==== */
 // **錨=身體中心經身體變換(demo `_fireCenter` 原式),火掛 scene 永遠直立**(burn-1c)。
@@ -135,17 +139,17 @@ function buildRig() {
   const smoke = [];
   for (let i = 0; i < SM; i++) smoke.push({ m: new THREE.Mesh(quad, smokeMat()), seed: rnd(), rs: (rnd() * 2 - 1) * 1.5, life: 1.6 * (0.7 + rnd() * 0.6) });
   for (const o of smoke) { o.m.visible = false; o.m.frustumCulled = false; o.m.renderOrder = 27; o.m.userData.__burnfx = true; scene.add(o.m); }
-  const hatCore = mkFlame('__hatflame');
   const hatT = [];
   // burn-2c:角度均分(同 BODY 火舌;純亂數會結團=帽口某一側光禿禿)、半徑外偏=繞著帽口整圈舔
-  for (let i = 0; i < HTG; i++) hatT.push({ m: mkFlame('__hatflame', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 0.9 * (0.7 + rnd() * 0.6), a0: (i + rnd() * 0.7) / HTG * 6.283, r0: 0.55 + 0.45 * Math.sqrt(rnd()) });
-  return { core: mkFlame('__burnfx'), tongues, smoke, hatCore, hatT };
+  // burn-2d:壽命錯開加大(0.55~1.45×)——拔掉 core 後全靠火舌撐,同步生滅會整叢一起消失=閃爍
+  for (let i = 0; i < HTG; i++) hatT.push({ m: mkFlame('__hatflame', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 0.9 * (0.55 + rnd() * 0.9), a0: (i + rnd() * 0.7) / HTG * 6.283, r0: 0.35 + 0.65 * Math.sqrt(rnd()) });
+  return { core: mkFlame('__burnfx'), tongues, smoke, hatT };
 }
 
 let _warmed = false;
 function prewarm(rig) {
   if (_warmed) return; _warmed = true;
-  const all = [rig.core, rig.hatCore, ...rig.tongues.map(o => o.m), ...rig.smoke.map(o => o.m), ...rig.hatT.map(o => o.m)];
+  const all = [rig.core, ...rig.tongues.map(o => o.m), ...rig.smoke.map(o => o.m), ...rig.hatT.map(o => o.m)];
   for (const m of all) m.visible = true;
   try { renderer.compile(scene, camera); } catch (e) { /* headless 無 GL:退回惰性編譯 */ }
   for (const m of all) m.visible = false;
@@ -246,7 +250,6 @@ export function updateBurnFx(e, g, R) {
 
   // ---- ③ 帽口火:常燃小火苗;施法窗(itemCastCd)火變大=蓄力讀條(使用者拍板:還沒攻擊也要冒火) ----
   const hatOn = !!wantHat;
-  rig.hatCore.visible = hatOn;
   for (const o of rig.hatT) o.m.visible = hatOn;
   if (hatOn) {
     _hbb.setFromObject(hg);                                                // 帽世界 bbox 頂=帽口(The Golden Maw 開口朝上)
@@ -255,17 +258,13 @@ export function updateBurnFx(e, g, R) {
     const casting = e._itemVisType === 'fire' && e.itemCastCd > 0;
     const hs = hatW * (casting ? HAT.cast : HAT.idle);                     // 施法=火柱;閒置=火苗(都照帽口寬現算)
     const hi = (casting ? 1.0 : 0.82 + HAT.breathe * Math.sin(tr * 7)) * HAT.inten; // 閒置微呼吸;×增益=更明顯
-    const uh = rig.hatCore.material.uniforms;
-    uh.t.value = tr; uh.inten.value = hi;
-    rig.hatCore.position.set(hx, hy + hs * 0.55, hz);
-    rig.hatCore.scale.set(HAT.coreW * hs, HAT.coreH * hs, 1);
     for (const o of rig.hatT) {
       const uu = o.m.material.uniforms;
       const lf = (tr / o.life + o.seed * 7) % 1;
       uu.t.value = tr; uu.age.value = lf; uu.rot.value = o.rs * lf; uu.inten.value = hi;
       const sc = (0.21 + Math.sin(Math.min(lf / 0.27, 1) * 1.5708) * 0.79) * (1 - Math.max(0, (lf - 0.6) / 0.4));
-      const rr = o.r0 * HAT.ring * (1 - lf * 0.6) * hs;
-      o.m.position.set(hx + Math.cos(o.a0) * rr, hy + lf * hs * HAT.rise, hz + Math.sin(o.a0) * rr);
+      const rr = o.r0 * HAT.ring * (1 - lf * 0.6) * hs;                    // 往上收=火舌向中軸聚攏(burn-2d 拔 core 後的體積來源)
+      o.m.position.set(hx + Math.cos(o.a0) * rr, hy - hs * HAT.sink + lf * hs * HAT.rise, hz + Math.sin(o.a0) * rr);
       o.m.scale.set((0.62 * sc + 0.05) * hs, (0.9 * sc + 0.05) * hs, 1);
     }
   }
