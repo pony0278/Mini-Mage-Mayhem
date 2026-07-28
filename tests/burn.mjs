@@ -116,6 +116,21 @@ await page.evaluate(() => { const o = __v2.fighters[1]; o.burnT = 0; o.stability
 const HAT = `(()=>{const s=__lab.labGroup.parent;let n=0;s.traverse(o=>{if(o.userData&&o.userData.__hatflame&&o.visible)n++;});return n;})()`;
 const hatOn = await page.waitForFunction(`${HAT} > 0`, { timeout: 15000 }).then(() => true).catch(() => false);
 R('帽口常燃火苗(戴帽未攻擊也冒火)', hatOn);
+// burn-2c(使用者「火帽頭頂的火焰可以更明顯嗎」):火苗尺寸=**照帽口寬現算**(舊版固定 6.5px=帽口 1/7 寬,
+// item-3c 把帽放大後更看不見)。斷言火場寬 ≥0.6×帽寬、高過帽頂——縮回固定 px 會被這條抓到。
+const hatFit = await page.evaluate(() => {
+  const s = __lab.labGroup.parent; s.updateMatrixWorld(true);
+  let hg = null; s.traverse(o => { if (o.name === 'HEADGEAR' && o.visible && !hg) hg = o; });
+  if (!hg) return { skip: true };
+  const hb = new THREE.Box3().setFromObject(hg), fb = new THREE.Box3(); let n = 0, inten = 0;
+  s.traverse(o => { if (o.userData && o.userData.__hatflame && o.visible) { n++;
+    inten = Math.max(inten, o.material.uniforms.inten.value);
+    fb.union(new THREE.Box3().setFromCenterAndSize(o.getWorldPosition(new THREE.Vector3()), new THREE.Vector3(o.scale.x, o.scale.y, 1))); } });
+  return { n, inten: +inten.toFixed(2), hatW: +(hb.max.x - hb.min.x).toFixed(0), hatTop: +hb.max.y.toFixed(0),
+    flameW: +(fb.max.x - fb.min.x).toFixed(0), flameTop: +fb.max.y.toFixed(0) };
+});
+R('burn-2c:火苗照帽口寬現算(寬 ≥0.6×帽寬、竄過帽頂、亮度增益 >1.1)',
+  hatFit.skip || (hatFit.flameW > hatFit.hatW * 0.6 && hatFit.flameTop > hatFit.hatTop && hatFit.inten > 1.1), JSON.stringify(hatFit));
 await page.evaluate(() => { clearInterval(window.__pin); const f = __v2.fighters[0]; f.item = null; f._itemVisType = null; f.itemCastCd = 0; });
 const hatOff = await page.waitForFunction(`${HAT} === 0`, { timeout: 15000 }).then(() => true).catch(() => false);
 R('無帽=火苗收', hatOff);

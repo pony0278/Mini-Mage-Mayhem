@@ -109,6 +109,20 @@ const BODY = {
   dot: 0.55,                        // DoT 小火倍率(明顯低於鏈=兩者讀得出差別)
 };
 
+// 帽口火尺寸表(**全部 ×帽口實際寬度**=每幀從帽 bbox 現量;換帽模型/改 item-3c 包覆規則自動跟——
+// 舊版是固定 px(閒置 6.5)配方塊人時代的小帽,item-3c 把帽放大到 ~50px 寬後火苗只剩帽口的 1/7=看不見)。
+// burn-2c(使用者:「火帽頭頂的火焰可以更明顯嗎」):閒置火苗 ×2.6、施法火柱 ×2、提亮到 1.35、火舌 3→5 且角度均分。
+const HAT = {
+  idle: 0.68,                       // 閒置火苗基準 ÷ 帽口寬(舊固定 6.5px ≈ 0.13 → 火苗只有帽口 1/7 寬=看不見)
+  cast: 1.05,                       // 施法火柱(蓄力讀條:一眼看出「要噴了」)
+  coreW: 1.25, coreH: 1.85,         // 火柱 quad 長寬(×hs;閒置火焰寬 ≈ 0.85×帽口寬=demo 火比帽寬的比例級)
+  ring: 0.60,                       // 火舌環繞半徑 ÷ hs(散到帽口內緣一圈舔,不是全擠在中軸)
+  rise: 1.5,                        // 火舌上竄行程 ÷ hs
+  inten: 1.35,                      // 亮度增益(同 BODY.inten 級)
+  breathe: 0.16,                    // 閒置呼吸振幅(火苗活著的感覺)
+};
+const HTG = FX_LOW ? 2 : 5;         // 帽口火舌數(burn-2c:3→5;FX_LOW 留 2)
+
 /* ==== 每 fighter 一副:包身火(core+火舌+黑煙)+ 帽口火(小 core+火舌)==== */
 // **錨=身體中心經身體變換(demo `_fireCenter` 原式),火掛 scene 永遠直立**(burn-1c)。
 // 為什麼不能掛 g 底下:拋飛/趴姿時 g **整個帶 pitch 旋轉**(層級 dump 實證),火會跟著身體翻滾,
@@ -123,7 +137,8 @@ function buildRig() {
   for (const o of smoke) { o.m.visible = false; o.m.frustumCulled = false; o.m.renderOrder = 27; o.m.userData.__burnfx = true; scene.add(o.m); }
   const hatCore = mkFlame('__hatflame');
   const hatT = [];
-  if (!FX_LOW) for (let i = 0; i < 3; i++) hatT.push({ m: mkFlame('__hatflame', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 0.9 * (0.7 + rnd() * 0.6), a0: rnd() * 6.283, r0: 0.3 });
+  // burn-2c:角度均分(同 BODY 火舌;純亂數會結團=帽口某一側光禿禿)、半徑外偏=繞著帽口整圈舔
+  for (let i = 0; i < HTG; i++) hatT.push({ m: mkFlame('__hatflame', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 0.9 * (0.7 + rnd() * 0.6), a0: (i + rnd() * 0.7) / HTG * 6.283, r0: 0.55 + 0.45 * Math.sqrt(rnd()) });
   return { core: mkFlame('__burnfx'), tongues, smoke, hatCore, hatT };
 }
 
@@ -236,20 +251,21 @@ export function updateBurnFx(e, g, R) {
   if (hatOn) {
     _hbb.setFromObject(hg);                                                // 帽世界 bbox 頂=帽口(The Golden Maw 開口朝上)
     const hx = (_hbb.min.x + _hbb.max.x) / 2, hy = _hbb.max.y, hz = (_hbb.min.z + _hbb.max.z) / 2;
+    const hatW = Math.max(_hbb.max.x - _hbb.min.x, _hbb.max.z - _hbb.min.z) || 40; // 帽口寬=火苗尺寸基準(burn-2c)
     const casting = e._itemVisType === 'fire' && e.itemCastCd > 0;
-    const hs = casting ? 15 : 6.5;                                         // 施法=火柱;閒置=小火苗
-    const hi = casting ? 1.0 : 0.65 + 0.15 * Math.sin(tr * 7);             // 閒置微呼吸
+    const hs = hatW * (casting ? HAT.cast : HAT.idle);                     // 施法=火柱;閒置=火苗(都照帽口寬現算)
+    const hi = (casting ? 1.0 : 0.82 + HAT.breathe * Math.sin(tr * 7)) * HAT.inten; // 閒置微呼吸;×增益=更明顯
     const uh = rig.hatCore.material.uniforms;
     uh.t.value = tr; uh.inten.value = hi;
     rig.hatCore.position.set(hx, hy + hs * 0.55, hz);
-    rig.hatCore.scale.set(1.1 * hs, 1.8 * hs, 1);
+    rig.hatCore.scale.set(HAT.coreW * hs, HAT.coreH * hs, 1);
     for (const o of rig.hatT) {
       const uu = o.m.material.uniforms;
       const lf = (tr / o.life + o.seed * 7) % 1;
       uu.t.value = tr; uu.age.value = lf; uu.rot.value = o.rs * lf; uu.inten.value = hi;
       const sc = (0.21 + Math.sin(Math.min(lf / 0.27, 1) * 1.5708) * 0.79) * (1 - Math.max(0, (lf - 0.6) / 0.4));
-      const rr = o.r0 * (1 - lf * 0.6) * hs;
-      o.m.position.set(hx + Math.cos(o.a0) * rr, hy + lf * hs * 1.4, hz + Math.sin(o.a0) * rr);
+      const rr = o.r0 * HAT.ring * (1 - lf * 0.6) * hs;
+      o.m.position.set(hx + Math.cos(o.a0) * rr, hy + lf * hs * HAT.rise, hz + Math.sin(o.a0) * rr);
       o.m.scale.set((0.62 * sc + 0.05) * hs, (0.9 * sc + 0.05) * hs, 1);
     }
   }
