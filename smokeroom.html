@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23444a52'/%3E%3Ccircle cx='8' cy='6' r='2.4' fill='%23ff7a3a'/%3E%3C/svg%3E" />
+  <title>SMOKE ROOM — v2 道具測試間</title>
+  <style>
+    html, body {
+      margin: 0; height: 100%; overflow: hidden; background: #111018;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #f8f3e8; user-select: none;
+    }
+    #wrap {
+      width: 100vw; height: 100vh; display: grid; place-items: center;
+      background: radial-gradient(circle at 50% 42%, #2b3138 0%, #17141f 58%, #08070c 100%);
+    }
+    #stage {
+      position: relative;
+      width: min(100vw, calc(100vh * 1.77778));
+      height: min(100vh, calc(100vw / 1.77778));
+      box-shadow: 0 0 0 2px #57606a, 0 0 0 6px rgba(255,122,58,.10), 0 22px 60px rgba(0,0,0,.55);
+      background: #1d1723;
+    }
+    #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    /* #game = 3D world (WebGL); #hud = crisp 2D overlay on top */
+    #hud { pointer-events: none; background: transparent; }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="game" width="960" height="540"></canvas>
+    <canvas id="hud" width="960" height="540"></canvas>
+  </div>
+</div>
+<script src="vendor/three.min.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+<script type="module" src="js/v2.js"></script>
+<!-- smokeroom 面板(repo-only 測試頁;module 依文件順序執行,v2.js 先跑完 → window.__v2 已就位) -->
+<script type="module" src="js/v2-smokeroom.js"></script>
+</body>
+</html>

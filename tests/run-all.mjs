@@ -26,6 +26,7 @@ const SUITES = [
   ['psheadgear','punch-studio 頭戴掛點 item-3b(掛 avatar 頭骨補償 group/世界位置與舊掛法一致=校準值語意不變/清角色退素體)'],
   ['whip',      '魔導電鞭 Verlet 垂鞭/甩鞭 whip-1+whip-2(持電鞭=垂鞭/無道具=隱藏/施放走完/最後一發甩完自動收/鞭梢到位對齊判定幀/爆發必觸發)'],
   ['shock',     '觸電演出 shock-1/1b/2(prewarm/電弧包身/X光骨架掛 avatar 骨/剪影零殘留/定格1.6→暈1.2兩段/姿勢分段/restun 鐵則)'],
+  ['smokeroom', 'SMOKE ROOM 道具測試間 smoke-1(開房即測/給道具/彈藥無限/假人無敵+解狀態/地板鋪設/快捷鍵)'],
   ['firespray', '噴火帽 flipbook 噴射 burn-2/2b(atlas 載成/帽口噴射弧由近而遠/前飄下落/逐格播放/播完全收)'],
   ['burn',      '燃燒動作鏈 burn-1(item_fire clip/直擊六段鏈 3.8s/挑飛 z/趴姿/焦黑換材質+還原/restun 鐵則/地形火維持 DoT/帽口常燃火)'],
   ['hudcards',  '下方狀態卡 hud-1(雙卡桌機下方/手機上方/YOU 標/GLB 頭像快照/2D 退路/像素取樣)'],
