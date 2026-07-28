@@ -4,7 +4,7 @@
 // 屬 render 層(由 render-actors 呼叫);模擬層透過 fighter 欄位(punchFx/punchKind/punchArm/
 // flinch*/carrying/stunned...)驅動,永不 import 這裡(sim 保持 headless)。
 import { game } from './state.js';
-import { makeBox, frostBottleClone, frostBottleReady, barrelClone, barrelReady, fireHatClone, fireHatReady, windGauntletClone, windGauntletReady, ITEM_VIS_H } from './render-core.js';
+import { makeBox, frostBottleClone, frostBottleReady, barrelClone, barrelReady, fireHatClone, fireHatReady, fireHatProtoW, windGauntletClone, windGauntletReady, ITEM_VIS_H } from './render-core.js';
 import { CLIPS, PUNCH_CLIPS, COMBAT_IDLE, POSE_KEYS, evalClip, normalizePose } from './brawler-clips.js';
 import { avatarEnabled, avatarReady, buildAvatar, retargetAvatar } from './actor-avatar.js';
 import { handsReady, getHandMesh } from './actor-hands.js';
@@ -243,7 +243,13 @@ const HAT_CAL = { h: 33, y: 20, rz: 0 }; // h=世界高 px、y=headPivot local �
 //   帽高 = 0.69×1.8840863 = 1.30002 → hRatio  = 1.30002/0.84 = 1.5476
 //   帽底 = 0.23 + 0.69×(−0.9403754) = −0.41886 → dropRatio = 0.41886/0.84 = 0.4986(頭底往下幾個頭高)
 // 比例式=rig 無關:換角色模型/改 AVATAR_SCALE 都自動對齊(頭部 bbox 每次掛載現量)。
-const HAT_CAL_AV = { hRatio: 1.5476, dropRatio: 0.4986 };
+// item-3c(使用者反饋 2026-07-28「頭頂露出來了,要包裹整個頭部」):studio 高度比例對這顆頭剛好差一線
+// (實測帽頂只高過頭頂 1.4px=45° 鏡頭直接看進帽口看到頭頂冒出)→ 補兩條**包覆下限規則**,三者取 max:
+//   ① hRatio×headH        studio 校準(基準造型)
+//   ② wrapW×headW/proto寬  寬度包覆(使用者 chibi_helmet_flipbook demo 原式:帽=頭直徑×1.18)
+//   ③ (1+dropRatio+topClear)×headH  頂部淨空:帽底在頭底下 drop、帽頂要高出頭頂 topClear×headH
+// 任一顆頭(換模型)都保證整顆包進帽身;窄高頭走③、寬扁頭走②、剛好的頭維持 studio ①。
+const HAT_CAL_AV = { hRatio: 1.5476, dropRatio: 0.4986, wrapW: 1.18, topClear: 0.35 };
 const _hbb = new THREE.Box3(), _hb2 = new THREE.Box3(), _hv = new THREE.Vector3();
 const _hq1 = new THREE.Quaternion(), _hq2 = new THREE.Quaternion();
 // 掛 avatar 頭骨:尺寸/位置由頭部網格在**骨局部**的 bbox 現量(姿勢無關),再套 HAT_CAL_AV 比例。
@@ -257,8 +263,11 @@ function mountHatOnAvatar(hw, g, av) {
     _hbb.union(_hb2.copy(m.geometry.boundingBox).applyMatrix4(m.matrix));   // 骨局部
   }
   if (_hbb.isEmpty()) return false;
-  _hbb.getSize(_hv); const headH = _hv.y; if (headH < 1e-6) return false;
-  hw.children[0].scale.setScalar(HAT_CAL_AV.hRatio * headH);               // proto 高=1 → scale=帽高
+  _hbb.getSize(_hv); const headH = _hv.y, headW = Math.max(_hv.x, _hv.z); if (headH < 1e-6) return false;
+  // item-3c:studio 校準 / 寬度包覆 / 頂部淨空 三規則取 max=頭永不露出帽口(規則表見 HAT_CAL_AV 註解)
+  const s = Math.max(HAT_CAL_AV.hRatio * headH, HAT_CAL_AV.wrapW * headW / fireHatProtoW(),
+    (1 + HAT_CAL_AV.dropRatio + HAT_CAL_AV.topClear) * headH);
+  hw.children[0].scale.setScalar(s);                                       // proto 高=1 → scale=帽高
   _hbb.getCenter(_hv);
   hw.position.set(_hv.x, _hbb.min.y - HAT_CAL_AV.dropRatio * headH, _hv.z); // 帽底=頭底往下 dropRatio×頭高
   g.getWorldQuaternion(_hq1); hb.getWorldQuaternion(_hq2).invert();

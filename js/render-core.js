@@ -198,6 +198,7 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
         const h = (box.max.y - box.min.y) || 1, cx = (box.max.x + box.min.x) / 2, cz = (box.max.z + box.min.z) / 2;
         s.scale.multiplyScalar(1 / h);                     // 高度正規化到 1
         s.position.set(-cx / h, -box.min.y / h, -cz / h);  // 底部貼 y=0、xz 置中
+        _hatProtoW = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / h; // proto 寬(高=1 基準;item-3c 寬度包覆規則用)
         _hatProto = new THREE.Group(); _hatProto.add(s); _hatProto.userData.__hat = true; // __hat 旗=clone 繼承(測試計數)
         if (renderer) renderer.compile(scene, camera);       // perf-1 預熱
         console.log('[core] 火帽 GLB 就位');
@@ -206,6 +207,8 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   }
   export function fireHatClone() { return _hatProto ? _hatProto.clone(true) : null; }
   export function fireHatReady() { return !!_hatProto; } // 測試/除錯 hook
+  export function fireHatProtoW() { return _hatProtoW; } // proto xz 最大寬(高=1;item-3c 帽寬包頭規則)
+  let _hatProtoW = 1;
 
   // 風壓手套 GLB(item-4:使用者的 Azure Turbine Gauntlet 渦輪手套;持風壓手套 item='wind' 時戴右手)。
   // 同冰瓶四步入庫+同 helper 慣例。手套=裝備(掛右腕跟手動),非道具地標→不吃 ITEM_VIS_H,由 updateGauntlet 的

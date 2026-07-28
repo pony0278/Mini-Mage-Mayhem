@@ -4,7 +4,7 @@
 import { W, H, TILE } from './constants.js';
 import { clamp } from './utils.js';
 import { game } from './state.js';
-import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt, addWindBlast } from './fx.js';
+import { addShake, addHitstop, addRing, hitSpark, addText, addWindFan, addBolt, addWindBlast, addFireSpray } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, NAMES, inc, COLORS, POD, inPod,
   GARBAGE_NAME, bottleRespawnT,
@@ -234,6 +234,7 @@ export function castFire(f) {
   }
   // 噴口火焰粒子(短射程扇形:噴慢一點、活短一點,約扇長內散開)
   const mx = f.x + Math.cos(a) * (f.r + 6), my = f.y + Math.sin(a) * (f.r + 6);
+  addFireSpray(mx, my, a);                                                   // burn-2:3D flipbook 噴射波(render-fire-spray 消費,扇內由近而遠點燃)
   for (let i = 0; i < 16; i++) {
     const ang = a + (Math.random() * 2 - 1) * FIRE_CONE, sp = 120 + Math.random() * 200;
     game.particles.push({ x: mx, y: my, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 2 + Math.random() * 3, life: 0.16 + Math.random() * 0.2, maxLife: 0.36, color: Math.random() < 0.5 ? '#ff7a3a' : '#ffce6a' });

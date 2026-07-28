@@ -28,6 +28,10 @@
 > tools/ps 把 avatar 縮到「跟素體同高」(`S = standH/size.y`,**無放大係數**)→ studio 裡素體頭 ≈ avatar 頭,
 > 掛 `headPivot` 剛好在頭上;但遊戲的 avatar 帶 `AVATAR_SCALE 1.3` = 比 box rig 高 1.3 倍 → box headPivot 遠在
 > avatar 頭部下方(舊 `HAT_CAL.y=20` 是手動往上推的補償,不是真校準,帽子浮在頭頂上方)。
+> **包覆下限(item-3c,2026-07-28 使用者反饋「頭頂露出來了,要包裹整個頭部」)**:studio 高度比例對這顆頭
+> 只高過頭頂 1.4px=45° 鏡頭看進帽口看到頭頂 → 尺寸改**三規則取 max**:①`hRatio×headH`(studio 校準)
+> ②`wrapW×headW/fireHatProtoW()`(寬度包覆,使用者 chibi_helmet_flipbook demo 原式=頭直徑×1.18;proto 寬由
+> render-core 載入時量)③`(1+dropRatio+topClear)×headH`(頂部淨空 0.35)——任何頭型都保證整顆包進帽身。
 > **校準換成「相對頭高的比例」`HAT_CAL_AV`**(rig 無關,換模型/改 AVATAR_SCALE 自動對齊;頭部 bbox 每次掛載
 > 在**骨局部**現量=姿勢無關):使用者 part kit `headgear s=0.69 / y=0.23` + 帽 raw 高 1.8840863/raw 底 −0.9403754
 > + studio 素體頭高 `DIM.headSize=0.84` → `hRatio = 1.5476`(帽高÷頭高)、`dropRatio = 0.4986`(帽底在頭底下方幾個頭高)。
@@ -124,6 +128,18 @@
 > **鏈判斷與 DoT 判斷是獨立的兩個 if**;②尺寸/錨點未照站高包全身。尺寸照 `av.standH` 現算(shock-1b 同款教訓)。perf:不加燈(demo fireLight 拿掉)、pool+prewarm、FX_LOW 砍
 > 火舌數/黑煙/帽口只留核心。hook:`window.__burn()`;旗:`__burnfx`/`__hatflame`。
 > **測試陷阱:受害者別放艙邊**——burnFighter 一設 stunned,在 POD.r 內=當場失控入艙(這是功能:火焰挑飛滾進艙)。
+
+> **噴火帽開火 flipbook 噴射(burn-2,2026-07-28 使用者拍板「動詞用漫畫」)**:`render-fire-spray.js`——
+> 使用者「chibi_helmet_flipbook_fire」demo 的 2D 逐格火(9 幀 3×3 atlas 768²=demo 內嵌 base64 抽檔
+> `assets/scene/fire-flipbook.png`)。定位:**攻擊動詞=flipbook 逐格跳動(跟 hitfx 漫畫爆花同語言)、
+> 常燃/狀態火=render-burn Gabriel shader** 兩者分工。castFire 觸發(`fx.addFireSpray`→`game.fireSprays`,
+> 同 addWindBlast 純訊號)→ 扇內 7 朵 poof(FX_LOW 4)**由近而遠點燃**(WAVE_V 300px/s 波外推=「真的噴出去」),
+> 每朵播一次 9 幀序列(首/末幀停留=demo 滑桿預設,FPS 16)後淡出;鏡頭固定 → billboard 完全成立。
+> **判定不動**(sim 扇形=唯一真相);FIRE_CONE 0.72 在 spawn 內鏡射(render 不進 sim DAG,改扇形要同步)。
+> perf:**不加燈**(demo fireLight 拿掉)、pool(2)+載圖後 prewarm、**全 poof 共用同一張 GL 貼圖**
+> (ShaderMaterial 只差 off/al uniform=同 program;不用 texture.clone()=不重複上傳 768²)、FX_LOW 砍 poof 數。
+> atlas 是黑底 RGB 無 alpha(additive 黑=透明)、mipmap 關(幀縫滲鄰幀)。時鐘=game.time(hitstop 凍結一致)。
+> hook:`window.__fireSpray()`;旗:`__sprayfx`。
 
 > **風壓開火 3D 爆發(item-4e)**:`render-wind-blast.js`——使用者「火砲衝擊波」demo 移植 + **azure recolor**
 > (閃光+程序火舌 Gabriel shader/Voronoi 溶解/cel 色階+衝擊波環 3 環+16 錐刃+地面塵環+卡通煙圈逐幀變形+火花+短暫槍口點光)。

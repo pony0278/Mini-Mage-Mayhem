@@ -1,6 +1,8 @@
 // 火帽 GLB 頭戴裝備(item-3;使用者 The Golden Maw,studio 校準 scale0.69/y0.23)驗收:
 // ①GLB 載成(__lab.fireHatReady)②持有噴火帽(item='fire')=頭上掛 GLB(__hat 旗可見)
-// ②b 掛 avatar 頭骨 + 尺寸/位置=使用者 studio 校準的頭高比例(item-3b)③無道具=帽子隱藏 ④無 console 錯誤
+// ②b 掛 avatar 頭骨 + 尺寸/位置=studio 校準比例 ∨ 包覆下限規則(item-3b/3c)③無道具=帽子隱藏 ④無 console 錯誤
+// item-3c(使用者反饋「頭頂露出來了,要包裹整個頭部」):三規則取 max,這顆頭走頂部淨空規則
+// (1+drop+topClear=1.849×headH);②c 直接斷言世界 bbox 包覆(帽頂高過頭頂、xz 整圈包住)。
 // 陷阱:帽 clone 起初掛 box headPivot,avatar 非同步就緒後**改掛 av.by.head.bone**(病 3);可見性查祖鏈。
 import puppeteer from 'puppeteer';
 const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
@@ -44,11 +46,16 @@ const fit = await page.evaluate(() => {
   const headBB = new THREE.Box3();
   for (const m of (av.by.head.meshes || [])) headBB.expandByObject(m);
   const headH = headBB.max.y - headBB.min.y;
-  return { onBone, hRatio: (hatBB.max.y - hatBB.min.y) / headH, dropRatio: (headBB.min.y - hatBB.min.y) / headH };
+  return { onBone, hRatio: (hatBB.max.y - hatBB.min.y) / headH, dropRatio: (headBB.min.y - hatBB.min.y) / headH,
+    topClear: (hatBB.max.y - headBB.max.y) / headH,
+    wrapX: hatBB.min.x < headBB.min.x && hatBB.max.x > headBB.max.x,
+    wrapZ: hatBB.min.z < headBB.min.z && hatBB.max.z > headBB.max.z };
 });
 R('火帽掛 avatar 頭骨(不是 box headPivot 隱形 driver=病 3)', fit.skip || fit.onBone === true, JSON.stringify(fit));
-R('帽高/帽底=studio 校準比例(hRatio≈1.55 / dropRatio≈0.50)',
-  fit.skip || (Math.abs(fit.hRatio - 1.5476) < 0.06 && Math.abs(fit.dropRatio - 0.4986) < 0.06), JSON.stringify(fit));
+R('帽尺寸=包覆規則(這顆頭走頂部淨空:hRatio≈1.849 / dropRatio≈0.50)',
+  fit.skip || (Math.abs(fit.hRatio - 1.849) < 0.07 && Math.abs(fit.dropRatio - 0.4986) < 0.06), JSON.stringify(fit));
+R('item-3c:帽包裹整顆頭(帽頂高過頭頂 ≥0.25×headH、xz 整圈包住)',
+  fit.skip || (fit.topClear > 0.25 && fit.wrapX && fit.wrapZ), JSON.stringify(fit));
 
 // ---------- ③ 無道具 = 帽子隱藏 ----------
 await pin(null);
