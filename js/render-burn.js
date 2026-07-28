@@ -92,16 +92,19 @@ function mkFlame(flag, tile, parent) {
   return m;
 }
 
-const FT = FX_LOW ? 6 : 12;         // 包身火舌(demo 16;burn-1d 使用者要「更大更明顯」→ 8→12,FX_LOW 4→6)
+const FT = FX_LOW ? 9 : 18;         // 包身火舌(demo 16;burn-1d 8→12;burn-2e 拔掉 core 後 12→18 撐體積)
 const SM = FX_LOW ? 0 : 4;          // 熄滅黑煙
 const rnd = Math.random;
 
 // 包身火場尺寸表(**全部 ×受害者實際站高 standH**,換模型/改 AVATAR_SCALE 自動跟;shock-1b 同款教訓)。
 // burn-1d(使用者:「火焰包身的範圍可以做得更大更明顯嗎」)整體放大 ~1.3× 並提亮:
 // 火柱包過頭頂、火舌環繞半徑外推到剪影邊緣、上竄行程加長。改觀感只調這張表。
+// burn-2e(使用者:「燃燒包身的 core 也拔掉」,承 burn-2d 帽口火):**包身火也只剩火舌、沒有 core**。
+// 同一個病:core 是形狀不動的大 quad(`flameTex` 剪影每幀相同)=實體感。fieldH/fieldW 保留為
+// **火場尺寸純量**(火舌的散佈/上竄行程照它算),只是不再有一張 quad 把它畫出來。
 const BODY = {
-  coreH: 1.45, coreHLie: 0.95,      // 火柱高(站立/躺平)
-  coreW: 1.26, coreWLie: 1.72,      // 火柱寬
+  fieldH: 1.45, fieldHLie: 0.95,    // 火場高(站立/躺平)——火舌上竄行程的基準
+  fieldW: 1.26, fieldWLie: 1.72,    // 火場寬(保留給躺姿散佈用)
   ring: 0.88,                       // 火舌環繞半徑(包住身體剪影)
   tongue: 0.82,                     // 單束火舌尺寸
   rise: 1.25,                       // 火舌上竄行程 ÷ 火場高
@@ -134,8 +137,9 @@ const HTG = FX_LOW ? 5 : 9;         // 帽口火舌數(拔 core 後由火舌獨�
 // 趴姿時可見身體繞到別處(lieDir 軸心補償再偏 ~30px)=火不在人身上(使用者兩輪反饋的病根)。
 function buildRig() {
   const tongues = [];
-  // burn-1d:角度**均分**(原本純亂數會結團=某一側光禿禿)、半徑**外偏**(0.55~1.0=貼剪影邊緣才叫包身)
-  for (let i = 0; i < FT; i++) tongues.push({ m: mkFlame('__burnfx', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 1.1 * (0.7 + rnd() * 0.6), a0: (i + rnd() * 0.7) / FT * 6.283, r0: 0.55 + 0.45 * Math.sqrt(rnd()) });
+  // burn-1d:角度**均分**(原本純亂數會結團=某一側光禿禿)、半徑 sqrt 分佈=偏外(貼剪影邊緣才叫包身)
+  // burn-2e:拔掉 core 後半徑下限放寬到 0.3(core 原本填的身體內側改由內圈火舌接手)、壽命錯開加大
+  for (let i = 0; i < FT; i++) tongues.push({ m: mkFlame('__burnfx', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 1.1 * (0.55 + rnd() * 0.9), a0: (i + rnd() * 0.7) / FT * 6.283, r0: 0.3 + 0.7 * Math.sqrt(rnd()) });
   const smoke = [];
   for (let i = 0; i < SM; i++) smoke.push({ m: new THREE.Mesh(quad, smokeMat()), seed: rnd(), rs: (rnd() * 2 - 1) * 1.5, life: 1.6 * (0.7 + rnd() * 0.6) });
   for (const o of smoke) { o.m.visible = false; o.m.frustumCulled = false; o.m.renderOrder = 27; o.m.userData.__burnfx = true; scene.add(o.m); }
@@ -143,13 +147,13 @@ function buildRig() {
   // burn-2c:角度均分(同 BODY 火舌;純亂數會結團=帽口某一側光禿禿)、半徑外偏=繞著帽口整圈舔
   // burn-2d:壽命錯開加大(0.55~1.45×)——拔掉 core 後全靠火舌撐,同步生滅會整叢一起消失=閃爍
   for (let i = 0; i < HTG; i++) hatT.push({ m: mkFlame('__hatflame', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 0.9 * (0.55 + rnd() * 0.9), a0: (i + rnd() * 0.7) / HTG * 6.283, r0: 0.35 + 0.65 * Math.sqrt(rnd()) });
-  return { core: mkFlame('__burnfx'), tongues, smoke, hatT };
+  return { tongues, smoke, hatT };
 }
 
 let _warmed = false;
 function prewarm(rig) {
   if (_warmed) return; _warmed = true;
-  const all = [rig.core, ...rig.tongues.map(o => o.m), ...rig.smoke.map(o => o.m), ...rig.hatT.map(o => o.m)];
+  const all = [...rig.tongues.map(o => o.m), ...rig.smoke.map(o => o.m), ...rig.hatT.map(o => o.m)];
   for (const m of all) m.visible = true;
   try { renderer.compile(scene, camera); } catch (e) { /* headless 無 GL:退回惰性編譯 */ }
   for (const m of all) m.visible = false;
@@ -212,14 +216,8 @@ export function updateBurnFx(e, g, R) {
   const axL = _bAx.length(); if (axL > 0.3) _bAx.divideScalar(axL); else _bAx.set(0, 0, 0);
   const k = sizeMul * (0.55 + 0.45 * fireInt);
   const lying = axL > 0.5;                                                 // 身體躺平的程度(用姿態算,不猜旗)
-  const fH = H * (lying ? BODY.coreHLie : BODY.coreH) * k;                 // 火場高
-  rig.core.visible = on;
-  if (on) {
-    const uc = rig.core.material.uniforms;
-    uc.t.value = tr; uc.inten.value = fireInt * BODY.inten;
-    rig.core.position.set(_ctr.x, _ctr.y + fH * 0.1, _ctr.z);
-    rig.core.scale.set(H * (lying ? BODY.coreWLie : BODY.coreW) * k, fH * 1.35, 1);
-  }
+  const fH = H * (lying ? BODY.fieldHLie : BODY.fieldH) * k;               // 火場高(burn-2e:純量;core 已拔除)
+  const fW = H * (lying ? BODY.fieldWLie : BODY.fieldW) * k;               // 火場寬(躺姿沿身體軸散得更開)
   for (const o of rig.tongues) {
     o.m.visible = on;
     if (!on) continue;
@@ -228,7 +226,7 @@ export function updateBurnFx(e, g, R) {
     uu.t.value = tr; uu.age.value = lf; uu.rot.value = o.rs * lf; uu.inten.value = fireInt * BODY.inten;
     const sc = (0.21 + Math.sin(Math.min(lf / 0.27, 1) * 1.5708) * 0.79) * (1 - Math.max(0, (lf - 0.6) / 0.4));
     const rr = o.r0 * H * BODY.ring * (1 - lf * 0.5) * k;                  // 環繞半徑(貼剪影邊緣往中心收=火舌爬上身)
-    const along = lying ? (o.seed * 2 - 1) * H * 0.5 : 0;                  // 躺下:沿身體軸散開(躺著身長≈standH)
+    const along = lying ? (o.seed * 2 - 1) * fW * 0.29 : 0;                // 躺下:沿身體軸散開滿火場寬(躺著身長≈standH)
     o.m.position.set(
       _ctr.x + Math.cos(o.a0) * rr + _bAx.x * along,
       _ctr.y - fH * 0.45 + lf * fH * BODY.rise,

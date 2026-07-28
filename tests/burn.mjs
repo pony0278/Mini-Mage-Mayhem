@@ -42,16 +42,17 @@ const tr = await page.evaluate(() => new Promise(res => {
   __v2.castFire(f);
   const first = { stunned: o.stunned, stunT: +o.stunT.toFixed(2), chain: !!o._burnCh };
   const tick = () => {
-    const s = __lab.labGroup.parent; let fx = 0, dark = 0, flo = 1e9, fhi = -1e9, fcx = 0, fi = 0;
+    const s = __lab.labGroup.parent; let fx = 0, dark = 0, flo = 1e9, fhi = -1e9, fcx = 0, fi = 0, cores = 0;
     s.traverse(m => { if (m.userData && m.userData.__burnfx && m.visible) { fx++;
       const p = m.getWorldPosition(new THREE.Vector3()); fcx += p.x;
       const iu = m.material.uniforms && m.material.uniforms.inten; if (iu) fi = Math.max(fi, iu.value);
+      const du = m.material.uniforms && m.material.uniforms.dAmt; if (du && du.value > 0.98) cores++; // dAmt 1.0=非 tile 的 core quad(黑煙材質無此 uniform)
       flo = Math.min(flo, p.y - m.scale.y * 0.5); fhi = Math.max(fhi, p.y + m.scale.y * 0.5); } });
     let gg = null, bcx = null;
     s.traverse(x => { if (!gg && x.userData && x.userData.pose && x.userData.rig) { const p = x.getWorldPosition(new THREE.Vector3()); if (Math.abs(p.z - o.y) < 70 && Math.abs(p.x - o.x) < 110 && Math.abs(p.x - f.x) > 4) gg = x; } });
     if (gg) { const v = new THREE.Vector3(0, 40, 0); gg.localToWorld(v); bcx = +v.x.toFixed(0); }
     if (gg) gg.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.color.getHex() === 0x171310) dark++; });
-    trace.push({ t: +(g.time - t0).toFixed(2), z: +(o.z || 0).toFixed(0), ch: !!o._burnCh, lie: !!o._lying, stun: o.stunned, fx, dark, fi: +fi.toFixed(2),
+    trace.push({ t: +(g.time - t0).toFixed(2), z: +(o.z || 0).toFixed(0), ch: !!o._burnCh, lie: !!o._lying, stun: o.stunned, fx, dark, fi: +fi.toFixed(2), cores,
       flo: fx ? +flo.toFixed(0) : null, fhi: fx ? +fhi.toFixed(0) : null,
       fcx: fx ? +(fcx / fx).toFixed(0) : null, bcx });
     if (g.time - t0 < 4.0 && trace.length < 500) requestAnimationFrame(tick); else res({ first, trace });
@@ -80,6 +81,11 @@ R('burn-1c:飛行幀火場水平中心黏住可見身體中心(<18px)',
 // burn-1d:亮度增益 BODY.inten=1.3(shader col×tint×inten;fireInt 上限 1 → 量到 >1 就證明增益有掛上)
 const fiMax = Math.max(...tr.trace.map(s => s.fi));
 R('burn-1d:火焰亮度增益上桌(inten 峰值 >1.25)', fiMax > 1.25, 'fiMax=' + fiMax);
+// burn-2e(使用者「燃燒包身的 core 也拔掉」,承 burn-2d):包身火也只剩會生滅的火舌,無形狀不動的 core quad。
+// 同帽口火的結構斷言:core 材質 dAmt=1.0、火舌 0.95(黑煙材質無此 uniform=自動略過)。
+const coreMax = Math.max(...tr.trace.map(s => s.cores));
+R('burn-2e:包身火無靜止 core(全程 0 張 core quad、火舌 ≥12 束)',
+  coreMax === 0 && Math.max(...tr.trace.map(s => s.fx)) >= 12, `coreMax=${coreMax} fxMax=${Math.max(...tr.trace.map(s => s.fx))}`);
 R('焦黑=角色網格全換炭黑材質', tr.trace.some(s => s.dark > 20), 'darkMax=' + Math.max(...tr.trace.map(s => s.dark)));
 R('鏈完進暈眩段(鏈旗清、仍暈=可抓收尾窗)', tr.trace.some(s => !s.ch && s.stun));
 const lastD = tr.trace[tr.trace.length - 1];
