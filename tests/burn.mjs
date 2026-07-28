@@ -4,11 +4,15 @@
 // (45/45 全黑)且結束完整還原、**tint pass 不把顏色寫回共用炭黑材質**(render-actors u.charred 閘)
 // ④restun 鐵則:已暈再被燒不重複暈 ⑤地形火維持 DoT(火海站著=burnT 削穩定,不入鏈)
 // ⑥帽口常燃火苗(戴帽未攻擊 __hatflame 可見;無帽=收)⑦無 console 錯誤。
+// burn-1d(使用者「範圍更大更明顯」):火場放大 ~1.3×(BODY 尺寸表)+火舌 8→12 角度均分+亮度增益 1.3。
 // 陷阱:①受害者別放艙邊——burnFighter 一設 stunned,在 POD.r 46 內=當場失控入艙(收容演出 stunT=99,
 //        測試全亂;這其實是功能:火焰挑飛滾進艙 cause='fire')。②turbo=8 批次 0.3~0.8s 遊戲時,
 //        飛行窗(1.05s)/趴姿窗(0.55s)用 waitForFunction 會整段跳過 → 無 turbo + rAF 逐幀 trace。
+//        ③**protocolTimeout 要放大到 600s**:無 turbo 的 4s 遊戲時 trace 是單一 page.evaluate,
+//        併發 3 下 rAF 節流會拖到 200s 級(burn-1d 火場放大後更慢),原本的 180s 一超時就整支炸掉、
+//        連匯總行都印不出來(run-all 只會顯示「(無匯總行)」——所以那邊也補了倒尾巴的診斷)。
 import puppeteer from 'puppeteer';
-const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
+const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 600000, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
 const page = await B.newPage();
 const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
 await page.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
@@ -37,15 +41,16 @@ const tr = await page.evaluate(() => new Promise(res => {
   __v2.castFire(f);
   const first = { stunned: o.stunned, stunT: +o.stunT.toFixed(2), chain: !!o._burnCh };
   const tick = () => {
-    const s = __lab.labGroup.parent; let fx = 0, dark = 0, flo = 1e9, fhi = -1e9, fcx = 0;
+    const s = __lab.labGroup.parent; let fx = 0, dark = 0, flo = 1e9, fhi = -1e9, fcx = 0, fi = 0;
     s.traverse(m => { if (m.userData && m.userData.__burnfx && m.visible) { fx++;
       const p = m.getWorldPosition(new THREE.Vector3()); fcx += p.x;
+      const iu = m.material.uniforms && m.material.uniforms.inten; if (iu) fi = Math.max(fi, iu.value);
       flo = Math.min(flo, p.y - m.scale.y * 0.5); fhi = Math.max(fhi, p.y + m.scale.y * 0.5); } });
     let gg = null, bcx = null;
     s.traverse(x => { if (!gg && x.userData && x.userData.pose && x.userData.rig) { const p = x.getWorldPosition(new THREE.Vector3()); if (Math.abs(p.z - o.y) < 70 && Math.abs(p.x - o.x) < 110 && Math.abs(p.x - f.x) > 4) gg = x; } });
     if (gg) { const v = new THREE.Vector3(0, 40, 0); gg.localToWorld(v); bcx = +v.x.toFixed(0); }
     if (gg) gg.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.color.getHex() === 0x171310) dark++; });
-    trace.push({ t: +(g.time - t0).toFixed(2), z: +(o.z || 0).toFixed(0), ch: !!o._burnCh, lie: !!o._lying, stun: o.stunned, fx, dark,
+    trace.push({ t: +(g.time - t0).toFixed(2), z: +(o.z || 0).toFixed(0), ch: !!o._burnCh, lie: !!o._lying, stun: o.stunned, fx, dark, fi: +fi.toFixed(2),
       flo: fx ? +flo.toFixed(0) : null, fhi: fx ? +fhi.toFixed(0) : null,
       fcx: fx ? +(fcx / fx).toFixed(0) : null, bcx });
     if (g.time - t0 < 4.0 && trace.length < 500) requestAnimationFrame(tick); else res({ first, trace });
@@ -59,9 +64,11 @@ R('熄滅段趴姿(_lying 撐住)', tr.trace.some(s => s.lie && s.z === 0));
 R('鏈中火焰包身可見(__burnfx)', tr.trace.some(s => s.fx > 0));
 // burn-1b(使用者反饋「只有一小部分燃燒」):火場要包整隻——飛行幀火場底貼身(≈z)且縱向覆蓋>55px(躺身長級);
 // 病根=①DoT 分支誤黏焦炭 if 鏈,鏈中被蓋成 0.62× 小火 ②尺寸/錨點未照 av.standH 包全身
+// burn-1d(使用者「範圍可以更大更明顯嗎」):火場整體放大 ~1.3×(BODY 表)——span 門檻同步拉到 >85
+// (放大前實測 ~78,放大後 ~102);縮回舊尺寸會被這條抓到。
 const flyF = tr.trace.filter(s => s.z > 30 && s.fx > 0);
-R('burn-1b:飛行幀火場貼身+覆蓋整隻(lo≈z、span>55)',
-  flyF.length > 0 && flyF.every(s => Math.abs(s.flo - s.z) < 40 && (s.fhi - s.flo) > 55),
+R('burn-1b/1d:飛行幀火場貼身+放大後覆蓋整隻(lo≈z、span>85)',
+  flyF.length > 0 && flyF.every(s => Math.abs(s.flo - s.z) < 45 && (s.fhi - s.flo) > 85),
   flyF.length ? JSON.stringify(flyF[Math.floor(flyF.length / 2)]) : '(無飛行幀)');
 // burn-1c(使用者反饋「火停在被攻擊位置沒跟人」):火場水平中心=可見身體中心(g.localToWorld,
 // demo _fireCenter 原式)——不是 sim x(視覺落後 ~35px)也不是 g 原點(趴姿 lieDir 補償偏 ~30px)。
@@ -69,6 +76,9 @@ const glueF = tr.trace.filter(s => s.z > 20 && s.fx > 0 && s.bcx != null);
 R('burn-1c:飛行幀火場水平中心黏住可見身體中心(<18px)',
   glueF.length > 0 && glueF.every(s => Math.abs(s.fcx - s.bcx) < 18),
   glueF.length ? JSON.stringify(glueF[Math.floor(glueF.length / 2)]) : '(無樣本)');
+// burn-1d:亮度增益 BODY.inten=1.3(shader col×tint×inten;fireInt 上限 1 → 量到 >1 就證明增益有掛上)
+const fiMax = Math.max(...tr.trace.map(s => s.fi));
+R('burn-1d:火焰亮度增益上桌(inten 峰值 >1.25)', fiMax > 1.25, 'fiMax=' + fiMax);
 R('焦黑=角色網格全換炭黑材質', tr.trace.some(s => s.dark > 20), 'darkMax=' + Math.max(...tr.trace.map(s => s.dark)));
 R('鏈完進暈眩段(鏈旗清、仍暈=可抓收尾窗)', tr.trace.some(s => !s.ch && s.stun));
 const lastD = tr.trace[tr.trace.length - 1];

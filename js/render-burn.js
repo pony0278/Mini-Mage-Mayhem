@@ -92,9 +92,22 @@ function mkFlame(flag, tile, parent) {
   return m;
 }
 
-const FT = FX_LOW ? 4 : 8;          // 包身火舌(demo 16;遊戲兩人份+尺寸小=砍半)
+const FT = FX_LOW ? 6 : 12;         // 包身火舌(demo 16;burn-1d 使用者要「更大更明顯」→ 8→12,FX_LOW 4→6)
 const SM = FX_LOW ? 0 : 4;          // 熄滅黑煙
 const rnd = Math.random;
+
+// 包身火場尺寸表(**全部 ×受害者實際站高 standH**,換模型/改 AVATAR_SCALE 自動跟;shock-1b 同款教訓)。
+// burn-1d(使用者:「火焰包身的範圍可以做得更大更明顯嗎」)整體放大 ~1.3× 並提亮:
+// 火柱包過頭頂、火舌環繞半徑外推到剪影邊緣、上竄行程加長。改觀感只調這張表。
+const BODY = {
+  coreH: 1.45, coreHLie: 0.95,      // 火柱高(站立/躺平)
+  coreW: 1.26, coreWLie: 1.72,      // 火柱寬
+  ring: 0.88,                       // 火舌環繞半徑(包住身體剪影)
+  tongue: 0.82,                     // 單束火舌尺寸
+  rise: 1.25,                       // 火舌上竄行程 ÷ 火場高
+  inten: 1.3,                       // 亮度增益(shader col×tint×inten)
+  dot: 0.55,                        // DoT 小火倍率(明顯低於鏈=兩者讀得出差別)
+};
 
 /* ==== 每 fighter 一副:包身火(core+火舌+黑煙)+ 帽口火(小 core+火舌)==== */
 // **錨=身體中心經身體變換(demo `_fireCenter` 原式),火掛 scene 永遠直立**(burn-1c)。
@@ -103,7 +116,8 @@ const rnd = Math.random;
 // 趴姿時可見身體繞到別處(lieDir 軸心補償再偏 ~30px)=火不在人身上(使用者兩輪反饋的病根)。
 function buildRig() {
   const tongues = [];
-  for (let i = 0; i < FT; i++) tongues.push({ m: mkFlame('__burnfx', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 1.1 * (0.7 + rnd() * 0.6), a0: rnd() * 6.283, r0: 0.42 * Math.sqrt(rnd()) });
+  // burn-1d:角度**均分**(原本純亂數會結團=某一側光禿禿)、半徑**外偏**(0.55~1.0=貼剪影邊緣才叫包身)
+  for (let i = 0; i < FT; i++) tongues.push({ m: mkFlame('__burnfx', true), seed: rnd(), rs: (rnd() * 2 - 1) * 3, life: 1.1 * (0.7 + rnd() * 0.6), a0: (i + rnd() * 0.7) / FT * 6.283, r0: 0.55 + 0.45 * Math.sqrt(rnd()) });
   const smoke = [];
   for (let i = 0; i < SM; i++) smoke.push({ m: new THREE.Mesh(quad, smokeMat()), seed: rnd(), rs: (rnd() * 2 - 1) * 1.5, life: 1.6 * (0.7 + rnd() * 0.6) });
   for (const o of smoke) { o.m.visible = false; o.m.frustumCulled = false; o.m.renderOrder = 27; o.m.userData.__burnfx = true; scene.add(o.m); }
@@ -164,7 +178,7 @@ export function updateBurnFx(e, g, R) {
   // 焦炭鏈的 else if,鏈中 burnT>0 走進去把火強度蓋成 DoT 小火(0.62×)=「只有一小部分燃燒」(使用者抓到)。
   let fireInt = 0, smokeK = 0, sizeMul = 1;
   if (e._burnCh) { const c = chainFire(e, now); fireInt = c.fire; smokeK = c.smoke; }
-  else if (e.burnT > 0) { fireInt = Math.min(0.8, e.burnT * 1.6); sizeMul = 0.62; }   // DoT=小一號(地形火/油海)
+  else if (e.burnT > 0) { fireInt = Math.min(0.8, e.burnT * 1.6); sizeMul = BODY.dot; } // DoT=小一號(地形火/油海)
   // 全黑焦炭:黑定格→熄滅段全黑(站起=還原);觸電 X 光佔用材質時讓位(restun 鐵則下不會同時發生,守底)
   const wantChar = !!e._burnCh && (now - e._burnCh.t0) < BC.black + BC.T + BC.out && !u.xray;
   if (wantChar && !rig.charred) { rig.charList = collectChar(g); CHAR_MAT.color.setHex(0x171310); for (const c of rig.charList) c.m.material = CHAR_MAT; rig.charred = true; u.charred = true; }
@@ -179,28 +193,28 @@ export function updateBurnFx(e, g, R) {
   const axL = _bAx.length(); if (axL > 0.3) _bAx.divideScalar(axL); else _bAx.set(0, 0, 0);
   const k = sizeMul * (0.55 + 0.45 * fireInt);
   const lying = axL > 0.5;                                                 // 身體躺平的程度(用姿態算,不猜旗)
-  const fH = (lying ? H * 0.72 : H * 1.1) * k;                             // 火場高
+  const fH = H * (lying ? BODY.coreHLie : BODY.coreH) * k;                 // 火場高
   rig.core.visible = on;
   if (on) {
     const uc = rig.core.material.uniforms;
-    uc.t.value = tr; uc.inten.value = fireInt;
+    uc.t.value = tr; uc.inten.value = fireInt * BODY.inten;
     rig.core.position.set(_ctr.x, _ctr.y + fH * 0.1, _ctr.z);
-    rig.core.scale.set(H * (lying ? 1.35 : 0.92) * k, fH * 1.35, 1);
+    rig.core.scale.set(H * (lying ? BODY.coreWLie : BODY.coreW) * k, fH * 1.35, 1);
   }
   for (const o of rig.tongues) {
     o.m.visible = on;
     if (!on) continue;
     const uu = o.m.material.uniforms;
     const lf = (tr / o.life + o.seed * 7) % 1;
-    uu.t.value = tr; uu.age.value = lf; uu.rot.value = o.rs * lf; uu.inten.value = fireInt;
+    uu.t.value = tr; uu.age.value = lf; uu.rot.value = o.rs * lf; uu.inten.value = fireInt * BODY.inten;
     const sc = (0.21 + Math.sin(Math.min(lf / 0.27, 1) * 1.5708) * 0.79) * (1 - Math.max(0, (lf - 0.6) / 0.4));
-    const rr = o.r0 * H * 0.7 * (1 - lf * 0.5) * k;                        // 環繞半徑(包住身體 ~15px 半徑)
-    const along = lying ? (o.seed * 2 - 1) * H * 0.45 : 0;                 // 躺下:沿身體軸散開
+    const rr = o.r0 * H * BODY.ring * (1 - lf * 0.5) * k;                  // 環繞半徑(貼剪影邊緣往中心收=火舌爬上身)
+    const along = lying ? (o.seed * 2 - 1) * H * 0.5 : 0;                  // 躺下:沿身體軸散開(躺著身長≈standH)
     o.m.position.set(
       _ctr.x + Math.cos(o.a0) * rr + _bAx.x * along,
-      _ctr.y - fH * 0.45 + lf * fH * 1.15,
+      _ctr.y - fH * 0.45 + lf * fH * BODY.rise,
       _ctr.z + Math.sin(o.a0) * rr + _bAx.z * along);
-    const ts = H * 0.6 * k;
+    const ts = H * BODY.tongue * k;
     o.m.scale.set((0.62 * sc + 0.05) * ts, (0.9 * sc + 0.05) * ts, 1);
   }
   for (const o of rig.smoke) {

@@ -89,7 +89,11 @@ for (let i = 0; i < SUITES.length; i++) {
   console.log(`${r.code === 0 ? '✓ PASS' : '✗ FAIL'}  ${name.padEnd(11)} ${summary}   — ${desc}`);
   if (r.code !== 0) {
     failed++;
-    for (const line of r.out.split('\n')) if (line.startsWith('FAIL')) console.log('        ' + line);
+    const lines = r.out.split('\n');
+    for (const line of lines) if (line.startsWith('FAIL')) console.log('        ' + line);
+    // 「(無匯總行)」=行程在印出匯總前就死了(protocolTimeout/瀏覽器起不來/未捕捉例外)——
+    // 只印 FAIL 行會什麼都看不到,把尾巴倒出來才查得下去。
+    if (!/== .* ==/.test(r.out)) for (const line of lines.filter(Boolean).slice(-8)) console.log('        · ' + line);
   }
 }
 console.log(`\n== ${SUITES.length - failed}/${SUITES.length} suites green ==(${Math.round((Date.now() - wall0) / 1000)}s,CONC=${CONC},turbo=8)`);
