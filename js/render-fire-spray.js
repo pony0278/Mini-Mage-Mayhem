@@ -21,11 +21,16 @@ for (let i = 0; i < HOLD_FIRST; i++) SEQ.push(0);
 for (let i = 1; i < FRAMES - 1; i++) SEQ.push(i);
 for (let i = 0; i < HOLD_LAST; i++) SEQ.push(FRAMES - 1);
 const FADE_STEPS = 3;                        // 末尾幾步淡出(additive:al 直接乘色)
-const POOFS = FX_LOW ? 4 : 7;                // 一發的 poof 數(扇內由近而遠)
+const POOFS = FX_LOW ? 4 : 7;                // 一發的 poof 數(帽口由近而遠)
 const WAVE_V = 300;                          // 點燃波外推速度 px/s(≈ 粒子噴速上緣;100px 扇 0.33s 掃完)
-const RISE = 14;                             // 燃燒中緩慢上飄 px/s(demo 火星向上的殘影感)
-const NEAR = 20, FAR = 94;                   // poof 距離帶(FIRE_RANGE 100 內;近小遠大)
-const SIZE0 = 30, SIZE1 = 62;                // 近/遠端 poof 尺寸 px(遠端=扇口寬)
+const RISE = 16;                             // 尾段火苗上飄 px/s(火散逸向上;起手段不飄=噴射直進)
+// 噴射弧(burn-2b,使用者拍板「從頭頂噴出火舌,不用鋪在地面」):鞠躬把帽口壓向前方,
+// 火舌從帽口高度沿瞄準線往前、逐漸下落放大到目標軀幹高——近端=小火舌貼帽口、遠端=散開的火球。
+const NEAR = 4, FAR = 92;                    // poof 距離帶(訊號點=sim 槍口 f.r+6 前;FIRE_RANGE 100 內)
+const H0 = 70, H1 = 28;                      // 弧高:帽口(鞠躬壓頭後)→ 目標軀幹;ARC_P 前段撐高後段下墜
+const ARC_P = 1.35;
+const DRIFT = 46;                            // 燃燒中沿瞄準線前飄 px/s(噴流動量感;poof 靜止=火牆不是噴射)
+const SIZE0 = 22, SIZE1 = 58;                // 近/遠端 poof 尺寸 px(帽口小舌→扇口大球)
 const CONE_K = 0.78;                         // 橫向散開占 FIRE_CONE 的比例(留邊=不越過預告扇形=誠實)
 
 // billboard vertex(render-burn GV 同款:在 view space 貼 quad,scale 取 modelMatrix 軸長)
@@ -92,9 +97,11 @@ function spawn(x, y, angle) {
     const lat = (i === 0 ? 0 : (i % 2 ? 1 : -1) * (0.35 + 0.65 * f) * FIRE_CONE * CONE_K * (0.6 + 0.4 * Math.random()));
     const a = angle + lat;
     o.x = x + Math.cos(a) * d; o.y = y + Math.sin(a) * d;
+    o.dx = Math.cos(a); o.dy = Math.sin(a);              // 前飄方向(各自的散開角=噴流放射)
+    o.h = H0 - (H0 - H1) * Math.pow(f, ARC_P);           // 噴射弧高:帽口→前下方
     o.delay = d / WAVE_V;                                // 由近而遠點燃=噴射波
     o.size = SIZE0 + (SIZE1 - SIZE0) * f;
-    o.rot = (Math.random() * 2 - 1) * 0.22;              // 微歪=毯上每朵不同(rot 是 billboard 面內轉)
+    o.rot = (Math.random() * 2 - 1) * 0.22;              // 微歪=每朵不同(rot 是 billboard 面內轉)
     o.m.visible = false;
   }
 }
@@ -118,7 +125,8 @@ export function updateFireSprays() {
       u.al.value = Math.min(1, step >= SEQ.length - FADE_STEPS ? (SEQ.length - step) / FADE_STEPS : 1);
       const s = o.size;
       o.m.scale.set(s, s, 1);
-      o.m.position.set(o.x, s * 0.42 + t * RISE, o.y);   // demo:sprite 中心抬 size×0.42=火苗底貼地;燃燒中緩升
+      const dr = t * DRIFT;                              // 沿瞄準線前飄=噴流動量;尾段(>0.25s)火苗散逸上飄
+      o.m.position.set(o.x + o.dx * dr, o.h + Math.max(0, t - 0.25) * RISE, o.y + o.dy * dr);
     }
     if (!alive) sp.active = false;
   }

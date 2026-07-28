@@ -318,14 +318,15 @@ export const CLIPS = {
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
   }),
   item_fire: prepClip({ // 噴火帽施放(使用者 studio 定稿 2026-07-27):深前傾壓頭(spine 70)把帽口對準前方、
-    // 雙臂往後張開(sz 90→31/35)=帽子是武器、人只是砲架。使用者匯出=idle→anti@7f 兩鍵;
-    // **FIRE_HOLD@17f 為接遊戲時序補的定格鍵**(同 item-4d 風壓的 reach→hold→fire 模式):前傾到位(7f)
-    // →壓住(7~17f=fireAims 扇形預告窗)→ impact@17f=0.283s 開火(=舊 STRIKE_DELAY[0],時序零變動)→回落。
-    // 使用者之後在 studio 重編(自標 impact)重貼即接管——刪掉這鍵即可。
+    // 雙臂往後張開(sz 90→31/35)=帽子是武器、人只是砲架。使用者匯出=idle→anti@7f 兩鍵。
+    // **impact=鞠躬到位那格 7f=0.117s(burn-2b,使用者反饋「火帽不需要延遲,鞠躬的時候就定格噴火,
+    // 不是鞠躬完才噴」)**:鞠躬=瞄準動作,到位即噴;anti@17f 是定格鍵(7~17f 凍在鞠躬裡持續噴火,
+    // 跟 itemCastCd=delay+RECOVER≈0.30 收尾對齊)→ 回落。舊寫法 impact@17f=0.283(借 STRIKE_DELAY[0])
+    // =鞠躬完才噴,被使用者抓到。使用者之後在 studio 重編(自標 impact 在前傾到位格)重貼即接管。
     seq: [
       { name: 'idle', frame: 0, frames: 10, returnFrames: 10, ease: 'out' },
-      { name: 'anti', frame: 7, frames: 7, ease: 'out' },
-      { name: 'anti', frame: 17, frames: 1, ease: 'out', impact: true },
+      { name: 'anti', frame: 7, frames: 7, ease: 'out', impact: true },
+      { name: 'anti', frame: 17, frames: 1, ease: 'out' },
     ],
     lags: { aL: 0, aR: 0.2, lL: 0, lR: 0.1 },
     phases: {

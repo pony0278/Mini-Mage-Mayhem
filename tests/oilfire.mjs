@@ -66,10 +66,12 @@ const spread = await floorAt(540, 300);
 R(`火沿油擴散→火海 R1(遠端 ${spread})`, spread === 'fire');
 
 // ---------- ⑤ 起手預告扇形:施法窗中 game.fireAims 有一筆、帶正確射程/面向;impact 後清空 ----------
-await page.evaluate(() => { const v = __v2, f = v.fighters[1]; f.x = 300; f.y = 540; f.facing = 0; f.item = 'fire'; f.itemUses = 2; f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.carryObj = null; f.carrying = null; v.fighters[0].x = 60; v.fighters[0].y = 60; v.useItem(f); });
+await page.evaluate(() => { const v = __v2, f = v.fighters[1]; f.x = 300; f.y = 540; f.facing = 0; f.item = 'fire'; f.itemUses = 2; f.itemCastCd = 0; f._itemCastAt = 0; f.stunned = false; f.carryObj = null; f.carrying = null; v.fighters[0].x = 60; v.fighters[0].y = 60; v.useItem(f);
+  f._itemCastAt = v.game.time + 9; }); // 撐住施法窗(burn-2b 後 delay 只剩 0.117s,turbo 一批就過=抓拍不到;同 lightning.mjs 手法)
 await advance(0.05); // 讓 step 幀尾重建 fireAims(施法窗內)
 const aim = await page.evaluate(() => { const a = __v2.game.fireAims; return { n: a.length, range: a[0] ? Math.round(a[0].range) : -1, angle: a[0] ? +a[0].angle.toFixed(2) : -9, casting: __v2.fighters[1]._itemCastAt > __v2.game.time }; });
 R(`起手預告:施法窗中 fireAims 有一筆(range=${aim.range}=100、面向${aim.angle})`, aim.n === 1 && aim.range === 100 && aim.angle === 0 && aim.casting);
+await page.evaluate(() => { __v2.fighters[1]._itemCastAt = __v2.game.time + 0.01; }); // 放行 impact
 await advance(0.5); // 過 impact
 const aim2 = await page.evaluate(() => ({ n: __v2.game.fireAims.length, casting: __v2.fighters[1]._itemCastAt > __v2.game.time }));
 R('impact 後 fireAims 清空(預告只在起手窗)', aim2.n === 0 && !aim2.casting);

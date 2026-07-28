@@ -29,11 +29,12 @@ const tr = await page.evaluate(() => new Promise(res => {
   __v2.castFire(f);
   const t0 = g.time, trace = [];
   const tick = () => {
-    const s = __lab.labGroup.parent; let vis = 0, maxD = 0, offs = [];
+    const s = __lab.labGroup.parent; let vis = 0, maxD = 0, offs = [], pts = [];
     s.traverse(m => { if (m.userData && m.userData.__sprayfx && m.visible) { vis++;
       const d = Math.hypot(m.position.x - f.x, m.position.z - f.y); if (d > maxD) maxD = d;
+      pts.push([+d.toFixed(0), +m.position.y.toFixed(0)]);
       const o = m.material.uniforms.off.value; offs.push(o.x.toFixed(2) + ',' + o.y.toFixed(2)); } });
-    trace.push({ t: +(g.time - t0).toFixed(2), vis, maxD: +maxD.toFixed(0), offs });
+    trace.push({ t: +(g.time - t0).toFixed(2), vis, maxD: +maxD.toFixed(0), offs, pts });
     if (g.time - t0 < 1.8 && trace.length < 400) requestAnimationFrame(tick); else res(trace);
   };
   requestAnimationFrame(tick);
@@ -45,6 +46,16 @@ R('poof 鋪滿扇形(峰值 ≥5 朵;FX_LOW 另計)', peak >= 5, 'peak=' + peak)
 // 由近而遠點燃:首個可見幀的最遠 poof 距離 < 全程最遠(波往外推,不是同時全亮)
 const firstD = seen[0].maxD, allD = Math.max(...seen.map(s => s.maxD));
 R('由近而遠點燃(首幀最遠 poof < 全程最遠=波外推)', firstD < allD - 10, `first=${firstD} max=${allD}`);
+// burn-2b(使用者「從頭頂噴出火舌,不用鋪在地面」):噴射弧=近端 poof 掛帽口高(H0 70)、遠端下落
+// (H1 28)——近段(d<45)全部 y>50、遠端比近端低 ≥20px;全程沒有貼地 poof(y<15)。
+const flat = seen.flatMap(s => s.pts);
+const nearP = flat.filter(p => p[0] < 45), farP = flat.filter(p => p[0] > 75);
+R('burn-2b:從帽口噴出(近段 poof 高 >50、無貼地 poof)',
+  nearP.length > 0 && nearP.every(p => p[1] > 50) && flat.every(p => p[1] > 15),
+  JSON.stringify({ near: nearP.slice(0, 3), min: Math.min(...flat.map(p => p[1])) }));
+R('burn-2b:噴射弧往前下落(遠端比近端低 ≥20px)',
+  farP.length > 0 && Math.min(...farP.map(p => p[1])) < Math.max(...nearP.map(p => p[1])) - 20,
+  JSON.stringify({ nearMax: Math.max(...nearP.map(p => p[1])), farMin: Math.min(...farP.map(p => p[1])) }));
 // 逐格播放:整段 trace 走過 ≥4 個不同 atlas 幀 offset
 const uniq = new Set(); for (const s of seen) for (const o of s.offs) uniq.add(o);
 R('flipbook 逐格播放(≥4 個不同幀 offset)', uniq.size >= 4, 'frames=' + uniq.size);

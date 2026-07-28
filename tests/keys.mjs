@@ -59,9 +59,11 @@ await page.evaluate(() => { const v = __v2, f = v.fighters[0]; if (f.carryObj) {
 // ---------- ⑦ Z = 道具施放 ----------
 await page.evaluate(() => { const f = __v2.fighters[0]; f.item = 'fire'; f.itemUses = 2; f.itemCastCd = 0; f._itemCastAt = 0; });
 await page.keyboard.down('z');
-const cast = await page.waitForFunction('__v2.fighters[0]._itemCastAt > 0', { timeout: 8000 }).then(() => true).catch(() => false);
+// burn-2b 後火帽 delay 只剩 0.117s:turbo=8 一批 0.3s+ 遊戲時,_itemCastAt 設→resolve 清零整段
+// 發生在同一批內=外部 poll 永遠抓不到 → 改斷言耐久副作用(起手即扣次數 2→1)
+const cast = await page.waitForFunction('__v2.fighters[0].itemUses === 1 || __v2.fighters[0]._itemCastAt > 0', { timeout: 8000 }).then(() => true).catch(() => false);
 await page.keyboard.up('z');
-R('Z=道具施放(火帽排程開火)', cast);
+R('Z=道具施放(火帽排程開火=起手扣次數)', cast);
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);

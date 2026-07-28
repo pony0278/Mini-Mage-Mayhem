@@ -113,7 +113,10 @@
 > (同 shockFighter 模式;★/垮肩只在暈眩段=`_burnCh` 清掉之後)。restun 鐵則:已暈再被燒只補著火視覺。
 > 鏈中不可抓(startCarry 守衛);時長=demo 滑桿值原樣(`BURN_CHAIN`/`BURN_LOB`,v2-state)。
 > 施法姿勢=`CLIPS.item_fire`(使用者 studio 定稿:深前傾 spine 70 壓頭把帽口對準前方+雙臂後張;
-> **FIRE_HOLD@17f impact=接遊戲時序補的定格鍵**,0.283s=原時序零變動,使用者 studio 重編自標 impact 即接管)。
+> **impact=鞠躬到位格 7f=0.117s(burn-2b,使用者反饋「火帽不需要延遲,鞠躬時就定格噴火,不是鞠躬完才噴」)**
+> ——鞠躬=瞄準動作,到位即噴;anti@17f 留定格鍵(7~17f 凍在鞠躬裡持續噴,對齊 itemCastCd 收尾)。
+> 舊 impact@17f=0.283 借 STRIKE_DELAY[0]=鞠躬完才噴,被使用者抓到。studio 重編自標 impact 即接管。
+> ⚠ 施法窗縮到 0.117s 後 turbo=8 一批就跨過:測 fireAims 預告要先 `_itemCastAt=time+9` 撐住窗(lightning.mjs 手法,oilfire ⑤ 已改)。)。
 > 視覺=`render-burn.js`(demo Gabriel 火舌 shader 移植):包身火/DoT 小火(小一號)/**帽口常燃火苗**
 > (使用者拍板:還沒攻擊也要冒火;施法窗火變大=蓄力讀條)三消費者共用 rig。
 > **⚠ 焦黑=換 `mesh.material` 指標到共用 `CHAR_MAT`**(同 shock 剪影);render-actors tint pass 要加
@@ -133,8 +136,11 @@
 > 使用者「chibi_helmet_flipbook_fire」demo 的 2D 逐格火(9 幀 3×3 atlas 768²=demo 內嵌 base64 抽檔
 > `assets/scene/fire-flipbook.png`)。定位:**攻擊動詞=flipbook 逐格跳動(跟 hitfx 漫畫爆花同語言)、
 > 常燃/狀態火=render-burn Gabriel shader** 兩者分工。castFire 觸發(`fx.addFireSpray`→`game.fireSprays`,
-> 同 addWindBlast 純訊號)→ 扇內 7 朵 poof(FX_LOW 4)**由近而遠點燃**(WAVE_V 300px/s 波外推=「真的噴出去」),
-> 每朵播一次 9 幀序列(首/末幀停留=demo 滑桿預設,FPS 16)後淡出;鏡頭固定 → billboard 完全成立。
+> 同 addWindBlast 純訊號)→ **帽口噴射弧 7 朵 poof(FX_LOW 4)**(burn-2b 使用者拍板「從頭頂噴出火舌,
+> 不用鋪在地面」:近端小火舌掛帽口高 H0 70、沿瞄準線由近而遠點燃(WAVE_V 300px/s)、遠端下落放大到
+> 目標軀幹高 H1 28(ARC_P 弧線)+燃燒中沿瞄準線前飄 DRIFT 46px/s=噴流動量;首版鋪地面=扇形預告的
+> 直譯,被使用者導正——鞠躬壓頭的動作語意就是帽口指前),每朵播一次 9 幀序列(首/末幀停留=demo
+> 滑桿預設,FPS 16)後淡出;鏡頭固定 → billboard 完全成立。
 > **判定不動**(sim 扇形=唯一真相);FIRE_CONE 0.72 在 spawn 內鏡射(render 不進 sim DAG,改扇形要同步)。
 > perf:**不加燈**(demo fireLight 拿掉)、pool(2)+載圖後 prewarm、**全 poof 共用同一張 GL 貼圖**
 > (ShaderMaterial 只差 off/al uniform=同 program;不用 texture.clone()=不重複上傳 768²)、FX_LOW 砍 poof 數。

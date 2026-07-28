@@ -1,5 +1,5 @@
 // 燃燒動作鏈 + 火帽施法姿勢 + 帽口常燃火(burn-1;使用者 elemental_hit v2.3 demo + studio 施法 clip)驗收:
-// ①clip 接上(ITEM_SPEC.fire.clip='item_fire',delay=impact 0.283=原時序)②火帽直擊=六段鏈
+// ①clip 接上(ITEM_SPEC.fire.clip='item_fire',delay=impact 0.117=鞠躬到位即噴,burn-2b)②火帽直擊=六段鏈
 // (stunT=BURN_TOTAL+STUN_T=3.8、黑定格後挑飛 z>0、熄滅段趴姿、鏈完進暈眩段)③焦黑=換材質指標
 // (45/45 全黑)且結束完整還原、**tint pass 不把顏色寫回共用炭黑材質**(render-actors u.charred 閘)
 // ④restun 鐵則:已暈再被燒不重複暈 ⑤地形火維持 DoT(火海站著=burnT 削穩定,不入鏈)
@@ -30,8 +30,9 @@ const clip = await page.evaluate(async () => {
   const c = await import('./js/brawler-clips.js');
   return { clip: m.ITEM_SPEC.fire.clip, delay: +m.ITEM_SPEC.fire.delay.toFixed(3), has: !!c.CLIPS.item_fire, impactT: +(c.CLIPS.item_fire?.impactT ?? -1).toFixed(3), spine: c.CLIPS.item_fire?.phases?.anti?.spine_x };
 });
-R('施法 clip 接上(item_fire/impact 0.283=原時序/anti 前傾 spine 70)',
-  clip.clip === 'item_fire' && clip.has && Math.abs(clip.delay - 0.283) < 0.001 && clip.spine === 70, JSON.stringify(clip));
+// burn-2b(使用者「火帽不需要延遲,鞠躬時就定格噴火」):impact 移到鞠躬到位格 7f=0.117s,17f 留定格鍵
+R('施法 clip 接上(item_fire/impact 0.117=鞠躬到位即噴/anti 前傾 spine 70)',
+  clip.clip === 'item_fire' && clip.has && Math.abs(clip.delay - 7 / 60) < 0.001 && clip.spine === 70, JSON.stringify(clip));
 
 // ---------- ② 直擊=六段鏈(rAF 逐幀 trace) ----------
 const tr = await page.evaluate(() => new Promise(res => {
