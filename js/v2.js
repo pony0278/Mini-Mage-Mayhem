@@ -503,12 +503,12 @@ if (TERRAIN === 'isles') {
   if (TERRAIN === 'rim') {                          // ring-1(朋友提案 2026-07-29):四側邊帶=廢料井
     buildFlatMap();                                 // 無牆 tile(走/被打飛都能出界);墜落由 onSolid 裁定
     game.isVoidAt = (e) => !onSolid(e.x, e.y);      // fx.overVoid → 死亡劇場 → v2 迴圈計分(resolveFall)
-    setRimGeometry(RIM);                            // render-lab:井帶壓暗+邊緣警戒條+角平台鑲邊
+    setRimGeometry(RIM);                            // render-lab ring-2:懸浮平台(裁形地板+側裙+深淵+整圈警戒帶;圍場造景退役)
   } else {
     buildFlatArena();
     setWallFade(true);                              // see-through walls: occluding walls (esp. the south one) fade
+    setApron(true);                                 // 場外暗地板(rim 島不開:平台外=深淵,同層暗地板會殺掉懸浮感)
   }
-  setApron(true);                                   // 場外暗地板:蓋掉場外黑虛空(16:9 視野較寬)
   // 實驗室主題(arcane containment 原型換皮):暗藍紫做舊地板+發光溝縫+焦痕符文+冷色氛圍
   setLabTheme(true);
   try { v2s.lowFlicker = localStorage.getItem('mmm_lowFlicker') === '1'; } catch { /* no storage */ }

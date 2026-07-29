@@ -226,8 +226,13 @@
 > (0.07 grace/0.6 縮小旋轉下沉,render-actors 已有視覺)→ v2.js dead 幀計分+down→RESPAWN 1.3s→resetFighter+
 > invuln 1.8。**AI**:aiMove/逃跑走 `(FREEFORM||RIMMED)` aiSafeDir=邊緣迴避(被打飛照樣飛出去);FLEE_EXITS
 > 移到四角平台外緣(舊四側中線=井帶,逃過去會摔死)。**道具落井**:桶/瓶落地或被推出邊=despawn+respawn
-> (v2-items 三處 `RIMMED && !onSolid` 檢查,不爆不留地板)。**視覺**:render-lab `setRimGeometry`(世界座標
-> 掛 scene:純黑井面 y=1.0+斑馬紋警戒帶 y=1.2(canvas 斜紋 RepeatWrapping)+井內側微光;`__lab.rimOn()`)。
+> (v2-items 三處 `RIMMED && !onSolid` 檢查,不爆不留地板)。**視覺(ring-2,使用者附 GetAmped 圖拍板 2026-07-29「模仿百變恰吉:兩側造景去除、只留四角站」)**:
+> render-lab `setRimGeometry` 存 cfg → initLabScene 尾端 `buildRimIsland` 建**懸浮平台**——頂面=平台輪廓 20 點
+> ShapeGeometry(共用原地板材質,UV 手動對齊原整片貼圖=符文溝縫原位)、側裙金屬垂面 46px+頂緣包邊、
+> 整圈斑馬警戒帶(canvas 斜紋沿輪廓內縮,法向朝場內判定)、腳下深淵(近黑底 y=-150+三條下層回收線微光)。
+> **圍場造景整組退役**(`_rimCfg` 分流):矮緣/能量管/料斗/輸送帶/出貨閘/警告牌/裂玻璃/散箱/機械臂/管線/
+> 30×20 虛線框;**四角站機具移上角平台**(HAZARD 13.85/12→13.1/8.1=世界 ~(61,61),原位在裝飾帶=懸崖外)、
+> 北/南地面標語內移(原 ±8.7 tile 落井帶)。rim 模式不開 setApron(同層暗地板會殺掉懸浮感)。`__lab.rimOn()`。
 > **牆退役的連鎖**:rim 用 buildFlatMap=無牆 tile——瓶撞牆碎/滑撞牆暈只剩場內物件與 [r,W-r] 邊界 clamp 能觸發
 > (ice_slide 實測 clamp 仍能撞暈);測試把物件擺在 y>576/x<64 等邊帶=會落井(bottles ⑬ 內移過)。
 > 退路:TERRAIN 改回 'flat'=舊全牆平台。測試:tests/ring.mjs;perform.mjs 已改寫成儀式分級規格。

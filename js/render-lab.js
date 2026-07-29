@@ -396,6 +396,7 @@ export function initLabScene() {
   floor.rotation.x = -Math.PI / 2; floor.position.set(CX, -0.5, CZ);
   floor.receiveShadow = true;
   scene.add(floor);
+  _fullFloor = floor; _floorMat = floor.material;              // ring-2:rim 島模式藏整片、共用材質裁形重建
 
   // 地板化學動態層(世界座標,獨立於 labGroup 縮放)+ 註冊每幀更新
   floorFxGroup = new THREE.Group(); scene.add(floorFxGroup);
@@ -413,8 +414,8 @@ export function initLabScene() {
   const circleGlow = new THREE.PointLight(0xffb43a, 1.85, 15 * LAB_SCALE, 2); // v2_10 琥珀(原紫 0x9a5cff)
   circleGlow.position.set(CX, 1.4 * LAB_SCALE, CZ); scene.add(circleGlow);
   scene.add(labGroup);
-  buildLabWalls();
-  buildLabEnergyTubes();
+  const RIMI = !!_rimCfg;                                   // ring-2:rim 島=GetAmped 式懸浮平台(使用者拍板 2026-07-29)
+  if (!RIMI) { buildLabWalls(); buildLabEnergyTubes(); }    // 矮緣/能量管=貼著舊邊界,island 模式整組退役(邊=懸崖)
   buildLabProps();
   buildLabDust();
   // Phase 2:中央結構(收容平台包住分揀陣列)+ 地面物流圖 + 淨戰區導引
@@ -426,8 +427,9 @@ export function initLabScene() {
   loadWindGauntletGlb();                                    // 風壓手套 GLB(item-4;持風壓手套時戴右手)
   // 四色地面箭頭/「THROW IN!」指示牌:2026-07-19 使用者反饋太突兀,整組拆除(歷史+替代方向見 js/CLAUDE.md;實作在 git c63a0cf 前)
   buildIndustrialFloorMarkings();
-  buildCoreCombatGuide();
-  if (!FX_LOW) { buildArcaneArm(); buildServicePipeNetwork(); } // Phase 4:純裝飾,低效能模式剝除(決策 #3)
+  if (!RIMI) buildCoreCombatGuide();                        // 30×20 虛線框沿舊邊界=rim 下穿過井帶,退役(平台輪廓+警戒帶取代)
+  if (!FX_LOW && !RIMI) { buildArcaneArm(); buildServicePipeNetwork(); } // Phase 4:純裝飾;rim 島=兩側淨空
+  if (RIMI) buildRimIsland();                               // 裁形地板+側裙+深淵(在 compile 前=shader 一起預熱)
   labAnimated.push({ update: (t) => {                       // 溫和呼吸,不旋轉
     circleMat.opacity = 0.58 + Math.sin(t * 1.1) * 0.08;
     circleGlow.intensity = 1.6 + Math.max(0, Math.sin(t * 1.1)) * 0.6;
@@ -990,56 +992,84 @@ function addPowerHalo(g, color) {
    四條井帶(兩座角平台之間的邊帶)壓暗成井口 + 內緣琥珀警戒條(帶斑馬紋概念先用純色)。
    世界座標直接掛 scene(同地板化學層,不吃 labGroup 縮放);幾何=一次建好,零 per-frame 成本。
    高度:井面 y=1.0(蓋過化學 tile 0.6)、警戒條 y=1.2。判定真相=v2-terrain onSolid,這裡純視覺。 */
+/* ========== ring-2:rim 懸浮平台(GetAmped 式;使用者附圖拍板 2026-07-29)==========
+   v1 是「畫在整片地板上的黑帶」;v2 =**真的把地板裁掉**:頂面=平台輪廓 ShapeGeometry(共用原地板
+   材質、UV 對齊原整片貼圖=符文/溝縫原位)、側裙金屬垂面、腳下=深淵(近黑底+下層回收線微光)、
+   整圈外緣斑馬警戒帶。兩側圍場造景(牆/料斗/輸送帶/出貨閘/箱/管線)由 initLabScene/buildLabProps
+   以 _rimCfg 分流退役,只留四角元素站(移上角平台)+中央艙。
+   setRimGeometry 在 v2.js boot 於 setLabTheme 之前呼叫 → 這裡只存 cfg,initLabScene 尾端建島。 */
 export function setRimGeometry(RIM) {
-  const W = 960, H = 640, m = RIM.m, c = RIM.corner;
-  const g = new THREE.Group(); g.name = 'RIM_VOID';
-  const pitMat = new THREE.MeshBasicMaterial({ color: 0x010204 });                    // 井口=純黑(比暗地板更黑一階=讀成洞)
-  // 斑馬紋警戒帶(琥珀/黑斜紋 canvas,RepeatWrapping 沿長度重複)——跟艙邊既有的黃黑紋同語言=工業危險邊
+  _rimCfg = RIM;
+  if (labBuilt) buildRimIsland();                       // 保險:若場景已建(理論上不會),直接補建
+}
+function buildRimIsland() {
+  const { m, corner: c } = _rimCfg; const W = 960, H = 640;
+  if (_fullFloor) _fullFloor.visible = false;           // 整片地板藏掉(材質共用給裁形頂面)
+  const g = new THREE.Group(); g.name = 'RIM_ISLAND';
+  // 平台輪廓(順時針 20 點;內圈矩形 ∪ 四角平台=v2-terrain onSolid 同一幾何)
+  const P = [
+    [0, 0], [c, 0], [c, m], [W - c, m], [W - c, 0], [W, 0], [W, c], [W - m, c], [W - m, H - c], [W, H - c],
+    [W, H], [W - c, H], [W - c, H - m], [c, H - m], [c, H], [0, H], [0, H - c], [m, H - c], [m, c], [0, c],
+  ];
+  // 頂面:Shape(x, -z)→rotation.x=-90° 落回世界 (x,z);UV 手動對齊原整片地板貼圖(中心 CX,CZ、跨 SCENE_W×SCENE_D)
+  const shape = new THREE.Shape(P.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const topGeo = new THREE.ShapeGeometry(shape);
+  const SW = SCENE_W * LAB_SCALE, SD = SCENE_D * LAB_SCALE;
+  const pos = topGeo.attributes.position, uv = topGeo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = -pos.getY(i);
+    uv.setXY(i, (x - (CX - SW / 2)) / SW, ((CZ + SD / 2) - z) / SD);
+  }
+  const top = new THREE.Mesh(topGeo, _floorMat);
+  top.rotation.x = -Math.PI / 2; top.position.y = -0.45; top.receiveShadow = true;
+  g.add(top);
+  // 側裙:每段輪廓一片垂直金屬面(平台厚度=懸浮感的來源;參考圖的石台側身)
+  const DEPTH = 46;
+  const skirtMat = new THREE.MeshStandardMaterial({ color: 0x171d1f, roughness: 0.58, metalness: 0.72, side: THREE.DoubleSide });
+  const lipMat = new THREE.MeshStandardMaterial({ color: 0x2b3335, roughness: 0.5, metalness: 0.8, side: THREE.DoubleSide });
+  for (let i = 0; i < P.length; i++) {
+    const [x0, z0] = P[i], [x1, z1] = P[(i + 1) % P.length];
+    const len = Math.hypot(x1 - x0, z1 - z0); if (len < 1) continue;
+    const ry = Math.atan2(-(z1 - z0), x1 - x0);
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(len, DEPTH), skirtMat);
+    q.position.set((x0 + x1) / 2, -DEPTH / 2 - 0.4, (z0 + z1) / 2); q.rotation.y = ry;
+    g.add(q);
+    const lip = new THREE.Mesh(new THREE.PlaneGeometry(len, 5), lipMat);   // 頂緣亮一階金屬包邊(讀出平台厚度)
+    lip.position.set((x0 + x1) / 2, -2.4, (z0 + z1) / 2); lip.rotation.y = ry;
+    g.add(lip);
+  }
+  // 整圈警戒斑馬帶(頂面上、沿輪廓內縮;跟艙邊黃黑紋同語言)
   const hz = document.createElement('canvas'); hz.width = 64; hz.height = 16;
   const hc = hz.getContext('2d');
   hc.fillStyle = '#151008'; hc.fillRect(0, 0, 64, 16);
   hc.fillStyle = '#ffb84d';
   for (let i = -1; i < 5; i++) { hc.beginPath(); hc.moveTo(i * 16, 16); hc.lineTo(i * 16 + 16, 0); hc.lineTo(i * 16 + 24, 0); hc.lineTo(i * 16 + 8, 16); hc.fill(); }
   const hazTex = new THREE.CanvasTexture(hz); hazTex.wrapS = hazTex.wrapT = THREE.RepeatWrapping;
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }); // 井內側微光(下層作業的光)
-  const plane = (mat, x0, z0, x1, z1, y) => {
-    const mm = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), mat);
-    mm.rotation.x = -Math.PI / 2; mm.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
-    g.add(mm); return mm;
-  };
-  const hazBand = (x0, z0, x1, z1) => {                                               // 斑馬帶(重複貼圖沿長軸鋪)
-    const t = hazTex.clone(); t.needsUpdate = true;
-    const L = Math.max(x1 - x0, z1 - z0); t.repeat.set(L / 48, 1);
-    const mm = plane(new THREE.MeshBasicMaterial({ map: t }), x0, z0, x1, z1, 1.2);
-    if ((z1 - z0) > (x1 - x0)) mm.rotation.z = Math.PI / 2;                           // 直帶:轉 90° 沿長軸重複
-    return mm;
-  };
-  const BW = 11;                                                                      // 警戒帶寬(世界 px)
-  // 四條井帶:上/下(x 從角平台內緣到另一側角平台)、左/右
-  const strips = [
-    [c, 0, W - c, m], [c, H - m, W - c, H],       // 上/下
-    [0, c, m, H - c], [W - m, c, W, H - c],       // 左/右
-  ];
-  for (const [x0, z0, x1, z1] of strips) {
-    plane(pitMat, x0, z0, x1, z1, 1.0);
-    // 內緣警戒條(貼實心地一側)+ 兩端短條(沿角平台邊)
-    const horiz = (x1 - x0) > (z1 - z0);
-    if (horiz) {
-      const zi = z0 === 0 ? m : H - m;            // 內緣 z
-      hazBand(x0, zi - BW / 2, x1, zi + BW / 2);
-      plane(glowMat, x0, z0 === 0 ? zi - 22 : zi, x1, z0 === 0 ? zi : zi + 22, 1.1);
-      hazBand(x0 - BW / 2, z0, x0 + BW / 2, z1); hazBand(x1 - BW / 2, z0, x1 + BW / 2, z1);
-    } else {
-      const xi = x0 === 0 ? m : W - m;
-      hazBand(xi - BW / 2, z0, xi + BW / 2, z1);
-      plane(glowMat, x0 === 0 ? xi - 22 : xi, z0, x0 === 0 ? xi : xi + 22, z1, 1.1);
-      hazBand(x0, z0 - BW / 2, x1, z0 + BW / 2); hazBand(x0, z1 - BW / 2, x1, z1 + BW / 2);
-    }
+  const BW = 10;
+  for (let i = 0; i < P.length; i++) {
+    const [x0, z0] = P[i], [x1, z1] = P[(i + 1) % P.length];
+    const len = Math.hypot(x1 - x0, z1 - z0); if (len < 1) continue;
+    let nx = -(z1 - z0) / len, nz = (x1 - x0) / len;                      // 段法向;挑指向場內那側
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    if (nx * (W / 2 - mx) + nz * (H / 2 - mz) < 0) { nx = -nx; nz = -nz; }
+    const t = hazTex.clone(); t.needsUpdate = true; t.repeat.set(len / 48, 1);
+    const band = new THREE.Mesh(new THREE.PlaneGeometry(len, BW), new THREE.MeshBasicMaterial({ map: t }));
+    band.position.set(mx + nx * BW / 2, 0.35, mz + nz * BW / 2);
+    band.rotation.set(-Math.PI / 2, 0, Math.atan2(-(z1 - z0), x1 - x0)); // Euler XYZ=Rx·Rz:先面內轉再放平
+    g.add(band);
+  }
+  // 深淵:井底近黑大平面 + 下層回收線微光(縱深提示;參考圖的水面/月=我們的下層廠區)
+  const abyss = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshBasicMaterial({ color: 0x02040a }));
+  abyss.rotation.x = -Math.PI / 2; abyss.position.set(CX, -150, CZ); g.add(abyss);
+  for (const off of [-330, 0, 330]) {
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(30, 2600),
+      new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }));
+    line.rotation.x = -Math.PI / 2; line.position.set(CX + off, -147, CZ); g.add(line);
   }
   scene.add(g);
   _rimGroup = g;
 }
-let _rimGroup = null;
+let _rimCfg = null, _rimGroup = null, _fullFloor = null, _floorMat = null;
 export function rimGeometryOn() { return !!_rimGroup; } // 測試 hook
 
 export function setStationsPowered(on) { stationsPowered = !!on; if (!on) for (const h of powerHalos) { h.ramp = 0; h.ring.material.opacity = 0; h.flashRing.material.opacity = 0; h.flashRing.scale.setScalar(1); h.orb.material.opacity = 0; } }
@@ -1059,15 +1089,19 @@ labAnimated.push({ update: () => {
 
 /* ---------- LAB_LAYOUT(v2_10 place 編排;四角站 + 邊帶物流;原點=場地中心,單位=tile) ---------- */
 function buildLabProps() {
+  const RIMI = !!_rimCfg;                                      // ring-2 rim 島:只留四角站(使用者:模仿百變恰吉,兩側造景去除)
   const HX = SCENE_W / 2, HZ = SCENE_D / 2;                    // 17 / 15(總場景半寬/半深)
   const NORTH_EDGE = -HZ + 1.65, SOUTH_EDGE = HZ - 1.65, WEST_EDGE = -HX + 1.65, EAST_EDGE = HX - 1.65;
-  const HAZARD_X = CORE_HX - 1.15, HAZARD_Z = CORE_HZ + 2.0;   // 13.85 / 12(四角站)
+  // 四角站位:非 rim=裝飾帶(13.85/12=核心外);rim=**角平台外緣對角**(13.1/8.1 → 世界 ~(61,61) 等,
+  // 站機具穩坐 230² 角平台、緊鄰玩法站位 (150,150),平台外=懸崖沒地方站)
+  const HAZARD_X = RIMI ? 13.1 : CORE_HX - 1.15, HAZARD_Z = RIMI ? 8.1 : CORE_HZ + 2.0;
   const place = (obj, x, z, ry = 0) => { obj.position.set(x, 0, z); obj.rotation.y = ry; labGroup.add(obj); return obj; };
   // 四角廢料處理站(採新四角站位)+ 通電光環(拉閘因果演出:玩家反饋 2026-07 電束不自然 → 改場邊大型機具「被魔法光環觸發」)
   addPowerHalo(place(fireStation(), -HAZARD_X, -HAZARD_Z, Math.PI * 0.25), 0xff7a2a);
   addPowerHalo(place(frostStation(), HAZARD_X, -HAZARD_Z, -Math.PI * 0.25), 0x78ddff);
   addPowerHalo(place(poisonStation(), -HAZARD_X, HAZARD_Z, -Math.PI * 0.2), 0xb06bff);
   addPowerHalo(place(lightningStation(), HAZARD_X, HAZARD_Z, 0), 0x9fd0ff);
+  if (!RIMI) {                                                 // ↓ 邊帶物流/料斗/輸送帶/出貨閘/警告牌/裂玻璃/散箱=全屬舊圍場,rim 島退役
   // 回收料斗(沿牆帶)
   place(recyclingHopper(0x5ff0e0, 'orb'), -5.7, NORTH_EDGE + 0.15, 0);
   place(recyclingHopper(0xff8ad0, 'crystal'), 5.7, NORTH_EDGE + 0.15, 0);
@@ -1107,6 +1141,7 @@ function buildLabProps() {
     const band = mesh(new THREE.BoxGeometry(0.74, 0.12, 0.74), M.glow(0xd8a12f, 0.20), 0, 0, 0, false);
     crate.add(band); labGroup.add(crate);
   }
+  }                                                            // ↑ if (!RIMI) 圍場裝飾結束
   // 站腳處理區發光地環
   [[-HAZARD_X, -HAZARD_Z, 0xff7a2a], [HAZARD_X, -HAZARD_Z, 0x7fdcff], [-HAZARD_X, HAZARD_Z, 0x6dff5c], [HAZARD_X, HAZARD_Z, 0xb58cff]]
     .forEach(([x, z, c]) => {
@@ -1319,9 +1354,10 @@ function buildIndustrialFloorMarkings() {
     const bar = mesh(new THREE.BoxGeometry(0.52, 0.025, 1.05), i % 2 ? mat : stripeMat, Math.cos(a) * r, 0.055, Math.sin(a) * r, false);
     bar.rotation.y = -a; labGroup.add(bar);
   }
+  const NS = _rimCfg ? 7.35 : 8.7, SS = _rimCfg ? 7.3 : 8.65;  // ring-2:rim 下北/南標語內移(原 ±8.7 tile=世界 z 42/597 落在井帶=字浮在洞上)
   const stencils = [
-    ['WIZARD INTAKE', 'CLASSIFY BEFORE DISPOSAL', 0, -8.7, 0],
-    ['NO MANUAL SORTING', 'USE APPROVED FORCE', 0, 8.65, Math.PI],
+    ['WIZARD INTAKE', 'CLASSIFY BEFORE DISPOSAL', 0, -NS, 0],
+    ['NO MANUAL SORTING', 'USE APPROVED FORCE', 0, SS, Math.PI],
     ['ZONE 01', 'MOLTEN', -11.2, -7.8, Math.PI / 2],
     ['ZONE 03', 'CHARGED', 11.2, 7.8, -Math.PI / 2],
   ];
