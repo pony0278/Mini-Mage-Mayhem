@@ -1,5 +1,6 @@
 // 連段系統(brawl-3;使用者拍板 2026-07-15:連段黏臉→暈→挑飛→風壓接送進艙;
-// feel-4 增修 2026-07-21:三段「終結技」打暈=連帶挑飛(GetAmped 式);前段打暈仍原地=停兩段可就地抓)驗收:
+// feel-4 增修 2026-07-21:終結技打暈=連帶挑飛;combo-3b 2026-07-29 使用者拍板:**終結技必挑飛**(滿穩定值也飛、
+// 沒暈=落地自己爬起來);前段打暈仍原地=停兩段可就地抓)驗收:
 // ①三連擊全中=一次暈+終結挑飛 ①b 前段(非終結)打暈=原地暈 ②連段中每一拳都不位移(有穩定值時純踉蹌)
 // ③對已暈者出拳=挑飛 launcher ④風壓打空中目標=乾淨接送(往瞄準方向直送/不墊穩定/換 WIND_CARRY_LOB)
 // ⑤風壓打地面目標=維持吹翻滾(墊穩定防站樁,不搶連段接送)⑥全鏈:挑飛→風壓接送→進艙(記 wind)
@@ -35,6 +36,15 @@ const early = await page.evaluate(() => { const v = __v2; const a = v.fighters[1
   return { stunned: o.stunned, thrown: o.fumbleT > 0 };
 });
 R('前段(非終結)打暈=原地暈不飛(就地抓窗口保留)', early.stunned && !early.thrown, JSON.stringify(early));
+
+// ---------- ①c 終結技=必挑飛(combo-3b,使用者拍板 2026-07-29「combo3 都要擊飛」):滿穩定值也飛、但不暈 ----------
+const finFly = await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
+  o.stunned = false; o.restunT = 0; o.stability = 100; o.invuln = 0; o.fumbleT = 0; o._lob = null; o._thrownT = -9; o.vx = o.vy = 0;
+  a.x = 470; a.y = 540; o.x = 500; o.y = 540;
+  a._strikeKind = 2; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a); // 單發終結技(對手滿穩定)
+  return { thrown: o.fumbleT > 0, lob: o._lob === v.PUNCH_LAUNCH_LOB, stunned: o.stunned, stab: Math.round(o.stability) };
+});
+R('終結技=必挑飛(滿穩定值也飛=位移動詞;沒暈=落地自己爬起來)', finFly.thrown && finFly.lob && !finFly.stunned && finFly.stab === 50, JSON.stringify(finFly));
 
 // ---------- ② 連段中的拳(有穩定值)都不位移 ----------
 R('連段中每拳都純踉蹌不位移(前兩拳不觸發翻滾)', combo.midFlung === false);

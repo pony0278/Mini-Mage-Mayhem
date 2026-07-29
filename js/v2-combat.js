@@ -470,9 +470,11 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     }
     const stunsNow = o.stability <= 0 && !o.stunned && o.restunT <= 0;
     if (stunsNow) stunFighter(o);                                       // 穩定值歸零 → 擊暈(無能量閘)
-    // 挑飛條件(2026-07-21 使用者拍板):①命中前已暈=補拳挑飛(原規則)②「三段終結技」打暈的那拳=連帶挑飛
-    // (GetAmped 式打滿三連送飛收尾;前兩段打暈仍原地=停在兩段暈可就地抓,打滿三段=送飛——玩家自選節奏)。
-    const launches = wasStunned || (stunsNow && fin);
+    // 挑飛條件(combo-3b,使用者拍板 2026-07-29「combo3 都要擊飛」):①命中前已暈=補拳挑飛(原規則)
+    // ②**三段終結技=必挑飛**(不再限打暈那拳;沒暈=飛出去落地自己爬起來,有暈=挑飛+暈著落地可追)
+    // ——開放邊緣(ring-1)後終結技=穩定的位移動詞:三連打滿就是把人往你瞄的方向送(邊緣壓力/接風壓/瞄艙)。
+    // 前兩段打暈仍原地=停在兩段暈可就地抓;打滿三段=送飛——玩家自選節奏(2026-07-21 拍板保留)。
+    const launches = wasStunned || fin;
     // 漫畫打擊爆花(hitfx-1):單發挑檔(挑飛>打暈>終結>鉤拳),開在拳頭接觸點、線往擊退反向甩
     addBurst(cpx, cpy, { ...HIT_BURST[launches ? 'launch' : stunsNow ? 'stun' : dash ? 'dash' : fin ? 'fin' : 'hook'], streakA: a });
     // brawl-3 打飛三分層(fin 打暈=挑飛 之外維持):①已暈/終結打暈=挑飛 launcher(接風壓吹進艙的入口)
