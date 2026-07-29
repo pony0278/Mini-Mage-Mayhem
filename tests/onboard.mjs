@@ -20,6 +20,9 @@ R('AI 對手開場即開(fight=純戰鬥;分類同事凍結在 B 款)', boot.aiO
 R('開場目標字幕/鏡頭帶場計時中(introT>0)', boot.introT > 0);
 
 // ---------- ② 就位期 AI 靜止 ----------
+// ⚠ introT 是 wall-clock 開場倒數(INTRO_T 3.6,AI 在 introT<=INTRO_GO 0.9 才開工)——併發跑時載頁較慢,
+// 到這裡可能只剩不到 0.4s 就位期,advance(0.4) 一跨過「開始!」AI 就動了=假 FAIL。把窗口釘回滿格再量。
+await page.evaluate(() => { __v2.v2s.introT = 3.6; });
 const holdPos = await page.evaluate(() => [Math.round(__v2.fighters[1].x), Math.round(__v2.fighters[1].y)]);
 await advance(0.4);
 const holdPos2 = await page.evaluate(() => [Math.round(__v2.fighters[1].x), Math.round(__v2.fighters[1].y)]);

@@ -9,7 +9,14 @@
 import { game } from './state.js';
 import { preloadRiggedHands, riggedHandsReady, mountRiggedHands, applyFingerPose } from './actor-hands-rigged.js';
 
-const AVATAR_URL = 'assets/rigs/base-avatar.glb';
+// ugc-1(2026-07-29 使用者拍板走「玩家自製角色」路線 B):支援**蒙皮 GLB**(VRoid/Blender/Mixamo 的正常產出),
+// 不再限剛體分件。三項核心見下:①clone 後重綁骨架 ②骨名別名表 ③per-part 縮放改縮骨頭。
+// `?avatar=<路徑或 blob:URL>` 換角色檔(匯入精靈用 URL.createObjectURL 餵進來);?avatar=0 仍是退回方塊人。
+const DEFAULT_AVATAR_URL = 'assets/rigs/base-avatar.glb';
+const AVATAR_URL = (() => {
+  const q = new URLSearchParams(location.search).get('avatar');
+  return (q && q !== '0' && q !== '1') ? q : DEFAULT_AVATAR_URL;
+})();
 // 角色整體放大倍率(相對「對齊 box rig 身高」的基準)。v2 遠鏡頭下大一點更好看。
 // 可用 URL ?avscale=1.5 即時試不同大小;預設 1.3。
 const AVATAR_SCALE = (() => { const v = parseFloat(new URLSearchParams(location.search).get('avscale')); return Number.isFinite(v) ? Math.max(0.5, Math.min(3, v)) : 1.3; })();
@@ -44,7 +51,25 @@ const NODE_OF = {
   foot:     (R, s) => s < 0 ? R.legL.ankle : R.legR.ankle,   // 踝節點=腳的 driver(lL_ax/lL_ty/自動壓平/墊腳 → 角色腳掌)
 };
 const PAIRED = ['upperarm', 'forearm', 'hand', 'thigh', 'shin', 'foot'];
-const TOKENS = ['upperarm', 'forearm', 'hand', 'thigh', 'shin', 'calf', 'foot', 'torso', 'neck', 'head', 'root'];
+// ugc-1 ②骨名別名表:**有序**(第一個命中就定案),長字串必須排在會被它包含的短字串之前——
+// 'forearm'/'lowerarm' 要早於裸 'arm'、'upperleg'/'lowerleg' 要早於裸 'leg',不然 Mixamo 的
+// LeftForeArm 會先被 'arm'→upperarm 吃掉。涵蓋:遊戲原生命名 / VRoid·VRM(J_Bip_*)/ Mixamo / Blender Rigify。
+const BONE_ALIASES = [
+  ['upperarm', 'upperarm'],
+  ['forearm', 'forearm'], ['lowerarm', 'forearm'],
+  ['hand', 'hand'],
+  ['upperleg', 'thigh'], ['upleg', 'thigh'], ['thigh', 'thigh'],
+  ['lowerleg', 'shin'], ['calf', 'shin'], ['shin', 'shin'],
+  ['foot', 'foot'],
+  ['spine', 'torso'], ['chest', 'torso'], ['torso', 'torso'],
+  ['neck', 'neck'], ['head', 'head'],
+  ['hips', 'root'], ['root', 'root'],
+  ['arm', 'upperarm'],                                  // Mixamo LeftArm=上臂(必須排最後)
+  ['leg', 'shin'],                                      // Mixamo LeftLeg=小腿(UpLeg 才是大腿,已在前面)
+];
+// 容器節點:名字含關鍵字但不是骨頭。'Armature'(Blender 匯出的根)小寫化含 'arm' → 會被裸 'arm' 規則
+// 誤收成 upperarm,而且它是 traverse 的頭一個 → 靠 `if (by[key]) continue` 把真正的上臂擋在門外。
+const BONE_SKIP = /^(armature|scene|rootnode|correction|sketchfab)/;
 
 // T-pose:box rig 的中性測量姿勢(雙臂水平放下=角色 rest 對齊)。與編排器 inspectTposePose 同義:
 // 手臂 sz=90(水平)、其餘 0。用來建立 box↔角色的世界四元數對照。
@@ -58,6 +83,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   if (loadState !== 2 || !TEMPLATE) return null;
   const sc = TEMPLATE.clone(true);
   sc.updateMatrixWorld(true);
+  const skinned = rebindSkeletons(sc);
 
   // 收角色骨頭(接受 Bone 或空節點;網格 geo_* 是 Mesh 排除)
   const _v = new THREE.Vector3();
@@ -65,8 +91,9 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   sc.traverse(o => {
     if (o.isMesh) return;
     const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
-    const t = TOKENS.find(k => n.includes(k));
-    if (t) found.push({ bone: o, type: t === 'calf' ? 'shin' : t });
+    if (!n || BONE_SKIP.test(n)) return;
+    const hit = BONE_ALIASES.find(([k]) => n.includes(k));
+    if (hit) found.push({ bone: o, type: hit[1] });
   });
   const by = {};
   for (const f of found) {
@@ -95,7 +122,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   Object.values(by).forEach(e => { const nd = e.node(); if (nd) { nd.getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); } });
 
   const order = Object.keys(by).sort((a, b) => depth(by[a].bone) - depth(by[b].bone));
-  const av = { wrap, S, by, order, standH: size.y * S };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
+  const av = { wrap, S, by, order, skinned, standH: size.y * S };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];
@@ -132,13 +159,26 @@ export function retargetAvatar(g, boxRig, pose) {
     e.bone.updateMatrixWorld(true);
   }
   // 命中放大/身體縮放(Phase 1 遺漏 → 補上;繞關節縮放,近端黏住不飛走)
-  const setS = (k, v) => { const e = av.by[k]; if (!e || !e.meshes) return; const s = v || 1;
-    e.meshes.forEach(m => { m.scale.setScalar(s); if (m.userData.restPos) m.position.copy(m.userData.restPos).multiplyScalar(s); }); };
-  setS('forearm_l', p.aL_scale); setS('hand_l', p.aL_scale);
-  setS('forearm_r', p.aR_scale); setS('hand_r', p.aR_scale);
-  setS('shin_l', p.lL_scale);    setS('foot_l', p.lL_scale);
-  setS('shin_r', p.lR_scale);    setS('foot_r', p.lR_scale);
-  setS('torso', p.body_scale);
+  // ugc-1 ③:剛體分件=縮掛在骨頭下的網格;**蒙皮**=網格全掛在 SkinnedMesh 上、骨頭底下沒有子網格
+  //(`e.meshes` 恆空 → 舊寫法整組靜默失效)→ 改縮**骨頭**。骨縮放會沿骨鏈繼承,所以每組只縮近端那根
+  //(forearm 帶 hand、shin 帶 foot),不然父子各乘一次 = s² 爆掉。
+  const setS = (k, v) => {
+    const e = av.by[k]; if (!e) return; const s = v || 1;
+    if (av.skinned) { e.bone.scale.setScalar(s); return; }
+    if (!e.meshes) return;
+    e.meshes.forEach(m => { m.scale.setScalar(s); if (m.userData.restPos) m.position.copy(m.userData.restPos).multiplyScalar(s); });
+  };
+  if (av.skinned) {
+    setS('forearm_l', p.aL_scale); setS('forearm_r', p.aR_scale);   // hand 為子骨,自動繼承
+    setS('shin_l', p.lL_scale);    setS('shin_r', p.lR_scale);      // foot 為子骨,自動繼承
+    setS('torso', p.body_scale);
+  } else {
+    setS('forearm_l', p.aL_scale); setS('hand_l', p.aL_scale);
+    setS('forearm_r', p.aR_scale); setS('hand_r', p.aR_scale);
+    setS('shin_l', p.lL_scale);    setS('foot_l', p.lL_scale);
+    setS('shin_r', p.lR_scale);    setS('foot_r', p.lR_scale);
+    setS('torso', p.body_scale);
+  }
   // 整肢伸展:縮近端骨頭(upperarm/thigh)→ 整條肢等比放大(uniform,子骨/網格一起帶)
   const setStretch = (k, v) => { const e = av.by[k]; if (e) e.bone.scale.setScalar(v || 1); };
   setStretch('upperarm_l', p.aL_stretch); setStretch('upperarm_r', p.aR_stretch);
@@ -156,6 +196,26 @@ export function retargetAvatar(g, boxRig, pose) {
 }
 
 // ---- 幾何小工具 ----
+// ugc-1 ①:`Object3D.clone()` **不重綁骨架**——clone 出來的 SkinnedMesh 沿用 template 的 `skeleton` 引用,
+// 而那份 skeleton 的 bones[] 指著 **template 的骨頭**。後果:兩個 fighter 共用同一副骨架(A 動 B 跟著動),
+// 而且我們重定向寫的是 clone 的骨頭 → 蒙皮完全不跟著變形(實測形變量 0.0081 = 死的)。
+// 修法=照名字把 skeleton.bones 重指到 clone 內的同名骨頭,再 `bind()` 回去(等同 SkeletonUtils.clone,
+// 但 vendor 只有 GLTFLoader,不值得為這幾行再 vendor 一支)。回傳:這個角色是否含蒙皮網格。
+function rebindSkeletons(sc) {
+  const byName = new Map();
+  sc.traverse(o => { if (o.isBone) byName.set(o.name, o); });
+  let skinned = false;
+  sc.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    skinned = true;
+    o.frustumCulled = false;   // 蒙皮的 boundingSphere 停在 bind pose;骨頭一動就可能被誤剔除
+    const src = o.skeleton;
+    o.bind(new THREE.Skeleton(
+      src.bones.map(b => byName.get(b.name) || b),
+      src.boneInverses.map(m => m.clone())), o.bindMatrix.clone());
+  });
+  return skinned;
+}
 function depth(o) { let d = 0, p = o; while (p.parent) { d++; p = p.parent; } return d; }
 function insideWrap(o, wrap) { let p = o; while (p) { if (p === wrap) return true; p = p.parent; } return false; }
 function boxRigHeight(R) {
