@@ -51,7 +51,7 @@ await page.evaluate(() => { __v2.v2s.aiCallAt = __v2.game.time; });    // fast-f
 await page.waitForFunction('__v2.v2s.aiTier === "senior"', { timeout: 15000 }).catch(() => {});
 const senior = await page.evaluate(() => { const v = __v2; const f = v.fighters[1];
   return { tier: v.v2s.aiTier, name: v.NAMES[1], state: f.state, hidden: f._hidden,
-    wins: [v.roundWins[0], v.roundWins[1]], nearExit: Math.hypot(f.x - v.v2s.aiCallPos[0], f.y - v.v2s.aiCallPos[1]) < 5 }; });
+    wins: [v.roundWins[0], v.roundWins[1]], nearExit: Math.hypot(f.x - v.v2s.aiCallPos[0], f.y - v.v2s.aiCallPos[1]) < 140 }; }); // 進場後 AI 即開走(turbo 一批 ~130px)——斷言「在出口附近」不是「釘在出口」
 R('資深同事進場(檔案/名字切換、同點、比分保留 2:0)', senior.tier === 'senior' && senior.name === '資深同事' && senior.state === 'alive' && !senior.hidden && senior.wins[0] === 2 && senior.nearExit, JSON.stringify(senior));
 
 // ---------- ⑥ 資深讀起手舉防(實習生檔不會) ----------

@@ -23,6 +23,7 @@ import {
 import { flinch, camKick, dropCarry, stunFighter, shockFighter, burnFighter, freezeFighter, inThrowFlight } from './v2-combat.js';
 import { CLIPS } from './brawler-clips.js';
 import { stampElement, applyElement, stateAt, stateAtPixel, FL } from './v2-floor.js';
+import { onSolid, RIMMED } from './v2-terrain.js'; // ring-1:道具落在廢料井帶=落井despawn
 import { circleHitsSolid } from './fx.js';
 
 // 元素 → 顏色(爆炸 tint + 升壓發光 telegraph);wild=未充能野生紫
@@ -383,10 +384,17 @@ export function updateBottles(dt) {
       if (!air) { t.vx = dx / d * BARREL_PUSH; t.vy = dy / d * BARREL_PUSH; t.x = f.x + dx / d * (f.r + t.r); t.y = f.y + dy / d * (f.r + t.r); }
     }
     if (!t.alive) continue;
+    if (RIMMED && t.landed && !t.held && !onSolid(t.x, t.y)) {           // ring-1:地上瓶被推/滑出邊=落井
+      t.alive = false; t.respawn = bottleRespawnT(); addText(t.x, t.y - 16, '落井', '#9aa4af'); continue;
+    }
     if (!t.landed && game.time - t.flyT0 >= BOTTLE_LOB.T) {          // 自然落地即碎(脆;桶=悶,落地閃 1s 才爆——材質對比)
       const over = game.time - t.flyT0 - BOTTLE_LOB.T;               // 回推跨幀過衝 → 落點=精確 range(同舊瓶管線)
       t.x = clamp(t.x - t.vx * over, t.r, W - t.r); t.y = clamp(t.y - t.vy * over, t.r, H - t.r);
-      if (inPod(t.x, t.y)) recycleGarbage(t); else shatterBottle(t); // 落進回收口=清運(拋物線丟中艙),否則碎地(Route A vs 砸地)
+      if (RIMMED && !onSolid(t.x, t.y)) {                          // ring-1:落在廢料井帶=直接落井(不碎不留地板)
+        t.alive = false; t.respawn = bottleRespawnT(); t.held = false;
+        addText(t.x, t.y - 16, '落井', '#9aa4af'); game.sfx.push('dash');
+      }
+      else if (inPod(t.x, t.y)) recycleGarbage(t); else shatterBottle(t); // 落進回收口=清運(拋物線丟中艙),否則碎地(Route A vs 砸地)
     }
   }
 }
@@ -472,6 +480,10 @@ export function updateBarrels(dt) {
   for (const b of barrels) {
     if (!b.alive) { b.respawn -= dt; if (b.respawn <= 0) { b.alive = true; b.state = 'idle'; b.charge = null; b.vx = 0; b.vy = 0; b.thrownBy = -1; b.armGrace = 0; b.flyT0 = -9; b.landed = true; b.z = 0; b.dropT0 = -9; } continue; }
     if (b.armGrace > 0) b.armGrace -= dt;
+    if (RIMMED && !b.held && b.landed && (b.z || 0) <= 0 && !onSolid(b.x, b.y)) { // ring-1:地上桶被推/滾出邊=落井(不爆)
+      b.alive = false; b.respawn = v2s.barrelRespawnCur; b.state = 'idle'; b.fuse = 0;
+      addText(b.x, b.y - 16, '落井', '#9aa4af'); game.sfx.push('dash'); continue;
+    }
     if (!b.held) {                                                      // 被扛的桶由 carry loop 定位;其餘走物理
       // B 案彈道:sim 真高度(判定 gate + render 都讀它)。dropT0>0 = 快落段(砸中人/空中撞牆後垂直墜地)
       if (b.dropT0 > 0) {
@@ -506,6 +518,11 @@ export function updateBarrels(dt) {
       }
       if (!b.landed && game.time - b.flyT0 >= BARREL_LOB.T) {          // 彈道自然落地幀:剩餘速度 ×LAND_SKID=滾動收尾 + 重置引信 + 塵土
         b.landed = true; b.z = 0;
+        if (RIMMED && !onSolid(b.x, b.y)) {                            // ring-1:丟進廢料井帶=落井(不爆,靜靜消失=虧)
+          b.alive = false; b.respawn = v2s.barrelRespawnCur; b.state = 'idle'; b.fuse = 0;
+          addText(b.x, b.y - 16, '落井', '#9aa4af'); game.sfx.push('dash');
+          continue;
+        }
         b.vx *= LAND_SKID; b.vy *= LAND_SKID;
         if (b.state === 'fuse') b.fuse = BARREL_LAND_FUSE;             // 落地閃 LAND_FUSE 秒才爆(統一心智模型;丟空落地不再看殘餘引信)
         addRing(b.x, b.y, 22, '#cbb9a2', 0.28, 3); game.sfx.push('thud');

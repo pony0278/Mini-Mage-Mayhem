@@ -9,7 +9,7 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
 import { updateDeathTheater, addText, addRing, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, setRimGeometry } from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -20,8 +20,8 @@ import {
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, BURN_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
   camRig, CAMB, NAMES, AI_PROFILE,
 } from './v2-state.js';
-import { TERRAIN, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall } from './v2-combat.js';
+import { TERRAIN, RIM, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall, resolveFall } from './v2-combat.js';
 import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
@@ -206,7 +206,7 @@ function step(dt) {
     }
     stepFloor(dt); // 地板化學:火沿油滾動 + 每格衰退/預警 + 電水雙計時器(注入=道具/站;cut 3 接)
     for (const f of fighters) {
-      if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) resetFighter(f); continue; }
+      if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) { resetFighter(f); f.invuln = 1.8; } continue; } // 墜落重生短無敵(ring-1;同 softReintegrate 彈回)
       if (f.state === 'away') continue; // 實習生跑掉搬救兵(tier-1):場外待命,updateAiCall 排資深進場
       if (f._performing) { f.x = POD.x; f.y = POD.y; f.vx = 0; f.vy = 0; continue; } // 收容演出:被罩在艙心(掙扎/掃描由 render+HUD 演;stun 倒數也凍結=不會醒)
       // cooldown timers
@@ -262,6 +262,7 @@ function step(dt) {
           inc.falls[f.pid]++;
           if (f.lastHitBy >= 0 && f.lastHitBy !== f.pid) { inc.knockoffs[f.lastHitBy]++; inc.types.add('knockoff'); }
           else { inc.selfFalls[f.pid]++; inc.types.add('self'); }
+          resolveFall(f); // ring-1:墜落=對手得分(自摔也算=蠢死法);終局=廢料井封存版
         }
         continue;
       }
@@ -498,10 +499,16 @@ if (TERRAIN === 'isles') {
   buildArena();                                     // grid broken-isles
   setIslandMode(true);                              // tile-slab floating island
   CAM.fov = 26; CAM.angle = 24; CAM.dist = 1150; CAM.azimuth = 0; CAM.panX = 0; CAM.panZ = -10; CAM.lookY = 20;
-} else {                                            // 'flat' — plain walled platform, no falling (best for testing)
-  buildFlatArena();
-  setWallFade(true);                                // see-through walls: occluding walls (esp. the south one) fade
-  setApron(true);                                   // 場外暗地板:蓋掉牆外黑虛空(16:9 視野較寬)
+} else {                                            // 'rim'(正式:開放邊緣+四角平台)| 'flat'(全牆退路,好測收容)
+  if (TERRAIN === 'rim') {                          // ring-1(朋友提案 2026-07-29):四側邊帶=廢料井
+    buildFlatMap();                                 // 無牆 tile(走/被打飛都能出界);墜落由 onSolid 裁定
+    game.isVoidAt = (e) => !onSolid(e.x, e.y);      // fx.overVoid → 死亡劇場 → v2 迴圈計分(resolveFall)
+    setRimGeometry(RIM);                            // render-lab:井帶壓暗+邊緣警戒條+角平台鑲邊
+  } else {
+    buildFlatArena();
+    setWallFade(true);                              // see-through walls: occluding walls (esp. the south one) fade
+  }
+  setApron(true);                                   // 場外暗地板:蓋掉場外黑虛空(16:9 視野較寬)
   // 實驗室主題(arcane containment 原型換皮):暗藍紫做舊地板+發光溝縫+焦痕符文+冷色氛圍
   setLabTheme(true);
   try { v2s.lowFlicker = localStorage.getItem('mmm_lowFlicker') === '1'; } catch { /* no storage */ }
@@ -520,7 +527,7 @@ if (TERRAIN === 'isles') {
   Object.assign(CAM, { azimuth: 0, panX: 0, panZ: -25 }, CAM_FIGHT); // v2 相機定案(使用者 ?tune 拉定;戰鬥視角=CAM_FIGHT、開場高視角=CAM_INTRO,都在 updateCamRig 上方。改 v2 視角改那裡,不是 state.js——state.js 的 CAM 只是單機預設,v2 開機即蓋掉)
 }
 // flat mode uses the smoothed/bounded camRig; isles/grid follow the fighter directly (their framing differs)
-game.camTarget = TERRAIN === 'flat' ? camRig : fighters[0];
+game.camTarget = (TERRAIN === 'flat' || TERRAIN === 'rim') ? camRig : fighters[0];
 game.occludeTarget = fighters[LOCAL]; // see-through walls aim at the REAL player, not the (clamped) camera rig
 game.enemies = fighters.slice();
 

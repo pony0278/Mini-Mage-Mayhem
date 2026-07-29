@@ -359,8 +359,8 @@ function drawIntro() {
     hctx.font = '900 20px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
     hctx.fillText('🧑‍💼 主管：都給我好好工作！', cx, cy - 46); // 老闆開場監督(世界觀留=喜劇土壤;開始後就消失)
     hctx.font = '900 34px system-ui, sans-serif'; hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(6,12,18,.85)';
-    hctx.strokeText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
-    hctx.fillStyle = '#9affd0'; hctx.fillText('把對手丟進中央回收口 ×' + WIN_TARGET + '　就贏', cx, cy);
+    hctx.strokeText('丟進回收口.或打下場外　先拿 ' + WIN_TARGET + ' 分就贏', cx, cy);
+    hctx.fillStyle = '#9affd0'; hctx.fillText('丟進回收口.或打下場外　先拿 ' + WIN_TARGET + ' 分就贏', cx, cy);
     hctx.font = '800 17px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.92)';
     hctx.fillText('打暈 → 抓起 → 丟進去 · 元素瓶／爆桶／冰面 都能幫你收容他', cx, cy + 30);
     hctx.font = '700 13px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.55)';
@@ -436,5 +436,5 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: burn-2e', VW - 10, VH - 4);
+  hctx.fillText('build: ring-1', VW - 10, VH - 4);
 }

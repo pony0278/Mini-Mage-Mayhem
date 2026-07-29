@@ -4,8 +4,12 @@ import { W, H, COLS, ROWS, TILE_FLOOR, TILE_GRASS, TILE_WALL, TILE_VOID } from '
 import { game } from './state.js';
 import { FRICTION } from './v2-state.js';
 
-export const TERRAIN = 'flat';                  // 'flat'(平台,好測收容) | 'isles'(浮島) | 'grid'(格子斷橋)
-export const FREEFORM = TERRAIN === 'isles';    // island routing / bridge-rails / fall only apply in isles mode
+export const TERRAIN = 'rim';                   // 'rim'(正式:開放邊緣+四角平台) | 'flat'(全牆平台,退路) | 'isles'(浮島) | 'grid'(格子斷橋)
+export const FREEFORM = TERRAIN === 'isles';    // island routing / bridge-rails only apply in isles mode
+export const RIMMED = TERRAIN === 'rim';        // ring-1(朋友提案 2026-07-29):邊緣=廢料井,掉下去也算一分
+// ring-1 幾何:實心=內圈矩形 ∪ 四角平台(元素站腳下);虛空=四條邊帶(兩座角平台之間)。
+// 站(150,150 等)穩坐角平台;拉桿(80,320)/補給座/出生點都在內圈。改幾何先過一遍這些點位。
+export const RIM = { m: 64, corner: 230 };      // m=邊帶深度(2 tile);corner=角平台邊長(從地圖角往內)
 // 擊退手感:平台/收容場要「有重量」——大阻力 + 低速截斷砍掉溜冰尾巴;
 // 浮島保留原本的長滑行(把人滑進虛空正是那張圖的機制)。
 export const WEIGHTY = TERRAIN !== 'isles';
@@ -57,6 +61,12 @@ export function segDist(px, pz, ax, az, bx, bz) {
   return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
 }
 export function onSolid(x, y) {
+  if (TERRAIN === 'rim') {                                          // ring-1:內圈矩形 ∪ 四角平台;其餘=廢料井
+    if (x <= 0 || y <= 0 || x >= W || y >= H) return false;
+    if (x > RIM.m && x < W - RIM.m && y > RIM.m && y < H - RIM.m) return true;
+    const cx = x < W / 2 ? x : W - x, cy = y < H / 2 ? y : H - y;   // 摺到左上象限=四角對稱
+    return cx <= RIM.corner && cy <= RIM.corner;
+  }
   if (TERRAIN !== 'isles') return x > 0 && y > 0 && x < W && y < H; // flat/grid: whole arena is ground
   for (const I of ISLANDS) if (Math.hypot(x - I.x, y - I.z) <= I.r) return true;
   // corridor half-width = plank half + a generous margin (≈ player radius) so you don't fall from a slight drift

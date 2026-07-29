@@ -192,8 +192,8 @@ R(`擊飛瓶落地碎=下風油膜(空地也碎;floor=${s12b.floor})`, !s12b.ali
 await page.evaluate(() => { const v = __v2; for (const t of v.bottles) { t.alive = true; t.respawn = 0; t.held = false; t.x = t.x0; t.y = t.y0; t.vx = t.vy = 0; t.flyT0 = -9; t.landed = true; t.z = 0; t._smash = false; } });
 const s13 = await page.evaluate(() => {
   const v = __v2, C = v.fighters[1], t = v.bottles[0];
-  t.x = 300 + 90 * Math.cos(0.75); t.y = 540 + 90 * Math.sin(0.75); t.vx = t.vy = 0; t.alive = true; t.held = false; t.z = 0; t.landed = true; // 邊緣 da≈0.75 → force≈112 < MIN
-  C.x = 300; C.y = 540; C.facing = 0; C.stunned = false; C.item = null;
+  t.x = 300 + 90 * Math.cos(0.75); t.y = 420 + 90 * Math.sin(0.75); t.vx = t.vy = 0; t.alive = true; t.held = false; t.z = 0; t.landed = true; // 邊緣 da≈0.75 → force≈112 < MIN(ring-1:整組內移,原 y540+61=601 在南井帶=會落井)
+  C.x = 300; C.y = 420; C.facing = 0; C.stunned = false; C.item = null;
   v.castWind(C);
   return { grounded: t.landed, moving: Math.hypot(t.vx, t.vy) > 20 };
 });

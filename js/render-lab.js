@@ -986,6 +986,62 @@ function addPowerHalo(g, color) {
   orb.position.y = 3.4; g.add(orb);
   powerHalos.push({ ring, flashRing, orb, ramp: 0 });
 }
+/* ========== ring-1:廢料井邊帶(開放邊緣視覺)==========
+   四條井帶(兩座角平台之間的邊帶)壓暗成井口 + 內緣琥珀警戒條(帶斑馬紋概念先用純色)。
+   世界座標直接掛 scene(同地板化學層,不吃 labGroup 縮放);幾何=一次建好,零 per-frame 成本。
+   高度:井面 y=1.0(蓋過化學 tile 0.6)、警戒條 y=1.2。判定真相=v2-terrain onSolid,這裡純視覺。 */
+export function setRimGeometry(RIM) {
+  const W = 960, H = 640, m = RIM.m, c = RIM.corner;
+  const g = new THREE.Group(); g.name = 'RIM_VOID';
+  const pitMat = new THREE.MeshBasicMaterial({ color: 0x010204 });                    // 井口=純黑(比暗地板更黑一階=讀成洞)
+  // 斑馬紋警戒帶(琥珀/黑斜紋 canvas,RepeatWrapping 沿長度重複)——跟艙邊既有的黃黑紋同語言=工業危險邊
+  const hz = document.createElement('canvas'); hz.width = 64; hz.height = 16;
+  const hc = hz.getContext('2d');
+  hc.fillStyle = '#151008'; hc.fillRect(0, 0, 64, 16);
+  hc.fillStyle = '#ffb84d';
+  for (let i = -1; i < 5; i++) { hc.beginPath(); hc.moveTo(i * 16, 16); hc.lineTo(i * 16 + 16, 0); hc.lineTo(i * 16 + 24, 0); hc.lineTo(i * 16 + 8, 16); hc.fill(); }
+  const hazTex = new THREE.CanvasTexture(hz); hazTex.wrapS = hazTex.wrapT = THREE.RepeatWrapping;
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }); // 井內側微光(下層作業的光)
+  const plane = (mat, x0, z0, x1, z1, y) => {
+    const mm = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), mat);
+    mm.rotation.x = -Math.PI / 2; mm.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+    g.add(mm); return mm;
+  };
+  const hazBand = (x0, z0, x1, z1) => {                                               // 斑馬帶(重複貼圖沿長軸鋪)
+    const t = hazTex.clone(); t.needsUpdate = true;
+    const L = Math.max(x1 - x0, z1 - z0); t.repeat.set(L / 48, 1);
+    const mm = plane(new THREE.MeshBasicMaterial({ map: t }), x0, z0, x1, z1, 1.2);
+    if ((z1 - z0) > (x1 - x0)) mm.rotation.z = Math.PI / 2;                           // 直帶:轉 90° 沿長軸重複
+    return mm;
+  };
+  const BW = 11;                                                                      // 警戒帶寬(世界 px)
+  // 四條井帶:上/下(x 從角平台內緣到另一側角平台)、左/右
+  const strips = [
+    [c, 0, W - c, m], [c, H - m, W - c, H],       // 上/下
+    [0, c, m, H - c], [W - m, c, W, H - c],       // 左/右
+  ];
+  for (const [x0, z0, x1, z1] of strips) {
+    plane(pitMat, x0, z0, x1, z1, 1.0);
+    // 內緣警戒條(貼實心地一側)+ 兩端短條(沿角平台邊)
+    const horiz = (x1 - x0) > (z1 - z0);
+    if (horiz) {
+      const zi = z0 === 0 ? m : H - m;            // 內緣 z
+      hazBand(x0, zi - BW / 2, x1, zi + BW / 2);
+      plane(glowMat, x0, z0 === 0 ? zi - 22 : zi, x1, z0 === 0 ? zi : zi + 22, 1.1);
+      hazBand(x0 - BW / 2, z0, x0 + BW / 2, z1); hazBand(x1 - BW / 2, z0, x1 + BW / 2, z1);
+    } else {
+      const xi = x0 === 0 ? m : W - m;
+      hazBand(xi - BW / 2, z0, xi + BW / 2, z1);
+      plane(glowMat, x0 === 0 ? xi - 22 : xi, z0, x0 === 0 ? xi : xi + 22, z1, 1.1);
+      hazBand(x0, z0 - BW / 2, x1, z0 + BW / 2); hazBand(x0, z1 - BW / 2, x1, z1 + BW / 2);
+    }
+  }
+  scene.add(g);
+  _rimGroup = g;
+}
+let _rimGroup = null;
+export function rimGeometryOn() { return !!_rimGroup; } // 測試 hook
+
 export function setStationsPowered(on) { stationsPowered = !!on; if (!on) for (const h of powerHalos) { h.ramp = 0; h.ring.material.opacity = 0; h.flashRing.material.opacity = 0; h.flashRing.scale.setScalar(1); h.orb.material.opacity = 0; } }
 labAnimated.push({ update: () => {
   if (!stationsPowered) return;
@@ -1350,7 +1406,7 @@ export function setPodPerform(p) {
   if (p.phase === 'scan') _scanRing.position.y = (DOME_R * 0.9 * (1 - p.pk) + 4) / Math.max(0.05, sy); // 掃描環頭→腳(除以 sy 抵銷 group 縮放)
 }
 
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, frostBottleReady: () => frostBottleReady(), barrelReady: () => barrelReady(), fireHatReady: () => fireHatReady(), windGauntletReady: () => windGauntletReady(), domeVisible: () => _domeShown, fxLow: () => FX_LOW }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, frostBottleReady: () => frostBottleReady(), barrelReady: () => barrelReady(), fireHatReady: () => fireHatReady(), windGauntletReady: () => windGauntletReady(), domeVisible: () => _domeShown, fxLow: () => FX_LOW, rimOn: () => rimGeometryOn() }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;

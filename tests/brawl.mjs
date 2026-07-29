@@ -80,7 +80,7 @@ await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fight
   a.x = v.POD.x - 10; a.y = v.POD.y; a.facing = 0; });
 await page.waitForFunction('__v2.state().roundWins[1] >= 1', { timeout: 60000 });
 const cont = await page.evaluate(() => { const s = __v2.state(); return { wins: s.roundWins, log: s.containLog, perform: !!s.perform }; });
-R('搬進艙=收容得分(roundWins+containLog 記「carry」+演出啟動)', cont.wins[1] === 1 && cont.log.length === 1 && cont.log[0].m === 'carry' && cont.perform, JSON.stringify(cont));
+R('搬進艙=收容得分(roundWins+containLog 記「carry」;第1分=輕演出不開罩=ring-1 儀式分級)', cont.wins[1] === 1 && cont.log.length === 1 && cont.log[0].m === 'carry' && !cont.perform, JSON.stringify(cont));
 
 // ---------- ⑥ endMatch=事故報告(分享引擎復活) ----------
 await page.evaluate(() => __v2.endMatch(1));

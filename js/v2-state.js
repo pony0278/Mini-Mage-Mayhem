@@ -176,7 +176,7 @@ export const AI_PROFILE = {
 // (AI 逃跑=進跑速 ×FLEE_SPEED,略慢於玩家=衝刺/風壓/冰瓶才好攔;暈/抓/收容照常有效=追上他直接完賽)。
 // 到出口=白煙消失,CALL_T 後資深同事同點進場(比分保留,只差最後一收但對手變強)。一場一次(v2s.aiCalled)。
 export const FLEE_STAB = 50, FLEE_SPEED = 0.95, CALL_T = 2.0;
-export const FLEE_EXITS = [[44, H / 2], [W - 44, H / 2], [W / 2, 44], [W / 2, H - 44]]; // 四側牆內緣出口
+export const FLEE_EXITS = [[46, 46], [W - 46, 46], [46, H - 46], [W - 46, H - 46]]; // 四角平台外緣出口(ring-1:四側中線=廢料井邊帶,逃過去會摔死;角平台=元素站維修走道)
 export const FUMBLE_T = 0.5, ESCAPE_STAB = 50;
 export const BODY_SEP = 0.8;   // 角色實心圈 = (r+r)*BODY_SEP:視覺貼近到體素肩碰肩才停
 export function inPod(x, y) { return Math.hypot(x - POD.x, y - POD.y) <= POD.r; }
@@ -313,8 +313,8 @@ export const POISON_BURST_R = 72, POISON_BURST_STAB = 45, POISON_BURST_FORCE = 2
 // --- 三階段收容升級 (spec F §2.5) 的資料表 ---
 export const STAGE_NAME = ['普通', '黃色警戒', '全面失控'];
 export const STAGE_BANNER = ['臨時收容成功！樣本逃逸', '高危險樣本再收容！基地警戒升級'];
-export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff', ice: '#9fd8ff', barrel: '#ff9a4a', fire: '#ff7a3a', reverse: '#c98cff' };
-export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', fire: '燒', reverse: '反向' };
+export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff', ice: '#9fd8ff', barrel: '#ff9a4a', fire: '#ff7a3a', reverse: '#c98cff', fall: '#9aa4af' };
+export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', fire: '燒', reverse: '反向', fall: '墜' };
 export const WIN_TARGET = 3;
 
 // --- 垃圾瓶=戰鬥道具(四型元素瓶:砸人=冰凍/著火/電弧/毒地板;分類玩法凍結在 B 款=4c92837,docs/game-split.md)---

@@ -22,7 +22,7 @@ import {
   GUARD_BLOCK_PUSH, GUARD_BLOCK_FLINCH, GUARD_BREAK_FUMBLE, GUARD_BREAK_LOCK,
   FIRE_STAB_DPS, FIRE_BURN_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
-import { FREEFORM, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
+import { FREEFORM, RIMMED, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
 import { generateReport } from './v2-report.js';
 import { stateAtPixel, floorEvents, FL } from './v2-floor.js';
 
@@ -622,7 +622,31 @@ export function resolveContain(w, loser, method) {
   containLog.push({ winner: w, method, stage: v2s.stage });
   addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6);
   dlog('CONTAIN', NAMES[loser.pid], '→', NAMES[w], method, 'score', roundWins[0] + '-' + roundWins[1]);
-  startPerform(w, loser); // 回收演出 V0.8:收尾(封存/彈回)延到演出結束(finishPerform)
+  // 儀式分級(ring-1,使用者拍板 2026-07-29,朋友引 MK「終結=最後的儀式」):前兩分=輕演出快節奏
+  // (計分 beat+彈回,不開玻璃罩),**最後一分才播完整收容演出**(startPerform n=3 → finalSeal)。
+  if (roundWins[w] >= WIN_TARGET) startPerform(w, loser);
+  else { addHitstop(0.2); game.sfx.push('thud'); softReintegrate(loser, roundWins[0] + roundWins[1]); }
+}
+// --- 墜落得分(ring-1,朋友提案:邊緣=廢料井,掉下去也算一分;自摔=對手得分=蠢死法) ---
+export function resolveFall(v) {
+  if (v2s.perform || v2s.matchOver) return;               // 演出/終局中不計分(墜落者照常重生)
+  const w = 1 - v.pid;
+  roundWins[w]++; v2s.winnerPid = w;
+  containLog.push({ winner: w, method: 'fall', stage: v2s.stage });
+  addShake(6); game.sfx.push('thud');
+  dlog('FALL', NAMES[v.pid], '→', NAMES[w], 'score', roundWins[0] + '-' + roundWins[1]);
+  if (roundWins[w] >= WIN_TARGET) fallSeal(w);            // 終局=廢料井封存版(人已墜井,不開罩)
+  else {                                                  // 輕演出:橫幅+警戒升級;墜落者走 down→respawn 自然回場(v2.js)
+    const total = roundWins[0] + roundWins[1];
+    applyStage(Math.min(3, total + 1));
+    v2s.bannerText = NAMES[w] + ' 得分！對手墜入廢料井'; v2s.winBannerT = 1.6;
+    addHitstop(0.2);
+  }
+}
+export function fallSeal(w) { // 終局 by 墜落:廢料井封存(不開玻璃罩——人已經在下層了)
+  v2s.bannerText = NAMES[w] + ' 獲勝!對手已由下層回收線清運'; v2s.winBannerT = 3.0;
+  addShake(10); stopHit('seal'); game.sfx.push('waveclear'); game.sfx.push('upgrade');
+  endMatch(w);
 }
 // --- 回收演出 V0.8(使用者演出設計文檔 2026-07;拍板:不鎖定勝方/不動 follow cam/艙口 LED 飄字)---
 // 時間軸(佔總長比例):捕捉 0-12% → 掙扎 12-30% → 掃描 30-62% → 分類 62-80% → 收尾 80-100%。
@@ -740,7 +764,7 @@ export function aiMove(f) {
       addRing(f.x, f.y, 32, '#cfd8e3', 0.5, 6); addText(f.x, f.y - 40, '學長——救命——！', '#cfd8e3'); game.sfx.push('dash');
       dlog('FLEE escaped'); return { x: 0, y: 0 };
     }
-    const fd = FREEFORM ? aiSafeDir(f, dx / d, dy / d) : { x: dx / d, y: dy / d };
+    const fd = (FREEFORM || RIMMED) ? aiSafeDir(f, dx / d, dy / d) : { x: dx / d, y: dy / d };
     if (fd.x || fd.y) f.facing = Math.atan2(fd.y, fd.x);
     return fd;
   }
@@ -770,7 +794,7 @@ export function aiMove(f) {
   // 出拳後的後撤喘息:短暫遠離對手(給玩家反打窗口)
   if (!f.carrying && game.time < (f._aiBackoffUntil || 0)) { gx = f.x - (o.x - f.x); gy = f.y - (o.y - f.y); }
   const dx = gx - f.x, dy = gy - f.y, dl = Math.hypot(dx, dy) || 1;
-  const dir = FREEFORM ? aiSafeDir(f, dx / dl, dy / dl) : { x: dx / dl, y: dy / dl };
+  const dir = (FREEFORM || RIMMED) ? aiSafeDir(f, dx / dl, dy / dl) : { x: dx / dl, y: dy / dl }; // rim:邊緣迴避(不主動走進廢料井;被打飛照樣飛出去)
   if (dir.x || dir.y) f.facing = Math.atan2(dir.y, dir.x);
   // 跳躍(brawl-2):中距離對峙時偶爾起跳,半程自動下壓(活教學:AI 示範跳攻,玩家看得懂新動詞)
   if (f._aiDiveAt && game.time >= f._aiDiveAt) { f._aiDiveAt = 0; if (airborne(f) && !f.stunned) { f.facing = Math.atan2(o.y - f.y, o.x - f.x); dive(f); } }
