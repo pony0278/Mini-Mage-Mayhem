@@ -52,7 +52,12 @@ const fireDodge = await page.evaluate(() => { const v = __v2; const f = v.fighte
   f._jumpT = v.game.time - 0.2;                     // 快轉到空中段(z>1)
   return { jumped: f._jumpT > -5, stab0: Math.round(f.stability) };
 });
-await page.evaluate(() => new Promise(res => { const v = __v2, t0 = v.game.time; const iv = setInterval(() => { if (v.game.time - t0 > 0.25) { clearInterval(iv); res(); } }, 25); })); // 站火 0.25s 遊戲時(在地面會被削 ~15 穩定)
+// 站火 0.25s 遊戲時(在地面會被削 ~15 穩定)。
+// ⚠ 跳躍弧線本身會結束——併發跑時一輪 poll 之間流掉的遊戲時間更多,人落地了才取樣=火燒到=假 FAIL
+//(實測 CONC=3 下 stab 96、單跑 100)。每 tick 重新釘 `_jumpT` 把人按在空中,整個取樣窗都是「滯空」。
+await page.evaluate(() => new Promise(res => { const v = __v2, t0 = v.game.time;
+  const iv = setInterval(() => { v.fighters[0]._jumpT = v.game.time - 0.2;
+    if (v.game.time - t0 > 0.25) { clearInterval(iv); res(); } }, 25); }));
 const fireRes = await page.evaluate(() => { const f = __v2.fighters[0]; const s = Math.round(f.stability);
   f.x = 100; f.y = 100; f._jumpT = -9; return s; });
 R('空中免地板化學(火海上方滯空,穩定值不掉)', fireDodge.jumped && fireRes === 100, 'stab=' + fireRes);

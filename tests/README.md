@@ -35,7 +35,8 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `dash.mjs`      | 衝刺攻擊 feel-1:持續跑 ≥ DASH_RUN_T 出拳=衝刺(kind4 不入連段)、短移動=普通拳、命中削30+推、可擋+擋下開反擊窗、起手前衝、對已暈者=挑飛、揮空冷卻;clip 槽位 dash_punch/hit_flinch/walk_cycle 缺槽安全 |
 | `hitfx.mjs`     | 漫畫打擊爆花 hitfx-1:命中推 game.bursts(鉤=小橘/挑飛=size46+集中線+白閃/打暈=琥珀/反擊=金/下壓=紅)、壽命到移除、揮空無爆花 |
 | `combo.mjs`     | 連段系統 brawl-3:三連擊黏臉=一次暈不飛走、連段中純踉蹌不位移、對已暈者出拳=挑飛 launcher、風壓打空中=乾淨接送(WIND_CARRY_LOB 不墊穩定)、地面=吹翻滾墊穩定、全鏈挑飛→風壓→進艙記 wind |
-| `skinrig.mjs`   | 蒙皮 GLB 角色 ugc-1(玩家自製角色路線 B):骨名別名表(遊戲原生 + VRoid/VRM `J_Bip_*` 各收滿 16 骨)、clone 後**重綁骨架**(skeleton 不共用+bones 落在自己 wrap 底下+蒙皮真的形變)、渲染定位/踩地/站高、per-part 縮放對蒙皮=**縮骨頭**(hand 為子骨不重複縮=不 s²)、剛體 `base-avatar.glb` 那條路不受影響。**GLB fixture 由 `fixtures/mkskin.mjs` 當場產**(不放二進位進 repo;那支檔就是骨名版本的規格書),用 puppeteer request 攔截餵給 `assets/rigs/base-avatar.glb` |
+| `skinrig.mjs`   | 蒙皮 GLB 角色 ugc-1(玩家自製角色路線 B):骨名別名表(遊戲原生 + VRoid/VRM `J_Bip_*` 各收滿 16 骨)、clone 後**重綁骨架**(skeleton 不共用+bones 落在自己 wrap 底下+蒙皮真的形變)、渲染定位/踩地/站高、per-part 縮放對蒙皮=**縮骨頭**(hand 為子骨不重複縮=不 s²)、**A-pose rest 校正**(45°→殘差 0°,校正後骨頭方向 = T-pose 版;內建角色預設不校正)、剛體 `base-avatar.glb` 那條路不受影響。⚠ 跨分頁比姿勢要**比夾角不比逐分量**——idle 呼吸相位差本來就有 ~4° 抖動。**GLB fixture 由 `fixtures/mkskin.mjs` 當場產**(不放二進位進 repo;那支檔就是骨名版本的規格書),用 puppeteer request 攔截餵給 `assets/rigs/base-avatar.glb` |
+| `psimport.mjs`  | punch-studio **匯入實驗室** ugc-1/1b:蒙皮 GLB 載得進(舊版 VRM 命名被 `AVATAR_REQUIRED` 硬擋)、別名表 native+VRM 各 16 骨、A-pose rest 校正 45°→0° 且骨頭方向對齊 T-pose 版、**內建 base-avatar 不套校正**(與遊戲同規則=WYSIWYG 命脈)、匯入檢查報告(骨頭對照/面數/提醒)、缺骨頭=明確失敗。⚠ 造「壞模型」要**等長替換**骨名(GLB 檔頭記著 JSON chunk 長度,改長度變成「壞檔」就測錯東西了) |
 | `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=resolveContain 計分+containLog、endMatch=事故報告 |
 
 ## 提速(2026-07-20:全套 10min+ → ~3.5min)

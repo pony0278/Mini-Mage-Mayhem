@@ -71,6 +71,46 @@ const BONE_ALIASES = [
 // 誤收成 upperarm,而且它是 traverse 的頭一個 → 靠 `if (by[key]) continue` 把真正的上臂擋在門外。
 const BONE_SKIP = /^(armature|scene|rootnode|correction|sketchfab)/;
 
+// ugc-1b rest 姿勢正規化:重定向的基準線是角色**自己的 rest**(目標世界 = Δ · bQT)——rest 偏了,
+// 每個姿勢都帶著這個偏差。VRoid/多數 DCC 出廠是 **A-pose**(手臂往下 45°),實測偏離 T-pose 45°,
+// 直接拿來用 = 所有出拳動作手臂都低 45°。這裡在校正當下把各肢段的 rest 方向轉到 box rig T-pose 的方向,
+// 讓「玩家丟什麼進來都能用」,而不是要求每個人先去 Blender 擺 T-pose。
+// **只對匯入角色生效**:內建 base-avatar 是我們自己的資產(手臂已在 2~5° 內、腿刻意外八 13°),
+// 硬拉直會改掉正式角色的站姿=視覺回歸。`?tpose=1` 強制開、`?tpose=0` 強制關(實驗室 A/B 用)。
+const TPOSE_FIX = (() => {
+  const q = new URLSearchParams(location.search).get('tpose');
+  return q === null ? (AVATAR_URL !== DEFAULT_AVATAR_URL) : q !== '0';
+})();
+// 肢段 = 骨頭 → 它的遠端子骨(方向由這兩點定義);torso 取到 head(neck 的 box driver 就是 spine 本人=零向量)
+const LIMB_CHILD = { torso: 'head',
+  upperarm_l: 'forearm_l', forearm_l: 'hand_l', upperarm_r: 'forearm_r', forearm_r: 'hand_r',
+  thigh_l: 'shin_l', shin_l: 'foot_l', thigh_r: 'shin_r', shin_r: 'foot_r' };
+const _na = new THREE.Vector3(), _nb = new THREE.Vector3(), _nc = new THREE.Vector3(), _nd = new THREE.Vector3();
+const _nqf = new THREE.Quaternion(), _nqw = new THREE.Quaternion(), _nqp = new THREE.Quaternion();
+// apply=false → 只量不改(用來取修正後的殘差,當驗收數字)。回傳最大偏離角度(度)。
+function normalizeRest(by, order, apply) {
+  let maxDeg = 0;
+  for (const k of order) {                    // **父先子後**:改父會帶動子,子要用改過後的位置重量
+    const ck = LIMB_CHILD[k]; if (!ck) continue;
+    const e = by[k], c = by[ck]; if (!e || !c) continue;
+    const n0 = e.node(), n1 = c.node(); if (!n0 || !n1) continue;
+    e.bone.getWorldPosition(_na); c.bone.getWorldPosition(_nb);
+    n0.getWorldPosition(_nc); n1.getWorldPosition(_nd);
+    const have = _nb.sub(_na), want = _nd.sub(_nc);
+    if (have.lengthSq() < 1e-12 || want.lengthSq() < 1e-12) continue;
+    have.normalize(); want.normalize();
+    const ang = Math.acos(Math.max(-1, Math.min(1, have.dot(want))));
+    maxDeg = Math.max(maxDeg, ang * 180 / Math.PI);
+    if (!apply || !(ang > 1e-4)) continue;
+    _nqf.setFromUnitVectors(have, want);      // 世界空間:現有方向 → 目標方向
+    e.bone.getWorldQuaternion(_nqw);
+    e.bone.parent.getWorldQuaternion(_nqp).invert();
+    e.bone.quaternion.copy(_nqw).premultiply(_nqf).premultiply(_nqp);
+    e.bone.updateMatrixWorld(true);
+  }
+  return +maxDeg.toFixed(1);
+}
+
 // T-pose:box rig 的中性測量姿勢(雙臂水平放下=角色 rest 對齊)。與編排器 inspectTposePose 同義:
 // 手臂 sz=90(水平)、其餘 0。用來建立 box↔角色的世界四元數對照。
 function tposePose() {
@@ -119,10 +159,13 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   applyBrawlerPose(boxRig, tposePose());
   boxRig.P.updateMatrixWorld(true);
   wrap.updateMatrixWorld(true);
+  const order = Object.keys(by).sort((a, b) => depth(by[a].bone) - depth(by[b].bone));
+  // ugc-1b:rest 姿勢正規化(**校正必須在記 bQT 之前**——bQT 就是基準線)
+  const restDevDeg = normalizeRest(by, order, TPOSE_FIX);          // 修前偏離(TPOSE_FIX 時順便套用)
+  const restResidDeg = normalizeRest(by, order, false);            // 修後殘差(關掉修正時 = 同一個數)
   Object.values(by).forEach(e => { const nd = e.node(); if (nd) { nd.getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); } });
 
-  const order = Object.keys(by).sort((a, b) => depth(by[a].bone) - depth(by[b].bone));
-  const av = { wrap, S, by, order, skinned, standH: size.y * S };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
+  const av = { wrap, S, by, order, skinned, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg, standH: size.y * S };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];

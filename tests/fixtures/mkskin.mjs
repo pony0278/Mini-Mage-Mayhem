@@ -15,18 +15,21 @@ const NAMES = {
 };
 
 // 骨頭:名字 + 世界 rest 位置 + 父。單位≈公尺(遊戲會照 bbox 重新縮放)
-function skeleton(N) {
+// apose=true → 雙臂往下 45°(VRoid / 多數 DCC 的出廠姿勢)。用來驗 rest 正規化:
+// 重定向的基準線是角色自己的 rest,rest 偏了每個姿勢都帶著偏差,不校正的話所有動作手臂低 45°。
+function skeleton(N, apose) {
+  const A = apose ? Math.SQRT1_2 : 1, D = apose ? Math.SQRT1_2 : 0;   // 手臂方向:T=沿 X 水平 / A=往下 45°
   return [
     { n: N.root,        w: [0, 0.90, 0], p: -1 },
     { n: N.torso,       w: [0, 1.00, 0], p: 0 },
     { n: N.neck,        w: [0, 1.42, 0], p: 1 },
     { n: N.head,        w: [0, 1.52, 0], p: 2 },
     { n: N.uarm('L'),   w: [0.18, 1.38, 0], p: 1 },
-    { n: N.farm('L'),   w: [0.44, 1.38, 0], p: 4 },
-    { n: N.hand('L'),   w: [0.66, 1.38, 0], p: 5 },
+    { n: N.farm('L'),   w: [0.18 + 0.26 * A, 1.38 - 0.26 * D, 0], p: 4 },
+    { n: N.hand('L'),   w: [0.18 + 0.48 * A, 1.38 - 0.48 * D, 0], p: 5 },
     { n: N.uarm('R'),   w: [-0.18, 1.38, 0], p: 1 },
-    { n: N.farm('R'),   w: [-0.44, 1.38, 0], p: 7 },
-    { n: N.hand('R'),   w: [-0.66, 1.38, 0], p: 8 },
+    { n: N.farm('R'),   w: [-(0.18 + 0.26 * A), 1.38 - 0.26 * D, 0], p: 7 },
+    { n: N.hand('R'),   w: [-(0.18 + 0.48 * A), 1.38 - 0.48 * D, 0], p: 8 },
     { n: N.thigh('L'),  w: [0.09, 0.88, 0], p: 0 },
     { n: N.shin('L'),   w: [0.09, 0.48, 0], p: 10 },
     { n: N.foot('L'),   w: [0.09, 0.08, 0], p: 11 },
@@ -37,7 +40,7 @@ function skeleton(N) {
 }
 
 function build(variant) {
-  const B = skeleton(NAMES[variant]);
+  const B = skeleton(NAMES[variant.replace('-apose', '')], variant.endsWith('-apose'));
   const nb = B.length;
   // 每根骨頭一個盒子(頂點 100% 綁該骨)——測的是管線,不是權重平滑度
   const pos = [], joints = [], weights = [], idx = [];
@@ -112,4 +115,5 @@ function build(variant) {
   return out;
 }
 
+// variant: 'native' | 'vrm'(骨名版本),可加後綴 '-apose'(rest 姿勢版本),如 'native-apose'。
 export function buildSkinGlb(variant) { return build(variant); }

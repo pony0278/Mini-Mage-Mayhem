@@ -119,6 +119,30 @@ ok(R.handMeshes > 0, `⑥ 剛體仍走「骨頭下掛網格」那條路(hand_r �
 ok(Math.abs(R.cx - R.fx) < 20 && Math.abs(R.cz - R.fy) < 20, `⑥ 剛體渲染定位不變(${R.cx},${R.cz})`);
 await pR.close();
 
+// ---- ⑧ rest 姿勢正規化(ugc-1b):A-pose 角色也能用 ----
+// 重定向的基準線是角色自己的 rest(目標世界 = Δ · bQT)——rest 偏了,每個姿勢都帶著這個偏差。
+// VRoid/多數 DCC 出廠是 A-pose(手臂往下 45°)=所有動作手臂都低 45°。
+const restOf = (page) => page.evaluate(() => {
+  const av = window.__avatars[0], p = new THREE.Vector3(), q = new THREE.Vector3();
+  av.by.upperarm_r.bone.getWorldPosition(p); av.by.forearm_r.bone.getWorldPosition(q);
+  return { fix: av.tposeFix, dev: av.restDevDeg, resid: av.restResidDeg,
+           dir: q.sub(p).normalize().toArray().map(n => +n.toFixed(2)) };
+});
+const pT = await openPage(buildSkinGlb('native'), '&tpose=1');       const T = await restOf(pT); await pT.close();
+const pAoff = await openPage(buildSkinGlb('native-apose'), '&tpose=0'); const Aoff = await restOf(pAoff); await pAoff.close();
+const pAon = await openPage(buildSkinGlb('native-apose'), '&tpose=1');  const Aon = await restOf(pAon); await pAon.close();
+ok(Aoff.dev >= 40 && Aoff.resid === Aoff.dev, `⑧ A-pose 未校正=偏離留著(${Aoff.dev}°)`);
+ok(Aon.dev >= 40 && Aon.resid <= 1, `⑧ A-pose 開校正→殘差歸零(${Aon.dev}° → ${Aon.resid}°)`);
+// ⚠ 比**夾角**不比逐分量:兩個角色在各自的分頁裡跑,idle 呼吸相位不同 → 同名幀的姿勢本來就差幾度
+//(實測抖動 ~4°,而沒校正的病徵是 45°)。逐分量 0.05 的門檻抓得到抖動=假 FAIL,夾角 15° 才是有鑑別力的線。
+const ang = (u, v) => Math.acos(Math.max(-1, Math.min(1, u[0]*v[0] + u[1]*v[1] + u[2]*v[2]))) * 180 / Math.PI;
+ok(ang(Aon.dir, T.dir) < 15,
+  `⑧ 校正後 A-pose 骨頭方向 = T-pose 版(夾角 ${ang(Aon.dir, T.dir).toFixed(1)}°)`);
+ok(ang(Aoff.dir, T.dir) > 25, `⑧ 反證:未校正時方向明顯不同(夾角 ${ang(Aoff.dir, T.dir).toFixed(1)}°)`);
+// 內建角色預設不校正(手臂已在 2~5° 內、腿刻意外八 13°,硬拉直=改掉正式角色站姿)
+const pB = await openPage(null, ''); const Bi = await restOf(pB); await pB.close();
+ok(Bi.fix === false && Bi.resid === Bi.dev, `⑧ 內建 base-avatar 預設**不**校正(dev ${Bi.dev}° = resid ${Bi.resid}°)`);
+
 ok(errs.length === 0, '⑦ 無 console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 
 await B.close();

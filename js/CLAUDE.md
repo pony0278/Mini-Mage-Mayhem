@@ -196,8 +196,19 @@
 > **踩地板**用 `Box3.setFromObject` 量 wrap:Three 不把蒙皮形變算進去 = bind pose 包圍盒,站姿下實測誤差
 > ~1.5px 可接受,極端姿勢才會飄。**還沒做的**:hair/skirt 沒有 spring-bone 物理(不會飄)、morph target
 > (表情)未接、多 SkinnedMesh/3~7 萬面的真實 VRoid 檔未實測。
+> **ugc-1b rest 姿勢正規化(`normalizeRest`)**:重定向的基準線是角色**自己的 rest**(目標世界 = Δ · bQT)
+> ——rest 偏了,每個姿勢都帶著這個偏差。實測各模型肢段 rest 偏離 T-pose:內建 base-avatar 手臂 2.3/4.7°、
+> 腿 13°(刻意外八)、軀幹 3°;**VRoid/多數 DCC 出廠的 A-pose 手臂偏 45°** = 所有出拳動作手臂都低 45°。
+> 修法:校正當下(**記 bQT 之前**)把各肢段的 rest 方向轉到 box rig T-pose 的方向 —— 逐骨父先子後,
+> `qFix = setFromUnitVectors(現有方向, 目標方向)`,套進骨頭世界四元數再轉回 local。注意這同時修好**旋轉與
+> 位移**兩種偏差:子骨的位移是在父骨局部空間,轉父骨的 rest 就把子骨帶到位(單純的旋轉重定向做不到這件事)。
+> **只對匯入角色生效**(`AVATAR_URL !== DEFAULT_AVATAR_URL`):內建 base-avatar 的腿是刻意外八 13°,
+> 硬拉直=改掉正式角色站姿。`?tpose=1` 強制開 / `?tpose=0` 強制關(實驗室 A/B 用);`av.restDevDeg`(修前)
+> 與 `av.restResidDeg`(修後殘差)供測試/報告讀。驗收:A-pose 開校正後 45°→0°,且同幀骨頭方向與 T-pose 版
+> 一致(夾角 <15°;**比夾角不比逐分量**——idle 呼吸相位差本來就有 ~4° 抖動,逐分量門檻會抓到抖動變假 FAIL)。
 > `?avatar=<路徑或 blob:URL>` 換角色檔(匯入精靈用 `URL.createObjectURL` 餵進來);`?avatar=0` 仍退方塊人。
-> 測試:`tests/skinrig.mjs`(GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產,骨名版本 = 別名表的規格書)。
+> 測試:`tests/skinrig.mjs`(GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產,骨名 + rest 版本 = 別名表與
+> 校正的規格書;variant 加後綴 `-apose` 取 A-pose 版)、punch-studio 端 `tests/psimport.mjs`。
 
 **v2 家族(DAG:v2-state → v2-terrain/v2-floor/v2-report → v2-combat → v2-items → v2-hud/v2-touch → v2.js)**
 | 檔 | 行 | 職責 / 關鍵符號 |

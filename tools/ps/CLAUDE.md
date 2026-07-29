@@ -19,7 +19,7 @@
 | `hitfeel.js` | 100 | 沙包試打 + **主渲染迴圈 `tick()`** | `triggerHit`、`tick`(每幀:播放/scrub/沙包/渲染) |
 | `editor-ui.js` | 860 | 全部編輯 UI | 滑桿(`bindPoseSliders/refreshSliders`)、timeline(`buildTimelineUI/setActiveKey/addKey/delKey/moveKey`)、phase tabs、`buildPropPanel`(比例面板;角色模式鎖定)、白模/鏡像/T-pose、contact sheet、`showExport/importGd`、`resize` |
 | `parts.js` | 760 | 部位/裝備/rigged 手/道具庫掛載 | `PART_SLOT_DEFS`(sockets.json→slot;fallback 硬編)、`PS_RIG_TARGET`(slot→素體節點)、`PART_MODELS/PART_CONFIG`、**`attachPart(slot,obj)`**(掛假人+套 cfg)、`applyPartConfig`、`setSyntheticDummyVisible`、bundle/單檔載入(`collectBundleParts`,靠名字對 slot)、**裝備:`loadEquipFile`(任意 GLB→選定 slot)**、**道具庫:`PROP_LIBRARY`(入庫 GLB 表:file/tex/slot/cal)+ `mountPropFromLibrary(id)`(fetch repo `assets/scene/`→parse→貼外部圖→attachPart 自然 slot;火帽=headgear 套已知 cal、桶/瓶=bow 右腕 autoFit)+ per-prop 對位記憶 `PROP_CAL`(共用 bow 不互蓋;`mirrorPropCal` 掛 write() 尾)**、**rigged 手:`mountRiggedHands`(avatar 手骨優先/假人 fallback)+ `HAND_RIG`/**`applyFingerPose(p)`(逐關鍵格姿勢→指骨,rig.js applyPose 每幀呼叫)**/`FINGER_POSE_AXES`(指骨鍵→軸名)/`refreshFingerSliders`(slot-aware)/`HAND_POSE_PRESETS`(open/grip/fist=快速套形)**、`buildPartSlotUI`(綁全部部位/手指/道具庫 UI)、hook **`window.__psEquip`**(含 `props()`/`mountProp(id)`/`activeProp()`) |
-| `avatar.js` | 350 | 基底角色(正式 chibi 人物) | **`AVATAR`**(`{wrap,S,by,order,fillers}`;`by[key]={bone,meshes,…}` key 如 `hand_l`)、`loadAvatarBuffer`(16 骨字樣辨識、左右靠世界 X)、**`updateAvatarPose`**(素體→角色世界差量重定向,每幀)、關節填充(`buildJointFillers`/`setJointFill*`,UI 是本檔 IIFE 動態插進部位面板)、`clearAvatar`、**開機自動載入**(`../assets/rigs/base-avatar.glb` 優先→meshy 人偶) |
+| `avatar.js` | 520 | 基底角色 + **匯入實驗室**(ugc-1) | **`AVATAR`**(`{wrap,S,by,order,fillers}`;`by[key]={bone,meshes,…}` key 如 `hand_l`)、`loadAvatarBuffer`(16 骨字樣辨識、左右靠世界 X)、**`updateAvatarPose`**(素體→角色世界差量重定向,每幀)、關節填充(`buildJointFillers`/`setJointFill*`,UI 是本檔 IIFE 動態插進部位面板)、`clearAvatar`、**開機自動載入**(`../assets/rigs/base-avatar.glb` 優先→meshy 人偶)、**匯入實驗室**:`AV_ALIASES` 骨名別名表/`normalizeAvatarRest`/`avatarReport`+`renderAvatarReport`/hook `window.__psAvatar` |
 | `game-bridge.js` | 200 | 遊戲整合 + 健檢 | **`window.__ps`**(parts/avatar/applyPose/SEQ/avatarBoneWorld…)、招式庫(`LIB_KEY` 具名槽)、🎮 遊戲視角(fov32/俯44°)、impact 秒數讀出、`comboPreview` |
 
 HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝備鈕、rigged 手鈕、校準滑桿、手勢列)。
@@ -51,6 +51,32 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
   有了補償層:滑桿刻度不變、存檔不用遷移、`PROP_LIBRARY.fire_hat.cal` 照舊,只是帽子改跟 avatar 的頭走。
   每次取用重烘矩陣(`rebuildCharacter` 換過 headPivot 也自動跟上);avatar 載好/清掉時 avatar.js 呼叫
   `remountHeadgear()` 把已掛的道具重掛。回歸:`tests/psheadgear.mjs`。
+
+- **匯入實驗室(ugc-1/1b,2026-07-29 使用者:「punch-studio 改成匯入實驗室」)**:studio 現在是玩家自製角色
+  (VRoid/Blender/Mixamo)進遊戲前的**驗證站**。三件事:
+  ① **骨名別名表 `AV_ALIASES`** 取代舊 `TOKENS`——**有序、第一個命中就定案**,長字串必須排在會被它包含的短字串
+     之前(`forearm`/`lowerarm` 早於裸 `arm`、`upperleg`/`lowerleg` 早於裸 `leg`),不然 Mixamo 的 `LeftForeArm`
+     會先被 `arm`→upperarm 吃掉;裸 `arm`/`leg` 兩條 Mixamo fallback 擺最後。另有 `AV_SKIP`:Blender 匯出的根節點
+     **`Armature` 小寫化含 `arm`**,而它是 traverse 的第一個 → 會靠「重複命名取第一個」把真正的上臂擋在門外。
+     修前 VRM(`J_Bip_*`)只收到 8/16 骨 = `AVATAR_REQUIRED` 直接擋下、**載入硬失敗**。
+     **與遊戲 `js/actor-avatar.js` 的 `BONE_ALIASES` 是同一份規格**,兩邊模組系統不同(古典 script vs ESM)
+     無法共用常數 → **改一邊要同步另一邊**。
+  ② **rest 姿勢正規化 `normalizeAvatarRest`**(與遊戲 `normalizeRest` 同演算法):重定向的基準線是角色自己的
+     rest,rest 偏了每個姿勢都帶著偏差。VRoid 出廠 A-pose 手臂偏 T-pose **45°** = 所有動作手臂低 45°。校正在
+     **記 bQT 之前**把各肢段 rest 方向轉到素體 T-pose 方向(父先子後)。**rest 是載入時烤死的 → 切開關要重載**
+     (UI 的 checkbox 會自動重載 `AVATAR_LAST_BUF`)。
+     ⚠ **內建 base-avatar 不套校正**(`loadAvatarBuffer(ab, label, builtin=true)`)——與遊戲同一條規則
+     (遊戲只對匯入角色校正)。這條是 **WYSIWYG 命脈**:遊戲不校正內建角色(腿刻意外八 13°),實驗室要是校正了,
+     這裡編的姿勢進遊戲就會偏。
+  ③ **蒙皮支援**:蒙皮角色的網格全掛在 SkinnedMesh 上、骨頭底下沒有子網格(`e.meshes` 恆空)→ 命中放大的
+     「縮網格」整組靜默失效,改**縮骨頭**(每組只縮近端那根,forearm 帶 hand、shin 帶 foot,不然 s² 爆);
+     踩地的 `expandByObject(meshes)` 也全空 → 退回整具 wrap 的包圍盒。關節填充自動不生成(剛體分件才需要)。
+     **studio 不需要遊戲那套「clone 後重綁骨架」**——studio 直接用 `gltf.scene`(場上只有一個角色、沒 clone),
+     骨架本來就指著自己的骨頭。
+  **匯入檢查報告 `avatarReport`**(面板 `#avatarReport`)= 實驗室的主產出:16 骨對照表(對到的原始骨名/缺哪根)
+  + 蒙皮 or 剛體 + 面數 + rest 偏離→殘差 + 提醒(缺骨/面數 >7 萬/無貼圖/morph target/多蒙皮網格)。
+  hook `window.__psAvatar`(`report()`/`avatar()`/`tposeFix(on)`/`load(ab,label,builtin)`/`clear()`);
+  回歸 `tests/psimport.mjs`(GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產)。
 
 ## 陷阱(踩過的)
 

@@ -33,21 +33,123 @@ const AVATAR_REQUIRED = ['root','torso','head',
   'upperarm_l','upperarm_r','forearm_l','forearm_r','hand_l','hand_r',
   'thigh_l','thigh_r','shin_l','shin_r'];   // neck/foot 選配
 
-async function loadAvatarBuffer(ab, label){
+// ===== rest 姿勢正規化(ugc-1b;與遊戲 js/actor-avatar.js normalizeRest 同一套演算法)=====
+// 重定向的基準線是角色自己的 rest(目標世界 = Δ · bQT)——rest 偏了,每個姿勢都帶著這個偏差。
+// 這裡把各肢段的 rest 方向轉到素體 T-pose 的方向,讓玩家「丟 VRoid 原檔進來就能動」,
+// 不必先去 Blender 擺 T-pose。實驗室預設**開**(這裡就是驗匯入的地方);關掉可看修正前長相。
+let AV_TPOSE_FIX = true;
+try{ if(localStorage.getItem('PS_TPOSE_FIX')==='0') AV_TPOSE_FIX = false; }catch(e){}
+// 肢段 = 骨頭 → 遠端子骨(方向由這兩點定義);torso 取到 head(neck 的素體 driver 就是 spine 本人=零向量)
+const AV_LIMB_CHILD = { torso:'head',
+  upperarm_l:'forearm_l', forearm_l:'hand_l', upperarm_r:'forearm_r', forearm_r:'hand_r',
+  thigh_l:'shin_l', shin_l:'foot_l', thigh_r:'shin_r', shin_r:'foot_r' };
+const _rva = new THREE.Vector3(), _rvb = new THREE.Vector3(), _rvc = new THREE.Vector3(), _rvd = new THREE.Vector3();
+const _rqf = new THREE.Quaternion(), _rqw = new THREE.Quaternion(), _rqp = new THREE.Quaternion();
+// apply=false → 只量不改(取修正後殘差當驗收數字)。回傳最大偏離角度(度)。
+function normalizeAvatarRest(by, order, apply){
+  let maxDeg = 0;
+  for(const k of order){                       // **父先子後**:改父會帶動子,子要用改過後的位置重量
+    const ck = AV_LIMB_CHILD[k]; if(!ck) continue;
+    const e = by[k], c = by[ck]; if(!e || !c) continue;
+    const n0 = e.node(), n1 = c.node(); if(!n0 || !n1) continue;
+    e.bone.getWorldPosition(_rva); c.bone.getWorldPosition(_rvb);
+    n0.getWorldPosition(_rvc); n1.getWorldPosition(_rvd);
+    const have = _rvb.sub(_rva), want = _rvd.sub(_rvc);
+    if(have.lengthSq() < 1e-12 || want.lengthSq() < 1e-12) continue;
+    have.normalize(); want.normalize();
+    const ang = Math.acos(Math.max(-1, Math.min(1, have.dot(want))));
+    maxDeg = Math.max(maxDeg, ang * 180 / Math.PI);
+    if(!apply || !(ang > 1e-4)) continue;
+    _rqf.setFromUnitVectors(have, want);       // 世界空間:現有方向 → 目標方向
+    e.bone.getWorldQuaternion(_rqw);
+    e.bone.parent.getWorldQuaternion(_rqp).invert();
+    e.bone.quaternion.copy(_rqw).premultiply(_rqf).premultiply(_rqp);
+    e.bone.updateMatrixWorld(true);
+  }
+  return +maxDeg.toFixed(1);
+}
+
+// ===== 匯入檢查報告(實驗室的主產出:告訴玩家這顆模型能不能用、哪裡要修)=====
+const AV_SLOTS = ['root','torso','neck','head','upperarm_l','upperarm_r','forearm_l','forearm_r',
+                  'hand_l','hand_r','thigh_l','thigh_r','shin_l','shin_r','foot_l','foot_r'];
+let AVATAR_REPORT = null;
+function avatarReport(sc, by, label, missing, extra){
+  const r = Object.assign({ label, missing: missing.slice(), slots: {}, warn: [] }, extra || {});
+  AV_SLOTS.forEach(k => { r.slots[k] = by[k] ? (by[k].raw || '?') : null; });
+  let tris = 0, meshes = 0, skins = 0, morphs = 0, textured = 0;
+  sc.traverse(o => {
+    if(o.isSkinnedMesh) skins++;
+    if(!o.isMesh) return;
+    meshes++;
+    const g = o.geometry;
+    tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    if(g.morphAttributes && Object.keys(g.morphAttributes).length) morphs++;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    if(mats.some(m => m && m.map)) textured++;
+  });
+  r.tris = Math.round(tris); r.meshes = meshes; r.skins = skins; r.morphs = morphs; r.textured = textured;
+  if(missing.length) r.warn.push(`缺 ${missing.length} 根必要骨頭:${missing.join('/')} — 骨頭命名要含 root/torso/upperarm/forearm/hand/thigh/shin/foot 或 VRM 的 J_Bip_*、Mixamo 的 UpLeg/LowerArm 等字樣`);
+  if(r.tris > 70000) r.warn.push(`${r.tris} 面偏高(建議 ≤ 7 萬;場上兩個角色 = 兩份)——Blender Decimate 或匯出時降面`);
+  if(!r.textured && r.meshes) r.warn.push('沒有任何貼圖(材質只有顏色)——VRM 轉 GLB 時記得把貼圖一起嵌入');
+  if(r.morphs) r.warn.push(`${r.morphs} 個網格帶 morph target(表情)——遊戲目前不驅動表情,不影響載入`);
+  if(r.skins > 1) r.warn.push(`${r.skins} 個蒙皮網格(身體/頭髮/衣服分開)——支援,但頭髮/裙子不會飄(無彈簧骨物理)`);
+  if(extra && extra.restDev >= 8) r.warn.push(`rest 偏離 T-pose ${extra.restDev}°(A-pose 出廠)——`
+    + (extra.fixOn ? `已自動校正,殘差 ${extra.restResid}°`
+       : extra.builtin ? '內建角色不校正(與遊戲一致:遊戲也不校正內建角色,校正了這裡編的姿勢進遊戲會偏)'
+       : '**未**校正(校正開關關著)'));
+  return r;
+}
+function renderAvatarReport(){
+  const box = document.getElementById('avatarReport'); if(!box) return;
+  const r = AVATAR_REPORT;
+  if(!r){ box.innerHTML = '<summary style="cursor:pointer;color:var(--dim)">匯入檢查(尚未載入角色)</summary>'; return; }
+  const okN = AV_SLOTS.filter(k => r.slots[k]).length;
+  const head = `<summary style="cursor:pointer;color:${r.missing.length ? '#f66' : (r.warn.length ? '#fc6' : '#6d6')}">`
+    + `匯入檢查:${r.label} — 骨頭 ${okN}/16${r.missing.length ? ' ✗' : ' ✓'}`
+    + ` · ${r.skinned ? '蒙皮' : '剛體分件'} · ${r.tris} 面${r.warn.length ? ` · ${r.warn.length} 則提醒` : ''}</summary>`;
+  const rows = AV_SLOTS.map(k => `<div style="display:flex;gap:4px"><span style="width:74px;color:var(--dim)">${k}</span>`
+    + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:${r.slots[k] ? '#9c9' : '#f66'}">${r.slots[k] || '缺'}</span></div>`).join('');
+  const warn = r.warn.length ? `<div style="margin-top:5px;color:#fc6">` + r.warn.map(w => `• ${w}`).join('<br>') + '</div>' : '';
+  const rest = (r.restDev != null) ? `<div style="margin-top:5px;color:var(--dim)">rest 偏離 T-pose:${r.restDev}° → 殘差 ${r.restResid}°(校正 ${r.fixOn ? '開' : (r.builtin ? '關·內建角色不校正' : '關')})· 縮放 ×${(r.S||0).toFixed(2)}</div>` : '';
+  box.innerHTML = head + '<div style="margin-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:0 10px">' + rows + '</div>' + rest + warn;
+}
+
+let AVATAR_LAST_BUF = null, AVATAR_LAST_LABEL = '', AVATAR_LAST_BUILTIN = false;   // 切 T-pose 校正要重載(rest 是載入時烤死的)
+// builtin=true → 內建 base-avatar,**不套 rest 校正**(與遊戲 `AVATAR_URL !== DEFAULT_AVATAR_URL` 同一條規則)。
+// 這條 WYSIWYG 很重要:遊戲不校正內建角色(腿刻意外八 13°),實驗室要是校正了,這裡編的姿勢進遊戲就會偏。
+async function loadAvatarBuffer(ab, label, builtin){
   if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功,無法載入角色。'); return false; }
+  AVATAR_LAST_BUF = ab.slice(0); AVATAR_LAST_LABEL = label; AVATAR_LAST_BUILTIN = !!builtin;
   const gltf = await new Promise((res, rej) => psMakeGltfLoader().parse(ab, '', res, rej));
   const sc = gltf.scene; sc.updateMatrixWorld(true);
 
-  // ① 收骨頭:字樣分型別(calf=shin 同義;字樣測試順序避免 'forearm' 撞 'arm')
+  // ① 收骨頭:別名表分型別(**有序,第一個命中就定案**;與遊戲 js/actor-avatar.js 的 BONE_ALIASES 同一份規格,
+  // 兩邊模組系統不同(古典 script vs ESM)無法共用常數 → 改一邊要同步另一邊)。
   // 接受 Bone「或任何非網格節點」:重匯出的 GLB 沒有 skin 宣告時 isBone 會是 false,
   // 但空節點階層同樣能當骨架用(網格名 geo_* 是 Mesh,被排除,不會誤認)。
-  const TOKENS = ['upperarm','forearm','hand','thigh','shin','calf','foot','torso','neck','head','root'];
+  const AV_ALIASES = [
+    ['upperarm','upperarm'],
+    ['forearm','forearm'], ['lowerarm','forearm'],
+    ['hand','hand'],
+    ['upperleg','thigh'], ['upleg','thigh'], ['thigh','thigh'],
+    ['lowerleg','shin'], ['calf','shin'], ['shin','shin'],
+    ['foot','foot'],
+    ['spine','torso'], ['chest','torso'], ['torso','torso'],
+    ['neck','neck'], ['head','head'],
+    ['hips','root'], ['root','root'],
+    ['arm','upperarm'],   // Mixamo LeftArm=上臂(裸字必須排在 forearm/upperarm 之後)
+    ['leg','shin'],       // Mixamo LeftLeg=小腿(UpLeg 才是大腿,已在前面)
+  ];
+  // 容器節點:名字含關鍵字但不是骨頭。Blender 匯出的根節點 'Armature' 小寫化含 'arm',
+  // 而它是 traverse 的第一個 → 會靠下面的「重複命名取第一個」把真正的上臂擋在門外。
+  const AV_SKIP = /^(armature|scene|rootnode|correction|sketchfab)/;
   const found = [];
   sc.traverse(o => {
     if(o.isMesh) return;
     const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
-    const t = TOKENS.find(k => n.includes(k));
-    if(t) found.push({ bone: o, type: t === 'calf' ? 'shin' : t });
+    if(!n || AV_SKIP.test(n)) return;
+    const hit = AV_ALIASES.find(([k]) => n.includes(k));
+    if(hit) found.push({ bone: o, type: hit[1], raw: o.name });
   });
 
   // ② key = 型別(+左右,以骨頭「rest 世界 X」判定,不信名字)
@@ -63,12 +165,14 @@ async function loadAvatarBuffer(ab, label){
     // 記每塊網格的靜止局部位置:命中放大要「繞骨頭原點(關節)」縮放而非網格自身原點——
     // 這模型幾何烤在骨架空間、網格節點帶補償位移,直接 mesh.scale 會把幾何甩離關節。
     meshes.forEach(m => { m.userData.restPos = m.position.clone(); });
-    by[key] = { bone: f.bone, node: () => nodeFor(sx), meshes,
+    by[key] = { bone: f.bone, node: () => nodeFor(sx), meshes, raw: f.raw,
                 qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
   }
   const missing = AVATAR_REQUIRED.filter(k => !by[k]);
   if(missing.length){
-    updatePartsStatus(`角色載入失敗:${label} 缺骨頭 ${missing.join('/')}(命名需含 root/torso/upperarm… 字樣,rest=T-pose)。`);
+    AVATAR_REPORT = avatarReport(sc, by, label, missing);
+    renderAvatarReport();
+    updatePartsStatus(`角色載入失敗:${label} 缺骨頭 ${missing.join('/')}(命名需含 root/torso/upperarm… 字樣,rest=T-pose)。詳見下方「匯入檢查」。`);
     return false;
   }
 
@@ -84,23 +188,43 @@ async function loadAvatarBuffer(ab, label){
   applyPose(inspectTposePose());                // 素體 → T-pose(角色 rest 本來就是 T-pose)
   root.updateMatrixWorld(true);
   scene.add(wrap); wrap.updateMatrixWorld(true);
-  Object.values(by).forEach(e => { e.node().getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); });
-  // 關節填充半徑/顏色只在此刻(rest=T-pose)量一次並快取 → 之後 pose 彎曲不影響量測、拉滑桿不重掃幾何
-  JOINT_FILL_KEYS.forEach(k => { const e = by[k]; if(e) e._fill = jointFillRadiusColor(e); });
-
-  // ⑤ 父先子後的處理順序(依骨頭深度)
+  // ⑤ 父先子後的處理順序(依骨頭深度)——rest 正規化與每幀重定向都靠它
   const depth = e => { let d = 0, p = e.bone; while(p.parent){ d++; p = p.parent; } return d; };
   const order = Object.keys(by).sort((a, b) => depth(by[a]) - depth(by[b]));
 
-  AVATAR = { wrap, S, label, by, order, fillers: [] };
+  // ⑤b rest 姿勢正規化(ugc-1b;**必須在記 bQT 之前**——bQT 就是基準線)。
+  // VRoid/多數 DCC 出廠是 A-pose(手臂往下 45°),實測偏離 T-pose 45°=所有動作手臂低 45°。
+  const skinned = (() => { let s = false; sc.traverse(o => { if(o.isSkinnedMesh) s = true; }); return s; })();
+  const fixOn = AV_TPOSE_FIX && !builtin;
+  const restDev = normalizeAvatarRest(by, order, fixOn);
+  const restResid = normalizeAvatarRest(by, order, false);
+
+  Object.values(by).forEach(e => { e.node().getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); });
+  // 關節填充半徑/顏色只在此刻(rest=T-pose)量一次並快取 → 之後 pose 彎曲不影響量測、拉滑桿不重掃幾何
+  // (蒙皮角色沒有「骨頭下掛網格」→ jointFillRadiusColor 回 null,填充自動不生成,本來就不需要)
+  JOINT_FILL_KEYS.forEach(k => { const e = by[k]; if(e) e._fill = jointFillRadiusColor(e); });
+
+  AVATAR = { wrap, S, label, by, order, skinned, restDev, restResid, fixOn, builtin: !!builtin, fillers: [] };
+  AVATAR_REPORT = avatarReport(sc, by, label, [], { skinned, restDev, restResid, S, fixOn, builtin: !!builtin });
+  renderAvatarReport();
   buildJointFillers();
   if(typeof remountHeadgear === 'function') remountHeadgear();   // item-3b:角色到位 → 已掛的頭戴道具改掛 avatar 頭骨(校準值語意不變)
   setSyntheticDummyVisible(false);
   if(typeof buildPropPanel === 'function') buildPropPanel();   // 刷新 PROPORTIONS 面板 → 進入角色模式鎖定態
   applyInspectOrPhase();                        // 回到目前 phase,hook 立即驅動角色
-  updatePartsStatus(`基底角色已掛載:${label}(${order.length} 骨,×${S.toFixed(2)})。素體隱藏中;「清除角色」回素體/部位模式。`);
+  updatePartsStatus(`基底角色已掛載:${label}(${order.length} 骨,${skinned ? '蒙皮' : '剛體分件'},×${S.toFixed(2)}`
+    + `${restDev >= 8 ? `,rest 偏 ${restDev}°→${AV_TPOSE_FIX ? `校正後 ${restResid}°` : '未校正'}` : ''})。素體隱藏中;「清除角色」回素體/部位模式。`);
   return true;
 }
+
+// headless 健檢入口(比照 __psEquip;__ps 屬於 game-bridge,別的檔用自己的命名空間)
+window.__psAvatar = {
+  report: () => AVATAR_REPORT,
+  avatar: () => AVATAR,
+  tposeFix: (on) => { if(on !== undefined){ AV_TPOSE_FIX = !!on; try{ localStorage.setItem('PS_TPOSE_FIX', on ? '1' : '0'); }catch(e){} } return AV_TPOSE_FIX; },
+  load: (ab, label, builtin) => loadAvatarBuffer(ab, label || 'test.glb', builtin),
+  clear: () => clearAvatar(),
+};
 
 // ===== 程序化關節填充 =====
 // 剛體部位骨架的關節在大角度旋轉時會露出樞紐周圍的空殼(部件近端是平蓋、非以樞紐為圓心的球)。
@@ -241,13 +365,22 @@ function updateAvatarPose(p){
   }
   // 命中放大/身體縮放:縮「骨頭上的網格」不縮骨頭(避免縮放傳染子骨)。
   // 繞骨頭原點(關節)縮放:renders s·(restPos + v) → 近端黏在關節,肢段往外脹大(power punch 觀感)。
+  // ugc-1:蒙皮角色的網格全掛在 SkinnedMesh 上、骨頭底下沒有子網格(`e.meshes` 恆空)→ 縮網格整組失效。
+  // 改縮**骨頭**;骨縮放沿骨鏈繼承,所以每組只縮近端那根(forearm 帶 hand、shin 帶 foot),不然 s² 爆掉。
   const setS = (k, v) => { const e = A.by[k]; if(!e) return; const s = v || 1;
+    if(A.skinned){ e.bone.scale.setScalar(s); return; }
     e.meshes.forEach(m => { m.scale.setScalar(s); m.position.copy(m.userData.restPos).multiplyScalar(s); }); };
-  setS('forearm_l', p.aL_scale); setS('hand_l', p.aL_scale);
-  setS('forearm_r', p.aR_scale); setS('hand_r', p.aR_scale);
-  setS('shin_l', p.lL_scale);    setS('foot_l', p.lL_scale);
-  setS('shin_r', p.lR_scale);    setS('foot_r', p.lR_scale);
-  setS('torso', p.body_scale);
+  if(A.skinned){
+    setS('forearm_l', p.aL_scale); setS('forearm_r', p.aR_scale);   // hand 為子骨,自動繼承
+    setS('shin_l', p.lL_scale);    setS('shin_r', p.lR_scale);      // foot 為子骨,自動繼承
+    setS('torso', p.body_scale);
+  } else {
+    setS('forearm_l', p.aL_scale); setS('hand_l', p.aL_scale);
+    setS('forearm_r', p.aR_scale); setS('hand_r', p.aR_scale);
+    setS('shin_l', p.lL_scale);    setS('foot_l', p.lL_scale);
+    setS('shin_r', p.lR_scale);    setS('foot_r', p.lR_scale);
+    setS('torso', p.body_scale);
+  }
   // 整肢伸展:縮近端骨頭(upperarm/thigh)→ 整條肢從肩/髖等比放大(子骨/網格一起帶,uniform 不歪)
   const setStretch = (k, v) => { const e = A.by[k]; if(e) e.bone.scale.setScalar(v || 1); };
   setStretch('upperarm_l', p.aL_stretch); setStretch('upperarm_r', p.aR_stretch);
@@ -262,6 +395,9 @@ function updateAvatarPose(p){
   if(cR !== 2){ exp('foot_r'); g = true; }
   if(!g){ exp('foot_l'); exp('foot_r'); }
   if(!isFinite(_abox.min.y)){ exp('shin_l'); exp('shin_r'); }   // 沒腳骨的角色:用小腿墊底
+  // 蒙皮角色骨頭底下沒有網格 → 上面全空;退回整具 wrap 的包圍盒(Three 不把蒙皮形變算進 setFromObject,
+  // 拿到的是 bind pose 盒;站姿誤差 ~1.5px 可接受,極端姿勢才會飄。與遊戲端同一取捨)。
+  if(!isFinite(_abox.min.y) && A.skinned) _abox.setFromObject(w);
   w.position.y = (isFinite(_abox.min.y) ? (baseY - _abox.min.y) : baseY) + (p.root_py || 0);
 }
 
@@ -273,6 +409,7 @@ function clearAvatar(){
     if(o.material){ (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); }
   });
   AVATAR = null;
+  AVATAR_REPORT = null; renderAvatarReport();
   if(typeof remountHeadgear === 'function') remountHeadgear();   // item-3b:退回素體 headPivot(補償 group 隨之銷毀)
   setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
   if(typeof buildPropPanel === 'function') buildPropPanel();   // 刷新 PROPORTIONS 面板 → 解除鎖定
@@ -288,8 +425,22 @@ function clearAvatar(){
     `<button id="avatarClear" title="移除角色,回到素體/部位模式">清除角色</button>` +
     `<label style="display:flex;align-items:center;gap:6px" title="0=腳鎖死跟小腿(高筒硬靴,靴子一體不裂);1=完全吃編排器腳踝壓平。高筒靴角色建議 0.2~0.4">腳踝跟隨 <input type="range" id="ankleFollow" min="0" max="1" step="0.05" style="width:90px"><span id="ankleFollowV" style="min-width:24px"></span></label>` +
     `<label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="每個關節樞紐補一顆低模球,塞住剛體部件大角度旋轉時露出的縫隙(以樞紐為圓心,旋轉不露縫)"><input type="checkbox" id="jointFill"> 關節填充</label>` +
-    `<label style="display:flex;align-items:center;gap:6px" title="填充球大小(相對肢體橫截半徑)。太大會凸成腫瘤、太小遮不住縫,依角色微調">球大小 <input type="range" id="jointFillSize" min="0.4" max="1.3" step="0.02" style="width:80px"><span id="jointFillSizeV" style="min-width:30px"></span></label>`;
+    `<label style="display:flex;align-items:center;gap:6px" title="填充球大小(相對肢體橫截半徑)。太大會凸成腫瘤、太小遮不住縫,依角色微調">球大小 <input type="range" id="jointFillSize" min="0.4" max="1.3" step="0.02" style="width:80px"><span id="jointFillSizeV" style="min-width:30px"></span></label>` +
+    `<label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="把角色 rest 的各肢段方向轉到素體 T-pose 方向。VRoid/多數 DCC 出廠是 A-pose(手臂往下 45°),不校正的話每個動作手臂都低 45°。關掉可看修正前長相"><input type="checkbox" id="tposeFix"> T-pose 校正</label>`;
   st.parentElement.insertBefore(row, st);
+  // 匯入檢查報告(骨頭對照表 + 面數/蒙皮/貼圖 + rest 偏離 + 提醒)
+  const rep = document.createElement('details');
+  rep.id = 'avatarReport';
+  rep.style.cssText = 'margin-top:4px;font-size:10px;background:rgba(255,255,255,.03);border-radius:4px;padding:3px 6px';
+  st.parentElement.insertBefore(rep, st);
+  const tf = document.getElementById('tposeFix');
+  tf.checked = AV_TPOSE_FIX;
+  tf.addEventListener('change', e => {
+    AV_TPOSE_FIX = e.target.checked;
+    try{ localStorage.setItem('PS_TPOSE_FIX', AV_TPOSE_FIX ? '1' : '0'); }catch(err){}
+    if(AVATAR && AVATAR_LAST_BUF) loadAvatarBuffer(AVATAR_LAST_BUF.slice(0), AVATAR_LAST_LABEL, AVATAR_LAST_BUILTIN);   // rest 是載入時烤的 → 重載才生效
+    else renderAvatarReport();
+  });
   const jf = document.getElementById('jointFill');
   jf.checked = JOINT_FILL_ON;
   jf.addEventListener('change', e => setJointFill(e.target.checked));
@@ -341,7 +492,7 @@ function clearAvatar(){
 (async () => {
   try {
     const r = await fetch('../assets/rigs/base-avatar.glb');
-    if (r.ok && await loadAvatarBuffer(await r.arrayBuffer(), 'base-avatar.glb')) return;
+    if (r.ok && await loadAvatarBuffer(await r.arrayBuffer(), 'base-avatar.glb', true)) return;   // builtin=true:不套 rest 校正(同遊戲)
   } catch (e) { /* 走退路 */ }
   try {
     const resp = await fetch('meshy-mannequin.glb');
