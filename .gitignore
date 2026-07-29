@@ -5,3 +5,6 @@ tests/package-lock.json
 
 # Portal 投稿發佈產物(拋棄式,隨時用 build/ 重產)
 dist/
+
+# 一次性模型體檢用的暫存(18MB 級 GLB,別誤進版控)
+.probe/
