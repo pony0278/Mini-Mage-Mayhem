@@ -206,6 +206,26 @@
 > 硬拉直=改掉正式角色站姿。`?tpose=1` 強制開 / `?tpose=0` 強制關(實驗室 A/B 用);`av.restDevDeg`(修前)
 > 與 `av.restResidDeg`(修後殘差)供測試/報告讀。驗收:A-pose 開校正後 45°→0°,且同幀骨頭方向與 T-pose 版
 > 一致(夾角 <15°;**比夾角不比逐分量**——idle 呼吸相位差本來就有 ~4° 抖動,逐分量門檻會抓到抖動變假 FAIL)。
+> **ugc-1c 比例正規化(`conformProportions`)**:使用者拍板 2026-07-29「維持 chibi 風格,其他 GLB 只是
+> **外觀**套進來,骨子還是 chibi —— 原本的大頭就是大頭,VRoid 的頭套進來只是外觀改變,頭還是一樣大」。
+> 可行性關鍵:`retargetAvatar` 每幀**只寫 `bone.quaternion`,從不寫 `bone.position`** → 改 rest 位移不會被
+> 每幀蓋掉;蒙皮頂點跟著骨頭走 = 改骨架比例就是改身形,完全不用碰網格。跟 `normalizeRest` 是同一個機制的
+> 兩半(那邊修 rest 的旋轉,這邊修 rest 的位移與縮放)。做三件事:①四段肢長(上臂/前臂/大腿/小腿)縮子骨的
+> local 位移到目標長度(**父先子後**)②肩寬/臀寬外推(chibi 比寫實寬 ~1.4×)③頭骨等比放大(髮/髮飾是子骨自動跟)。
+> 目標比例 `CHIBI` 表 = 各段長度 ÷ 全身高,實測自內建 base-avatar(3.08 頭身);**換基底角色要重量一次**
+>(scratchpad/proportions.mjs)。實測 VRoid 8.18 頭身 → **3.18**。`?chibi=0/1` 覆蓋;同 TPOSE_FIX 只對匯入角色生效。
+> ⚠ **只能動 head 的 `bone.scale`** —— torso/forearm/shin/upperarm/thigh 的 scale 是 setS/setStretch 每幀在寫的。
+>
+> **⚠⚠ `Box3.setFromObject` 不算蒙皮形變**(這次踩到的最大坑):它拿 geometry 的 bounding box 乘
+> `mesh.matrixWorld`,而 **SkinnedMesh 的 matrixWorld 不隨骨頭動** → 對蒙皮角色永遠回傳 **bind pose** 的盒子。
+> 比例正規化把大腿砍半、頭放大 2.66× 之後,誤差大到讓角色**腳浮空 14px(身高的 18%)**、身高正規化也算錯
+>(naive 高 100.2/腳 y=0 vs 真實高 84.8/腳 y=14.4)。解法 `sampledBox()`:逐網格抽樣頂點跑 `boneTransform`
+>(→ model space)再乘 matrixWorld,每網格上限 240 點,**只在載入時跑**。每幀踩地仍用便宜的 setFromObject,
+> 但補上載入時量好的系統性差值 `av.skinFootBias`。
+> **站高收斂**:S 是拿校正**前**的身高算的,而 T-pose 校正 + rest 正規化會改姿勢 → 實測高 8%。校正後照真實
+> 高度再收斂一次 S(uniform 縮放不影響世界四元數,bQT 不用重抓),`av.standH` 改成量校正後的真實盒子。
+> **骨頭選取改照別名表優先序,不是 traverse 順序**:VRoid 同時有腳底的 `Root` 與真髖 `J_Bip_C_Hips`,
+> 舊的「重複取第一個」會選到 Root → root 樞紐變腳底,clip 的 `root_x`(pitch)會繞著腳踝甩全身。
 > `?avatar=<路徑或 blob:URL>` 換角色檔(匯入精靈用 `URL.createObjectURL` 餵進來);`?avatar=0` 仍退方塊人。
 > 測試:`tests/skinrig.mjs`(GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產,骨名 + rest 版本 = 別名表與
 > 校正的規格書;variant 加後綴 `-apose` 取 A-pose 版)、punch-studio 端 `tests/psimport.mjs`。

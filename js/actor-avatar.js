@@ -111,6 +111,68 @@ function normalizeRest(by, order, apply) {
   return +maxDeg.toFixed(1);
 }
 
+// ===== ugc-1c 比例正規化:把匯入角色的**骨架比例**壓成 chibi 比例 =====
+// 使用者拍板 2026-07-29:「維持 chibi 風格,其他 GLB 只是外觀套進來,骨子還是 chibi——
+// 原本的大頭就是大頭,VRoid 的頭套進來只是外觀改變,頭還是一樣大」。
+// 可行性關鍵:`retargetAvatar` 每幀**只寫 `bone.quaternion`,從不寫 `bone.position`** → 改 rest 位移
+// 不會被每幀蓋掉;蒙皮頂點跟著骨頭走,所以改骨架比例 = 改身形,不用碰網格。
+// 這跟 normalizeRest 是同一個機制的兩半:那邊修 rest 的**旋轉**,這邊修 rest 的**位移與縮放**。
+// 目標比例(各段長度 ÷ 全身高)實測自內建 base-avatar(3.08 頭身);換基底角色要重量一次:
+//   scratchpad/proportions.mjs —— 量 `骨頭→子骨頭` 世界距離 ÷ 包圍盒高。
+const CHIBI = { upperarm: 0.0834, forearm: 0.1171, thigh: 0.1266, shin: 0.1769,
+                headTop: 0.325, shoulderW: 0.195, hipW: 0.12 };
+// 同 TPOSE_FIX:**只對匯入角色生效**(內建 base-avatar 本身就是比例基準,對它做等於原地踏步)。
+const CHIBI_FIT = (() => {
+  const q = new URLSearchParams(location.search).get('chibi');
+  return q === null ? (AVATAR_URL !== DEFAULT_AVATAR_URL) : q !== '0';
+})();
+const _cv = new THREE.Vector3(), _cw = new THREE.Vector3(), _cbox = new THREE.Box3();
+// 回傳修改前的頭身比(給報告/測試看),沒東西可改回 null。
+function conformProportions(sc, by) {
+  sc.updateMatrixWorld(true);
+  // ⚠ 一律用 sampledBox 不用 setFromObject:對蒙皮角色後者回傳 bind pose 的盒子,①② 改完骨頭後它不會動,
+  // ③ 拿它量頭高就會混到過期的數字(第一次量剛好還沒改所以看不出來,換個模型就中招)。
+  const bb0 = sampledBox(sc, _cbox);
+  const H = bb0.max.y - bb0.min.y;
+  if (!(H > 1e-6) || !by.head) return null;
+  const wp = (k, out) => { by[k].bone.getWorldPosition(out); return out; };
+  const before = +(H / (bb0.max.y - wp('head', _cv).y)).toFixed(2);
+
+  // ① 肢段長度:縮子骨的 local 位移到目標長度。**父先子後**——改父會帶動子,子要用改過後的位置重量。
+  const setLen = (a, b, t) => {
+    for (const s of ['_l', '_r']) {
+      const A = by[a + s], Bn = by[b + s]; if (!A || !Bn) continue;
+      sc.updateMatrixWorld(true);
+      const now = wp(a + s, _cv).distanceTo(wp(b + s, _cw));
+      if (now < 1e-6) continue;
+      Bn.bone.position.multiplyScalar(t * H / now);
+      Bn.bone.updateMatrixWorld(true);
+    }
+  };
+  setLen('upperarm', 'forearm', CHIBI.upperarm); setLen('forearm', 'hand', CHIBI.forearm);
+  setLen('thigh', 'shin', CHIBI.thigh);          setLen('shin', 'foot', CHIBI.shin);
+
+  // ② 肩寬/臀寬:近端骨的 local X 外推(chibi 比寫實角色寬 ~1.4×)
+  const widen = (k, t) => {
+    const L = by[k + '_l'], R = by[k + '_r']; if (!L || !R) return;
+    sc.updateMatrixWorld(true);
+    const now = wp(k + '_l', _cv).distanceTo(wp(k + '_r', _cw)); if (now < 1e-6) return;
+    const f = t * H / now;
+    [L, R].forEach(e => { e.bone.position.x *= f; e.bone.updateMatrixWorld(true); });
+  };
+  widen('upperarm', CHIBI.shoulderW); widen('thigh', CHIBI.hipW);
+
+  // ③ 大頭:頭骨等比放大(頭髮/髮飾骨是子骨,自動跟著大)。
+  // ⚠ 只能動 head——`torso`/`forearm`/`shin`/`upperarm`/`thigh` 的 bone.scale 是命中放大/整肢伸展
+  // (retargetAvatar 的 setS/setStretch)每幀在寫的,在這裡設會被蓋掉。
+  sc.updateMatrixWorld(true);
+  const bb = sampledBox(sc, _cbox);
+  const nowHead = bb.max.y - wp('head', _cv).y;
+  if (nowHead > 1e-6) by.head.bone.scale.setScalar(CHIBI.headTop * H / nowHead);
+  sc.updateMatrixWorld(true);
+  return before;
+}
+
 // T-pose:box rig 的中性測量姿勢(雙臂水平放下=角色 rest 對齊)。與編排器 inspectTposePose 同義:
 // 手臂 sz=90(水平)、其餘 0。用來建立 box↔角色的世界四元數對照。
 function tposePose() {
@@ -132,9 +194,14 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
     if (o.isMesh) return;
     const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
     if (!n || BONE_SKIP.test(n)) return;
-    const hit = BONE_ALIASES.find(([k]) => n.includes(k));
-    if (hit) found.push({ bone: o, type: hit[1] });
+    const i = BONE_ALIASES.findIndex(([k]) => n.includes(k));
+    if (i >= 0) found.push({ bone: o, type: BONE_ALIASES[i][1], pri: i });
   });
+  // 同一個 key 有多個候選時**照別名表優先序取,不是照 traverse 順序**。
+  // 踩過:VRoid 檔同時有 `Root`(骨架根,在腳底)與 `J_Bip_C_Hips`(真正的髖)——Root 在階層上更早,
+  // 舊寫法「重複取第一個」就選了它,root 的樞紐變成腳底 → clip 的 root_x(pitch)會繞著腳踝甩全身。
+  // 別名表裡 `hips` 排在裸 `root` 之前,照 pri 取就對了。
+  found.sort((a, b) => a.pri - b.pri);
   const by = {};
   for (const f of found) {
     f.bone.getWorldPosition(_v);
@@ -148,10 +215,14 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
     by[key] = { bone: f.bone, node: () => nodeFor(boxRig, s), meshes, qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
   }
 
+  // ugc-1c 比例正規化:**必須在量包圍盒之前**——改完比例身高會變,S 要照改完的身高算才會正規化到同站高。
+  const headsBefore = CHIBI_FIT ? conformProportions(sc, by) : null;
+
   // 縮放角色到 box rig 身高。box brawler 世界高 ≈ hipY + torso 頂 + head ≈ 用包圍盒估。
-  const bb = new THREE.Box3().setFromObject(sc), size = new THREE.Vector3(); bb.getSize(size);
+  // ⚠ 用 sampledBox 不用 setFromObject:蒙皮角色(尤其比例正規化過的)後者量到的是 bind pose,身高會差 18%。
+  const bb = sampledBox(sc, new THREE.Box3()), size = new THREE.Vector3(); bb.getSize(size);
   const boxH = boxRigHeight(boxRig);
-  const S = (size.y > 1e-6 ? boxH / size.y : 1) * AVATAR_SCALE;   // ×整體放大倍率
+  let S = (size.y > 1e-6 ? boxH / size.y : 1) * AVATAR_SCALE;   // ×整體放大倍率
   const wrap = new THREE.Group(); wrap.name = 'AVATAR'; wrap.scale.setScalar(S); wrap.add(sc);
   g.add(wrap);
 
@@ -165,7 +236,23 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   const restResidDeg = normalizeRest(by, order, false);            // 修後殘差(關掉修正時 = 同一個數)
   Object.values(by).forEach(e => { const nd = e.node(); if (nd) { nd.getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); } });
 
-  const av = { wrap, S, by, order, skinned, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg, standH: size.y * S };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
+  // 站高收斂:上面的 S 是拿**校正前**的身高算的,而 T-pose 校正 + rest 正規化會改姿勢(腿打直等)
+  // → 實測渲染高度會偏(VRoid 比例正規化後高 8%)。使用者要求「大小跟高度跟原本角色一致」,
+  // 所以照校正後的真實高度再收斂一次。uniform 縮放不影響世界四元數 → bQT 不用重抓。
+  const targetH = boxH * AVATAR_SCALE;
+  const realH = sampledBox(wrap, _sbox).max.y - _sbox.min.y;
+  if (realH > 1e-6) { S *= targetH / realH; wrap.scale.setScalar(S); wrap.updateMatrixWorld(true); }
+  const fin = sampledBox(wrap, _sbox).clone();
+  // headsBefore/headsAfter=頭身比(全身高 ÷ 頭高),chibi 基底是 3.08;報告與測試讀這兩個數
+  const headsAfter = (() => { const p = new THREE.Vector3();
+    if (!by.head) return null; by.head.bone.getWorldPosition(p);
+    const h = fin.max.y - p.y;
+    return h > 1e-6 ? +((fin.max.y - fin.min.y) / h).toFixed(2) : null; })();
+  // 踩地偏差:每幀用便宜的 setFromObject(bind pose)量腳底,這裡量一次它與真實蒙皮腳底的差,之後每幀補上。
+  // 每幀跑 sampledBox 太貴;差值是系統性的,量一次就夠。
+  const skinFootBias = skinned ? +(fin.min.y - new THREE.Box3().setFromObject(wrap).min.y).toFixed(3) : 0;
+  const av = { wrap, S, by, order, skinned, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg,
+    chibiFit: CHIBI_FIT, headsBefore, headsAfter, skinFootBias, standH: +(fin.max.y - fin.min.y).toFixed(1) };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];
@@ -181,7 +268,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
 
 // 每幀:box rig 已被 applyBrawlerPose 擺好姿勢 → 把世界差量轉寫到角色骨頭。
 const _q1 = new THREE.Quaternion(), _qd = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _qp = new THREE.Quaternion();
-const _fbox = new THREE.Box3();
+const _fbox = new THREE.Box3(), _sbox = new THREE.Box3();
 export function retargetAvatar(g, boxRig, pose) {
   const av = g.userData.avatar; if (!av) return;
   const w = av.wrap;
@@ -230,7 +317,9 @@ export function retargetAvatar(g, boxRig, pose) {
   w.updateMatrixWorld(true);
   _fbox.setFromObject(w);
   const groundY = boxFootWorldY(boxRig);
-  if (isFinite(_fbox.min.y)) w.position.y = groundY - _fbox.min.y;
+  // +skinFootBias:setFromObject 對蒙皮量到的是 bind pose 腳底,載入時量過的系統性差值補回來
+  //(比例正規化過的角色不補會浮空 ~14px = 身高 18%)。
+  if (isFinite(_fbox.min.y)) w.position.y = groundY - _fbox.min.y - (av.skinFootBias || 0);
 
   // rigged 手:async 載入,首次就緒時 lazy 掛;顯示中(抓握物品)才由 clip 手指軸(aL_/aR_ f*)驅動指骨。
   // 顯示切換在 actor-brawler updateHands 依 grab 狀態做(一般/戰鬥=原生手,抓握=rigged 手)。
@@ -239,6 +328,28 @@ export function retargetAvatar(g, boxRig, pose) {
 }
 
 // ---- 幾何小工具 ----
+// ⚠ `Box3.setFromObject` **不算蒙皮形變**:它拿 geometry 的 bounding box 乘 mesh.matrixWorld,而
+// SkinnedMesh 的 matrixWorld 不會因為骨頭動而改變 → 對蒙皮角色永遠回傳 bind pose 的盒子。
+// 比例正規化(ugc-1c)把大腿砍半、頭放大 2.66× 之後,這個誤差大到會讓角色**腳浮在空中 14px**
+//(實測:naive 高 101.2/腳 y=0,真實高 85.6/腳 y=14.4)。所以身高正規化與踩地都要用真頂點量。
+// 逐網格抽樣(每網格上限 ~SAMPLE 點)壓成本;只在載入時跑一次,不進每幀。
+const SAMPLE = 240;
+const _sv = new THREE.Vector3();
+function sampledBox(root, out) {
+  out.makeEmpty();
+  root.updateWorldMatrix(false, true);
+  root.traverse(o => {
+    if (!o.isMesh || !o.visible) return;
+    const P = o.geometry.attributes.position; if (!P) return;
+    const step = Math.max(1, Math.floor(P.count / SAMPLE));
+    for (let i = 0; i < P.count; i += step) {
+      _sv.set(P.getX(i), P.getY(i), P.getZ(i));
+      if (o.isSkinnedMesh) o.boneTransform(i, _sv);      // → model space(bindMatrixInverse 已抵銷 matrixWorld)
+      out.expandByPoint(_sv.applyMatrix4(o.matrixWorld));
+    }
+  });
+  return out;
+}
 // ugc-1 ①:`Object3D.clone()` **不重綁骨架**——clone 出來的 SkinnedMesh 沿用 template 的 `skeleton` 引用,
 // 而那份 skeleton 的 bones[] 指著 **template 的骨頭**。後果:兩個 fighter 共用同一副骨架(A 動 B 跟著動),
 // 而且我們重定向寫的是 clone 的骨頭 → 蒙皮完全不跟著變形(實測形變量 0.0081 = 死的)。

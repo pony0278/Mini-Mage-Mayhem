@@ -143,6 +143,44 @@ ok(ang(Aoff.dir, T.dir) > 25, `⑧ 反證:未校正時方向明顯不同(夾角 
 const pB = await openPage(null, ''); const Bi = await restOf(pB); await pB.close();
 ok(Bi.fix === false && Bi.resid === Bi.dev, `⑧ 內建 base-avatar 預設**不**校正(dev ${Bi.dev}° = resid ${Bi.resid}°)`);
 
+// ---- ⑨ 比例正規化(ugc-1c):匯入角色壓成 chibi 骨架比例 ----
+// 使用者拍板:「維持 chibi 風格,其他 GLB 只是外觀套進來——原本的大頭就是大頭」。
+// ⚠ 量身高/腳底**不能用 Box3.setFromObject**:它拿 geometry bbox × mesh.matrixWorld,而 SkinnedMesh 的
+//   matrixWorld 不隨骨頭動 → 對蒙皮永遠回傳 bind pose。比例改完後這個誤差讓角色腳浮空 14px(身高 18%)。
+const realBox = (page) => page.evaluate(() => {
+  const av = window.__avatars[0], box = new THREE.Box3(), v = new THREE.Vector3();
+  av.wrap.traverse(o => {
+    if (!o.isMesh || !o.visible) return;
+    const P = o.geometry.attributes.position; if (!P) return;
+    const step = Math.max(1, Math.floor(P.count / 200));
+    for (let i = 0; i < P.count; i += step) {
+      v.set(P.getX(i), P.getY(i), P.getZ(i));
+      if (o.isSkinnedMesh) o.boneTransform(i, v);
+      box.expandByPoint(v.applyMatrix4(o.matrixWorld));
+    }
+  });
+  return { minY: +box.min.y.toFixed(1), h: +(box.max.y - box.min.y).toFixed(1),
+           chibiFit: av.chibiFit, before: av.headsBefore, after: av.headsAfter,
+           standH: +av.standH.toFixed(1), footBias: av.skinFootBias,
+           rootBone: av.by.root ? av.by.root.bone.name : null };
+});
+
+const pC = await openPage(buildSkinGlb('native'), '&chibi=1');  const C = await realBox(pC); await pC.close();
+const pC0 = await openPage(buildSkinGlb('native'), '&chibi=0'); const C0 = await realBox(pC0); await pC0.close();
+const pCB = await openPage(null, '');                        const CB = await realBox(pCB); await pCB.close();
+
+ok(C.chibiFit === true && C.before != null, `⑨ 匯入角色預設套比例正規化(修前頭身比 ${C.before})`);
+ok(C.after > 2.4 && C.after < 4.2, `⑨ 壓到 chibi 頭身比(${C.before} → ${C.after};內建基底 ${CB.after})`);
+ok(C.after < C.before, `⑨ 確實變矮胖(${C.before} → ${C.after})`);
+ok(Math.abs(C.minY) < 3, `⑨ **真實蒙皮腳底貼地** minY=${C.minY}(修前浮空 14;setFromObject 量不到蒙皮形變)`);
+ok(Number.isFinite(C.footBias), `⑨ 有記錄踩地偏差供每幀補償(skinFootBias=${C.footBias})`);
+ok(C0.chibiFit === false && C0.before === null, '⑨ ?chibi=0 可關掉(不做比例正規化)');
+ok(CB.chibiFit === false, `⑨ 內建 base-avatar 不套(它本身就是比例基準,頭身比 ${CB.after})`);
+ok(Math.abs(C.standH - CB.standH) < 1,
+  `⑨ 站高與內建一致(${C.standH} vs ${CB.standH})——使用者要求「大小跟高度跟原本角色一致」`);
+ok(C.rootBone === CB.rootBone || /hips|root/i.test(C.rootBone || ''),
+  `⑨ root 取到真正的髖骨(${C.rootBone});VRoid 同時有腳底的 Root 與 J_Bip_C_Hips,取錯 root_x 會繞腳踝甩全身`);
+
 ok(errs.length === 0, '⑦ 無 console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 
 await B.close();
