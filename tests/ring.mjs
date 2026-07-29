@@ -17,11 +17,12 @@ let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' 
 await page.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false; v.fighters[1].x = 700; v.fighters[1].y = 300; });
 const advance = (sec) => page.evaluate(s => new Promise(r => { const t0 = __v2.game.time; const iv = setInterval(() => { if (__v2.game.time - t0 >= s) { clearInterval(iv); r(); } }, 20); }), sec);
 
-// ---------- ① rim 地形 ----------
+// ---------- ① rim 地形(ring-3:矩形戰場 ∪ 外掛角落圓台) ----------
+// oldTab=(30,200):ring-1 的 230² 角平台範圍內、但在矩形與圓台之外——ring-3 這裡=井(舊角平台真的縮成圓台)
 const geo = await page.evaluate(() => ({ rimOn: __lab.rimOn(), mid: __v2.onSolid(480, 320), top: __v2.onSolid(480, 20),
-  left: __v2.onSolid(20, 320), corner: __v2.onSolid(150, 150), cornerFar: __v2.onSolid(40, 600), station: __v2.onSolid(810, 490) }));
-R('rim 地形(內圈+四角平台實心/四側邊帶虛空/井視覺在)',
-  geo.rimOn && geo.mid && !geo.top && !geo.left && geo.corner && geo.cornerFar && geo.station, JSON.stringify(geo));
+  left: __v2.onSolid(20, 320), oldTab: __v2.onSolid(30, 200), disc: __v2.onSolid(64, 64), cornerFar: __v2.onSolid(40, 600), station: __v2.onSolid(896, 576) }));
+R('rim 地形(矩形+四圓台實心/邊帶與舊角平台=虛空/井視覺在)',
+  geo.rimOn && geo.mid && !geo.top && !geo.left && !geo.oldTab && geo.disc && geo.cornerFar && geo.station, JSON.stringify(geo));
 
 // ---------- ②③ 自摔:走出邊 → 對手得分 + selfFalls ----------
 await page.evaluate(() => { const f = __v2.fighters[0]; f.x = 480; f.y = 100; f.vx = 0; f.vy = -420; f.lastHitBy = -1; f.invuln = 0; });

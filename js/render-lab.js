@@ -376,8 +376,9 @@ export function initLabScene() {
   const rim = new THREE.DirectionalLight(0x6a72ff, 0.5);             // 冷 arcane rim,刻出機械輪廓
   rim.position.set(CX - 16 * LAB_SCALE, 12 * LAB_SCALE, CZ - 14 * LAB_SCALE); scene.add(rim);
   // 四角元素站底光(火/冰/毒/雷,對應 Phase 3 四角站位;裝飾性 → fx=low 剝除)
+  const _LX = _rimCfg ? 13 : 13.85, _LZ = _rimCfg ? 8 : 12;      // ring-3:rim=角落圓台圓心(世界 64/896×64/576)
   if (!FX_LOW) for (const [c, x, z] of [
-    [0xff6a26, -13.85, -12], [0x53c8ff, 13.85, -12], [0x8dff7a, -13.85, 12], [0xa87cff, 13.85, 12],
+    [0xff6a26, -_LX, -_LZ], [0x53c8ff, _LX, -_LZ], [0x8dff7a, -_LX, _LZ], [0xa87cff, _LX, _LZ],
   ]) {
     const pl = new THREE.PointLight(c, 1.35, 13 * LAB_SCALE, 2); // perf-1:0.95→1.35、11→13(補償站身 decoLight 退役;全場點光 18→6)
     pl.position.set(CX + x * LAB_SCALE, 2.4 * LAB_SCALE, CZ + z * LAB_SCALE); scene.add(pl);
@@ -1003,42 +1004,52 @@ export function setRimGeometry(RIM) {
   if (labBuilt) buildRimIsland();                       // 保險:若場景已建(理論上不會),直接補建
 }
 function buildRimIsland() {
-  const { m, corner: c } = _rimCfg; const W = 960, H = 640;
+  const { m, podR: R } = _rimCfg; const W = 960, H = 640;
   if (_fullFloor) _fullFloor.visible = false;           // 整片地板藏掉(材質共用給裁形頂面)
   const g = new THREE.Group(); g.name = 'RIM_ISLAND';
-  // 平台輪廓(順時針 20 點;內圈矩形 ∪ 四角平台=v2-terrain onSolid 同一幾何)
-  const P = [
-    [0, 0], [c, 0], [c, m], [W - c, m], [W - c, 0], [W, 0], [W, c], [W - m, c], [W - m, H - c], [W, H - c],
-    [W, H], [W - c, H], [W - c, H - m], [c, H - m], [c, H], [0, H], [0, H - c], [m, H - c], [m, c], [0, c],
-  ];
-  // 頂面:Shape(x, -z)→rotation.x=-90° 落回世界 (x,z);UV 手動對齊原整片地板貼圖(中心 CX,CZ、跨 SCENE_W×SCENE_D)
-  const shape = new THREE.Shape(P.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const topGeo = new THREE.ShapeGeometry(shape);
+  const corners = [[m, m], [W - m, m], [W - m, H - m], [m, H - m]];   // 圓台圓心=矩形四角(ring-3 手繪示意圖)
   const SW = SCENE_W * LAB_SCALE, SD = SCENE_D * LAB_SCALE;
-  const pos = topGeo.attributes.position, uv = topGeo.attributes.uv;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = -pos.getY(i);
-    uv.setXY(i, (x - (CX - SW / 2)) / SW, ((CZ + SD / 2) - z) / SD);
+  const remapUV = (geo, toWorld) => {                    // UV 對齊原整片地板貼圖(中心 CX,CZ、跨 SCENE_W×SCENE_D)
+    const pos = geo.attributes.position, uv = geo.attributes.uv;
+    for (let i = 0; i < pos.count; i++) {
+      const [x, z] = toWorld(pos.getX(i), pos.getY(i));
+      uv.setXY(i, (x - (CX - SW / 2)) / SW, ((CZ + SD / 2) - z) / SD);
+    }
+  };
+  // 頂面:矩形戰場 + 四圓台(rotation.x=-90° 後 plane local +y → 世界 -z)
+  const rectGeo = new THREE.PlaneGeometry(W - 2 * m, H - 2 * m);
+  remapUV(rectGeo, (px, py) => [W / 2 + px, H / 2 - py]);
+  const rect = new THREE.Mesh(rectGeo, _floorMat);
+  rect.rotation.x = -Math.PI / 2; rect.position.set(W / 2, -0.45, H / 2); rect.receiveShadow = true;
+  g.add(rect);
+  for (const [cx, cz] of corners) {
+    const dg = new THREE.CircleGeometry(R, 40);
+    remapUV(dg, (px, py) => [cx + px, cz - py]);
+    const d = new THREE.Mesh(dg, _floorMat);
+    d.rotation.x = -Math.PI / 2; d.position.set(cx, -0.45, cz); d.receiveShadow = true;
+    g.add(d);
   }
-  const top = new THREE.Mesh(topGeo, _floorMat);
-  top.rotation.x = -Math.PI / 2; top.position.y = -0.45; top.receiveShadow = true;
-  g.add(top);
-  // 側裙:每段輪廓一片垂直金屬面(平台厚度=懸浮感的來源;參考圖的石台側身)
+  // 側裙:矩形四邊垂直金屬面 + 圓台圓筒殼(平台厚度=懸浮感;角落交疊處藏在頂面下)
   const DEPTH = 46;
   const skirtMat = new THREE.MeshStandardMaterial({ color: 0x171d1f, roughness: 0.58, metalness: 0.72, side: THREE.DoubleSide });
   const lipMat = new THREE.MeshStandardMaterial({ color: 0x2b3335, roughness: 0.5, metalness: 0.8, side: THREE.DoubleSide });
-  for (let i = 0; i < P.length; i++) {
-    const [x0, z0] = P[i], [x1, z1] = P[(i + 1) % P.length];
-    const len = Math.hypot(x1 - x0, z1 - z0); if (len < 1) continue;
-    const ry = Math.atan2(-(z1 - z0), x1 - x0);
+  const rectEdges = [[m, m, W - m, m], [W - m, m, W - m, H - m], [W - m, H - m, m, H - m], [m, H - m, m, m]];
+  for (const [x0, z0, x1, z1] of rectEdges) {
+    const len = Math.hypot(x1 - x0, z1 - z0), ry = Math.atan2(-(z1 - z0), x1 - x0);
     const q = new THREE.Mesh(new THREE.PlaneGeometry(len, DEPTH), skirtMat);
     q.position.set((x0 + x1) / 2, -DEPTH / 2 - 0.4, (z0 + z1) / 2); q.rotation.y = ry;
     g.add(q);
-    const lip = new THREE.Mesh(new THREE.PlaneGeometry(len, 5), lipMat);   // 頂緣亮一階金屬包邊(讀出平台厚度)
+    const lip = new THREE.Mesh(new THREE.PlaneGeometry(len, 5), lipMat);   // 頂緣亮一階包邊
     lip.position.set((x0 + x1) / 2, -2.4, (z0 + z1) / 2); lip.rotation.y = ry;
     g.add(lip);
   }
-  // 整圈警戒斑馬帶(頂面上、沿輪廓內縮;跟艙邊黃黑紋同語言)
+  for (const [cx, cz] of corners) {
+    const shell = new THREE.Mesh(new THREE.CylinderGeometry(R, R, DEPTH, 40, 1, true), skirtMat);
+    shell.position.set(cx, -DEPTH / 2 - 0.4, cz); g.add(shell);
+    const lip = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.4, R + 0.4, 5, 40, 1, true), lipMat);
+    lip.position.set(cx, -2.4, cz); g.add(lip);
+  }
+  // 警戒帶:矩形四邊斑馬帶(圓台之間)+ 圓台琥珀邊環
   const hz = document.createElement('canvas'); hz.width = 64; hz.height = 16;
   const hc = hz.getContext('2d');
   hc.fillStyle = '#151008'; hc.fillRect(0, 0, 64, 16);
@@ -1046,17 +1057,25 @@ function buildRimIsland() {
   for (let i = -1; i < 5; i++) { hc.beginPath(); hc.moveTo(i * 16, 16); hc.lineTo(i * 16 + 16, 0); hc.lineTo(i * 16 + 24, 0); hc.lineTo(i * 16 + 8, 16); hc.fill(); }
   const hazTex = new THREE.CanvasTexture(hz); hazTex.wrapS = hazTex.wrapT = THREE.RepeatWrapping;
   const BW = 10;
-  for (let i = 0; i < P.length; i++) {
-    const [x0, z0] = P[i], [x1, z1] = P[(i + 1) % P.length];
-    const len = Math.hypot(x1 - x0, z1 - z0); if (len < 1) continue;
-    let nx = -(z1 - z0) / len, nz = (x1 - x0) / len;                      // 段法向;挑指向場內那側
-    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-    if (nx * (W / 2 - mx) + nz * (H / 2 - mz) < 0) { nx = -nx; nz = -nz; }
+  const bands = [                                        // 帶心沿矩形邊內縮 BW/2;長度避開圓台覆蓋段(±R)
+    [m + R, m + BW / 2, W - m - R, m + BW / 2, 0],
+    [m + R, H - m - BW / 2, W - m - R, H - m - BW / 2, 0],
+    [m + BW / 2, m + R, m + BW / 2, H - m - R, 1],
+    [W - m - BW / 2, m + R, W - m - BW / 2, H - m - R, 1],
+  ];
+  for (const [x0, z0, x1, z1, vert] of bands) {
+    const len = vert ? (z1 - z0) : (x1 - x0);
     const t = hazTex.clone(); t.needsUpdate = true; t.repeat.set(len / 48, 1);
     const band = new THREE.Mesh(new THREE.PlaneGeometry(len, BW), new THREE.MeshBasicMaterial({ map: t }));
-    band.position.set(mx + nx * BW / 2, 0.35, mz + nz * BW / 2);
-    band.rotation.set(-Math.PI / 2, 0, Math.atan2(-(z1 - z0), x1 - x0)); // Euler XYZ=Rx·Rz:先面內轉再放平
+    band.position.set((x0 + x1) / 2, 0.35, (z0 + z1) / 2);
+    band.rotation.set(-Math.PI / 2, 0, vert ? Math.PI / 2 : 0);          // Euler XYZ=Rx·Rz:先面內轉再放平
     g.add(band);
+  }
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffb84d, transparent: true, opacity: 0.85 });
+  for (const [cx, cz] of corners) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(R - 9, R - 2, 40), ringMat);
+    ring.rotation.x = -Math.PI / 2; ring.position.set(cx, 0.35, cz);
+    g.add(ring);
   }
   // 深淵:井底近黑大平面 + 下層回收線微光(縱深提示;參考圖的水面/月=我們的下層廠區)
   const abyss = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshBasicMaterial({ color: 0x02040a }));
@@ -1094,7 +1113,7 @@ function buildLabProps() {
   const NORTH_EDGE = -HZ + 1.65, SOUTH_EDGE = HZ - 1.65, WEST_EDGE = -HX + 1.65, EAST_EDGE = HX - 1.65;
   // 四角站位:非 rim=裝飾帶(13.85/12=核心外);rim=**角平台外緣對角**(13.1/8.1 → 世界 ~(61,61) 等,
   // 站機具穩坐 230² 角平台、緊鄰玩法站位 (150,150),平台外=懸崖沒地方站)
-  const HAZARD_X = RIMI ? 13.1 : CORE_HX - 1.15, HAZARD_Z = RIMI ? 8.1 : CORE_HZ + 2.0;
+  const HAZARD_X = RIMI ? 13 : CORE_HX - 1.15, HAZARD_Z = RIMI ? 8 : CORE_HZ + 2.0;   // rim=外掛圓台圓心(ring-3;=v2-state stations 玩法站位)
   const place = (obj, x, z, ry = 0) => { obj.position.set(x, 0, z); obj.rotation.y = ry; labGroup.add(obj); return obj; };
   // 四角廢料處理站(採新四角站位)+ 通電光環(拉閘因果演出:玩家反饋 2026-07 電束不自然 → 改場邊大型機具「被魔法光環觸發」)
   addPowerHalo(place(fireStation(), -HAZARD_X, -HAZARD_Z, Math.PI * 0.25), 0xff7a2a);

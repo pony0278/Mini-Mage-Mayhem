@@ -204,11 +204,13 @@ export const STATION_WARN = 3.0;        // 預警秒數(收縮環倒數)
 export const STATION_INTERVAL = 10;     // 每次噴發間隔(階段升級縮短)
 export const ERUPT_PATCH_R = 80;        // 噴發範圍 / 殘留地板半徑(~2.5 tile)
 export const ERUPT_PULSE = 450, ERUPT_STAB = 30; // 瞬間徑向擊退 + 削穩定值(中等,有 3s 預警)
+// ring-3(使用者手繪示意圖):站移到**外掛角落圓台圓心**(=矩形四角 64/896×64/576)——不再佔戰場內部,
+// 噴發殘留主要落在圓台+濺入矩形角一小塊;上圓台撿便宜(逃跑出口也在那)=自擔洩漏風險。
 export const stations = [
-  { x: 150, y: 150, elem: 'fire',      state: 'idle', warnT: 0 }, // 西北
-  { x: 810, y: 150, elem: 'ice',       state: 'idle', warnT: 0 }, // 東北
-  { x: 150, y: 490, elem: 'poison',    state: 'idle', warnT: 0 }, // 西南
-  { x: 810, y: 490, elem: 'lightning', state: 'idle', warnT: 0 }, // 東南
+  { x: 64,  y: 64,  elem: 'fire',      state: 'idle', warnT: 0 }, // 西北圓台
+  { x: 896, y: 64,  elem: 'ice',       state: 'idle', warnT: 0 }, // 東北圓台
+  { x: 64,  y: 576, elem: 'poison',    state: 'idle', warnT: 0 }, // 西南圓台
+  { x: 896, y: 576, elem: 'lightning', state: 'idle', warnT: 0 }, // 東南圓台
 ];
 // 總開關(§10.1):貼近清運口的緊急控制台,揍它一下 arm 四站循環,單向不可關;開局平靜。
 // 總開關(§10.1):緊急拉桿控制台。玩家反饋 2026-07:原本埋在中央回收艙圓環內違反場景直覺 → 移到場地左右兩側牆邊。
