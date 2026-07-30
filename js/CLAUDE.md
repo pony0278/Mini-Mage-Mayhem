@@ -212,9 +212,33 @@
 > 每幀蓋掉;蒙皮頂點跟著骨頭走 = 改骨架比例就是改身形,完全不用碰網格。跟 `normalizeRest` 是同一個機制的
 > 兩半(那邊修 rest 的旋轉,這邊修 rest 的位移與縮放)。做三件事:①四段肢長(上臂/前臂/大腿/小腿)縮子骨的
 > local 位移到目標長度(**父先子後**)②肩寬/臀寬外推(chibi 比寫實寬 ~1.4×)③頭骨等比放大(髮/髮飾是子骨自動跟)。
-> 目標比例 `CHIBI` 表 = 各段長度 ÷ 全身高,實測自內建 base-avatar(3.08 頭身);**換基底角色要重量一次**
->(scratchpad/proportions.mjs)。實測 VRoid 8.18 頭身 → **3.18**。`?chibi=0/1` 覆蓋;同 TPOSE_FIX 只對匯入角色生效。
+> 目標比例 `CHIBI` 表 = 各段長度 ÷ 全身高,實測自內建 base-avatar(2.95 頭身);**換基底角色要重量一次**
+>(scratchpad/proportions.mjs)。`?chibi=0/1` 覆蓋;同 TPOSE_FIX 只對匯入角色生效。
 > ⚠ **只能動 head 的 `bone.scale`** —— torso/forearm/shin/upperarm/thigh 的 scale 是 setS/setStretch 每幀在寫的。
+> `bone.position` 沒人每幀寫,所以位移/長度都可以動(整套機制的地基)。
+>
+> **ugc-2d 頭要坐在脖子上 + 軀幹長度**(使用者反饋「我發現人物的頭身腿是不是都不在同一面上」):
+> 先量再改的結論——**朝向沒問題**(16 骨在 facing 0/90/180/270° 下世界 yaw 完全一致;頭/軀幹/腿的深度形心
+> 差 <2%身高,比內建的 4% 還齊)。真正的病是兩個**比例**問題:
+> ① **③ 的頭放大繞錯樞紐**:舊寫法只拿「頭骨關節**以上**」的高度算倍率、繞關節原點縮放。內建 base-avatar
+>    的頭幾乎整顆在關節之上(下巴只低 **1.5%**身高)所以看不出來;但**真人骨架的 head 骨在顱底、下巴在它
+>    下面** → 放大 2.7× 連下巴一起往下拉 2.7 倍,實測 VRoid 下巴沉到脖子關節**下** 3.2%身高(≈6px),
+>    整顆頭陷進胸口,側面看就是「頭跟身體不在同一面」。修法=同時解兩條件
+>    (頭頂 = 關節+`headTop`·H、下巴 = 關節−`jawDrop`·H):倍率照**整顆頭高**(上+下)算,再用
+>    `liftBoneWorldY` 把頭骨抬 dy 讓下巴回到 chibi 的位置。需要頭的**下緣** → 新增 `subtreeSampledBox()`
+>    (只量某根骨子樹的網格盒;蒙皮=主導骨在子樹內、剛體=Mesh 是後代;抽樣 4000 點,240 點下巴會不準)。
+> ② **①a 軀幹長度**(`root`→`neck`,新增 `CHIBI.torso`):匯入角色是寫實 7~8 頭身,軀幹佔比比 chibi 短
+>    一截(實測 VRoid 23.3% vs 內建 30.4%)→ 大頭幾乎直接接在髖上、脖子被吃掉。做法=把 root→neck 這條
+>    脊椎鏈上**每根骨的 local 位移**等比縮放(中間的 chest/upperChest 沒被別名表對照到也沒關係);
+>    肩/臂/頸/頭都是鏈上骨頭的子骨 → 自動跟著上移。**改完要重新量 H**(軀幹改長度會改身高,拿舊 H 算
+>    後面各段會集體偏 ~7%)。`neck` 不在 `root` 之下、或倍率落在 [0.25,4] 外就整步放過。
+> ⚠ **`headsBefore/headsAfter` 的定義改了**:舊的是「全身高 ÷(頭頂−頭骨關節)」,而 ① 會把頭骨抬起
+> → 那個替代量從此低估頭高、把數字吹高(修完會報 3.85 而其實頭高跟內建幾乎一樣)。改成量**真頭高
+>(下巴→頭頂)**的 `headsRatio()`。**基準值從 3.08 變 2.95**(同一具內建角色,只是量法不同);
+> 實測 VRoid 6.68 → **3.02**(內建 2.95)。舊文件裡的 3.08/3.15/3.18 都是舊定義,別再拿來比。
+> ⚠ **殘留(已量、未修)**:四肢的**長度**已對上 chibi(誤差 <0.5pp),但**粗細**沒動——小腿深度
+> 9.8% vs 內建 20.4%、手 6px vs 內建 19px,遠鏡頭下手臂看起來像白針。做法會是把非等比的 rest 粗細
+> 烤進骨頭、讓 `setS`/`setStretch` **乘**上去而不是覆寫(現在是 `setScalar` 直接蓋)。
 >
 > **⚠⚠ `Box3.setFromObject` 不算蒙皮形變**(這次踩到的最大坑):它拿 geometry 的 bounding box 乘
 > `mesh.matrixWorld`,而 **SkinnedMesh 的 matrixWorld 不隨骨頭動** → 對蒙皮角色永遠回傳 **bind pose** 的盒子。
@@ -251,8 +275,9 @@
 > **⚠ 帽子看起來「包住整顆頭」不是 bug**:item-3c 的三規則取 max 就是「頭永不露出帽口」,內建 chibi
 > 戴上去同樣只露腳(對照圖實測)。
 > **punch-studio 必須做同一件事**(WYSIWYG 命脈):`tools/ps/avatar.js` 有一份對應的 `CHIBI`/
-> `conformAvatarProportions`/`sampledBox`/腳骨推算(古典 script vs ESM 無法共用常數,**改一邊要同步另一邊**)。
-> studio 要是不套比例,那裡看到 8 頭身、遊戲裡是 3 頭身,編出來的姿勢進遊戲就偏。實測 studio 3.15 / 遊戲 3.18。
+> `conformAvatarProportions`/`sampledBox`/`subtreeSampledBox`/`liftBoneWorldY`/`avHeadsRatio`/腳骨推算
+>(古典 script vs ESM 無法共用常數,**改一邊要同步另一邊**)。
+> studio 要是不套比例,那裡看到 8 頭身、遊戲裡是 3 頭身,編出來的姿勢進遊戲就偏。
 > `?avatar=<路徑或 blob:URL>` 換角色檔(匯入精靈用 `URL.createObjectURL` 餵進來);`?avatar=0` 仍退方塊人。
 > 測試:`tests/skinrig.mjs`(GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產,骨名 + rest 版本 = 別名表與
 > 校正的規格書;variant 加後綴 `-apose` 取 A-pose 版)、punch-studio 端 `tests/psimport.mjs`。

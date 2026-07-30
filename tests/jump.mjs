@@ -45,24 +45,30 @@ const gOff = await W('__v2.fighters[0].guarding === false', 10);
 R('Shift 按住=舉防(空白已讓給跳)', gOn && gOff);
 
 // ---------- ④ 空中免地板化學:火海上跳過 ----------
-const fireDodge = await page.evaluate(() => { const v = __v2; const f = v.fighters[0];
-  f.x = 700; f.y = 540; f.vx = f.vy = 0; f.stability = 100; f.stunned = false; f.invuln = 0; f.jumpCd = 0; f.burnT = 0;
+// ⚠ **不要用「跳起來 → 等一段遊戲時間 → 看穩定值」來測**:跳躍弧線自己會結束,而 turbo=8 下一個 rAF
+// 批次可跨 ~0.5s 遊戲時 → 人早就落地著火了才取樣。舊寫法每 25ms 重釘 `_jumpT` 也擋不住批次縫隙
+//(門檻從 100 放寬到 90 之後,CONC=3 還是量到 88 = 假 FAIL)。
+// 改成**直接餵 dt 呼叫 `floorHazards(f, dt)`**:那個函式開頭就是 `if (airborne(f)) return`,
+// 是這條規則的唯一實作點。同一段火、同一個 dt 跑兩次(滯空 / 落地)= 自帶對照組,完全決定性。
+const fireDodge = await page.evaluate(() => { const v = __v2, f = v.fighters[0];
+  f.x = 700; f.y = 540; f.vx = f.vy = 0; f.stunned = false; f.invuln = 0; f.jumpCd = 0; f.burnT = 0;
   __stamp(700, 540, 40, 'fire');
   v.jump(f);
   f._jumpT = v.game.time - 0.2;                     // 快轉到空中段(z>1)
-  return { jumped: f._jumpT > -5, stab0: Math.round(f.stability) };
+  const jumped = v.airborne(f);
+  // ① 滯空:餵 0.5s 的地板化學(在地面這麼久會掉 30 以上)
+  f.stability = 100;
+  for (let i = 0; i < 10; i++) { f._jumpT = v.game.time - 0.2; v.floorHazards(f, 0.05); }
+  const air = Math.round(f.stability);
+  // ② 對照組:同一格火、同一個 dt,落地後照樣削
+  f._jumpT = -9; f._diveT0 = -9; f.z = 0; f.stability = 100;
+  for (let i = 0; i < 10; i++) v.floorHazards(f, 0.05);
+  const ground = Math.round(f.stability);
+  f.x = 100; f.y = 100;
+  return { jumped, air, ground };
 });
-// 站火 0.25s 遊戲時(在地面會被削 ~15 穩定)。
-// ⚠ 跳躍弧線本身會結束——併發跑時一輪 poll 之間流掉的遊戲時間更多,人落地了才取樣=火燒到=假 FAIL
-//(實測 CONC=3 下 stab 96、單跑 100)。每 tick 重新釘 `_jumpT` 把人按在空中,整個取樣窗都是「滯空」。
-await page.evaluate(() => new Promise(res => { const v = __v2, t0 = v.game.time;
-  const iv = setInterval(() => { v.fighters[0]._jumpT = v.game.time - 0.2;
-    if (v.game.time - t0 > 0.25) { clearInterval(iv); res(); } }, 25); }));
-const fireRes = await page.evaluate(() => { const f = __v2.fighters[0]; const s = Math.round(f.stability);
-  f.x = 100; f.y = 100; f._jumpT = -9; return s; });
-// 門檻 90:每 25ms 重釘 _jumpT 仍擋不住 turbo 大批次(一批可跨 0.5s 遊戲時,落地+著火發生在兩釘之間,
-// CONC=3 實測掉 3~4)。鑑別力仍在:整段站在火上會掉 ~15+(≤85),滯空只有批次縫隙的零頭。
-R('空中免地板化學(火海上方滯空,穩定值幾乎不掉)', fireDodge.jumped && fireRes >= 90, 'stab=' + fireRes);
+R('空中免地板化學(火海上方滯空不削穩定;落地照削=對照組)',
+  fireDodge.jumped && fireDodge.air === 100 && fireDodge.ground < 80, JSON.stringify(fireDodge));
 
 // ---------- ⑤ 鎖滑中起跳=跳出冰面 ----------
 await page.evaluate(() => { const v = __v2; const f = v.fighters[0];

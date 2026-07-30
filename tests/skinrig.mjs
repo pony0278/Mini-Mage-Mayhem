@@ -188,18 +188,26 @@ ok(C.rootBone === CB.rootBone || /hips|root/i.test(C.rootBone || ''),
 // 病 3 的第四次:火帽拿不到頭部尺寸就 `return false` → 退回 box rig headPivot(隱形 driver)=
 // 帽子掛到脖子上。actor-avatar 從 skin weight 反推 bind pose 骨局部 bbox 補上。
 const pH = await openPage(buildSkinGlb('native'), '&chibi=1');
-const H = await pH.evaluate(async () => {
-  const v = __v2, a = v.fighters[0];
-  v.v2s.introT = 0; a.item = 'fire'; a.itemUses = 9;
-  await new Promise(r => setTimeout(r, 900));
-  const av = window.__avatars[0];
-  let g = null, scene = av.wrap; while (scene.parent) scene = scene.parent;
+// ⚠ 火帽 GLB 是 async fetch 的,**不能用固定 sleep 等**:CONC=3 下載入變慢,900ms 到期時帽子還沒掛
+//(實測 ugc-2d 全跑時這條假 FAIL,單跑 41/41 全綠)。改成輪詢條件、上限 25s。
+await pH.evaluate(() => { const v = __v2, a = v.fighters[0];
+  v.v2s.introT = 0; a.item = 'fire'; a.itemUses = 9; });
+const gOf = () => {                                  // 取 fighter 的渲染 group(userData.avatar 指回 av)
+  const av = window.__avatars[0]; let g = null, scene = av.wrap;
+  while (scene.parent) scene = scene.parent;
   scene.traverse(o => { if (o.userData && o.userData.avatar === av) g = o; });
+  return g;
+};
+await pH.waitForFunction(`(${gOf.toString()})()?.userData?.hatOnAvatar === true`, { timeout: 25000 })
+  .catch(() => { /* 留給下面的斷言報失敗,別在這裡炸掉整支 */ });
+const H = await pH.evaluate((src) => {
+  const av = window.__avatars[0];
+  const g = new Function('return (' + src + ')()')();
   const hb = av.by.head.localBox, hd = av.by.head.localBoxDeep;
   const sz = b => { if (!b || b.isEmpty()) return null; const s = new THREE.Vector3(); b.getSize(s); return +s.y.toFixed(3); };
   return { headMeshes: (av.by.head.meshes || []).length, hatOnAvatar: !!(g && g.userData.hatOnAvatar),
            exactH: sz(hb), deepH: sz(hd), handBox: !!av.by.hand_r.localBox, handRig: !!av.handRig };
-});
+}, gOf.toString());
 await pH.close();
 ok(H.headMeshes === 0, `⑩ 蒙皮角色 by.head.meshes 確實是空的(${H.headMeshes})——剛體那條路對它無效`);
 ok(H.exactH > 0, `⑩ localBox(exact:主導骨=head)量到頭部高度 ${H.exactH}`);
@@ -210,6 +218,56 @@ ok(H.hatOnAvatar === true, '⑩ **火帽掛在 avatar 頭骨上**(修前=false �
 // 存在的理由是 base-avatar 的手是沒手指的色塊。蒙皮角色本身有帶指骨的手 → **不換手模**。
 ok(H.handRig === false, '⑪ 蒙皮角色**不掛 rigged 手**(用自己的手;換上去=不同膚色的手黏在手腕)');
 ok(R.handRig === true, `⑪ 剛體 base-avatar 照舊掛 rigged 手(${R.handRig};它的手本來就沒手指)`);
+
+// ---- ⑫ 頭要坐在脖子上(ugc-2d;使用者反饋「人物的頭身腿是不是都不在同一面上」)----
+// 舊 ③ 只拿「頭骨關節**以上**」的高度算放大倍率、繞關節原點縮放。內建 base-avatar 的頭幾乎整顆在關節
+// 之上(下巴只低 1.5%身高)所以看不出問題;**真人骨架的 head 骨在顱底、下巴在它下面** → 放大 2.7×
+// 連下巴一起往下拉 2.7 倍,實測 VRoid 下巴沉到脖子關節下 3.2%身高、整顆頭陷進胸口。
+// 修法=改解兩條件(頭頂到 headTop、下巴停在 jawDrop),倍率照整顆頭高算,再把頭骨抬回去。
+// 另外補上軀幹長度(root→neck):匯入角色是寫實 7~8 頭身,軀幹佔比比 chibi 短(VRoid 23.3% vs 30.4%)。
+const propOf = (page) => page.evaluate(() => {
+  const av = window.__avatars[0], T = window.THREE;
+  const hbone = av.by.head.bone;
+  const inHead = (b) => { for (let o = b; o; o = o.parent) if (o === hbone) return true; return false; };
+  const all = new T.Box3(), head = new T.Box3(), v = new T.Vector3();
+  av.wrap.traverse(o => {
+    if (!o.isMesh || !o.visible) return;
+    const P = o.geometry.attributes.position; if (!P) return;
+    const step = Math.max(1, Math.floor(P.count / 2000));
+    const SI = o.geometry.attributes.skinIndex, SW = o.geometry.attributes.skinWeight;
+    for (let i = 0; i < P.count; i += step) {
+      let hit = false;
+      if (o.isSkinnedMesh && SI && SW) {
+        let bi = SI.getX(i), bw = SW.getX(i);
+        for (const [ix, w] of [[SI.getY(i), SW.getY(i)], [SI.getZ(i), SW.getZ(i)], [SI.getW(i), SW.getW(i)]])
+          if (w > bw) { bw = w; bi = ix; }
+        const b = o.skeleton.bones[bi]; hit = !!b && inHead(b);
+      } else hit = inHead(o);
+      v.set(P.getX(i), P.getY(i), P.getZ(i));
+      if (o.isSkinnedMesh) o.boneTransform(i, v);
+      v.applyMatrix4(o.matrixWorld);
+      all.expandByPoint(v); if (hit) head.expandByPoint(v);
+    }
+  });
+  const H = all.max.y - all.min.y, pct = (n) => +(n / H * 100).toFixed(1);
+  const wy = (k) => { const e = av.by[k]; if (!e) return null;
+    e.bone.updateWorldMatrix(true, false); return e.bone.getWorldPosition(new T.Vector3()).y; };
+  // 正數 = 下巴在脖子關節**之上**(正常);負數 = 下巴陷進胸口
+  return { jawAboveNeck: pct(head.min.y - wy('neck')), torso: pct(wy('neck') - wy('root')),
+           headH: pct(head.max.y - head.min.y), heads: av.headsAfter };
+});
+const pD = await openPage(buildSkinGlb('native'), '&chibi=1');  const D = await propOf(pD);  await pD.close();
+const pD0 = await openPage(buildSkinGlb('native'), '&chibi=0'); const D0 = await propOf(pD0); await pD0.close();
+const pDB = await openPage(null, '');                          const DB = await propOf(pDB); await pDB.close();
+ok(D.jawAboveNeck > -1,
+  `⑫ 下巴不再陷進胸口(下巴高於脖子關節 ${D.jawAboveNeck}%身高;內建基底 ${DB.jawAboveNeck}%)`);
+ok(D.jawAboveNeck > D0.jawAboveNeck - 40 && D.headH > D0.headH * 1.5,
+  `⑫ 頭還是放大成 chibi 大頭(頭高 ${D0.headH}% → ${D.headH}%)——修的是位置不是取消放大`);
+ok(Math.abs(D.torso - 30.4) < 6,
+  `⑫ 軀幹長度壓到 chibi 目標 30.4%(實測 ${D.torso}%;修前 ${D0.torso}%,內建 ${DB.torso}%)`);
+// 頭身比改量真頭高(下巴→頭頂):舊定義「頭頂−頭骨關節」在頭骨被抬起後低估頭高、把數字吹高
+ok(Math.abs(D.heads - DB.heads) < 0.6,
+  `⑫ 頭身比貼齊內建基底(${D.heads} vs ${DB.heads};舊定義下會報 3.85)`);
 
 ok(errs.length === 0, '⑦ 無 console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 

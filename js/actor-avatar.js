@@ -117,26 +117,61 @@ function normalizeRest(by, order, apply) {
 // 可行性關鍵:`retargetAvatar` 每幀**只寫 `bone.quaternion`,從不寫 `bone.position`** → 改 rest 位移
 // 不會被每幀蓋掉;蒙皮頂點跟著骨頭走,所以改骨架比例 = 改身形,不用碰網格。
 // 這跟 normalizeRest 是同一個機制的兩半:那邊修 rest 的**旋轉**,這邊修 rest 的**位移與縮放**。
-// 目標比例(各段長度 ÷ 全身高)實測自內建 base-avatar(3.08 頭身);換基底角色要重量一次:
+// 目標比例(各段長度 ÷ 全身高)實測自內建 base-avatar(2.95 頭身);換基底角色要重量一次:
 //   scratchpad/proportions.mjs —— 量 `骨頭→子骨頭` 世界距離 ÷ 包圍盒高。
+// `torso`=root→neck 世界距離、`jawDrop`=下巴低於頭骨關節的量(ugc-2d 新增,見 ①a/③)。
 const CHIBI = { upperarm: 0.0834, forearm: 0.1171, thigh: 0.1266, shin: 0.1769,
-                headTop: 0.325, shoulderW: 0.195, hipW: 0.12 };
+                headTop: 0.325, jawDrop: 0.015, torso: 0.304, shoulderW: 0.195, hipW: 0.12 };
 // 同 TPOSE_FIX:**只對匯入角色生效**(內建 base-avatar 本身就是比例基準,對它做等於原地踏步)。
 const CHIBI_FIT = (() => {
   const q = new URLSearchParams(location.search).get('chibi');
   return q === null ? (AVATAR_URL !== DEFAULT_AVATAR_URL) : q !== '0';
 })();
-const _cv = new THREE.Vector3(), _cw = new THREE.Vector3(), _cbox = new THREE.Box3();
+const _cv = new THREE.Vector3(), _cw = new THREE.Vector3(), _cbox = new THREE.Box3(), _hbox = new THREE.Box3();
+// 頭身比 = 全身高 ÷ **頭高(下巴→頭頂)**。
+// ⚠ ugc-2d 前是拿「頭頂 − 頭骨關節」當頭高的替代量,ugc-2d 的 ③ 會把頭骨往上抬 → 那個替代量從此
+// 低估頭高、把數字吹高(實測 VRoid 修完報 3.85,其實頭高跟內建幾乎一樣)。改成量真正的頭高。
+// 參考值:內建 base-avatar 實測 **2.95**(舊定義下的 3.08 已作廢)。
+function headsRatio(root, by, bb) {
+  if (!by.head) return null;
+  const h = subtreeSampledBox(root, by.head.bone, _hbox);
+  const hh = h.max.y - h.min.y;
+  return hh > 1e-6 ? +((bb.max.y - bb.min.y) / hh).toFixed(2) : null;
+}
 // 回傳修改前的頭身比(給報告/測試看),沒東西可改回 null。
 function conformProportions(sc, by) {
   sc.updateMatrixWorld(true);
   // ⚠ 一律用 sampledBox 不用 setFromObject:對蒙皮角色後者回傳 bind pose 的盒子,①② 改完骨頭後它不會動,
   // ③ 拿它量頭高就會混到過期的數字(第一次量剛好還沒改所以看不出來,換個模型就中招)。
   const bb0 = sampledBox(sc, _cbox);
-  const H = bb0.max.y - bb0.min.y;
+  let H = bb0.max.y - bb0.min.y;
   if (!(H > 1e-6) || !by.head) return null;
   const wp = (k, out) => { by[k].bone.getWorldPosition(out); return out; };
-  const before = +(H / (bb0.max.y - wp('head', _cv).y)).toFixed(2);
+  const before = headsRatio(sc, by, bb0);
+
+  // ①a 軀幹長度(root→neck):匯入角色是寫實 7~8 頭身,軀幹佔比比 chibi 短一截(實測 VRoid 23.3%
+  // vs 內建 30.4%);不修就是「大頭幾乎直接接在髖上、脖子被吃掉」。做法=把 root→neck 這條脊椎鏈上
+  // **每根骨的 local 位移**等比縮放;中間的 chest/upperChest 沒被別名表對照到,但 rest 位移同樣不會被
+  // 每幀蓋掉,照樣安全。肩/臂/頸/頭都是鏈上骨頭的子骨 → 自動跟著上移,不用個別處理。
+  const setTorsoLen = () => {
+    if (!by.root || !by.neck || by.root.bone === by.neck.bone) return;
+    const chain = [];
+    for (let o = by.neck.bone; o && o !== by.root.bone; o = o.parent) chain.push(o);
+    // neck 必須真的掛在 root 之下(骨架長得不一樣就別亂改)
+    if (!chain.length || chain[chain.length - 1].parent !== by.root.bone) return;
+    sc.updateMatrixWorld(true);
+    const now = wp('root', _cv).distanceTo(wp('neck', _cw));
+    if (now < 1e-6) return;
+    const f = CHIBI.torso * H / now;
+    if (!(f > 0.25 && f < 4)) return;                  // 量到怪數字就放過(寧可不修也別把人拉爛)
+    chain.forEach(b => b.position.multiplyScalar(f));
+    by.root.bone.updateMatrixWorld(true);
+  };
+  setTorsoLen();
+  // 軀幹改長度會改身高 → 後面各段的目標都得對**新的身高**算,不然四肢會集體偏(拿舊 H 算會短 ~7%)。
+  sc.updateMatrixWorld(true);
+  H = sampledBox(sc, _cbox).max.y - _cbox.min.y;
+  if (!(H > 1e-6)) return before;
 
   // ① 肢段長度:縮子骨的 local 位移到目標長度。**父先子後**——改父會帶動子,子要用改過後的位置重量。
   const setLen = (a, b, t) => {
@@ -162,13 +197,24 @@ function conformProportions(sc, by) {
   };
   widen('upperarm', CHIBI.shoulderW); widen('thigh', CHIBI.hipW);
 
-  // ③ 大頭:頭骨等比放大(頭髮/髮飾骨是子骨,自動跟著大)。
-  // ⚠ 只能動 head——`torso`/`forearm`/`shin`/`upperarm`/`thigh` 的 bone.scale 是命中放大/整肢伸展
-  // (retargetAvatar 的 setS/setStretch)每幀在寫的,在這裡設會被蓋掉。
+  // ③ 大頭:頭骨等比放大(頭髮/髮飾骨是子骨,自動跟著大)+ **把頭抬回脖子上**。
+  // ⚠ 只能動 head 的 scale——`torso`/`forearm`/`shin`/`upperarm`/`thigh` 的 bone.scale 是命中放大/整肢
+  // 伸展(retargetAvatar 的 setS/setStretch)每幀在寫的,在這裡設會被蓋掉。position 沒人每幀寫,可以動。
+  // ⚠⚠ ugc-2d:舊寫法只拿「頭骨關節以上」的高度算倍率、繞著關節原點縮放。內建 chibi 的頭幾乎整顆在
+  // 關節之上(下巴只低 1.5%身高)所以看不出問題;但**真人骨架的 head 骨在顱底,下巴在它下面**,
+  // 放大 2.7× 連下巴一起往下拉 2.7 倍 → 實測 VRoid 下巴沉到關節下 8%身高(≈6px),整顆頭陷進胸口,
+  // 就是使用者看到的「頭身腿不在同一面上」。改成同時解兩條件:
+  //   頭頂 = 關節 + headTop·H   、   下巴 = 關節 − jawDrop·H
+  // → 倍率照**整顆頭高**(上+下)算,再把頭骨往上抬 dy 讓下巴回到 chibi 的位置。
   sc.updateMatrixWorld(true);
-  const bb = sampledBox(sc, _cbox);
-  const nowHead = bb.max.y - wp('head', _cv).y;
-  if (nowHead > 1e-6) by.head.bone.scale.setScalar(CHIBI.headTop * H / nowHead);
+  const hb = subtreeSampledBox(sc, by.head.bone, _hbox);
+  const y0 = wp('head', _cv).y;
+  const up = hb.max.y - y0, dn = y0 - hb.min.y;
+  if (up + dn > 1e-6) {
+    const k = (CHIBI.headTop + CHIBI.jawDrop) * H / (up + dn);
+    by.head.bone.scale.setScalar(k);
+    liftBoneWorldY(by.head.bone, CHIBI.headTop * H - k * up);
+  }
   sc.updateMatrixWorld(true);
   return before;
 }
@@ -247,11 +293,8 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   const realH = sampledBox(wrap, _sbox).max.y - _sbox.min.y;
   if (realH > 1e-6) { S *= targetH / realH; wrap.scale.setScalar(S); wrap.updateMatrixWorld(true); }
   const fin = sampledBox(wrap, _sbox).clone();
-  // headsBefore/headsAfter=頭身比(全身高 ÷ 頭高),chibi 基底是 3.08;報告與測試讀這兩個數
-  const headsAfter = (() => { const p = new THREE.Vector3();
-    if (!by.head) return null; by.head.bone.getWorldPosition(p);
-    const h = fin.max.y - p.y;
-    return h > 1e-6 ? +((fin.max.y - fin.min.y) / h).toFixed(2) : null; })();
+  // headsBefore/headsAfter=頭身比(全身高 ÷ 頭高,見 headsRatio),chibi 基底是 2.95;報告與測試讀這兩個數
+  const headsAfter = headsRatio(wrap, by, fin);
   // 踩地(蒙皮):bind pose 的包圍盒不隨姿勢動,拿它量腳底就會浮空。改記「腳骨世界 Y − 真實腳底 Y」
   // 這個**姿勢無關**的偏移(腳骨位置是姿勢準確的),每幀用腳骨反推腳底。剛體角色維持原本的網格包圍盒路徑。
   const soleOffset = skinned ? +(footBoneY(by) - fin.min.y).toFixed(3) : null;
@@ -422,6 +465,54 @@ function sampledBox(root, out) {
     }
   });
   return out;
+}
+// 只量「某根骨頭子樹」的網格盒(頭部要量到**下巴**,整體包圍盒給不出來)。蒙皮走「主導骨在子樹內」,
+// 剛體走「Mesh 是它的後代」。座標空間同 sampledBox(root 的世界空間)。抽樣密度比 sampledBox 高:
+// 頭+髮只佔全身網格的一小塊,240 點分下來只剩幾十點,下巴會量不準 → 這裡用 skinnedLocalBoxes 的 4000。
+const HSAMPLE = 4000;
+const _tv = new THREE.Vector3();
+function subtreeSampledBox(root, bone, out) {
+  out.makeEmpty();
+  root.updateWorldMatrix(false, true);
+  const inSub = (b) => { for (let o = b; o; o = o.parent) if (o === bone) return true; return false; };
+  root.traverse(o => {
+    if (!o.isMesh || !o.visible) return;
+    const P = o.geometry.attributes.position; if (!P) return;
+    const step = Math.max(1, Math.floor(P.count / HSAMPLE));
+    if (o.isSkinnedMesh) {
+      const SI = o.geometry.attributes.skinIndex, SW = o.geometry.attributes.skinWeight;
+      if (!SI || !SW || !o.skeleton) return;
+      const ok = new Map();                       // **每網格一份**:不同網格的 skeleton 可能不同
+      for (let i = 0; i < P.count; i += step) {
+        let bi = SI.getX(i), bw = SW.getX(i);
+        if (SW.getY(i) > bw) { bw = SW.getY(i); bi = SI.getY(i); }
+        if (SW.getZ(i) > bw) { bw = SW.getZ(i); bi = SI.getZ(i); }
+        if (SW.getW(i) > bw) { bw = SW.getW(i); bi = SI.getW(i); }
+        let f = ok.get(bi);
+        if (f === undefined) { const b = o.skeleton.bones[bi]; f = !!b && inSub(b); ok.set(bi, f); }
+        if (!f) continue;
+        _tv.set(P.getX(i), P.getY(i), P.getZ(i));
+        o.boneTransform(i, _tv);
+        out.expandByPoint(_tv.applyMatrix4(o.matrixWorld));
+      }
+    } else {
+      if (!inSub(o)) return;
+      for (let i = 0; i < P.count; i += step)
+        out.expandByPoint(_tv.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld));
+    }
+  });
+  return out;
+}
+// 把骨頭沿**世界 Y** 抬 dy(改的是 rest 位移;retargetAvatar 只寫 quaternion,所以不會被每幀蓋掉)。
+// 父骨可能被旋轉/縮放過 → 用「兩點差分」把世界位移換算成父空間的 local 位移,免得把平移項算進來。
+const _lm = new THREE.Matrix4(), _lv = new THREE.Vector3(), _lo = new THREE.Vector3();
+function liftBoneWorldY(bone, dy) {
+  if (!isFinite(dy) || Math.abs(dy) < 1e-9 || !bone.parent) return;
+  bone.parent.updateWorldMatrix(true, false);
+  _lm.copy(bone.parent.matrixWorld).invert();
+  _lv.set(0, dy, 0).applyMatrix4(_lm).sub(_lo.set(0, 0, 0).applyMatrix4(_lm));
+  bone.position.add(_lv);
+  bone.updateMatrixWorld(true);
 }
 // ugc-1 ①:`Object3D.clone()` **不重綁骨架**——clone 出來的 SkinnedMesh 沿用 template 的 `skeleton` 引用,
 // 而那份 skeleton 的 bones[] 指著 **template 的骨頭**。後果:兩個 fighter 共用同一副骨架(A 動 B 跟著動),

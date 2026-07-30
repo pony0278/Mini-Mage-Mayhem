@@ -31,11 +31,11 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `mobilefx.mjs`  | 手機自動降級:觸控+行動 UA → FX_LOW 自動開(點光剝除/無 transmission)+ dpr 夾 1.5;桌機完整;`?fx=full` 覆蓋 |
 | `onboard.mjs`   | 上手開場框架(只驗易讀層):首局教學旗標(localStorage)、AI 對手開場即開(fight 純戰鬥)、開場字幕/鏡頭帶場計時、就位期 AI 靜止、首局打完記 localStorage |
 | `perform.mjs`   | 回收演出 V0.8:收容→演出啟動(即時計分/罩/釘艙心/受保護)、演出中不二次收容、收尾才彈回+升階、第 2 次失控風味、第 3 次壓縮→matchOver+報告 |
-| `jump.mjs`      | 跳躍+下壓拳 brawl-2:跑=預設(雙擊退役)、空白跳/Shift防、空中免地板化學+鎖滑中起跳解鎖、下壓命中削45穿防/落空硬直、空中挨拳拍落、跳越艙口不觸發失控收容 |
+| `jump.mjs`      | 跳躍+下壓拳 brawl-2:跑=預設(雙擊退役)、空白跳/Shift防、空中免地板化學+鎖滑中起跳解鎖、下壓命中削45穿防/落空硬直、空中挨拳拍落、跳越艙口不觸發失控收容。⚠ ④「空中免地板化學」**直接餵 dt 呼叫 `__v2.floorHazards(f,dt)`**(規則的唯一實作點就是它開頭的 `if (airborne(f)) return`),不追跳躍弧線的時間窗——弧線自己會結束、turbo=8 一批可跨 0.5s,追時間窗註定假 FAIL(門檻放寬到 90 之後 CONC=3 還是量到 88)。滯空/落地各跑一次 = 自帶對照組(100 vs 70) |
 | `dash.mjs`      | 衝刺攻擊 feel-1:持續跑 ≥ DASH_RUN_T 出拳=衝刺(kind4 不入連段)、短移動=普通拳、命中削30+推、可擋+擋下開反擊窗、起手前衝、對已暈者=挑飛、揮空冷卻;clip 槽位 dash_punch/hit_flinch/walk_cycle 缺槽安全 |
 | `hitfx.mjs`     | 漫畫打擊爆花 hitfx-1:命中推 game.bursts(鉤=小橘/挑飛=size46+集中線+白閃/打暈=琥珀/反擊=金/下壓=紅)、壽命到移除、揮空無爆花 |
 | `combo.mjs`     | 連段系統 brawl-3:三連擊黏臉=一次暈不飛走、連段中純踉蹌不位移、對已暈者出拳=挑飛 launcher、風壓打空中=乾淨接送(WIND_CARRY_LOB 不墊穩定)、地面=吹翻滾墊穩定、全鏈挑飛→風壓→進艙記 wind |
-| `skinrig.mjs`   | 蒙皮 GLB 角色 ugc-1(玩家自製角色路線 B):骨名別名表(遊戲原生 + VRoid/VRM `J_Bip_*` 各收滿 16 骨)、clone 後**重綁骨架**(skeleton 不共用+bones 落在自己 wrap 底下+蒙皮真的形變)、渲染定位/踩地/站高、per-part 縮放對蒙皮=**縮骨頭**(hand 為子骨不重複縮=不 s²)、**蒙皮版骨局部 bbox ugc-2b**(`by[k].meshes` 對蒙皮恆空 → 火帽/X光顱球/頭像取景全踩雷;`localBox`=exact 給火帽、`localBoxDeep`=含髮給頭像;⑩ 鎖住「火帽掛在 avatar 頭骨」)、**A-pose rest 校正**(45°→殘差 0°,校正後骨頭方向 = T-pose 版;內建角色預設不校正)、**chibi 比例正規化 ugc-1c**(匯入角色壓成 chibi 骨架比例:頭身比 21.2→3.4、真實蒙皮腳底貼地、站高與內建一致、`?chibi=0` 可關、內建不套、root 取到真髖骨)、剛體 `base-avatar.glb` 那條路不受影響。⚠ 量蒙皮角色的身高/腳底**不能用 `Box3.setFromObject`**——它回傳 bind pose 的盒子,比例改完誤差 18%;要逐頂點 `boneTransform` 才是真的。⚠ 跨分頁比姿勢要**比夾角不比逐分量**——idle 呼吸相位差本來就有 ~4° 抖動。**GLB fixture 由 `fixtures/mkskin.mjs` 當場產**(不放二進位進 repo;那支檔就是骨名版本的規格書),用 puppeteer request 攔截餵給 `assets/rigs/base-avatar.glb` |
+| `skinrig.mjs`   | 蒙皮 GLB 角色 ugc-1(玩家自製角色路線 B):骨名別名表(遊戲原生 + VRoid/VRM `J_Bip_*` 各收滿 16 骨)、clone 後**重綁骨架**(skeleton 不共用+bones 落在自己 wrap 底下+蒙皮真的形變)、渲染定位/踩地/站高、per-part 縮放對蒙皮=**縮骨頭**(hand 為子骨不重複縮=不 s²)、**蒙皮版骨局部 bbox ugc-2b**(`by[k].meshes` 對蒙皮恆空 → 火帽/X光顱球/頭像取景全踩雷;`localBox`=exact 給火帽、`localBoxDeep`=含髮給頭像;⑩ 鎖住「火帽掛在 avatar 頭骨」)、**A-pose rest 校正**(45°→殘差 0°,校正後骨頭方向 = T-pose 版;內建角色預設不校正)、**chibi 比例正規化 ugc-1c**(匯入角色壓成 chibi 骨架比例:頭身比 21.2→3.4、真實蒙皮腳底貼地、站高與內建一致、`?chibi=0` 可關、內建不套、root 取到真髖骨)、**ugc-2d 頭要坐在脖子上 ⑫**(舊 ③ 只拿「頭骨關節以上」的高度算放大倍率、繞關節原點縮放 → 真人骨架的 head 骨在顱底、下巴在它下面,放大 2.7× 連下巴一起下拉 = 頭陷進胸口;⑫ 鎖住「下巴高於脖子關節」+「頭還是大頭」+軀幹長度壓到 30.4% + 頭身比貼齊內建。**頭身比自此量真頭高(下巴→頭頂)、基準 2.95**,舊定義的 3.08/3.15/3.18 作廢)、剛體 `base-avatar.glb` 那條路不受影響。⚠ 量蒙皮角色的身高/腳底**不能用 `Box3.setFromObject`**——它回傳 bind pose 的盒子,比例改完誤差 18%;要逐頂點 `boneTransform` 才是真的。⚠ 跨分頁比姿勢要**比夾角不比逐分量**——idle 呼吸相位差本來就有 ~4° 抖動。**GLB fixture 由 `fixtures/mkskin.mjs` 當場產**(不放二進位進 repo;那支檔就是骨名版本的規格書),用 puppeteer request 攔截餵給 `assets/rigs/base-avatar.glb` |
 | `psimport.mjs`  | punch-studio **匯入實驗室** ugc-1/1b:蒙皮 GLB 載得進(舊版 VRM 命名被 `AVATAR_REQUIRED` 硬擋)、別名表 native+VRM 各 16 骨、A-pose rest 校正 45°→0° 且骨頭方向對齊 T-pose 版、**內建 base-avatar 不套校正**(與遊戲同規則=WYSIWYG 命脈)、匯入檢查報告(骨頭對照/面數/提醒)、缺骨頭=明確失敗、**chibi 比例正規化與遊戲一致**(21.2→3.4 頭身、腳骨推算踩地、內建不套)。⚠ 量蒙皮腳底要在**雙腳著地的幀**(idle 0f)——anti 那格單腳抬起,拿「最低頂點=地面」會量出假浮空。⚠ 造「壞模型」要**等長替換**骨名(GLB 檔頭記著 JSON chunk 長度,改長度變成「壞檔」就測錯東西了) |
 | `psslim.mjs`    | 匯出遊戲角色檔(瘦身)ugc-2:morph target/動畫/VRM extension 全拔、貼圖 ≤512 **一律 PNG**、孤兒縮圖(VRM thumbnail)空殼成 1×1、GLB 空殼化不重排索引(惰性載入下孤兒條目沒人讀)、瘦身檔載回 r128 + 進遊戲 r149 且蒙皮會動、Draco/KTX2/meshopt 明確拒絕。⚠ **JPEG 禁用**:Chrome 的 JPEG ImageBitmap 是 YUV 底,SwiftShader WebGL 上傳會**全黑**——2D canvas 取樣看不出來(軟體轉 RGB 顏色全對),要 readRenderTargetPixels 量化才現形(⑥b 就是這支迴歸鉤)。fixture= mkskin `-fat` 變體(雜訊貼圖=PNG 最壞情況,尺寸門檻照此校) |
 | `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=resolveContain 計分+containLog、endMatch=事故報告 |
@@ -71,6 +71,15 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 7. ~~元素系統休眠~~(B 款憲章時期的旗;A 款爽鬥=系統預設全開,`?props=full` 已退役——別再給 URL 加旗)。
 8. **AI 對手預設開**:會走位/出拳干擾判定——出拳/搬運類 case 開頭把 `fighters[1].ai=false` 並清掉
    `carryObj/carrying`(扛著東西不能出拳,punch 會靜默 no-op;判定測試直接呼叫 `resolveStrike`)。
+8c. **「等一段遊戲時間再看狀態」對會自己結束的暫態(跳躍弧線/翻滾/無敵窗)是死路**:turbo=8 下一個 rAF
+   批次可跨 ~0.5s 遊戲時,暫態早結束了才取樣。**改成直接餵 dt 呼叫那條規則的實作函式**
+   (如 `__v2.floorHazards(f, dt)`),並在同一條件下跑「該生效 / 不該生效」兩次當對照組——決定性、
+   而且比模糊門檻更有鑑別力。要新函式就加到 `js/v2.js` 的 `window.__v2` hook。
+
+8b. **async 載入的資產(GLB/atlas)不能用固定 sleep 等**:`await sleep(900)` 在單跑時剛好夠、CONC=3 下就假 FAIL
+   (skinrig ⑩ 火帽踩過:全跑 40/41、單跑 41/41)。一律 `page.waitForFunction(條件, {timeout: 25000})` 輪詢,
+   並在 `.catch()` 裡吞掉逾時讓下面的斷言去報失敗(別讓 waitForFunction 直接炸掉整支)。
+
 9. **鍵盤 edge 測試要 down/等待/up**:rAF 節流下 `keyboard.press()` 的 down+up 常落在同一取樣幀,
    `keys.has()` 邊緣觸發(跳/格擋)整個吃不到——先 `keyboard.down()`,waitForFunction 等狀態成立再 `up()`。
 10. **hitstop=節流放大鏡**(feel-3 後致命):hitstop 期間整個 sim 凍結,rAF 節流下每 0.1s 頓幀

@@ -110,6 +110,7 @@ ok(br.missing.length >= 4 && br.warn.some(w => /缺 \d+ 根必要骨頭/.test(w)
 // ---------- ⑧ chibi 比例正規化(ugc-1c):**必須與遊戲一致** ----------
 // 使用者拍板「維持 chibi 風格,其他 GLB 只是外觀套進來,骨子還是 chibi」。studio 要是不做同一件事,
 // 這裡看到 8 頭身、遊戲裡是 3 頭身,編出來的姿勢進遊戲就偏——這是 WYSIWYG 命脈。
+// ⚠ 頭身比自 ugc-2d 起量**真頭高(下巴→頭頂)**,基準 2.95(舊定義的 3.08/3.15 已作廢)。
 const measure = (glb, label, on) => page.evaluate(async (b64, label, on) => {
   const bin = atob(b64), u = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
@@ -133,7 +134,7 @@ const measure = (glb, label, on) => page.evaluate(async (b64, label, on) => {
 const K1 = await measure(buildSkinGlb('native'), 'chibi-on.glb', true);
 const K0 = await measure(buildSkinGlb('native'), 'chibi-off.glb', false);
 ok(K1.chibiFit === true && K1.before != null, `⑧ 匯入角色套 chibi 比例(修前頭身比 ${K1.before})`);
-ok(K1.after > 2.4 && K1.after < 4.2, `⑧ 壓到 chibi 頭身比(${K1.before} → ${K1.after};基準 3.08)`);
+ok(K1.after > 2.4 && K1.after < 4.2, `⑧ 壓到 chibi 頭身比(${K1.before} → ${K1.after};基準 2.95)`);
 ok(K1.after < K0.after, `⑧ 有差別:開 ${K1.after} vs 關 ${K0.after}`);
 ok(K0.chibiFit === false && K0.before === null, '⑧ 開關可關掉(chibiFit(false))');
 ok(Math.abs(K1.minY) < 0.15, `⑧ 腳貼地 minY=${K1.minY}(idle 幀雙腳著地;bind pose 盒量不到蒙皮形變)`);

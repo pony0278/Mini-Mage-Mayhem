@@ -76,8 +76,9 @@ function normalizeAvatarRest(by, order, apply){
 // **studio 一定要跟遊戲做同一件事**:不然這裡看到 8.18 頭身、遊戲裡是 3.18 頭身,編出來的姿勢進遊戲就偏。
 // 可行性關鍵:updateAvatarPose 每幀只寫 bone.quaternion(與 setS/setStretch 的 scale),**從不寫
 // bone.position** → 改 rest 位移不會被每幀蓋掉;蒙皮頂點跟著骨頭走。
+// `torso`=root→neck 世界距離、`jawDrop`=下巴低於頭骨關節的量(ugc-2d 新增,見 ①a/③)。
 const CHIBI = { upperarm: 0.0834, forearm: 0.1171, thigh: 0.1266, shin: 0.1769,
-                headTop: 0.325, shoulderW: 0.195, hipW: 0.12 };
+                headTop: 0.325, jawDrop: 0.015, torso: 0.304, shoulderW: 0.195, hipW: 0.12 };
 let AV_CHIBI_FIT = true;
 try{ if(localStorage.getItem('PS_CHIBI_FIT')==='0') AV_CHIBI_FIT = false; }catch(e){}
 
@@ -102,7 +103,62 @@ function sampledBox(root, out){
   return out;
 }
 
-const _pv = new THREE.Vector3(), _pw = new THREE.Vector3(), _pbox = new THREE.Box3();
+// 只量「某根骨頭子樹」的網格盒(頭部要量到**下巴**,整體包圍盒給不出來)。蒙皮走「主導骨在子樹內」,
+// 剛體走「Mesh 是它的後代」。抽樣密度比 sampledBox 高:頭+髮只佔全身網格一小塊,240 點分下來下巴會不準。
+const AV_HSAMPLE = 4000;
+const _tvv = new THREE.Vector3();
+function subtreeSampledBox(root, bone, out){
+  out.makeEmpty();
+  root.updateWorldMatrix(false, true);
+  const inSub = (b) => { for(let o = b; o; o = o.parent) if(o === bone) return true; return false; };
+  root.traverse(o => {
+    if(!o.isMesh || !o.visible) return;
+    const P = o.geometry.attributes.position; if(!P) return;
+    const step = Math.max(1, Math.floor(P.count / AV_HSAMPLE));
+    if(o.isSkinnedMesh){
+      const SI = o.geometry.attributes.skinIndex, SW = o.geometry.attributes.skinWeight;
+      if(!SI || !SW || !o.skeleton) return;
+      const ok = new Map();                       // **每網格一份**:不同網格的 skeleton 可能不同
+      for(let i = 0; i < P.count; i += step){
+        let bi = SI.getX(i), bw = SW.getX(i);
+        if(SW.getY(i) > bw){ bw = SW.getY(i); bi = SI.getY(i); }
+        if(SW.getZ(i) > bw){ bw = SW.getZ(i); bi = SI.getZ(i); }
+        if(SW.getW(i) > bw){ bw = SW.getW(i); bi = SI.getW(i); }
+        let f = ok.get(bi);
+        if(f === undefined){ const b = o.skeleton.bones[bi]; f = !!b && inSub(b); ok.set(bi, f); }
+        if(!f) continue;
+        _tvv.set(P.getX(i), P.getY(i), P.getZ(i));
+        o.boneTransform(i, _tvv);
+        out.expandByPoint(_tvv.applyMatrix4(o.matrixWorld));
+      }
+    } else {
+      if(!inSub(o)) return;
+      for(let i = 0; i < P.count; i += step)
+        out.expandByPoint(_tvv.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld));
+    }
+  });
+  return out;
+}
+// 把骨頭沿**世界 Y** 抬 dy(改 rest 位移;updateAvatarPose 只寫 quaternion/scale,不會被每幀蓋掉)。
+// 父骨可能被旋轉/縮放過 → 用「兩點差分」把世界位移換成父空間的 local 位移,免得把平移項算進來。
+const _lmm = new THREE.Matrix4(), _lvv = new THREE.Vector3(), _loo = new THREE.Vector3();
+function liftBoneWorldY(bone, dy){
+  if(!isFinite(dy) || Math.abs(dy) < 1e-9 || !bone.parent) return;
+  bone.parent.updateWorldMatrix(true, false);
+  _lmm.copy(bone.parent.matrixWorld).invert();
+  _lvv.set(0, dy, 0).applyMatrix4(_lmm).sub(_loo.set(0, 0, 0).applyMatrix4(_lmm));
+  bone.position.add(_lvv);
+  bone.updateMatrixWorld(true);
+}
+const _pv = new THREE.Vector3(), _pw = new THREE.Vector3(), _pbox = new THREE.Box3(), _phbox = new THREE.Box3();
+// 頭身比 = 全身高 ÷ **頭高(下巴→頭頂)**。ugc-2d 前拿「頭頂 − 頭骨關節」當替代量,而 ③ 會把頭骨往上抬
+// → 替代量從此低估頭高、把數字吹高。參考值:內建素體基底角色實測 **2.95**(舊定義的 3.08/3.15 已作廢)。
+function avHeadsRatio(root, by, bb){
+  if(!by.head) return null;
+  const h = subtreeSampledBox(root, by.head.bone, _phbox);
+  const hh = h.max.y - h.min.y;
+  return hh > 1e-6 ? +((bb.max.y - bb.min.y) / hh).toFixed(2) : null;
+}
 // 兩隻腳骨中較低的世界 Y(姿勢準確,不像包圍盒那樣停在 bind pose)。沒腳骨退小腿,都沒有回 Infinity。
 const _fbv = new THREE.Vector3();
 // skip:{l,r} = 接觸鎖(contact===2 抬起的腳不當地面錨點,沿用素體同一條規則)。
@@ -121,10 +177,33 @@ function avFootBoneY(by, skip){
 function conformAvatarProportions(sc, by){
   sc.updateMatrixWorld(true);
   const bb0 = sampledBox(sc, _pbox);
-  const H = bb0.max.y - bb0.min.y;
+  let H = bb0.max.y - bb0.min.y;
   if(!(H > 1e-6) || !by.head) return null;
   const wp = (k, out) => { by[k].bone.getWorldPosition(out); return out; };
-  const before = +(H / (bb0.max.y - wp('head', _pv).y)).toFixed(2);
+  const before = avHeadsRatio(sc, by, bb0);
+
+  // ①a 軀幹長度(root→neck):匯入角色是寫實 7~8 頭身,軀幹佔比比 chibi 短一截(實測 VRoid 23.3%
+  // vs 素體基底 30.4%);不修就是「大頭幾乎直接接在髖上、脖子被吃掉」。做法=把 root→neck 這條脊椎鏈
+  // 上**每根骨的 local 位移**等比縮放(中間的 chest/upperChest 沒被別名表對照到,但 rest 位移同樣不會
+  // 被每幀蓋掉)。肩/臂/頸/頭都是鏈上骨頭的子骨 → 自動跟著上移。
+  const setTorsoLen = () => {
+    if(!by.root || !by.neck || by.root.bone === by.neck.bone) return;
+    const chain = [];
+    for(let o = by.neck.bone; o && o !== by.root.bone; o = o.parent) chain.push(o);
+    if(!chain.length || chain[chain.length - 1].parent !== by.root.bone) return;   // neck 不在 root 之下就別亂改
+    sc.updateMatrixWorld(true);
+    const now = wp('root', _pv).distanceTo(wp('neck', _pw));
+    if(now < 1e-6) return;
+    const f = CHIBI.torso * H / now;
+    if(!(f > 0.25 && f < 4)) return;
+    chain.forEach(b => b.position.multiplyScalar(f));
+    by.root.bone.updateMatrixWorld(true);
+  };
+  setTorsoLen();
+  // 軀幹改長度會改身高 → 後面各段的目標都得對**新的身高**算,不然四肢會集體偏 ~7%。
+  sc.updateMatrixWorld(true);
+  H = sampledBox(sc, _pbox).max.y - _pbox.min.y;
+  if(!(H > 1e-6)) return before;
 
   // ① 肢段長度:縮子骨的 local 位移到目標長度(**父先子後**——改父會帶動子,子要用改過後的位置重量)
   const setLen = (a, b, t) => {
@@ -150,12 +229,22 @@ function conformAvatarProportions(sc, by){
   };
   widen('upperarm', CHIBI.shoulderW); widen('thigh', CHIBI.hipW);
 
-  // ③ 大頭:頭骨等比放大(頭髮/髮飾骨是子骨,自動跟著大)。
-  // ⚠ 只能動 head——torso/forearm/shin/upperarm/thigh 的 bone.scale 是 setS/setStretch 每幀在寫的。
+  // ③ 大頭:頭骨等比放大(頭髮/髮飾骨是子骨,自動跟著大)+ **把頭抬回脖子上**。
+  // ⚠ 只能動 head 的 scale——torso/forearm/shin/upperarm/thigh 的 bone.scale 是 setS/setStretch 每幀在寫的。
+  // ⚠⚠ ugc-2d:舊寫法只拿「頭骨關節以上」的高度算倍率、繞著關節原點縮放。素體基底角色的頭幾乎整顆在關節
+  // 之上(下巴只低 1.5%身高)所以看不出問題;但**真人骨架的 head 骨在顱底,下巴在它下面**,放大 2.7× 連
+  // 下巴一起往下拉 2.7 倍 → 實測 VRoid 下巴沉到關節下 8%身高,整顆頭陷進胸口。改成同時解兩條件:
+  //   頭頂 = 關節 + headTop·H   、   下巴 = 關節 − jawDrop·H
+  // → 倍率照**整顆頭高**(上+下)算,再把頭骨往上抬 dy 讓下巴回到 chibi 的位置。
   sc.updateMatrixWorld(true);
-  const bb = sampledBox(sc, _pbox);
-  const nowHead = bb.max.y - wp('head', _pv).y;
-  if(nowHead > 1e-6) by.head.bone.scale.setScalar(CHIBI.headTop * H / nowHead);
+  const hb = subtreeSampledBox(sc, by.head.bone, _phbox);
+  const y0 = wp('head', _pv).y;
+  const up = hb.max.y - y0, dn = y0 - hb.min.y;
+  if(up + dn > 1e-6){
+    const k = (CHIBI.headTop + CHIBI.jawDrop) * H / (up + dn);
+    by.head.bone.scale.setScalar(k);
+    liftBoneWorldY(by.head.bone, CHIBI.headTop * H - k * up);
+  }
   sc.updateMatrixWorld(true);
   return before;
 }
@@ -202,7 +291,7 @@ function renderAvatarReport(){
     + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:${r.slots[k] ? '#9c9' : '#f66'}">${r.slots[k] || '缺'}</span></div>`).join('');
   const warn = r.warn.length ? `<div style="margin-top:5px;color:#fc6">` + r.warn.map(w => `• ${w}`).join('<br>') + '</div>' : '';
   const rest = (r.restDev != null) ? `<div style="margin-top:5px;color:var(--dim)">rest 偏離 T-pose:${r.restDev}° → 殘差 ${r.restResid}°(校正 ${r.fixOn ? '開' : (r.builtin ? '關·內建角色不校正' : '關')})· 縮放 ×${(r.S||0).toFixed(2)}</div>` : '';
-  const prop = (r.headsAfter != null) ? `<div style="margin-top:3px;color:var(--dim)">頭身比:${r.chibiFit ? `${r.headsBefore} → <b style="color:#9c9">${r.headsAfter}</b>(已壓成 chibi 比例)` : `${r.headsAfter}(比例正規化 ${r.builtin ? '關·內建角色本身就是基準' : '關'})`}　chibi 基準 3.08</div>` : '';
+  const prop = (r.headsAfter != null) ? `<div style="margin-top:3px;color:var(--dim)">頭身比:${r.chibiFit ? `${r.headsBefore} → <b style="color:#9c9">${r.headsAfter}</b>(已壓成 chibi 比例)` : `${r.headsAfter}(比例正規化 ${r.builtin ? '關·內建角色本身就是基準' : '關'})`}　chibi 基準 2.95</div>` : '';
   box.innerHTML = head + '<div style="margin-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:0 10px">' + rows + '</div>' + rest + prop + warn;
 }
 
@@ -310,10 +399,7 @@ async function loadAvatarBuffer(ab, label, builtin){
   // 擠壓 sq/squat)→ wrap 縮放會變,拿世界絕對距離每幀套就錯(實測腳浮 0.42 = 身高 20%)。
   const soleOffset = skinned
     ? +((avFootBoneY(by) - sampledBox(wrap, _pbox).min.y) / (wrap.scale.y || 1)).toFixed(5) : null;
-  const headsAfter = (() => { if(!by.head) return null;
-    by.head.bone.getWorldPosition(_pv);
-    const b = sampledBox(wrap, _pbox), h = b.max.y - _pv.y;
-    return h > 1e-6 ? +((b.max.y - b.min.y) / h).toFixed(2) : null; })();
+  const headsAfter = avHeadsRatio(wrap, by, sampledBox(wrap, _pbox));
   AVATAR = { wrap, S, label, by, order, skinned, restDev, restResid, fixOn, builtin: !!builtin,
              chibiFit: fitOn, headsBefore, headsAfter, soleOffset, fillers: [] };
   AVATAR_REPORT = avatarReport(sc, by, label, [], { skinned, restDev, restResid, S, fixOn, builtin: !!builtin,
