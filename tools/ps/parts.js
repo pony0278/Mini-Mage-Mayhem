@@ -612,6 +612,23 @@ function mountRiggedHands(gltf){
     const wrap = new THREE.Group(); wrap.name='PUNCH_RIGGEDHAND_'+side;
     node.position.set(0,0,0);                    // 去掉 rig 內左右並排的偏移
     if(av) node.quaternion.identity();           // avatar:骨頭已帶 rest 旋轉,節點再疊會轉兩次 → 歸零
+    if(av && av.skinned){
+      // ugc-3 拳套模式(與遊戲 js/actor-hands-rigged.js 同規格,改一邊要同步另一邊):蒙皮角色手骨的
+      // rest 軸每個 GLB 不同,identity 掛上=拳套朝向亂轉。正確基準=base 手骨 rest 在作者空間的朝向
+      // GLOVE_REST(L 繞 Z +90°/R −90°);studio 的 wrap 無場景旋轉(wrapQT=I)→ qComp = bQT⁻¹·GLOVE_REST。
+      // 尺寸照素體拳套佔比(0.28×素體站高)由 proto 局部高×骨世界縮放反推。都烘在 node 層,
+      // cfg(滑桿)照常疊 wrap 層,起始值 identity 不互蓋。⚠ proto 要在 identity 時量(斜盒會膨脹)。
+      node.updateWorldMatrix(true, true);
+      const gb = new THREE.Box3().setFromObject(node), gs = new THREE.Vector3(); gb.getSize(gs);
+      const protoLen = gs.y || 1;
+      const rest = new THREE.Quaternion(0, 0, (side === 'L' ? 1 : -1) * Math.SQRT1_2, Math.SQRT1_2);
+      const entry0 = AVATAR.by[slot];
+      node.quaternion.copy(entry0.bQT).invert().multiply(rest);
+      entry0.bone.updateWorldMatrix(true, false);
+      entry0.bone.getWorldScale(gs);
+      const standH0 = headCY + DIM.headSize * 0.5;
+      node.scale.setScalar(0.28 * standH0 / (protoLen * (Math.abs(gs.y) || 1)));
+    }
     wrap.add(node);
     HAND_RIG[side] = collectHandRig(node, side);
     const c = partCfg(slot);

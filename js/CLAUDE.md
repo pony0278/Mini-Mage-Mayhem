@@ -268,12 +268,24 @@
 > 高度再收斂一次 S(uniform 縮放不影響世界四元數,bQT 不用重抓),`av.standH` 改成量校正後的真實盒子。
 > **骨頭選取改照別名表優先序,不是 traverse 順序**:VRoid 同時有腳底的 `Root` 與真髖 `J_Bip_C_Hips`,
 > 舊的「重複取第一個」會選到 Root → root 樞紐變腳底,clip 的 `root_x`(pitch)會繞著腳踝甩全身。
-> **ugc-2c 蒙皮角色不換 rigged 手**(使用者反饋「扛人時手是紫色的」):`actor-hands-rigged` 是**另一顆
-> chibi 手 GLB**,帶自己的材質/膚色——它存在的理由是 base-avatar 的手是沒有手指的色塊。VRoid 這類蒙皮
-> 角色本身就有帶指骨的手,換上去只是把一隻不同顏色的手黏在手腕上(實測=淺紫手配淺膚色角色)。
-> `buildAvatar`/`retargetAvatar` 兩處掛載都加 `!skinned` 閘。**代價**:clip 的手指彎曲軸
->(`aL_/aR_ f*`)對蒙皮角色不會動;日後要接是驅動**角色自己的指骨**(VRM 有 `J_Bip_L_Thumb1…`),
-> 不是換手模。剛體 base-avatar 那條路不變。
+> **ugc-3 蒙皮角色=常戴拳套模式**(取代 ugc-2c 的「不掛 rigged 手」;使用者:「現在不是拳套了,
+> 有什麼辦法讓皮套在拳套嗎?」):rigged 手當**拳套裝備**永遠顯示、罩住角色自己的手(手在拳套裡)。
+> ugc-2c 的「紫色手」其實是「只在扛人時**換手**」的突兀(平時真人手、一抓東西變色塊手);常戴之後
+> 拳套=裝備不是皮膚,顏色不用跟膚色,而且手指彎曲軸(`aL_/aR_ f*`)重新對蒙皮角色生效(驅動拳套指骨)。
+> 剛體 base-avatar 照舊(平時原生色塊拳套、抓握才換 rigged 手)。掛法(`actor-hands-rigged.js`)兩個
+> 蒙皮專屬問題,都是「每個 GLB 的手骨 rest 軸不同」惹的:
+> ① **朝向**:identity 掛上=亂轉。踩過兩個錯基準——box 腕節點 qT(≠base 拳套朝向,差著 base 手骨
+>   自己的 rest;拳套沿手臂往上長)、拳套 GLB 節點原始朝向(那是檔案內**陳列**擺法;手指朝上反 180°)。
+>   正確基準=**base 手骨 rest 在作者空間的朝向** `GLOVE_REST`(實測 wrapQT⁻¹·bQT = L 繞 Z +90°/R −90°,
+>   T-pose 平舉指向 ±X 的必然)。常數補償 qComp = bQT⁻¹·wrapQT·GLOVE_REST(`av.wrapQT`=校正時 wrap 的
+>   世界旋轉,buildAvatar 新存)→ 拳套世界朝向 = Δ·wrapQT·GLOVE_REST,跟著腕的 Δ 剛體轉,一次算完。
+>   吃 ugc-1b/2e 正規化的紅利:角色校正完=T-pose、面向 +Z=作者空間同慣例,這條式子才成立。
+> ② **尺寸**:照**內建拳套的身高佔比**(`GLOVE_RATIO` 0.28×standH,實測 21.7px/78.3),不跟角色手
+>   大小走(VRoid 手細,照手縮就沒拳套感);由 proto 局部高 × 骨世界縮放反推 wrap scale。
+>   ⚠ proto 要在 wrap 還是 identity 時量——setFromObject 是軸對齊盒,套了 qComp 再量=斜盒膨脹 1.39×。
+> `av.gloveMode` 旗;updateHands(actor-brawler)glove 模式=永遠 `setRiggedHandsVisible(av, true)`。
+> studio 同步(tools/ps/parts.js mountRiggedHands 的 skinned 分支:qComp+尺寸烘 node 層,cfg 滑桿照常
+> 疊 wrap 層)。測試:skinrig ⑪(常戴/朝向 offset 左右對稱/尺寸佔比)。
 > **參考樣本**:`assets/rigs/vroid-sample.glb`(3.5MB,瘦身過的使用者 VRoid 角色)——
 > `v2.html?avatar=assets/rigs/vroid-sample.glb`。**不是預設角色**,是蒙皮管線的活樣本。
 > **ugc-2b `av.by[k].localBox` / `localBoxDeep`(蒙皮版骨局部包圍盒)**:剛體分件的消費者靠

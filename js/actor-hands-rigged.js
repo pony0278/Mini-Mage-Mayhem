@@ -38,11 +38,29 @@ function collectHandRig(handNode, side) {
   return out;
 }
 
-// 掛到 avatar 手骨(av.by.hand_l/hand_r.bone)。avatar 與 rigged 手同出 base rig → 手骨已帶 rest
-// 旋轉,手節點歸零(位置+旋轉)identity 掛上即貼合。
-// 設計:rigged 手**只在抓握物品時**顯示(一般/戰鬥維持 avatar 原生手);故掛載後預設「rigged 藏、原生顯」,
-//   由 setRiggedHandsVisible 依 grab 狀態切換(對齊 actor-hands 舊設計:扛/丟才換手模,其餘維持拳套/原生手)。
+// 掛到 avatar 手骨(av.by.hand_l/hand_r.bone)。兩種模式:
+// · 剛體 base-avatar(同出 base rig):手骨已帶 rest 旋轉,節點歸零 identity 掛上即貼合;
+//   **只在抓握物品時**顯示(一般/戰鬥維持原生手=色塊拳套),setRiggedHandsVisible 依 grab 切換。
+// · 蒙皮角色(ugc-3,使用者:「現在不是拳套了,有什麼辦法讓皮套在拳套嗎?」):**常戴拳套模式**——
+//   rigged 手當「拳套裝備」永遠顯示,罩住角色自己的手(手在拳套裡;拳套是裝備不是皮膚,顏色
+//   不用跟膚色=ugc-2c 的紫色手問題不存在)。兩個蒙皮專屬問題:
+//   ① 朝向:蒙皮角色手骨的 rest 軸每個 GLB 都不同,identity 掛上=拳套朝向亂轉。兩個都踩過的
+//      錯誤基準:box 腕節點 qT(≠base 拳套朝向,差著 base 手骨自己的 rest;實測拳套沿手臂往上長)、
+//      拳套 GLB 節點的原始朝向 gQ(那只是檔案內的**陳列**擺法,不是穿戴朝向;實測手指朝上反 180°)。
+//      正確基準=**base 手骨的 rest 朝向**(rig 家族的作者常數,identity 掛法之所以對就是因為它):
+//      在作者空間(T-pose、面向 +Z——ugc-1b/2e 已把每個角色都正規化到這裡)實測 GLOVE_REST =
+//      L 繞 Z +90° / R 繞 Z −90°(T-pose 手臂平舉、指向 ±X 的必然)。常數補償
+//      qComp = bQT⁻¹·wrapQT·GLOVE_REST:掛上後拳套世界朝向 = Δ·bQT·qComp = Δ·wrapQT·GLOVE_REST
+//      ——校正姿勢下與 base 角色戴的一模一樣,之後跟著腕的 Δ 剛體轉,任何姿勢都對,不用每幀追。
+//   ② 尺寸:照**內建拳套的身高佔比**(GLOVE_RATIO×standH,實測 21.7px/78.3),不跟角色手大小走
+//      (VRoid 手細,照手縮就沒有拳套感);世界尺寸受 wrap(S)/骨縮放影響 → 由 proto 局部高 ×
+//      骨世界縮放反推 local scale。
 // 成功回傳 true 並在 av 掛上 { handRig:{L,R}, handWraps:{L,R}, handNative:[...] }。
+const GLOVE_RATIO = 0.28;            // 拳套世界高(指向 +Y)÷ standH,實測自內建 base-avatar
+// base 手骨 rest 在作者空間的朝向(scratchpad/glove4.mjs 實測 wrapQT⁻¹·bQT,乾淨的 ±90°)
+const GLOVE_REST = { L: new THREE.Quaternion(0, 0, Math.SQRT1_2, Math.SQRT1_2),
+                     R: new THREE.Quaternion(0, 0, -Math.SQRT1_2, Math.SQRT1_2) };
+const _gb = new THREE.Box3(), _gs = new THREE.Vector3();
 export function mountRiggedHands(av) {
   if (state !== 2 || !TEMPLATE || !av || !av.by || !av.by.hand_l || !av.by.hand_r) return false;
   const sc = TEMPLATE.clone(true); sc.updateMatrixWorld(true);
@@ -52,19 +70,35 @@ export function mountRiggedHands(av) {
   av.handRig = {};
   av.handWraps = {};
   av.handNative = [];
+  const glove = !!av.skinned;         // 蒙皮=常戴拳套模式
   for (const [node, side, slot] of [[hl, 'L', 'hand_l'], [hr, 'R', 'hand_r']]) {
     const wrap = new THREE.Group(); wrap.name = 'RIGGED_HAND_' + side;
     node.position.set(0, 0, 0);       // 去掉 rig 內左右並排的偏移
-    node.quaternion.identity();       // avatar 手骨已帶 rest 旋轉,節點再疊會轉兩次 → 歸零
+    node.quaternion.identity();       // base rig 手骨已帶 rest 旋轉,節點再疊會轉兩次 → 歸零
     wrap.add(node);
-    wrap.visible = false;             // 預設藏:只在抓握時顯示
+    const entry = av.by[slot];
+    if (glove) {
+      // ⚠ 先量再轉:proto 尺寸要在 wrap 還是 identity 時量(setFromObject 量的是軸對齊盒,
+      // 套了 qComp 再量=斜盒膨脹,實測大 1.39×)。
+      wrap.updateMatrixWorld(true);
+      _gb.setFromObject(node); _gb.getSize(_gs);                      // proto 局部尺寸(未掛骨,剛體=準)
+      const protoLen = _gs.y || 1;                                    // 手指沿局部 +Y 生長
+      wrap.quaternion.copy(entry.bQT).invert();                       // qComp = bQT⁻¹·wrapQT·GLOVE_REST(見表頭 ①)
+      if (av.wrapQT) wrap.quaternion.multiply(av.wrapQT);
+      wrap.quaternion.multiply(GLOVE_REST[side]);
+      entry.bone.updateWorldMatrix(true, false);
+      entry.bone.getWorldScale(_gs);
+      const bs = Math.abs(_gs.y) || 1;
+      wrap.scale.setScalar(GLOVE_RATIO * (av.standH || 78) / (protoLen * bs));   // 見表頭 ②
+    }
+    wrap.visible = glove;             // 拳套模式=常戴;base-avatar=預設藏、抓握才顯
     av.handRig[side] = collectHandRig(node, side);
     av.handWraps[side] = wrap;
-    const entry = av.by[slot];
     entry.bone.add(wrap);
-    (entry.meshes || []).forEach(m => av.handNative.push(m));   // avatar 原生手(預設顯示)
+    (entry.meshes || []).forEach(m => av.handNative.push(m));   // avatar 原生手(蒙皮=空陣列,拳套直接罩住)
   }
-  av.handShowingRigged = false;
+  av.handShowingRigged = glove;
+  av.gloveMode = glove;
   return true;
 }
 

@@ -200,13 +200,29 @@ const gOf = () => {                                  // 取 fighter 的渲染 gr
 };
 await pH.waitForFunction(`(${gOf.toString()})()?.userData?.hatOnAvatar === true`, { timeout: 25000 })
   .catch(() => { /* 留給下面的斷言報失敗,別在這裡炸掉整支 */ });
+await pH.waitForFunction('window.__avatars[0].handRig', { timeout: 25000 })   // rigged 手 async 載入(8b 陷阱:別用固定 sleep)
+  .catch(() => { /* 同上 */ });
 const H = await pH.evaluate((src) => {
   const av = window.__avatars[0];
   const g = new Function('return (' + src + ')()')();
   const hb = av.by.head.localBox, hd = av.by.head.localBoxDeep;
   const sz = b => { if (!b || b.isEmpty()) return null; const s = new THREE.Vector3(); b.getSize(s); return +s.y.toFixed(3); };
+  // ⑪ 拳套模式(ugc-3):拳套 wrap 的世界朝向要 = base 戴法(Δ·wrapQT·GLOVE_REST);跟腕的 box driver
+  // 節點世界朝向差一個常數 offset,兩隻手各自量「wrap 世界四元數 vs 腕節點世界四元數」的夾角應該
+  // 左右**相等**(同一個 rig 常數)——掛錯基準(qT / GLB 陳列朝向,都踩過)左右會不對稱或差 180°。
+  let glove = null;
+  if (av.handRig && av.gloveMode) {
+    const T = window.THREE, q1 = new T.Quaternion(), q2 = new T.Quaternion();
+    const ang = (slot, side) => { av.handWraps[side].getWorldQuaternion(q1);
+      av.by[slot].node().getWorldQuaternion(q2);
+      return +(2 * Math.acos(Math.min(1, Math.abs(q1.dot(q2)))) * 180 / Math.PI).toFixed(1); };
+    const s = new T.Vector3(); new T.Box3().setFromObject(av.handWraps.L).getSize(s);
+    glove = { showing: av.handShowingRigged, offL: ang('hand_l', 'L'), offR: ang('hand_r', 'R'),
+              worldMax: +Math.max(s.x, s.y, s.z).toFixed(1), standH: av.standH };
+  }
   return { headMeshes: (av.by.head.meshes || []).length, hatOnAvatar: !!(g && g.userData.hatOnAvatar),
-           exactH: sz(hb), deepH: sz(hd), handBox: !!av.by.hand_r.localBox, handRig: !!av.handRig };
+           exactH: sz(hb), deepH: sz(hd), handBox: !!av.by.hand_r.localBox, handRig: !!av.handRig,
+           gloveMode: !!av.gloveMode, glove };
 }, gOf.toString());
 await pH.close();
 ok(H.headMeshes === 0, `⑩ 蒙皮角色 by.head.meshes 確實是空的(${H.headMeshes})——剛體那條路對它無效`);
@@ -214,10 +230,16 @@ ok(H.exactH > 0, `⑩ localBox(exact:主導骨=head)量到頭部高度 ${H.exact
 ok(H.deepH >= H.exactH, `⑩ localBoxDeep(含頭髮等未對照子骨)≥ exact(${H.deepH} ≥ ${H.exactH})`);
 ok(H.handBox, '⑩ 其他骨頭也有 localBox(手骨,X光/裝備可用)');
 ok(H.hatOnAvatar === true, '⑩ **火帽掛在 avatar 頭骨上**(修前=false → 退回 box rig,帽子在脖子)');
-// ⑪ 紫色手(ugc-2c,使用者反饋「扛人時手是紫色的」):rigged 手是另一顆 chibi 手 GLB、帶自己的膚色,
-// 存在的理由是 base-avatar 的手是沒手指的色塊。蒙皮角色本身有帶指骨的手 → **不換手模**。
-ok(H.handRig === false, '⑪ 蒙皮角色**不掛 rigged 手**(用自己的手;換上去=不同膚色的手黏在手腕)');
-ok(R.handRig === true, `⑪ 剛體 base-avatar 照舊掛 rigged 手(${R.handRig};它的手本來就沒手指)`);
+// ⑪ 拳套(ugc-3,使用者:「現在不是拳套了,有什麼辦法讓皮套在拳套嗎?」):蒙皮角色=**常戴拳套模式**
+// (rigged 手當拳套裝備永遠顯示、罩住自己的手;ugc-2c 的紫色手=「扛人才換手」的突兀,常戴後不存在)。
+// 剛體 base-avatar 照舊(平時原生色塊拳套,抓握才換 rigged 手)。
+ok(H.handRig === true && H.gloveMode === true && H.glove && H.glove.showing === true,
+  '⑪ 蒙皮角色掛 rigged 手=**常戴拳套**(gloveMode,永遠顯示)');
+ok(H.glove && Math.abs(H.glove.offL - H.glove.offR) < 1,
+  `⑪ 拳套朝向=base 戴法(vs 腕 driver 的常數 offset 左右對稱:L ${H.glove && H.glove.offL}° ≈ R ${H.glove && H.glove.offR}°)`);
+ok(H.glove && H.glove.worldMax > 0.15 * H.glove.standH && H.glove.worldMax < 0.45 * H.glove.standH,
+  `⑪ 拳套尺寸照身高佔比(最長邊 ${H.glove && H.glove.worldMax}px,standH ${H.glove && H.glove.standH})——不跟角色細手走,拳套感才在`);
+ok(R.handRig === true, `⑪ 剛體 base-avatar 照舊掛 rigged 手(${R.handRig};平時藏、抓握才顯)`);
 
 // ---- ⑫ 頭要坐在脖子上(ugc-2d;使用者反饋「人物的頭身腿是不是都不在同一面上」)----
 // 舊 ③ 只拿「頭骨關節**以上**」的高度算放大倍率、繞關節原點縮放。內建 base-avatar 的頭幾乎整顆在關節

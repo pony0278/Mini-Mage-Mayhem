@@ -205,6 +205,7 @@ function updateHands(e, R, u, now) {
     for (const a of [R.armL, R.armR]) { if (a.handGrip) a.handGrip.visible = false; if (a.handOpen) a.handOpen.visible = false; }
     const av = u.avatar;
     if (av && av.handRig) {
+      if (av.gloveMode) { setRiggedHandsVisible(av, true); return; }   // ugc-3 蒙皮=常戴拳套(手指軸照常驅動抓握彎曲)
       const h = u.hand || (u.hand = { wasCarry: false, releaseT: 0, rigT: 0 });
       if (e.carrying || e.carryObj) h.rigT = now + 0.3;  // 抓握中→續握;放/丟後多留 0.3s 收招(手指張開的跟隨)
       setRiggedHandsVisible(av, now < h.rigT);

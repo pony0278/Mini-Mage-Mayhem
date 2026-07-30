@@ -103,6 +103,11 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
      貼齊 90° 檔位轉回 +Z、root 水平位置補回、**重收骨頭**(左右重判)。門檻:位移 <2%身高或離檔位 >30°
      不動。報告 warn 加「rest 面向偏 N°——已自動轉回」;`AVATAR.yawFix`/`report().yawFix` 供測試。
      **與遊戲 `js/actor-avatar.js` 的 `restYawSnap` 同一份規格,改一邊要同步另一邊。**回歸 psimport ②b。
+  ④d **ugc-3 蒙皮角色的拳套**:`mountRiggedHands`(parts.js)的 skinned 分支——rigged 手當拳套裝備
+     掛蒙皮角色手骨。朝向 qComp = bQT⁻¹·GLOVE_REST(studio 的 wrap 無場景旋轉 → wrapQT=I;
+     GLOVE_REST=base 手骨 rest 在作者空間的朝向,L 繞 Z +90°/R −90°)、尺寸 0.28×素體站高反推,
+     **都烘 node 層**;cfg(滑桿)照常疊 wrap 層,起始值 identity 不互蓋。
+     **與遊戲 `js/actor-hands-rigged.js` 同規格,改一邊要同步另一邊。**
   ⑤ **踩地改用腳骨推算(蒙皮)**:`Box3.setFromObject` 不算蒙皮形變(見 ③),比例改完拿它量腳底會浮空。
      改記「腳骨世界 Y − 真實腳底 Y」這個**姿勢無關**的偏移(載入時用 `sampledBox` 逐頂點 `boneTransform` 量),
      每幀用腳骨反推。**存 wrap 局部單位**——`updateAvatarPose` 每幀 `w.scale.copy(root.scale)×S` 鏡射素體的

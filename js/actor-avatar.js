@@ -333,6 +333,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   const restDevDeg = normalizeRest(by, order, TPOSE_FIX);          // 修前偏離(TPOSE_FIX 時順便套用)
   const restResidDeg = normalizeRest(by, order, false);            // 修後殘差(關掉修正時 = 同一個數)
   Object.values(by).forEach(e => { const nd = e.node(); if (nd) { nd.getWorldQuaternion(e.qT); e.bone.getWorldQuaternion(e.bQT); } });
+  const wrapQT = wrap.getWorldQuaternion(new THREE.Quaternion());   // 校正時 wrap 的世界旋轉(=g 的 yaw;拳套掛載 ugc-3 用)
 
   // 站高收斂:上面的 S 是拿**校正前**的身高算的,而 T-pose 校正 + rest 正規化會改姿勢(腿打直等)
   // → 實測渲染高度會偏(VRoid 比例正規化後高 8%)。使用者要求「大小跟高度跟原本角色一致」,
@@ -346,7 +347,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   // 踩地(蒙皮):bind pose 的包圍盒不隨姿勢動,拿它量腳底就會浮空。改記「腳骨世界 Y − 真實腳底 Y」
   // 這個**姿勢無關**的偏移(腳骨位置是姿勢準確的),每幀用腳骨反推腳底。剛體角色維持原本的網格包圍盒路徑。
   const soleOffset = skinned ? +(footBoneY(by) - fin.min.y).toFixed(3) : null;
-  const av = { wrap, S, by, order, skinned, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg, yawFixDeg,
+  const av = { wrap, S, by, order, skinned, wrapQT, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg, yawFixDeg,
     chibiFit: CHIBI_FIT, headsBefore, headsAfter, soleOffset, standH: +(fin.max.y - fin.min.y).toFixed(1) };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
@@ -354,12 +355,13 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap) && !o.userData.__equip) { av.hidden.push(o); o.visible = false; } }); // __equip=頭戴裝備(火帽),別跟方塊人一起藏
 
   // rigged 手:掛到 avatar 手骨(async 載入,可能還沒好 → retargetAvatar 會 lazy 重試)。
-  // ⚠ **蒙皮角色不掛**(ugc-2c,使用者反饋「扛人時手是紫色的」):rigged 手是**另一顆 chibi 手 GLB**,
-  // 帶自己的材質/膚色——它存在的理由是 base-avatar 的手是沒有手指的色塊。VRoid 這類蒙皮角色本身就有
-  // 帶指骨的手,換上去只是把一隻不同顏色的手黏在手腕上(實測=淺紫手配淺膚色角色)。
-  // 代價:clip 的手指彎曲軸(aL_/aR_ f*)對蒙皮角色不會動。日後要接的話是驅動**角色自己的指骨**
-  //(VRM 有 J_Bip_L_Thumb1… 這類命名),不是換手模。
-  if (!skinned && riggedHandsReady()) mountRiggedHands(av);
+  // 蒙皮角色=**常戴拳套模式**(ugc-3,使用者:「現在不是拳套了,有什麼辦法讓皮套在拳套嗎?」):
+  // rigged 手當拳套裝備永遠顯示、罩住角色自己的手。ugc-2c 的「紫色手」問題是「只在扛人時**換手**」
+  // 造成的突兀(平時真人手、一抓東西變紫色色塊手);常戴之後拳套=裝備不是皮膚,顏色不用跟膚色,
+  // 而且手指彎曲軸(aL_/aR_ f*)重新對蒙皮角色生效(驅動的是拳套的指骨)。掛法細節(qComp 朝向
+  // 補償/身高佔比尺寸)見 actor-hands-rigged.js 表頭。剛體 base-avatar 照舊(平時色塊拳套=原生手,
+  // 抓握才換 rigged 手)。
+  if (riggedHandsReady()) mountRiggedHands(av);
 
   g.userData.avatar = av;
   if (typeof window !== 'undefined') (window.__avatars || (window.__avatars = [])).push(av);   // headless 健檢用
@@ -427,7 +429,7 @@ export function retargetAvatar(g, boxRig, pose) {
 
   // rigged 手:async 載入,首次就緒時 lazy 掛;顯示中(抓握物品)才由 clip 手指軸(aL_/aR_ f*)驅動指骨。
   // 顯示切換在 actor-brawler updateHands 依 grab 狀態做(一般/戰鬥=原生手,抓握=rigged 手)。
-  if (!av.skinned && !av.handRig && riggedHandsReady()) mountRiggedHands(av);   // 蒙皮角色用自己的手,見 buildAvatar 註解
+  if (!av.handRig && riggedHandsReady()) mountRiggedHands(av);   // 蒙皮=常戴拳套(ugc-3),見 buildAvatar 註解
   if (av.handRig && av.handShowingRigged) applyFingerPose(av, p);
 }
 
