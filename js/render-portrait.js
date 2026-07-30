@@ -44,9 +44,16 @@ function snapshotHead(g, av) {
     const c = new THREE.Mesh(m.geometry, m.material);   // 世界矩陣烘焙 clone(共用幾何/材質,零拷貝)
     c.matrixAutoUpdate = false; c.matrix.copy(m.matrixWorld);
     temp.add(c);
-    if (av.by.head && av.by.head.meshes.includes(m)) (headOnly = headOnly || new THREE.Box3()).expandByObject(c);
+    if (av.by.head && av.by.head.meshes && av.by.head.meshes.includes(m)) (headOnly = headOnly || new THREE.Box3()).expandByObject(c);
   });
   temp.updateMatrixWorld(true);
+  // 蒙皮角色沒有「掛在頭骨下的網格」→ 上面的 headOnly 抓不到;用 av.by.head.localBox
+  //(actor-avatar 從 skin weight 反推的 bind pose 骨局部 bbox)乘頭骨世界矩陣換成世界盒。
+  const hlb = av.by.head && (av.by.head.localBoxDeep || av.by.head.localBox);   // 半身像要含髮 → deep
+  if (!headOnly && hlb && !hlb.isEmpty()) {
+    av.by.head.bone.updateWorldMatrix(true, false);
+    headOnly = new THREE.Box3().copy(hlb).applyMatrix4(av.by.head.bone.matrixWorld);
+  }
   _bb.setFromObject(temp); if (_bb.isEmpty()) return null;
   if (headOnly && !headOnly.isEmpty()) { headOnly.getCenter(_ctr); headOnly.getSize(_sz); }
   else {                                          // 無頭骨零件:取全身 bbox 頂端 1/4 當頭部區

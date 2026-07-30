@@ -262,6 +262,10 @@ function mountHatOnAvatar(hw, g, av) {
     m.geometry.computeBoundingBox();
     _hbb.union(_hb2.copy(m.geometry.boundingBox).applyMatrix4(m.matrix));   // 骨局部
   }
+  // 蒙皮角色 `meshes` 恆空(網格掛在 SkinnedMesh 上)→ 用 actor-avatar 從 skin weight 反推的
+  // bind pose 骨局部 bbox(同一個空間,拿來就能用)。漏了這條 = return false → 退回 box rig
+  // headPivot = 帽子掛到脖子上(病 3 第四次,ugc-2b 實測抓到)。
+  if (_hbb.isEmpty() && av.by.head.localBox && !av.by.head.localBox.isEmpty()) _hbb.copy(av.by.head.localBox);
   if (_hbb.isEmpty()) return false;
   _hbb.getSize(_hv); const headH = _hv.y, headW = Math.max(_hv.x, _hv.z); if (headH < 1e-6) return false;
   // item-3c:studio 校準 / 寬度包覆 / 頂部淨空 三規則取 max=頭永不露出帽口(規則表見 HAT_CAL_AV 註解)

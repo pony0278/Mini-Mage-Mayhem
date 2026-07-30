@@ -215,6 +215,10 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
     by[key] = { bone: f.bone, node: () => nodeFor(boxRig, s), meshes, qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
   }
 
+  // 蒙皮版骨局部 bbox(火帽/X光顱球/頭像取景用;剛體走 meshes 那條路不需要)
+  if (skinned) { const lb = skinnedLocalBoxes(sc, by);
+    for (const k in by) { by[k].localBox = lb.exact[k] || null; by[k].localBoxDeep = lb.deep[k] || null; } }
+
   // ugc-1c 比例正規化:**必須在量包圍盒之前**——改完比例身高會變,S 要照改完的身高算才會正規化到同站高。
   const headsBefore = CHIBI_FIT ? conformProportions(sc, by) : null;
 
@@ -340,6 +344,55 @@ function footBoneY(by) {
     if (isFinite(y)) return y;
   }
   return Infinity;
+}
+
+// ugc-2b:**蒙皮版「骨局部包圍盒」**。剛體分件的消費者(火帽尺寸/X光顱球/頭像取景)都靠
+// `av.by[k].meshes` 量骨頭底下的網格 bbox——蒙皮角色那個陣列**恆空**(網格掛在 SkinnedMesh 上),
+// 火帽因此 `return false` 退回 box rig(隱形 driver)= 帽子掛到脖子上(病 3 的第四次)。
+// 這裡從 skin weight 反推:每個頂點歸給「權重最大的骨」,頂點用 `boneInverse × bindMatrix` 轉進
+// **bind pose 骨局部**——與剛體路的 `geometry.boundingBox × mesh.matrix` 同一個空間,消費者拿到直接用。
+// 骨頭上的 scale(比例正規化把 head 放大 2.69×)由父子關係自動繼承:box 不含它,掛上去的東西跟著
+// 骨頭一起被放大,與網格同步。**只在載入時算一次**(抽樣上限每網格 4000 頂點)。
+// **回傳兩種盒,因為消費者要的不一樣**(實測:只給含髮版,火帽被長髮撐成比角色還大):
+//   `exact` = 只算「主導骨正好是這根」的頂點 → head 得到**顱骨+臉**(頭髮/髮飾骨不算)。
+//             火帽尺寸、X 光顱球要這個。
+//   `deep`  = 主導骨往上找最近的已對照祖先 → 頭髮/髮飾/手指等未對照子骨歸給它的 head/hand。
+//             HUD 頭像取景要這個(半身像本來就該含髮)。
+function skinnedLocalBoxes(sc, by) {
+  const keyOf = new Map();
+  for (const k in by) keyOf.set(by[k].bone, k);
+  const nearestKey = (bone) => {
+    for (let b = bone; b; b = b.parent) { const k = keyOf.get(b); if (k) return k; }
+    return null;
+  };
+  const exact = {}, deep = {}, v = new THREE.Vector3();
+  sc.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    const geo = o.geometry, P = geo.attributes.position;
+    const SI = geo.attributes.skinIndex, SW = geo.attributes.skinWeight;
+    if (!P || !SI || !SW || !o.skeleton) return;
+    const skel = o.skeleton, cache = new Map();  // boneIndex → {ek, dk, m4}
+    const step = Math.max(1, Math.floor(P.count / 4000));
+    for (let i = 0; i < P.count; i += step) {
+      let bi = SI.getX(i), bw = SW.getX(i);
+      if (SW.getY(i) > bw) { bw = SW.getY(i); bi = SI.getY(i); }
+      if (SW.getZ(i) > bw) { bw = SW.getZ(i); bi = SI.getZ(i); }
+      if (SW.getW(i) > bw) { bw = SW.getW(i); bi = SI.getW(i); }
+      let e = cache.get(bi);
+      if (e === undefined) {
+        const bone = skel.bones[bi];
+        const dk = bone ? nearestKey(bone) : null;
+        e = dk ? { ek: keyOf.get(bone) || null, dk,
+                   m4: new THREE.Matrix4().multiplyMatrices(skel.boneInverses[bi], o.bindMatrix) } : null;
+        cache.set(bi, e);
+      }
+      if (!e) continue;
+      v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(e.m4);
+      (deep[e.dk] || (deep[e.dk] = new THREE.Box3())).expandByPoint(v);
+      if (e.ek) (exact[e.ek] || (exact[e.ek] = new THREE.Box3())).expandByPoint(v);
+    }
+  });
+  return { exact, deep };
 }
 
 // ---- 幾何小工具 ----

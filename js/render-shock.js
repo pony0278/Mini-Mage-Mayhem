@@ -296,6 +296,9 @@ function buildSkeletonAvatar(g, av) {
       m.geometry.computeBoundingBox();
       bb.union(new THREE.Box3().copy(m.geometry.boundingBox).applyMatrix4(m.matrix));
     }
+    // 蒙皮角色 meshes 恆空 → 用 av.by.head.localBox(skin weight 反推的骨局部 bbox,同空間);
+    // 沒有才退下面的 standH 估值。
+    if (bb.isEmpty() && by.head.localBox && !by.head.localBox.isEmpty()) bb.copy(by.head.localBox);
     let r, cy;
     if (!bb.isEmpty()) { bb.getSize(_v1); r = Math.max(_v1.x, _v1.y, _v1.z) * 0.36; bb.getCenter(_v2); cy = _v2.clone(); }
     else { r = (av.standH / av.S) * 0.075; cy = new THREE.Vector3(0, r, 0); }

@@ -183,6 +183,29 @@ ok(Math.abs(C.standH - CB.standH) < 4,
 ok(C.rootBone === CB.rootBone || /hips|root/i.test(C.rootBone || ''),
   `⑨ root 取到真正的髖骨(${C.rootBone});VRoid 同時有腳底的 Root 與 J_Bip_C_Hips,取錯 root_x 會繞腳踝甩全身`);
 
+// ---- ⑩ 蒙皮版骨局部 bbox(ugc-2b):剛體分件的消費者不能靠 `by[k].meshes`(蒙皮恆空)----
+// 病 3 的第四次:火帽拿不到頭部尺寸就 `return false` → 退回 box rig headPivot(隱形 driver)=
+// 帽子掛到脖子上。actor-avatar 從 skin weight 反推 bind pose 骨局部 bbox 補上。
+const pH = await openPage(buildSkinGlb('native'), '&chibi=1');
+const H = await pH.evaluate(async () => {
+  const v = __v2, a = v.fighters[0];
+  v.v2s.introT = 0; a.item = 'fire'; a.itemUses = 9;
+  await new Promise(r => setTimeout(r, 900));
+  const av = window.__avatars[0];
+  let g = null, scene = av.wrap; while (scene.parent) scene = scene.parent;
+  scene.traverse(o => { if (o.userData && o.userData.avatar === av) g = o; });
+  const hb = av.by.head.localBox, hd = av.by.head.localBoxDeep;
+  const sz = b => { if (!b || b.isEmpty()) return null; const s = new THREE.Vector3(); b.getSize(s); return +s.y.toFixed(3); };
+  return { headMeshes: (av.by.head.meshes || []).length, hatOnAvatar: !!(g && g.userData.hatOnAvatar),
+           exactH: sz(hb), deepH: sz(hd), handBox: !!av.by.hand_r.localBox };
+});
+await pH.close();
+ok(H.headMeshes === 0, `⑩ 蒙皮角色 by.head.meshes 確實是空的(${H.headMeshes})——剛體那條路對它無效`);
+ok(H.exactH > 0, `⑩ localBox(exact:主導骨=head)量到頭部高度 ${H.exactH}`);
+ok(H.deepH >= H.exactH, `⑩ localBoxDeep(含頭髮等未對照子骨)≥ exact(${H.deepH} ≥ ${H.exactH})`);
+ok(H.handBox, '⑩ 其他骨頭也有 localBox(手骨,X光/裝備可用)');
+ok(H.hatOnAvatar === true, '⑩ **火帽掛在 avatar 頭骨上**(修前=false → 退回 box rig,帽子在脖子)');
+
 ok(errs.length === 0, '⑦ 無 console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 
 await B.close();

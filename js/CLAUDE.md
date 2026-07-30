@@ -229,6 +229,19 @@
 > 高度再收斂一次 S(uniform 縮放不影響世界四元數,bQT 不用重抓),`av.standH` 改成量校正後的真實盒子。
 > **骨頭選取改照別名表優先序,不是 traverse 順序**:VRoid 同時有腳底的 `Root` 與真髖 `J_Bip_C_Hips`,
 > 舊的「重複取第一個」會選到 Root → root 樞紐變腳底,clip 的 `root_x`(pitch)會繞著腳踝甩全身。
+> **ugc-2b `av.by[k].localBox` / `localBoxDeep`(蒙皮版骨局部包圍盒)**:剛體分件的消費者靠
+> `av.by[k].meshes` 量「骨頭底下的網格 bbox」——**蒙皮角色那個陣列恆空**(網格掛在 SkinnedMesh 上)。
+> 三個消費者踩到:①`actor-brawler` 火帽尺寸 → `_hbb.isEmpty()` 就 `return false` → 退回 box rig
+> `headPivot`(隱形 driver)=**帽子掛到脖子上**(病 3 第四次,實測 `hatOnAvatar:false`、帽在頭骨上方 1.2
+> 而頭頂在 +25)②`render-shock` X 光顱球半徑 ③`render-portrait` 頭像取景(退成全身而非半身)。
+> 修法:`skinnedLocalBoxes()` 從 skin weight 反推——頂點歸給權重最大的骨,用 `boneInverse × bindMatrix`
+> 轉進 **bind pose 骨局部**(與剛體路的 `geometry.boundingBox × mesh.matrix` 同一個空間,消費者拿到直接用);
+> 骨頭上的 scale(比例正規化把 head 放大 2.69×)由父子關係自動繼承,掛上去的東西跟網格同步放大。
+> **回傳兩種盒**,因為消費者要的不一樣(只給含髮版 → 火帽被長髮撐成比角色還大,實測過):
+> `localBox`=exact(主導骨正好是這根;head 得到顱骨+臉)給火帽/顱球;`localBoxDeep`=往上找最近已對照
+> 祖先(頭髮/髮飾/手指等未對照子骨歸給 head/hand)給頭像取景。載入時算一次,每網格抽樣上限 4000 頂點。
+> **⚠ 帽子看起來「包住整顆頭」不是 bug**:item-3c 的三規則取 max 就是「頭永不露出帽口」,內建 chibi
+> 戴上去同樣只露腳(對照圖實測)。
 > **punch-studio 必須做同一件事**(WYSIWYG 命脈):`tools/ps/avatar.js` 有一份對應的 `CHIBI`/
 > `conformAvatarProportions`/`sampledBox`/腳骨推算(古典 script vs ESM 無法共用常數,**改一邊要同步另一邊**)。
 > studio 要是不套比例,那裡看到 8 頭身、遊戲裡是 3 頭身,編出來的姿勢進遊戲就偏。實測 studio 3.15 / 遊戲 3.18。
