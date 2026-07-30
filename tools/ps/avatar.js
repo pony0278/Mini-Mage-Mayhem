@@ -69,6 +69,97 @@ function normalizeAvatarRest(by, order, apply){
   return +maxDeg.toFixed(1);
 }
 
+// ===== ugc-1c 比例正規化:把匯入角色的骨架比例壓成 chibi 比例 =====
+// 與遊戲 js/actor-avatar.js 的 CHIBI / conformProportions **同一份規格**(兩邊模組系統不同無法共用常數,
+// 改一邊要同步另一邊)。使用者拍板 2026-07-29:「維持 chibi 風格,其他 GLB 只是外觀套進來,骨子還是 chibi
+// ——原本的大頭就是大頭,VRoid 的頭套進來只是外觀改變,頭還是一樣大」。
+// **studio 一定要跟遊戲做同一件事**:不然這裡看到 8.18 頭身、遊戲裡是 3.18 頭身,編出來的姿勢進遊戲就偏。
+// 可行性關鍵:updateAvatarPose 每幀只寫 bone.quaternion(與 setS/setStretch 的 scale),**從不寫
+// bone.position** → 改 rest 位移不會被每幀蓋掉;蒙皮頂點跟著骨頭走。
+const CHIBI = { upperarm: 0.0834, forearm: 0.1171, thigh: 0.1266, shin: 0.1769,
+                headTop: 0.325, shoulderW: 0.195, hipW: 0.12 };
+let AV_CHIBI_FIT = true;
+try{ if(localStorage.getItem('PS_CHIBI_FIT')==='0') AV_CHIBI_FIT = false; }catch(e){}
+
+// ⚠ `Box3.setFromObject` **不算蒙皮形變**:它拿 geometry 的 bounding box 乘 mesh.matrixWorld,而
+// SkinnedMesh 的 matrixWorld 不隨骨頭動 → 對蒙皮角色永遠回傳 bind pose 的盒子。比例改完後這個誤差
+// 大到讓角色腳浮空(遊戲端實測 14px = 身高 18%)。要量真的就得逐頂點 boneTransform。只在載入時跑。
+const AV_SAMPLE = 240;
+const _svv = new THREE.Vector3();
+function sampledBox(root, out){
+  out.makeEmpty();
+  root.updateWorldMatrix(false, true);
+  root.traverse(o => {
+    if(!o.isMesh || !o.visible) return;
+    const P = o.geometry.attributes.position; if(!P) return;
+    const step = Math.max(1, Math.floor(P.count / AV_SAMPLE));
+    for(let i = 0; i < P.count; i += step){
+      _svv.set(P.getX(i), P.getY(i), P.getZ(i));
+      if(o.isSkinnedMesh) o.boneTransform(i, _svv);      // → model space
+      out.expandByPoint(_svv.applyMatrix4(o.matrixWorld));
+    }
+  });
+  return out;
+}
+
+const _pv = new THREE.Vector3(), _pw = new THREE.Vector3(), _pbox = new THREE.Box3();
+// 兩隻腳骨中較低的世界 Y(姿勢準確,不像包圍盒那樣停在 bind pose)。沒腳骨退小腿,都沒有回 Infinity。
+const _fbv = new THREE.Vector3();
+// skip:{l,r} = 接觸鎖(contact===2 抬起的腳不當地面錨點,沿用素體同一條規則)。
+function avFootBoneY(by, skip){
+  for(const set of [['foot_l','foot_r'], ['shin_l','shin_r']]){
+    let y = Infinity;
+    for(const k of set){
+      if(skip && ((k.endsWith('_l') && skip.l) || (k.endsWith('_r') && skip.r))) continue;
+      const e = by[k]; if(!e) continue; e.bone.getWorldPosition(_fbv); y = Math.min(y, _fbv.y);
+    }
+    if(isFinite(y)) return y;
+  }
+  return avFootBoneY(by);                      // 兩腳都抬起(跳躍)→ 不套鎖,取較低的那隻
+}
+// 回傳修改前的頭身比(給報告看),沒東西可改回 null。
+function conformAvatarProportions(sc, by){
+  sc.updateMatrixWorld(true);
+  const bb0 = sampledBox(sc, _pbox);
+  const H = bb0.max.y - bb0.min.y;
+  if(!(H > 1e-6) || !by.head) return null;
+  const wp = (k, out) => { by[k].bone.getWorldPosition(out); return out; };
+  const before = +(H / (bb0.max.y - wp('head', _pv).y)).toFixed(2);
+
+  // ① 肢段長度:縮子骨的 local 位移到目標長度(**父先子後**——改父會帶動子,子要用改過後的位置重量)
+  const setLen = (a, b, t) => {
+    for(const side of ['_l', '_r']){
+      const A = by[a + side], Bn = by[b + side]; if(!A || !Bn) continue;
+      sc.updateMatrixWorld(true);
+      const now = wp(a + side, _pv).distanceTo(wp(b + side, _pw));
+      if(now < 1e-6) continue;
+      Bn.bone.position.multiplyScalar(t * H / now);
+      Bn.bone.updateMatrixWorld(true);
+    }
+  };
+  setLen('upperarm', 'forearm', CHIBI.upperarm); setLen('forearm', 'hand', CHIBI.forearm);
+  setLen('thigh', 'shin', CHIBI.thigh);          setLen('shin', 'foot', CHIBI.shin);
+
+  // ② 肩寬/臀寬外推(chibi 比寫實角色寬 ~1.4×)
+  const widen = (k, t) => {
+    const L = by[k + '_l'], R = by[k + '_r']; if(!L || !R) return;
+    sc.updateMatrixWorld(true);
+    const now = wp(k + '_l', _pv).distanceTo(wp(k + '_r', _pw)); if(now < 1e-6) return;
+    const f = t * H / now;
+    [L, R].forEach(e => { e.bone.position.x *= f; e.bone.updateMatrixWorld(true); });
+  };
+  widen('upperarm', CHIBI.shoulderW); widen('thigh', CHIBI.hipW);
+
+  // ③ 大頭:頭骨等比放大(頭髮/髮飾骨是子骨,自動跟著大)。
+  // ⚠ 只能動 head——torso/forearm/shin/upperarm/thigh 的 bone.scale 是 setS/setStretch 每幀在寫的。
+  sc.updateMatrixWorld(true);
+  const bb = sampledBox(sc, _pbox);
+  const nowHead = bb.max.y - wp('head', _pv).y;
+  if(nowHead > 1e-6) by.head.bone.scale.setScalar(CHIBI.headTop * H / nowHead);
+  sc.updateMatrixWorld(true);
+  return before;
+}
+
 // ===== 匯入檢查報告(實驗室的主產出:告訴玩家這顆模型能不能用、哪裡要修)=====
 const AV_SLOTS = ['root','torso','neck','head','upperarm_l','upperarm_r','forearm_l','forearm_r',
                   'hand_l','hand_r','thigh_l','thigh_r','shin_l','shin_r','foot_l','foot_r'];
@@ -106,12 +197,13 @@ function renderAvatarReport(){
   const okN = AV_SLOTS.filter(k => r.slots[k]).length;
   const head = `<summary style="cursor:pointer;color:${r.missing.length ? '#f66' : (r.warn.length ? '#fc6' : '#6d6')}">`
     + `匯入檢查:${r.label} — 骨頭 ${okN}/16${r.missing.length ? ' ✗' : ' ✓'}`
-    + ` · ${r.skinned ? '蒙皮' : '剛體分件'} · ${r.tris} 面${r.warn.length ? ` · ${r.warn.length} 則提醒` : ''}</summary>`;
+    + ` · ${r.skinned ? '蒙皮' : '剛體分件'} · ${r.tris} 面${r.headsAfter != null ? ` · ${r.headsAfter} 頭身` : ''}${r.warn.length ? ` · ${r.warn.length} 則提醒` : ''}</summary>`;
   const rows = AV_SLOTS.map(k => `<div style="display:flex;gap:4px"><span style="width:74px;color:var(--dim)">${k}</span>`
     + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:${r.slots[k] ? '#9c9' : '#f66'}">${r.slots[k] || '缺'}</span></div>`).join('');
   const warn = r.warn.length ? `<div style="margin-top:5px;color:#fc6">` + r.warn.map(w => `• ${w}`).join('<br>') + '</div>' : '';
   const rest = (r.restDev != null) ? `<div style="margin-top:5px;color:var(--dim)">rest 偏離 T-pose:${r.restDev}° → 殘差 ${r.restResid}°(校正 ${r.fixOn ? '開' : (r.builtin ? '關·內建角色不校正' : '關')})· 縮放 ×${(r.S||0).toFixed(2)}</div>` : '';
-  box.innerHTML = head + '<div style="margin-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:0 10px">' + rows + '</div>' + rest + warn;
+  const prop = (r.headsAfter != null) ? `<div style="margin-top:3px;color:var(--dim)">頭身比:${r.chibiFit ? `${r.headsBefore} → <b style="color:#9c9">${r.headsAfter}</b>(已壓成 chibi 比例)` : `${r.headsAfter}(比例正規化 ${r.builtin ? '關·內建角色本身就是基準' : '關'})`}　chibi 基準 3.08</div>` : '';
+  box.innerHTML = head + '<div style="margin-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:0 10px">' + rows + '</div>' + rest + prop + warn;
 }
 
 let AVATAR_LAST_BUF = null, AVATAR_LAST_LABEL = '', AVATAR_LAST_BUILTIN = false;   // 切 T-pose 校正要重載(rest 是載入時烤死的)
@@ -148,9 +240,13 @@ async function loadAvatarBuffer(ab, label, builtin){
     if(o.isMesh) return;
     const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
     if(!n || AV_SKIP.test(n)) return;
-    const hit = AV_ALIASES.find(([k]) => n.includes(k));
-    if(hit) found.push({ bone: o, type: hit[1], raw: o.name });
+    const i = AV_ALIASES.findIndex(([k]) => n.includes(k));
+    if(i >= 0) found.push({ bone: o, type: AV_ALIASES[i][1], raw: o.name, pri: i });
   });
+  // 同一個 key 有多個候選時**照別名表優先序取,不是照 traverse 順序**。
+  // 踩過:VRoid 檔同時有 `Root`(骨架根,在腳底)與 `J_Bip_C_Hips`(真髖)——Root 在階層上更早,
+  // 舊的「重複取第一個」就選了它 → root 樞紐變腳底,clip 的 root_x(pitch)會繞著腳踝甩全身。
+  found.sort((a, b) => a.pri - b.pri);
 
   // ② key = 型別(+左右,以骨頭「rest 世界 X」判定,不信名字)
   const _v = new THREE.Vector3();
@@ -176,8 +272,12 @@ async function loadAvatarBuffer(ab, label, builtin){
     return false;
   }
 
-  // ③ 縮放到素體身高,掛進場景
-  const bb = new THREE.Box3().setFromObject(sc), size = new THREE.Vector3(); bb.getSize(size);
+  // ③b ugc-1c 比例正規化(**在量包圍盒之前**——改完比例身高會變,S 要照改完的算)
+  const fitOn = AV_CHIBI_FIT && !builtin;
+  const headsBefore = fitOn ? conformAvatarProportions(sc, by) : null;
+
+  // ③ 縮放到素體身高,掛進場景(用 sampledBox 不用 setFromObject:蒙皮角色後者量到 bind pose)
+  const bb = sampledBox(sc, new THREE.Box3()), size = new THREE.Vector3(); bb.getSize(size);
   const standH = headCY + DIM.headSize * 0.5;
   const S = size.y > 1e-6 ? standH / size.y : 1;
   const wrap = new THREE.Group(); wrap.name = 'PS_AVATAR'; wrap.scale.setScalar(S); wrap.add(sc);
@@ -204,8 +304,20 @@ async function loadAvatarBuffer(ab, label, builtin){
   // (蒙皮角色沒有「骨頭下掛網格」→ jointFillRadiusColor 回 null,填充自動不生成,本來就不需要)
   JOINT_FILL_KEYS.forEach(k => { const e = by[k]; if(e) e._fill = jointFillRadiusColor(e); });
 
-  AVATAR = { wrap, S, label, by, order, skinned, restDev, restResid, fixOn, builtin: !!builtin, fillers: [] };
-  AVATAR_REPORT = avatarReport(sc, by, label, [], { skinned, restDev, restResid, S, fixOn, builtin: !!builtin });
+  // 踩地(蒙皮):bind pose 的包圍盒不隨姿勢動,拿它量腳底會浮空。改記「腳骨世界 Y − 真實腳底 Y」這個
+  // **姿勢無關**的偏移(腳骨位置是姿勢準確的),每幀用腳骨反推腳底。剛體角色維持原本的網格包圍盒路徑。
+  // ⚠ 存**wrap 局部單位**不是世界距離:updateAvatarPose 每幀 `w.scale.copy(root.scale)×S`(鏡射素體的
+  // 擠壓 sq/squat)→ wrap 縮放會變,拿世界絕對距離每幀套就錯(實測腳浮 0.42 = 身高 20%)。
+  const soleOffset = skinned
+    ? +((avFootBoneY(by) - sampledBox(wrap, _pbox).min.y) / (wrap.scale.y || 1)).toFixed(5) : null;
+  const headsAfter = (() => { if(!by.head) return null;
+    by.head.bone.getWorldPosition(_pv);
+    const b = sampledBox(wrap, _pbox), h = b.max.y - _pv.y;
+    return h > 1e-6 ? +((b.max.y - b.min.y) / h).toFixed(2) : null; })();
+  AVATAR = { wrap, S, label, by, order, skinned, restDev, restResid, fixOn, builtin: !!builtin,
+             chibiFit: fitOn, headsBefore, headsAfter, soleOffset, fillers: [] };
+  AVATAR_REPORT = avatarReport(sc, by, label, [], { skinned, restDev, restResid, S, fixOn, builtin: !!builtin,
+             chibiFit: fitOn, headsBefore, headsAfter });
   renderAvatarReport();
   buildJointFillers();
   if(typeof remountHeadgear === 'function') remountHeadgear();   // item-3b:角色到位 → 已掛的頭戴道具改掛 avatar 頭骨(校準值語意不變)
@@ -213,6 +325,7 @@ async function loadAvatarBuffer(ab, label, builtin){
   if(typeof buildPropPanel === 'function') buildPropPanel();   // 刷新 PROPORTIONS 面板 → 進入角色模式鎖定態
   applyInspectOrPhase();                        // 回到目前 phase,hook 立即驅動角色
   updatePartsStatus(`基底角色已掛載:${label}(${order.length} 骨,${skinned ? '蒙皮' : '剛體分件'},×${S.toFixed(2)}`
+    + `${fitOn ? `,頭身 ${headsBefore}→${headsAfter}` : ''}`
     + `${restDev >= 8 ? `,rest 偏 ${restDev}°→${AV_TPOSE_FIX ? `校正後 ${restResid}°` : '未校正'}` : ''})。素體隱藏中;「清除角色」回素體/部位模式。`);
   return true;
 }
@@ -222,6 +335,7 @@ window.__psAvatar = {
   report: () => AVATAR_REPORT,
   avatar: () => AVATAR,
   tposeFix: (on) => { if(on !== undefined){ AV_TPOSE_FIX = !!on; try{ localStorage.setItem('PS_TPOSE_FIX', on ? '1' : '0'); }catch(e){} } return AV_TPOSE_FIX; },
+  chibiFit: (on) => { if(on !== undefined){ AV_CHIBI_FIT = !!on; try{ localStorage.setItem('PS_CHIBI_FIT', on ? '1' : '0'); }catch(e){} } return AV_CHIBI_FIT; },
   load: (ab, label, builtin) => loadAvatarBuffer(ab, label || 'test.glb', builtin),
   clear: () => clearAvatar(),
 };
@@ -395,10 +509,15 @@ function updateAvatarPose(p){
   if(cR !== 2){ exp('foot_r'); g = true; }
   if(!g){ exp('foot_l'); exp('foot_r'); }
   if(!isFinite(_abox.min.y)){ exp('shin_l'); exp('shin_r'); }   // 沒腳骨的角色:用小腿墊底
-  // 蒙皮角色骨頭底下沒有網格 → 上面全空;退回整具 wrap 的包圍盒(Three 不把蒙皮形變算進 setFromObject,
-  // 拿到的是 bind pose 盒;站姿誤差 ~1.5px 可接受,極端姿勢才會飄。與遊戲端同一取捨)。
-  if(!isFinite(_abox.min.y) && A.skinned) _abox.setFromObject(w);
-  w.position.y = (isFinite(_abox.min.y) ? (baseY - _abox.min.y) : baseY) + (p.root_py || 0);
+  // 上面那套(網格包圍盒)只對**剛體分件**成立:蒙皮角色骨頭底下沒有網格,而且 Three 不把蒙皮形變算進
+  // setFromObject(拿到的是 bind pose 盒)→ 比例正規化後會浮空。蒙皮改走腳骨推算(姿勢準確)。
+  if(A.soleOffset != null){
+    // 蒙皮:w.position.y 此刻為 0 → 腳骨世界 Y 減掉 rest 時量好的腳底偏移 = 這個姿勢的真實腳底。
+    const b0 = avFootBoneY(A.by, { l: cL === 2, r: cR === 2 });
+    w.position.y = (isFinite(b0) ? (baseY + A.soleOffset * w.scale.y - b0) : baseY) + (p.root_py || 0);
+  } else {
+    w.position.y = (isFinite(_abox.min.y) ? (baseY - _abox.min.y) : baseY) + (p.root_py || 0);
+  }
 }
 
 function clearAvatar(){
@@ -426,13 +545,22 @@ function clearAvatar(){
     `<label style="display:flex;align-items:center;gap:6px" title="0=腳鎖死跟小腿(高筒硬靴,靴子一體不裂);1=完全吃編排器腳踝壓平。高筒靴角色建議 0.2~0.4">腳踝跟隨 <input type="range" id="ankleFollow" min="0" max="1" step="0.05" style="width:90px"><span id="ankleFollowV" style="min-width:24px"></span></label>` +
     `<label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="每個關節樞紐補一顆低模球,塞住剛體部件大角度旋轉時露出的縫隙(以樞紐為圓心,旋轉不露縫)"><input type="checkbox" id="jointFill"> 關節填充</label>` +
     `<label style="display:flex;align-items:center;gap:6px" title="填充球大小(相對肢體橫截半徑)。太大會凸成腫瘤、太小遮不住縫,依角色微調">球大小 <input type="range" id="jointFillSize" min="0.4" max="1.3" step="0.02" style="width:80px"><span id="jointFillSizeV" style="min-width:30px"></span></label>` +
-    `<label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="把角色 rest 的各肢段方向轉到素體 T-pose 方向。VRoid/多數 DCC 出廠是 A-pose(手臂往下 45°),不校正的話每個動作手臂都低 45°。關掉可看修正前長相"><input type="checkbox" id="tposeFix"> T-pose 校正</label>`;
+    `<label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="把角色 rest 的各肢段方向轉到素體 T-pose 方向。VRoid/多數 DCC 出廠是 A-pose(手臂往下 45°),不校正的話每個動作手臂都低 45°。關掉可看修正前長相"><input type="checkbox" id="tposeFix"> T-pose 校正</label>` +
+    `<label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="把匯入角色的骨架比例壓成 chibi 比例(大頭/短腿/寬肩)——只換外觀,骨子維持遊戲的 chibi 身形。**這裡跟遊戲必須一致**,不然編出來的姿勢進遊戲會偏"><input type="checkbox" id="chibiFit"> chibi 比例</label>`;
   st.parentElement.insertBefore(row, st);
   // 匯入檢查報告(骨頭對照表 + 面數/蒙皮/貼圖 + rest 偏離 + 提醒)
   const rep = document.createElement('details');
   rep.id = 'avatarReport';
   rep.style.cssText = 'margin-top:4px;font-size:10px;background:rgba(255,255,255,.03);border-radius:4px;padding:3px 6px';
   st.parentElement.insertBefore(rep, st);
+  const cf = document.getElementById('chibiFit');
+  cf.checked = AV_CHIBI_FIT;
+  cf.addEventListener('change', e => {
+    AV_CHIBI_FIT = e.target.checked;
+    try{ localStorage.setItem('PS_CHIBI_FIT', AV_CHIBI_FIT ? '1' : '0'); }catch(err){}
+    if(AVATAR && AVATAR_LAST_BUF) loadAvatarBuffer(AVATAR_LAST_BUF.slice(0), AVATAR_LAST_LABEL, AVATAR_LAST_BUILTIN);   // 比例是載入時烤的 → 重載才生效
+    else renderAvatarReport();
+  });
   const tf = document.getElementById('tposeFix');
   tf.checked = AV_TPOSE_FIX;
   tf.addEventListener('change', e => {

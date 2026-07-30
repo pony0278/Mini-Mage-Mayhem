@@ -161,7 +161,7 @@ const realBox = (page) => page.evaluate(() => {
   });
   return { minY: +box.min.y.toFixed(1), h: +(box.max.y - box.min.y).toFixed(1),
            chibiFit: av.chibiFit, before: av.headsBefore, after: av.headsAfter,
-           standH: +av.standH.toFixed(1), footBias: av.skinFootBias,
+           standH: +av.standH.toFixed(1), soleOffset: av.soleOffset,
            rootBone: av.by.root ? av.by.root.bone.name : null };
 });
 
@@ -173,7 +173,7 @@ ok(C.chibiFit === true && C.before != null, `⑨ 匯入角色預設套比例正�
 ok(C.after > 2.4 && C.after < 4.2, `⑨ 壓到 chibi 頭身比(${C.before} → ${C.after};內建基底 ${CB.after})`);
 ok(C.after < C.before, `⑨ 確實變矮胖(${C.before} → ${C.after})`);
 ok(Math.abs(C.minY) < 3, `⑨ **真實蒙皮腳底貼地** minY=${C.minY}(修前浮空 14;setFromObject 量不到蒙皮形變)`);
-ok(Number.isFinite(C.footBias), `⑨ 有記錄踩地偏差供每幀補償(skinFootBias=${C.footBias})`);
+ok(C.soleOffset != null, `⑨ 蒙皮走**腳骨推算**踩地(soleOffset=${C.soleOffset});bind pose 包圍盒不隨姿勢動,拿它量會浮空`);
 ok(C0.chibiFit === false && C0.before === null, '⑨ ?chibi=0 可關掉(不做比例正規化)');
 ok(CB.chibiFit === false, `⑨ 內建 base-avatar 不套(它本身就是比例基準,頭身比 ${CB.after})`);
 ok(Math.abs(C.standH - CB.standH) < 1,

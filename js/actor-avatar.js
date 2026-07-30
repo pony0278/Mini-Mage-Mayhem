@@ -248,11 +248,11 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
     if (!by.head) return null; by.head.bone.getWorldPosition(p);
     const h = fin.max.y - p.y;
     return h > 1e-6 ? +((fin.max.y - fin.min.y) / h).toFixed(2) : null; })();
-  // 踩地偏差:每幀用便宜的 setFromObject(bind pose)量腳底,這裡量一次它與真實蒙皮腳底的差,之後每幀補上。
-  // 每幀跑 sampledBox 太貴;差值是系統性的,量一次就夠。
-  const skinFootBias = skinned ? +(fin.min.y - new THREE.Box3().setFromObject(wrap).min.y).toFixed(3) : 0;
+  // 踩地(蒙皮):bind pose 的包圍盒不隨姿勢動,拿它量腳底就會浮空。改記「腳骨世界 Y − 真實腳底 Y」
+  // 這個**姿勢無關**的偏移(腳骨位置是姿勢準確的),每幀用腳骨反推腳底。剛體角色維持原本的網格包圍盒路徑。
+  const soleOffset = skinned ? +(footBoneY(by) - fin.min.y).toFixed(3) : null;
   const av = { wrap, S, by, order, skinned, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg,
-    chibiFit: CHIBI_FIT, headsBefore, headsAfter, skinFootBias, standH: +(fin.max.y - fin.min.y).toFixed(1) };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
+    chibiFit: CHIBI_FIT, headsBefore, headsAfter, soleOffset, standH: +(fin.max.y - fin.min.y).toFixed(1) };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];
@@ -315,16 +315,31 @@ export function retargetAvatar(g, boxRig, pose) {
   setStretch('thigh_l', p.lL_stretch);    setStretch('thigh_r', p.lR_stretch);
   // 踩地:角色最低頂點對齊 box rig 的腳底(box P 世界 y 已含踩地)。簡化:角色 wrap y = box 腳底世界 y。
   w.updateMatrixWorld(true);
-  _fbox.setFromObject(w);
   const groundY = boxFootWorldY(boxRig);
-  // +skinFootBias:setFromObject 對蒙皮量到的是 bind pose 腳底,載入時量過的系統性差值補回來
-  //(比例正規化過的角色不補會浮空 ~14px = 身高 18%)。
-  if (isFinite(_fbox.min.y)) w.position.y = groundY - _fbox.min.y - (av.skinFootBias || 0);
+  if (av.soleOffset != null) {
+    // 蒙皮:w.position.y 此刻為 0 → 腳骨世界 Y 減掉 rest 時量好的腳底偏移 = 這個姿勢的真實腳底。
+    const b0 = footBoneY(av.by);
+    if (isFinite(b0)) w.position.y = groundY + av.soleOffset - b0;
+  } else {
+    _fbox.setFromObject(w);                       // 剛體:網格包圍盒就是準的
+    if (isFinite(_fbox.min.y)) w.position.y = groundY - _fbox.min.y;
+  }
 
   // rigged 手:async 載入,首次就緒時 lazy 掛;顯示中(抓握物品)才由 clip 手指軸(aL_/aR_ f*)驅動指骨。
   // 顯示切換在 actor-brawler updateHands 依 grab 狀態做(一般/戰鬥=原生手,抓握=rigged 手)。
   if (!av.handRig && riggedHandsReady()) mountRiggedHands(av);
   if (av.handRig && av.handShowingRigged) applyFingerPose(av, p);
+}
+
+// 兩隻腳骨中較低的世界 Y(姿勢準確,不像包圍盒那樣停在 bind pose)。沒腳骨回 Infinity。
+const _fb = new THREE.Vector3();
+function footBoneY(by) {
+  for (const set of [['foot_l', 'foot_r'], ['shin_l', 'shin_r']]) {   // 有腳骨就用腳骨,沒有才退小腿
+    let y = Infinity;
+    for (const k of set) { const e = by[k]; if (!e) continue; e.bone.getWorldPosition(_fb); y = Math.min(y, _fb.y); }
+    if (isFinite(y)) return y;
+  }
+  return Infinity;
 }
 
 // ---- 幾何小工具 ----

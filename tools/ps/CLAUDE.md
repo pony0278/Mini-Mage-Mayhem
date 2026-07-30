@@ -75,8 +75,23 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
      骨架本來就指著自己的骨頭。
   **匯入檢查報告 `avatarReport`**(面板 `#avatarReport`)= 實驗室的主產出:16 骨對照表(對到的原始骨名/缺哪根)
   + 蒙皮 or 剛體 + 面數 + rest 偏離→殘差 + 提醒(缺骨/面數 >7 萬/無貼圖/morph target/多蒙皮網格)。
-  hook `window.__psAvatar`(`report()`/`avatar()`/`tposeFix(on)`/`load(ab,label,builtin)`/`clear()`);
-  回歸 `tests/psimport.mjs`(GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產)。
+  ④ **chibi 比例正規化(ugc-1c)`conformAvatarProportions`**:使用者拍板「維持 chibi 風格,其他 GLB 只是
+     **外觀**套進來,骨子還是 chibi——原本的大頭就是大頭」。三件事:四段肢長縮到目標(父先子後)、肩寬臀寬
+     外推 1.4×、頭骨等比放大。**跟遊戲 `js/actor-avatar.js` 的 `CHIBI` / `conformProportions` 同一份規格,
+     改一邊要同步另一邊** —— 這條是 WYSIWYG 命脈:studio 要是不做,這裡看到 8 頭身、遊戲裡是 3 頭身,
+     編出來的姿勢進遊戲就偏。實測 VRoid 8.28 → 3.15(遊戲 3.18)。UI 勾選「chibi 比例」;內建角色不套。
+     **比例是載入時烤死的 → 切開關會自動重載 `AVATAR_LAST_BUF`。**
+  ⑤ **踩地改用腳骨推算(蒙皮)**:`Box3.setFromObject` 不算蒙皮形變(見 ③),比例改完拿它量腳底會浮空。
+     改記「腳骨世界 Y − 真實腳底 Y」這個**姿勢無關**的偏移(載入時用 `sampledBox` 逐頂點 `boneTransform` 量),
+     每幀用腳骨反推。**存 wrap 局部單位**——`updateAvatarPose` 每幀 `w.scale.copy(root.scale)×S` 鏡射素體的
+     擠壓(sq/squat),存世界絕對距離會隨縮放跑掉。仍沿用素體的**接觸鎖**(`lX_contact===2` 抬起的腳不當錨點)。
+     剛體分件維持原本的網格包圍盒路徑(那條對剛體是準的,零風險)。
+  ⑥ **骨頭選取照別名表優先序,不是 traverse 順序**:VRoid 同時有腳底的 `Root` 與真髖 `J_Bip_C_Hips`,
+     舊的「重複取第一個」會選到 Root → root 樞紐變腳底,clip 的 `root_x`(pitch)會繞著腳踝甩全身。
+  hook `window.__psAvatar`(`report()`/`avatar()`/`tposeFix(on)`/`chibiFit(on)`/`load(ab,label,builtin)`/`clear()`);
+  回歸 `tests/psimport.mjs`(25 斷言;GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產)。
+  **量蒙皮角色的腳底要在雙腳著地的幀量**(idle 0f)——`anti` 那格單腳抬起,拿「最低頂點=地面」當不變量會
+  量出 0.42 的假浮空(我自己踩過,追了幾輪才發現是量法問題不是 bug)。
 
 ## 陷阱(踩過的)
 

@@ -60,7 +60,8 @@ const load = (glb, label, fix) => page.evaluate(async (b64, label, fix) => {
 
 // ---------- ④ 內建角色:開機載入後不該被校正 ----------
 const boot = await page.evaluate(() => { const r = window.__psAvatar.report();
-  return { label: r.label, builtin: r.builtin, fixOn: r.fixOn, dev: r.restDev, resid: r.restResid, skinned: r.skinned }; });
+  return { label: r.label, builtin: r.builtin, fixOn: r.fixOn, dev: r.restDev, resid: r.restResid,
+           skinned: r.skinned, heads: r.headsAfter, chibiFit: r.chibiFit }; });
 ok(boot.label === 'base-avatar.glb' && boot.builtin === true, `④ 開機自動載內建 base-avatar(${boot.label})`);
 ok(boot.fixOn === false && boot.resid === boot.dev,
   `④ 內建角色**不套** rest 校正(dev ${boot.dev}° = resid ${boot.resid}°;與遊戲同規則=WYSIWYG)`);
@@ -105,6 +106,41 @@ const br = await load(badGlb, 'broken.glb', true);
 ok(br.loaded === false, '⑥ 缺必要骨頭=載入明確失敗(不是靜默壞掉)');
 ok(br.missing.length >= 4 && br.warn.some(w => /缺 \d+ 根必要骨頭/.test(w)),
   `⑥ 報告指出缺哪幾根(${br.missing.join('/')})`);
+
+// ---------- ⑧ chibi 比例正規化(ugc-1c):**必須與遊戲一致** ----------
+// 使用者拍板「維持 chibi 風格,其他 GLB 只是外觀套進來,骨子還是 chibi」。studio 要是不做同一件事,
+// 這裡看到 8 頭身、遊戲裡是 3 頭身,編出來的姿勢進遊戲就偏——這是 WYSIWYG 命脈。
+const measure = (glb, label, on) => page.evaluate(async (b64, label, on) => {
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  window.__psAvatar.chibiFit(on);
+  const loaded = await window.__psAvatar.load(u.buffer, label);
+  if (typeof setActiveKey === 'function') setActiveKey(0);   // 0f=idle,雙腳著地(才能拿腳底當地面基準)
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const rep = window.__psAvatar.report(), av = window.__psAvatar.avatar();
+  // 真實蒙皮包圍盒(setFromObject 對蒙皮只回 bind pose)
+  const box = new THREE.Box3(), v = new THREE.Vector3();
+  av.wrap.traverse(o => { if (!o.isMesh || !o.visible) return;
+    const P = o.geometry.attributes.position; if (!P) return;
+    const st = Math.max(1, Math.floor(P.count / 200));
+    for (let i = 0; i < P.count; i += st) { v.set(P.getX(i), P.getY(i), P.getZ(i));
+      if (o.isSkinnedMesh) o.boneTransform(i, v); box.expandByPoint(v.applyMatrix4(o.matrixWorld)); } });
+  return { loaded, chibiFit: rep.chibiFit, before: rep.headsBefore, after: rep.headsAfter,
+           soleOffset: av.soleOffset, rootBone: av.by.root.bone.name,
+           minY: +box.min.y.toFixed(2), h: +(box.max.y - box.min.y).toFixed(2) };
+}, glb.toString('base64'), label, on);
+
+const K1 = await measure(buildSkinGlb('native'), 'chibi-on.glb', true);
+const K0 = await measure(buildSkinGlb('native'), 'chibi-off.glb', false);
+ok(K1.chibiFit === true && K1.before != null, `⑧ 匯入角色套 chibi 比例(修前頭身比 ${K1.before})`);
+ok(K1.after > 2.4 && K1.after < 4.2, `⑧ 壓到 chibi 頭身比(${K1.before} → ${K1.after};基準 3.08)`);
+ok(K1.after < K0.after, `⑧ 有差別:開 ${K1.after} vs 關 ${K0.after}`);
+ok(K0.chibiFit === false && K0.before === null, '⑧ 開關可關掉(chibiFit(false))');
+ok(Math.abs(K1.minY) < 0.15, `⑧ 腳貼地 minY=${K1.minY}(idle 幀雙腳著地;bind pose 盒量不到蒙皮形變)`);
+ok(K1.soleOffset != null, `⑧ 蒙皮走腳骨推算踩地(soleOffset=${K1.soleOffset},非 bind pose 包圍盒)`);
+ok(/hips|root/i.test(K1.rootBone || ''), `⑧ root 取到真髖骨(${K1.rootBone})`);
+const bootHeads = boot.heads;
+ok(bootHeads > 2.8 && bootHeads < 3.4, `⑧ 內建 base-avatar 本身就是 chibi 基準(${bootHeads} 頭身)且不被套`);
 
 ok(errs.length === 0, '⑦ 無 page/console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 

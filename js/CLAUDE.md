@@ -220,12 +220,18 @@
 > `mesh.matrixWorld`,而 **SkinnedMesh 的 matrixWorld 不隨骨頭動** → 對蒙皮角色永遠回傳 **bind pose** 的盒子。
 > 比例正規化把大腿砍半、頭放大 2.66× 之後,誤差大到讓角色**腳浮空 14px(身高的 18%)**、身高正規化也算錯
 >(naive 高 100.2/腳 y=0 vs 真實高 84.8/腳 y=14.4)。解法 `sampledBox()`:逐網格抽樣頂點跑 `boneTransform`
->(→ model space)再乘 matrixWorld,每網格上限 240 點,**只在載入時跑**。每幀踩地仍用便宜的 setFromObject,
-> 但補上載入時量好的系統性差值 `av.skinFootBias`。
+>(→ model space)再乘 matrixWorld,每網格上限 240 點,**只在載入時跑**。
+> **每幀踩地(蒙皮)改用腳骨推算**:載入時量「腳骨世界 Y − 真實腳底 Y」這個**姿勢無關**的偏移
+>(`av.soleOffset`),每幀用腳骨反推腳底(骨頭位置是姿勢準確的,包圍盒不是)。剛體維持原本的網格包圍盒路徑
+>(那條對剛體是準的,零風險)。**量腳底要在雙腳著地的幀量**——單腳抬起的姿勢拿「最低頂點=地面」當不變量
+> 會量出假浮空(踩過,追了幾輪才發現是量法問題)。
 > **站高收斂**:S 是拿校正**前**的身高算的,而 T-pose 校正 + rest 正規化會改姿勢 → 實測高 8%。校正後照真實
 > 高度再收斂一次 S(uniform 縮放不影響世界四元數,bQT 不用重抓),`av.standH` 改成量校正後的真實盒子。
 > **骨頭選取改照別名表優先序,不是 traverse 順序**:VRoid 同時有腳底的 `Root` 與真髖 `J_Bip_C_Hips`,
 > 舊的「重複取第一個」會選到 Root → root 樞紐變腳底,clip 的 `root_x`(pitch)會繞著腳踝甩全身。
+> **punch-studio 必須做同一件事**(WYSIWYG 命脈):`tools/ps/avatar.js` 有一份對應的 `CHIBI`/
+> `conformAvatarProportions`/`sampledBox`/腳骨推算(古典 script vs ESM 無法共用常數,**改一邊要同步另一邊**)。
+> studio 要是不套比例,那裡看到 8 頭身、遊戲裡是 3 頭身,編出來的姿勢進遊戲就偏。實測 studio 3.15 / 遊戲 3.18。
 > `?avatar=<路徑或 blob:URL>` 換角色檔(匯入精靈用 `URL.createObjectURL` 餵進來);`?avatar=0` 仍退方塊人。
 > 測試:`tests/skinrig.mjs`(GLB fixture 由 `tests/fixtures/mkskin.mjs` 當場產,骨名 + rest 版本 = 別名表與
 > 校正的規格書;variant 加後綴 `-apose` 取 A-pose 版)、punch-studio 端 `tests/psimport.mjs`。
