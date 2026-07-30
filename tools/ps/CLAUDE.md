@@ -96,6 +96,13 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
      ⚠ **頭身比定義改了**:舊的「全身高 ÷(頭頂−頭骨關節)」在頭骨被抬起後低估頭高 → 改量真頭高
        (下巴→頭頂)的 `avHeadsRatio()`。**基準從 3.08 變 2.95**(同一具角色,只是量法不同);
        報告面板的「chibi 基準」也跟著改。舊文件的 3.15/3.18/8.28 都是舊定義,別再拿來比。
+  ④c **ugc-2e rest yaw 正規化 `avRestYawSnap`**(使用者截圖「面向箭頭朝左、人朝右」):慣例=rest 面向
+     +Z,**VRM0/VRoid 出廠面向 −Z** → 整隻反 180° 而且左右鏡像;`normalizeAvatarRest` 看不見 yaw
+     (只對齊骨→子骨方向,垂直/橫向肢段繞垂直軸轉 180° 全不變,左右判定又是世界 X=反著也各就各位)。
+     修法(loadAvatarBuffer 收完骨頭、缺骨檢查前):量**腳尖 rest 朝向**(腳掌形心−踝骨水平向量,左右平均)
+     貼齊 90° 檔位轉回 +Z、root 水平位置補回、**重收骨頭**(左右重判)。門檻:位移 <2%身高或離檔位 >30°
+     不動。報告 warn 加「rest 面向偏 N°——已自動轉回」;`AVATAR.yawFix`/`report().yawFix` 供測試。
+     **與遊戲 `js/actor-avatar.js` 的 `restYawSnap` 同一份規格,改一邊要同步另一邊。**回歸 psimport ②b。
   ⑤ **踩地改用腳骨推算(蒙皮)**:`Box3.setFromObject` 不算蒙皮形變(見 ③),比例改完拿它量腳底會浮空。
      改記「腳骨世界 Y − 真實腳底 Y」這個**姿勢無關**的偏移(載入時用 `sampledBox` 逐頂點 `boneTransform` 量),
      每幀用腳骨反推。**存 wrap 局部單位**——`updateAvatarPose` 每幀 `w.scale.copy(root.scale)×S` 鏡射素體的

@@ -55,6 +55,7 @@ const load = (glb, label, fix) => page.evaluate(async (b64, label, fix) => {
   }
   return { loaded, dir, skinned: rep.skinned, tris: rep.tris, warn: rep.warn, missing: rep.missing,
            restDev: rep.restDev, restResid: rep.restResid, fixOn: rep.fixOn, builtin: rep.builtin,
+           yawFix: rep.yawFix, uarmL: rep.slots.upperarm_l,
            slots: rep.slots, bones: Object.values(rep.slots).filter(Boolean).length };
 }, glb.toString('base64'), label, fix);
 
@@ -75,6 +76,14 @@ ok(nat.bones === 16 && nat.missing.length === 0, `② 原生命名收滿 16 骨(
 const vrm = await load(buildSkinGlb('vrm'), 'vrm.glb', true);
 ok(vrm.loaded === true && vrm.bones === 16, `② VRM(J_Bip_*)命名也收滿 16 骨(${vrm.bones};修前 8=載入被拒)`);
 ok(/J_Bip/.test(vrm.slots.upperarm_l || ''), `② 報告列出對到的原始骨名(${vrm.slots.upperarm_l})`);
+
+// ---------- ②b rest yaw 正規化(ugc-2e;與遊戲 restYawSnap 同規格)----------
+// 反著擺的骨架(VRM0 出廠面向 −Z)要量到 180°、轉回 +Z、**重收骨頭**(左右重判,否則靜默鏡像)。
+const y180 = await load(buildSkinGlb('native-yaw180'), 'yaw180.glb', true);
+ok(y180.loaded === true && y180.yawFix === 180,
+  `②b 反向骨架量到並修正 yaw(yawFix=${y180.yawFix};報告有提醒=${y180.warn.some(w => /面向/.test(w))})`);
+ok(y180.uarmL === nat.uarmL, `②b 轉完重收=左右重判(upperarm_l=${y180.uarmL} 同 native)`);
+ok(nat.yawFix === 0, `②b 慣例合規的角色不動(native yawFix=${nat.yawFix})`);
 
 // ---------- ③ rest 正規化 ----------
 const aOff = await load(buildSkinGlb('native-apose'), 'apose.glb', false);

@@ -71,17 +71,26 @@ function skeleton(N, apose) {
 
 function build(variant) {
   const base = variant.split('-')[0];
+  const yaw180 = variant.includes('-yaw180');
   const B = skeleton(NAMES[base], variant.includes('-apose'));
+  // '-yaw180' 變體(ugc-2e):整副骨架繞 Y 轉 180° 擺(x→−x;z 全 0 不用動)= VRM0/VRoid 的出廠方向
+  //(rest 面向 −Z 而非慣例 +Z)。配合下面的腳尖網格,驗 rest yaw 正規化 + 左右重判。
+  if (yaw180) B.forEach(b => { b.w[0] = -b.w[0]; });
   const fat = variant.includes('-fat');
   const nb = B.length;
   // 每根骨頭一個盒子(頂點 100% 綁該骨)——測的是管線,不是權重平滑度
   const pos = [], joints = [], weights = [], idx = [];
   const half = [0.075, 0.075, 0.075];
+  const fwdZ = yaw180 ? -1 : 1;                   // 腳尖朝向(慣例 +Z;yaw180=−Z)
   B.forEach((b, i) => {
-    // 盒子從本骨延伸到子骨(無子骨=末端小盒)
+    // 盒子從本骨延伸到子骨(無子骨=末端小盒);**腳=前伸腳尖盒**(ugc-2e:yaw 正規化靠腳尖量 rest 面向,
+    // 對稱小盒量不出方向 → 腳盒往前挪:腳尖伸前 0.21、腳跟留後 0.03,跟真人腳掌同構)
     const kid = B.find(x => x.p === i);
-    const c = kid ? [(b.w[0] + kid.w[0]) / 2, (b.w[1] + kid.w[1]) / 2, (b.w[2] + kid.w[2]) / 2] : b.w.slice();
-    const ext = kid ? [Math.max(half[0], Math.abs(kid.w[0] - b.w[0]) / 2), Math.max(half[1], Math.abs(kid.w[1] - b.w[1]) / 2), half[2]] : half;
+    const isFoot = /foot/i.test(b.n);
+    const c = kid ? [(b.w[0] + kid.w[0]) / 2, (b.w[1] + kid.w[1]) / 2, (b.w[2] + kid.w[2]) / 2]
+      : isFoot ? [b.w[0], b.w[1], b.w[2] + fwdZ * 0.09] : b.w.slice();
+    const ext = kid ? [Math.max(half[0], Math.abs(kid.w[0] - b.w[0]) / 2), Math.max(half[1], Math.abs(kid.w[1] - b.w[1]) / 2), half[2]]
+      : isFoot ? [half[0], 0.05, 0.12] : half;
     const base = pos.length / 3;
     for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
       pos.push(c[0] + sx * ext[0], c[1] + sy * ext[1], c[2] + sz * ext[2]);

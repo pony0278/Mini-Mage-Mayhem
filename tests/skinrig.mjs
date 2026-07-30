@@ -269,6 +269,44 @@ ok(Math.abs(D.torso - 30.4) < 6,
 ok(Math.abs(D.heads - DB.heads) < 0.6,
   `⑫ 頭身比貼齊內建基底(${D.heads} vs ${DB.heads};舊定義下會報 3.85)`);
 
+// ---- ⑬ rest yaw 正規化(ugc-2e;使用者截圖「面向箭頭朝左、人朝右」)----
+// 慣例=rest 面向 +Z,VRM0/VRoid 出廠面向 −Z → bQT 把反向烤進基準線=整隻反 180° 而且左右鏡像;
+// normalizeRest 看不見 yaw(只對齊骨→子骨方向:脊椎/腿垂直、T-pose 手臂左右橫,繞垂直軸轉 180° 全不變,
+// 左右判定又是世界 X ——轉了以後照樣「各就各位」)→ 零殘差、零警告,靜默反向。修法=量腳尖 rest 朝向
+//(fixture 的腳因此有前伸腳尖盒),貼齊 90° 檔位轉回 +Z,**再重收骨頭**(左右重判)。
+const yawOf = (page) => page.evaluate(() => {
+  const av = window.__avatars[0], T = window.THREE, f = __v2.fighters[0];
+  av.wrap.updateMatrixWorld(true);
+  const fx = Math.cos(f.facing), fz = Math.sin(f.facing);
+  const bones = [av.by.foot_l, av.by.foot_r].filter(Boolean).map(e => e.bone);
+  const inSet = (b) => { for (let o = b; o; o = o.parent) if (bones.includes(o)) return true; return false; };
+  const bc = new T.Vector3(), v = new T.Vector3();
+  bones.forEach(b => { b.getWorldPosition(v); bc.add(v); }); bc.multiplyScalar(1 / bones.length);
+  let fwd = -1e9, back = -1e9;
+  av.wrap.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    const P = o.geometry.attributes.position, SI = o.geometry.attributes.skinIndex, SW = o.geometry.attributes.skinWeight;
+    for (let i = 0; i < P.count; i += 2) {
+      let bi = SI.getX(i), bw = SW.getX(i);
+      for (const [ix, w] of [[SI.getY(i), SW.getY(i)], [SI.getZ(i), SW.getZ(i)], [SI.getW(i), SW.getW(i)]])
+        if (w > bw) { bw = w; bi = ix; }
+      const b = o.skeleton.bones[bi]; if (!b || !inSet(b)) continue;
+      v.fromBufferAttribute(P, i); o.boneTransform(i, v); v.applyMatrix4(o.matrixWorld).sub(bc);
+      const p = v.x * fx + v.z * fz;                          // 沿 facing 的分量
+      fwd = Math.max(fwd, p); back = Math.max(back, -p);
+    }
+  });
+  return { yawFix: av.yawFixDeg, fwd: +fwd.toFixed(1), back: +back.toFixed(1),
+           uarmL: av.by.upperarm_l ? av.by.upperarm_l.bone.name : null, bones: Object.keys(av.by).length };
+});
+const pY0 = await openPage(buildSkinGlb('native'), '&chibi=1');        const Y0 = await yawOf(pY0); await pY0.close();
+const pY1 = await openPage(buildSkinGlb('native-yaw180'), '&chibi=1'); const Y1 = await yawOf(pY1); await pY1.close();
+ok(Y0.yawFix === 0, `⑬ 慣例合規(rest 面向 +Z)的角色不動(yawFix=${Y0.yawFix})`);
+ok(Y1.yawFix === 180, `⑬ 反著擺的骨架(VRM0 慣例)量到 180° 並修正(yawFix=${Y1.yawFix})`);
+ok(Y1.fwd > Y1.back, `⑬ 修正後腳尖朝 facing(前伸 ${Y1.fwd} > 後伸 ${Y1.back};修前=倒過來)`);
+ok(Y1.uarmL === Y0.uarmL && Y1.bones === Y0.bones,
+  `⑬ 轉完**重收骨頭**=左右重判(upperarm_l=${Y1.uarmL} 同 native;${Y1.bones} 骨)——沒重收就是左右鏡像`);
+
 ok(errs.length === 0, '⑦ 無 console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 
 await B.close();

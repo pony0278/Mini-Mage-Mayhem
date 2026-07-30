@@ -151,6 +151,28 @@ function liftBoneWorldY(bone, dy){
   bone.updateMatrixWorld(true);
 }
 const _pv = new THREE.Vector3(), _pw = new THREE.Vector3(), _pbox = new THREE.Box3(), _phbox = new THREE.Box3();
+// ugc-2e:量 rest 腳尖朝向,回傳偏離 +Z 幾度(貼齊 90 檔位;0=不用修)。門檻:形心位移 <2%身高(對稱腳=
+// 測不出)或離檔位 >30°(曖昧)都不動。與遊戲 js/actor-avatar.js 的 restYawSnap 同規格,改一邊要同步另一邊。
+function avRestYawSnap(sc, by){
+  if(!by.foot_l || !by.foot_r) return 0;
+  sc.updateMatrixWorld(true);
+  const dir = new THREE.Vector3();
+  let n = 0;
+  for(const k of ['foot_l', 'foot_r']){
+    const bb = subtreeSampledBox(sc, by[k].bone, _phbox);
+    if(bb.isEmpty()) continue;
+    bb.getCenter(_pv); by[k].bone.getWorldPosition(_pw);
+    _pv.sub(_pw); _pv.y = 0;
+    dir.add(_pv); n++;
+  }
+  if(!n) return 0;
+  const H = sampledBox(sc, _pbox).max.y - _pbox.min.y;
+  if(!(H > 1e-6) || dir.length() / n < H * 0.02) return 0;
+  const ang = Math.atan2(dir.x, dir.z) * 180 / Math.PI;
+  const snap = Math.round(ang / 90) * 90;
+  if(snap % 360 === 0 || Math.abs(ang - snap) > 30) return 0;
+  return ((snap % 360) + 360) % 360;
+}
 // 頭身比 = 全身高 ÷ **頭高(下巴→頭頂)**。ugc-2d 前拿「頭頂 − 頭骨關節」當替代量,而 ③ 會把頭骨往上抬
 // → 替代量從此低估頭高、把數字吹高。參考值:內建素體基底角色實測 **2.95**(舊定義的 3.08/3.15 已作廢)。
 function avHeadsRatio(root, by, bb){
@@ -277,6 +299,7 @@ function avatarReport(sc, by, label, missing, extra){
     + (extra.fixOn ? `已自動校正,殘差 ${extra.restResid}°`
        : extra.builtin ? '內建角色不校正(與遊戲一致:遊戲也不校正內建角色,校正了這裡編的姿勢進遊戲會偏)'
        : '**未**校正(校正開關關著)'));
+  if(extra && extra.yawFix) r.warn.push(`rest 面向偏 ${extra.yawFix}°(VRM0/VRoid 出廠面向 −Z)——已自動轉回 +Z(遊戲同規則;左右手也重判過)`);
   return r;
 }
 function renderAvatarReport(){
@@ -324,34 +347,55 @@ async function loadAvatarBuffer(ab, label, builtin){
   // 容器節點:名字含關鍵字但不是骨頭。Blender 匯出的根節點 'Armature' 小寫化含 'arm',
   // 而它是 traverse 的第一個 → 會靠下面的「重複命名取第一個」把真正的上臂擋在門外。
   const AV_SKIP = /^(armature|scene|rootnode|correction|sketchfab)/;
-  const found = [];
-  sc.traverse(o => {
-    if(o.isMesh) return;
-    const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
-    if(!n || AV_SKIP.test(n)) return;
-    const i = AV_ALIASES.findIndex(([k]) => n.includes(k));
-    if(i >= 0) found.push({ bone: o, type: AV_ALIASES[i][1], raw: o.name, pri: i });
-  });
-  // 同一個 key 有多個候選時**照別名表優先序取,不是照 traverse 順序**。
-  // 踩過:VRoid 檔同時有 `Root`(骨架根,在腳底)與 `J_Bip_C_Hips`(真髖)——Root 在階層上更早,
-  // 舊的「重複取第一個」就選了它 → root 樞紐變腳底,clip 的 root_x(pitch)會繞著腳踝甩全身。
-  found.sort((a, b) => a.pri - b.pri);
-
-  // ② key = 型別(+左右,以骨頭「rest 世界 X」判定,不信名字)
+  // 包成函式:yaw 正規化(下面)轉完場景要**重收一次**——左右判定靠世界 X,轉 180° 後左右互換。
   const _v = new THREE.Vector3();
-  const by = {};
-  for(const f of found){
-    f.bone.getWorldPosition(_v);
-    const sx = _v.x < 0 ? -1 : 1;
-    const key = AVATAR_PAIRED.includes(f.type) ? `${f.type}${sx < 0 ? '_l' : '_r'}` : f.type;
-    if(by[key]) continue;                       // 重複命名取第一個
-    const nodeFor = AVATAR_NODE_OF[f.type];
-    const meshes = f.bone.children.filter(c => c.isMesh);
-    // 記每塊網格的靜止局部位置:命中放大要「繞骨頭原點(關節)」縮放而非網格自身原點——
-    // 這模型幾何烤在骨架空間、網格節點帶補償位移,直接 mesh.scale 會把幾何甩離關節。
-    meshes.forEach(m => { m.userData.restPos = m.position.clone(); });
-    by[key] = { bone: f.bone, node: () => nodeFor(sx), meshes, raw: f.raw,
-                qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
+  const collect = () => {
+    const found = [];
+    sc.traverse(o => {
+      if(o.isMesh) return;
+      const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
+      if(!n || AV_SKIP.test(n)) return;
+      const i = AV_ALIASES.findIndex(([k]) => n.includes(k));
+      if(i >= 0) found.push({ bone: o, type: AV_ALIASES[i][1], raw: o.name, pri: i });
+    });
+    // 同一個 key 有多個候選時**照別名表優先序取,不是照 traverse 順序**。
+    // 踩過:VRoid 檔同時有 `Root`(骨架根,在腳底)與 `J_Bip_C_Hips`(真髖)——Root 在階層上更早,
+    // 舊的「重複取第一個」就選了它 → root 樞紐變腳底,clip 的 root_x(pitch)會繞著腳踝甩全身。
+    found.sort((a, b) => a.pri - b.pri);
+
+    // ② key = 型別(+左右,以骨頭「rest 世界 X」判定,不信名字)
+    const out = {};
+    for(const f of found){
+      f.bone.getWorldPosition(_v);
+      const sx = _v.x < 0 ? -1 : 1;
+      const key = AVATAR_PAIRED.includes(f.type) ? `${f.type}${sx < 0 ? '_l' : '_r'}` : f.type;
+      if(out[key]) continue;                       // 重複命名取第一個
+      const nodeFor = AVATAR_NODE_OF[f.type];
+      const meshes = f.bone.children.filter(c => c.isMesh);
+      // 記每塊網格的靜止局部位置:命中放大要「繞骨頭原點(關節)」縮放而非網格自身原點——
+      // 這模型幾何烤在骨架空間、網格節點帶補償位移,直接 mesh.scale 會把幾何甩離關節。
+      meshes.forEach(m => { m.userData.restPos = m.position.clone(); });
+      out[key] = { bone: f.bone, node: () => nodeFor(sx), meshes, raw: f.raw,
+                  qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
+    }
+    return out;
+  };
+  let by = collect();
+
+  // ②b ugc-2e rest **yaw** 正規化(與遊戲 js/actor-avatar.js restYawSnap 同一份規格):慣例=rest 面向 +Z,
+  // 但 VRM0/VRoid 出廠面向 −Z → bQT 把反向烤進基準線=整隻反 180° 而且左右鏡像;normalizeAvatarRest 看不見
+  // yaw(它只對齊骨→子骨方向,脊椎/腿垂直、T-pose 手臂左右橫,繞垂直軸轉 180° 全都不變)。
+  // 量**腳尖 rest 朝向**(腳掌網格形心−踝骨,水平,左右平均=外八互相抵消),貼齊 90° 檔位轉回 +Z,再重收骨頭。
+  const yawFix = avRestYawSnap(sc, by);
+  if(yawFix){
+    const anchor = by.root ? by.root.bone : sc;
+    anchor.getWorldPosition(_pv);                 // 繞場景原點轉會平移角色 → 把 root 水平位置補回去
+    sc.rotation.y -= yawFix * Math.PI / 180;
+    sc.updateMatrixWorld(true);
+    anchor.getWorldPosition(_pw);
+    sc.position.x += _pv.x - _pw.x; sc.position.z += _pv.z - _pw.z;
+    sc.updateMatrixWorld(true);
+    by = collect();
   }
   const missing = AVATAR_REQUIRED.filter(k => !by[k]);
   if(missing.length){
@@ -400,10 +444,10 @@ async function loadAvatarBuffer(ab, label, builtin){
   const soleOffset = skinned
     ? +((avFootBoneY(by) - sampledBox(wrap, _pbox).min.y) / (wrap.scale.y || 1)).toFixed(5) : null;
   const headsAfter = avHeadsRatio(wrap, by, sampledBox(wrap, _pbox));
-  AVATAR = { wrap, S, label, by, order, skinned, restDev, restResid, fixOn, builtin: !!builtin,
+  AVATAR = { wrap, S, label, by, order, skinned, restDev, restResid, fixOn, builtin: !!builtin, yawFix,
              chibiFit: fitOn, headsBefore, headsAfter, soleOffset, fillers: [] };
   AVATAR_REPORT = avatarReport(sc, by, label, [], { skinned, restDev, restResid, S, fixOn, builtin: !!builtin,
-             chibiFit: fitOn, headsBefore, headsAfter });
+             yawFix, chibiFit: fitOn, headsBefore, headsAfter });
   renderAvatarReport();
   buildJointFillers();
   if(typeof remountHeadgear === 'function') remountHeadgear();   // item-3b:角色到位 → 已掛的頭戴道具改掛 avatar 頭骨(校準值語意不變)

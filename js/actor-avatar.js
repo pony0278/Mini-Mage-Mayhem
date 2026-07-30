@@ -138,6 +138,29 @@ function headsRatio(root, by, bb) {
   const hh = h.max.y - h.min.y;
   return hh > 1e-6 ? +((bb.max.y - bb.min.y) / hh).toFixed(2) : null;
 }
+// ugc-2e:量 rest 的腳尖朝向,回傳「偏離 +Z 幾度」貼齊到 90 檔位(0=不用修;90/180/270=要轉)。
+// 腳掌形心的顯著性門檻 2% 身高:測試 fixture 的腳是對稱小盒(沒有腳尖)→ 向量≈0 → 自然跳過不誤轉;
+// 斜超過 30° 離檔位=曖昧(斜放的模型?)也不動——寧可維持原樣讓人看出怪,別亂轉。
+function restYawSnap(sc, by) {
+  if (!by.foot_l || !by.foot_r) return 0;
+  sc.updateMatrixWorld(true);
+  const dir = new THREE.Vector3();
+  let n = 0;
+  for (const k of ['foot_l', 'foot_r']) {
+    const bb = subtreeSampledBox(sc, by[k].bone, _hbox);
+    if (bb.isEmpty()) continue;
+    bb.getCenter(_cv); by[k].bone.getWorldPosition(_cw);
+    _cv.sub(_cw); _cv.y = 0;
+    dir.add(_cv); n++;
+  }
+  if (!n) return 0;
+  const H = sampledBox(sc, _cbox).max.y - _cbox.min.y;
+  if (!(H > 1e-6) || dir.length() / n < H * 0.02) return 0;
+  const ang = Math.atan2(dir.x, dir.z) * 180 / Math.PI;    // 相對 +Z 的水平角
+  const snap = Math.round(ang / 90) * 90;
+  if (snap % 360 === 0 || Math.abs(ang - snap) > 30) return 0;
+  return ((snap % 360) + 360) % 360;                       // 90 / 180 / 270
+}
 // 回傳修改前的頭身比(給報告/測試看),沒東西可改回 null。
 function conformProportions(sc, by) {
   sc.updateMatrixWorld(true);
@@ -233,32 +256,57 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   sc.updateMatrixWorld(true);
   const skinned = rebindSkeletons(sc);
 
-  // 收角色骨頭(接受 Bone 或空節點;網格 geo_* 是 Mesh 排除)
+  // 收角色骨頭(接受 Bone 或空節點;網格 geo_* 是 Mesh 排除)。
+  // 包成函式因為 yaw 正規化(下面)轉完場景後要**重收一次**——左右判定靠世界 X,轉 180° 後左右互換。
   const _v = new THREE.Vector3();
-  const found = [];
-  sc.traverse(o => {
-    if (o.isMesh) return;
-    const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
-    if (!n || BONE_SKIP.test(n)) return;
-    const i = BONE_ALIASES.findIndex(([k]) => n.includes(k));
-    if (i >= 0) found.push({ bone: o, type: BONE_ALIASES[i][1], pri: i });
-  });
-  // 同一個 key 有多個候選時**照別名表優先序取,不是照 traverse 順序**。
-  // 踩過:VRoid 檔同時有 `Root`(骨架根,在腳底)與 `J_Bip_C_Hips`(真正的髖)——Root 在階層上更早,
-  // 舊寫法「重複取第一個」就選了它,root 的樞紐變成腳底 → clip 的 root_x(pitch)會繞著腳踝甩全身。
-  // 別名表裡 `hips` 排在裸 `root` 之前,照 pri 取就對了。
-  found.sort((a, b) => a.pri - b.pri);
-  const by = {};
-  for (const f of found) {
-    f.bone.getWorldPosition(_v);
-    const s = _v.x < 0 ? -1 : 1;
-    const key = PAIRED.includes(f.type) ? `${f.type}${s < 0 ? '_l' : '_r'}` : f.type;
-    if (by[key]) continue;
-    const nodeFor = NODE_OF[f.type];
-    if (!nodeFor) continue;                       // foot 無對應 driver → 跳過(跟隨父骨)
-    const meshes = f.bone.children.filter(c => c.isMesh);
-    meshes.forEach(m => { m.userData.restPos = m.position.clone(); });   // 命中放大需繞關節縮放(restPos×s)
-    by[key] = { bone: f.bone, node: () => nodeFor(boxRig, s), meshes, qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
+  const collect = () => {
+    const found = [];
+    sc.traverse(o => {
+      if (o.isMesh) return;
+      const n = (o.name || '').toLowerCase().replace(/[^a-z]/g, '');
+      if (!n || BONE_SKIP.test(n)) return;
+      const i = BONE_ALIASES.findIndex(([k]) => n.includes(k));
+      if (i >= 0) found.push({ bone: o, type: BONE_ALIASES[i][1], pri: i });
+    });
+    // 同一個 key 有多個候選時**照別名表優先序取,不是照 traverse 順序**。
+    // 踩過:VRoid 檔同時有 `Root`(骨架根,在腳底)與 `J_Bip_C_Hips`(真正的髖)——Root 在階層上更早,
+    // 舊寫法「重複取第一個」就選了它,root 的樞紐變成腳底 → clip 的 root_x(pitch)會繞著腳踝甩全身。
+    // 別名表裡 `hips` 排在裸 `root` 之前,照 pri 取就對了。
+    found.sort((a, b) => a.pri - b.pri);
+    const out = {};
+    for (const f of found) {
+      f.bone.getWorldPosition(_v);
+      const s = _v.x < 0 ? -1 : 1;
+      const key = PAIRED.includes(f.type) ? `${f.type}${s < 0 ? '_l' : '_r'}` : f.type;
+      if (out[key]) continue;
+      const nodeFor = NODE_OF[f.type];
+      if (!nodeFor) continue;                       // foot 無對應 driver → 跳過(跟隨父骨)
+      const meshes = f.bone.children.filter(c => c.isMesh);
+      meshes.forEach(m => { m.userData.restPos = m.position.clone(); });   // 命中放大需繞關節縮放(restPos×s)
+      out[key] = { bone: f.bone, node: () => nodeFor(boxRig, s), meshes, qT: new THREE.Quaternion(), bQT: new THREE.Quaternion() };
+    }
+    return out;
+  };
+  let by = collect();
+
+  // ugc-2e rest **yaw** 正規化(使用者截圖:面向箭頭朝左、人朝右——整隻反 180°,而且左右手鏡像):
+  // 慣例是「rest 面向 +Z」(box rig 的 g.rotation.y=yaw 把 g 本地 +Z 轉到 facing 方向)。但 VRM0/VRoid
+  // 出廠面向 **−Z** → bQT 把反向烤進基準線,每一幀都反著;而 normalizeRest 看不見 yaw——它只對齊
+  // 「骨頭→子骨」方向向量,脊椎/腿是垂直的、T-pose 手臂是左右橫的,整隻繞垂直軸轉 180° 這些向量全都
+  // 不變(左右判定又是世界 X,轉了以後 armL 照樣抓到 −X 那隻)→ 零殘差、零警告,靜默鏡像+反向。
+  // 修法:量**腳尖 rest 朝向**(腳掌網格形心相對踝骨的水平向量;人形的腳一定朝前),左右平均
+  //(內建的外八 13° 互相抵消),貼齊到 90° 檔位後把整個場景轉回 +Z,**再重收骨頭**(左右重判)。
+  // 對所有角色生效(含內建——量出來 0 就是 no-op,慣例合規的模型零影響);`?yaw=0` 關掉(實驗室 A/B)。
+  const yawFixDeg = new URLSearchParams(location.search).get('yaw') === '0' ? 0 : restYawSnap(sc, by);
+  if (yawFixDeg) {
+    const anchor = by.root ? by.root.bone : sc;
+    anchor.getWorldPosition(_cv);                       // 繞場景原點轉會平移角色 → 轉完把 root 水平位置補回去
+    sc.rotation.y -= yawFixDeg * Math.PI / 180;
+    sc.updateMatrixWorld(true);
+    anchor.getWorldPosition(_cw);
+    sc.position.x += _cv.x - _cw.x; sc.position.z += _cv.z - _cw.z;
+    sc.updateMatrixWorld(true);
+    by = collect();
   }
 
   // 蒙皮版骨局部 bbox(火帽/X光顱球/頭像取景用;剛體走 meshes 那條路不需要)
@@ -298,7 +346,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   // 踩地(蒙皮):bind pose 的包圍盒不隨姿勢動,拿它量腳底就會浮空。改記「腳骨世界 Y − 真實腳底 Y」
   // 這個**姿勢無關**的偏移(腳骨位置是姿勢準確的),每幀用腳骨反推腳底。剛體角色維持原本的網格包圍盒路徑。
   const soleOffset = skinned ? +(footBoneY(by) - fin.min.y).toFixed(3) : null;
-  const av = { wrap, S, by, order, skinned, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg,
+  const av = { wrap, S, by, order, skinned, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg, yawFixDeg,
     chibiFit: CHIBI_FIT, headsBefore, headsAfter, soleOffset, standH: +(fin.max.y - fin.min.y).toFixed(1) };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
