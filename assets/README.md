@@ -10,6 +10,12 @@
 - **`rigs/`** — **基座角色**(骨架版 GLB):16 骨、rest=T-pose、網格為骨頭的剛體子節點。
   `base-avatar.glb` 是 punch-studio 開機自動掛載的預設角色(**未來所有角色的基底**);
   慣例與原理見 `docs/animation-workflow.md` §1。
+  `vroid-sample.glb`(3.5MB)= **玩家自製角色的參考樣本**(ugc-2):使用者的 VRoid 角色,
+  已過 punch-studio 的「⬇ 匯出遊戲角色檔(瘦身)」(18.2MB → 3.5MB:拔 399 個 morph target /
+  VRM extension / 1.79MB 縮圖,貼圖 ≤512 一律 PNG)。**不是預設角色**——用
+  `v2.html?avatar=assets/rigs/vroid-sample.glb` 看;它同時是「蒙皮角色管線」的活樣本
+  (別名表 VRM 命名、A-pose rest 校正、chibi 比例正規化、火帽掛蒙皮頭骨都靠它實測)。
+  ⚠ 這是**蒙皮**GLB(不是 rigs/ 慣例的剛體分件),遊戲兩條路都支援,見 `js/CLAUDE.md` ugc-1 段。
 - **`scene/`** — **場景 GLB**(遊戲執行時載入,同 rigs/ 屬部署資產):v2 場景件,
   render-lab 開局 fetch(`recycling-pod.glb`=中央回收艙底座;`throw-in-sign.glb`=四方向
   「THROW IN!」地面指示牌——**2026-07-19 已下場**(使用者反饋太突兀,render-lab 不再載入;

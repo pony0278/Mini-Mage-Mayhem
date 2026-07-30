@@ -229,6 +229,14 @@
 > 高度再收斂一次 S(uniform 縮放不影響世界四元數,bQT 不用重抓),`av.standH` 改成量校正後的真實盒子。
 > **骨頭選取改照別名表優先序,不是 traverse 順序**:VRoid 同時有腳底的 `Root` 與真髖 `J_Bip_C_Hips`,
 > 舊的「重複取第一個」會選到 Root → root 樞紐變腳底,clip 的 `root_x`(pitch)會繞著腳踝甩全身。
+> **ugc-2c 蒙皮角色不換 rigged 手**(使用者反饋「扛人時手是紫色的」):`actor-hands-rigged` 是**另一顆
+> chibi 手 GLB**,帶自己的材質/膚色——它存在的理由是 base-avatar 的手是沒有手指的色塊。VRoid 這類蒙皮
+> 角色本身就有帶指骨的手,換上去只是把一隻不同顏色的手黏在手腕上(實測=淺紫手配淺膚色角色)。
+> `buildAvatar`/`retargetAvatar` 兩處掛載都加 `!skinned` 閘。**代價**:clip 的手指彎曲軸
+>(`aL_/aR_ f*`)對蒙皮角色不會動;日後要接是驅動**角色自己的指骨**(VRM 有 `J_Bip_L_Thumb1…`),
+> 不是換手模。剛體 base-avatar 那條路不變。
+> **參考樣本**:`assets/rigs/vroid-sample.glb`(3.5MB,瘦身過的使用者 VRoid 角色)——
+> `v2.html?avatar=assets/rigs/vroid-sample.glb`。**不是預設角色**,是蒙皮管線的活樣本。
 > **ugc-2b `av.by[k].localBox` / `localBoxDeep`(蒙皮版骨局部包圍盒)**:剛體分件的消費者靠
 > `av.by[k].meshes` 量「骨頭底下的網格 bbox」——**蒙皮角色那個陣列恆空**(網格掛在 SkinnedMesh 上)。
 > 三個消費者踩到:①`actor-brawler` 火帽尺寸 → `_hbb.isEmpty()` 就 `return false` → 退回 box rig

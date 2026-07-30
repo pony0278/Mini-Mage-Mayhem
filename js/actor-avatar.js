@@ -262,8 +262,13 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   av.hidden = [];
   g.traverse(o => { if (o.isMesh && !insideWrap(o, wrap) && !o.userData.__equip) { av.hidden.push(o); o.visible = false; } }); // __equip=頭戴裝備(火帽),別跟方塊人一起藏
 
-  // rigged 手:掛到 avatar 手骨(async 載入,可能還沒好 → retargetAvatar 會 lazy 重試)
-  if (riggedHandsReady()) mountRiggedHands(av);
+  // rigged 手:掛到 avatar 手骨(async 載入,可能還沒好 → retargetAvatar 會 lazy 重試)。
+  // ⚠ **蒙皮角色不掛**(ugc-2c,使用者反饋「扛人時手是紫色的」):rigged 手是**另一顆 chibi 手 GLB**,
+  // 帶自己的材質/膚色——它存在的理由是 base-avatar 的手是沒有手指的色塊。VRoid 這類蒙皮角色本身就有
+  // 帶指骨的手,換上去只是把一隻不同顏色的手黏在手腕上(實測=淺紫手配淺膚色角色)。
+  // 代價:clip 的手指彎曲軸(aL_/aR_ f*)對蒙皮角色不會動。日後要接的話是驅動**角色自己的指骨**
+  //(VRM 有 J_Bip_L_Thumb1… 這類命名),不是換手模。
+  if (!skinned && riggedHandsReady()) mountRiggedHands(av);
 
   g.userData.avatar = av;
   if (typeof window !== 'undefined') (window.__avatars || (window.__avatars = [])).push(av);   // headless 健檢用
@@ -331,7 +336,7 @@ export function retargetAvatar(g, boxRig, pose) {
 
   // rigged 手:async 載入,首次就緒時 lazy 掛;顯示中(抓握物品)才由 clip 手指軸(aL_/aR_ f*)驅動指骨。
   // 顯示切換在 actor-brawler updateHands 依 grab 狀態做(一般/戰鬥=原生手,抓握=rigged 手)。
-  if (!av.handRig && riggedHandsReady()) mountRiggedHands(av);
+  if (!av.skinned && !av.handRig && riggedHandsReady()) mountRiggedHands(av);   // 蒙皮角色用自己的手,見 buildAvatar 註解
   if (av.handRig && av.handShowingRigged) applyFingerPose(av, p);
 }
 

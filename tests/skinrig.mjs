@@ -70,6 +70,7 @@ const PROBE = async () => {
   out.footY = +bb.min.y.toFixed(1); out.standH = +A[0].standH.toFixed(1);
   out.fx = +v2.fighters[0].x.toFixed(1); out.fy = +v2.fighters[0].y.toFixed(1);
   out.handMeshes = A[0].by.hand_r ? A[0].by.hand_r.meshes.length : -1;
+  out.handRig = !!A[0].handRig;
   return out;
 };
 
@@ -197,7 +198,7 @@ const H = await pH.evaluate(async () => {
   const hb = av.by.head.localBox, hd = av.by.head.localBoxDeep;
   const sz = b => { if (!b || b.isEmpty()) return null; const s = new THREE.Vector3(); b.getSize(s); return +s.y.toFixed(3); };
   return { headMeshes: (av.by.head.meshes || []).length, hatOnAvatar: !!(g && g.userData.hatOnAvatar),
-           exactH: sz(hb), deepH: sz(hd), handBox: !!av.by.hand_r.localBox };
+           exactH: sz(hb), deepH: sz(hd), handBox: !!av.by.hand_r.localBox, handRig: !!av.handRig };
 });
 await pH.close();
 ok(H.headMeshes === 0, `⑩ 蒙皮角色 by.head.meshes 確實是空的(${H.headMeshes})——剛體那條路對它無效`);
@@ -205,6 +206,10 @@ ok(H.exactH > 0, `⑩ localBox(exact:主導骨=head)量到頭部高度 ${H.exact
 ok(H.deepH >= H.exactH, `⑩ localBoxDeep(含頭髮等未對照子骨)≥ exact(${H.deepH} ≥ ${H.exactH})`);
 ok(H.handBox, '⑩ 其他骨頭也有 localBox(手骨,X光/裝備可用)');
 ok(H.hatOnAvatar === true, '⑩ **火帽掛在 avatar 頭骨上**(修前=false → 退回 box rig,帽子在脖子)');
+// ⑪ 紫色手(ugc-2c,使用者反饋「扛人時手是紫色的」):rigged 手是另一顆 chibi 手 GLB、帶自己的膚色,
+// 存在的理由是 base-avatar 的手是沒手指的色塊。蒙皮角色本身有帶指骨的手 → **不換手模**。
+ok(H.handRig === false, '⑪ 蒙皮角色**不掛 rigged 手**(用自己的手;換上去=不同膚色的手黏在手腕)');
+ok(R.handRig === true, `⑪ 剛體 base-avatar 照舊掛 rigged 手(${R.handRig};它的手本來就沒手指)`);
 
 ok(errs.length === 0, '⑦ 無 console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 
