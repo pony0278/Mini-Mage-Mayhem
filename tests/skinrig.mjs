@@ -176,7 +176,9 @@ ok(Math.abs(C.minY) < 3, `⑨ **真實蒙皮腳底貼地** minY=${C.minY}(修前
 ok(C.soleOffset != null, `⑨ 蒙皮走**腳骨推算**踩地(soleOffset=${C.soleOffset});bind pose 包圍盒不隨姿勢動,拿它量會浮空`);
 ok(C0.chibiFit === false && C0.before === null, '⑨ ?chibi=0 可關掉(不做比例正規化)');
 ok(CB.chibiFit === false, `⑨ 內建 base-avatar 不套(它本身就是比例基準,頭身比 ${CB.after})`);
-ok(Math.abs(C.standH - CB.standH) < 1,
+// ⚠ 門檻 4px(~5%):standH 在 buildAvatar 當下量,box rig 的校正姿勢隨載入時機有 ±2px 抖動
+//(CONC=3 實測 75.4 vs 77.5 假 FAIL;沒正規化的病徵是差一個量級的比例,4px 仍有鑑別力)。
+ok(Math.abs(C.standH - CB.standH) < 4,
   `⑨ 站高與內建一致(${C.standH} vs ${CB.standH})——使用者要求「大小跟高度跟原本角色一致」`);
 ok(C.rootBone === CB.rootBone || /hips|root/i.test(C.rootBone || ''),
   `⑨ root 取到真正的髖骨(${C.rootBone});VRoid 同時有腳底的 Root 與 J_Bip_C_Hips,取錯 root_x 會繞腳踝甩全身`);

@@ -25,6 +25,7 @@ const SUITES = [
   ['hat',       '火帽 GLB 頭戴 item-3/3b/3c(載成/掛 avatar 頭骨=病3/包覆規則三取 max=頭不露出帽口/無道具=隱藏)'],
   ['skinrig',   '蒙皮 GLB 角色 ugc-1/1b(骨名別名表 native+VRM 各 16 骨/clone 重綁骨架/蒙皮真變形/定位/縮骨頭/A-pose rest 校正/剛體不受影響)'],
   ['psimport',  'punch-studio 匯入實驗室 ugc-1/1b(蒙皮載得進/別名表 native+VRM/A-pose rest 校正/內建角色不校正=WYSIWYG/匯入檢查報告/缺骨明確失敗)'],
+  ['psslim',    '匯出遊戲角色檔(瘦身)ugc-2(morph/動畫/VRM 全拔/貼圖≤512 一律 PNG(JPEG=SwiftShader 上傳全黑)/孤兒縮圖 1×1/空殼化不重排/載回 r128+進遊戲 r149/Draco 拒絕)'],
   ['psheadgear','punch-studio 頭戴掛點 item-3b(掛 avatar 頭骨補償 group/世界位置與舊掛法一致=校準值語意不變/清角色退素體)'],
   ['whip',      '魔導電鞭 Verlet 垂鞭/甩鞭 whip-1+whip-2(持電鞭=垂鞭/無道具=隱藏/施放走完/最後一發甩完自動收/鞭梢到位對齊判定幀/爆發必觸發)'],
   ['shock',     '觸電演出 shock-1/1b/2(prewarm/電弧包身/X光骨架掛 avatar 骨/剪影零殘留/定格1.6→暈1.2兩段/姿勢分段/restun 鐵則)'],

@@ -20,6 +20,7 @@
 | `editor-ui.js` | 860 | 全部編輯 UI | 滑桿(`bindPoseSliders/refreshSliders`)、timeline(`buildTimelineUI/setActiveKey/addKey/delKey/moveKey`)、phase tabs、`buildPropPanel`(比例面板;角色模式鎖定)、白模/鏡像/T-pose、contact sheet、`showExport/importGd`、`resize` |
 | `parts.js` | 760 | 部位/裝備/rigged 手/道具庫掛載 | `PART_SLOT_DEFS`(sockets.json→slot;fallback 硬編)、`PS_RIG_TARGET`(slot→素體節點)、`PART_MODELS/PART_CONFIG`、**`attachPart(slot,obj)`**(掛假人+套 cfg)、`applyPartConfig`、`setSyntheticDummyVisible`、bundle/單檔載入(`collectBundleParts`,靠名字對 slot)、**裝備:`loadEquipFile`(任意 GLB→選定 slot)**、**道具庫:`PROP_LIBRARY`(入庫 GLB 表:file/tex/slot/cal)+ `mountPropFromLibrary(id)`(fetch repo `assets/scene/`→parse→貼外部圖→attachPart 自然 slot;火帽=headgear 套已知 cal、桶/瓶=bow 右腕 autoFit)+ per-prop 對位記憶 `PROP_CAL`(共用 bow 不互蓋;`mirrorPropCal` 掛 write() 尾)**、**rigged 手:`mountRiggedHands`(avatar 手骨優先/假人 fallback)+ `HAND_RIG`/**`applyFingerPose(p)`(逐關鍵格姿勢→指骨,rig.js applyPose 每幀呼叫)**/`FINGER_POSE_AXES`(指骨鍵→軸名)/`refreshFingerSliders`(slot-aware)/`HAND_POSE_PRESETS`(open/grip/fist=快速套形)**、`buildPartSlotUI`(綁全部部位/手指/道具庫 UI)、hook **`window.__psEquip`**(含 `props()`/`mountProp(id)`/`activeProp()`) |
 | `avatar.js` | 520 | 基底角色 + **匯入實驗室**(ugc-1) | **`AVATAR`**(`{wrap,S,by,order,fillers}`;`by[key]={bone,meshes,…}` key 如 `hand_l`)、`loadAvatarBuffer`(16 骨字樣辨識、左右靠世界 X)、**`updateAvatarPose`**(素體→角色世界差量重定向,每幀)、關節填充(`buildJointFillers`/`setJointFill*`,UI 是本檔 IIFE 動態插進部位面板)、`clearAvatar`、**開機自動載入**(`../assets/rigs/base-avatar.glb` 優先→meshy 人偶)、**匯入實驗室**:`AV_ALIASES` 骨名別名表/`normalizeAvatarRest`/`avatarReport`+`renderAvatarReport`/hook `window.__psAvatar` |
+| `slim.js` | 200 | **匯出遊戲角色檔(瘦身;ugc-2)** | `slimAvatarGlb(ab)`(GLB 空殼化:拔 morph/動畫/VRM ext、貼圖 ≤512 一律 PNG、孤兒縮圖 1×1、BIN 重寫不重排索引)、UI 匯出鈕(瘦完自動載回驗證)、hook `window.__psSlim` |
 | `game-bridge.js` | 200 | 遊戲整合 + 健檢 | **`window.__ps`**(parts/avatar/applyPose/SEQ/avatarBoneWorld…)、招式庫(`LIB_KEY` 具名槽)、🎮 遊戲視角(fov32/俯44°)、impact 秒數讀出、`comboPreview` |
 
 HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝備鈕、rigged 手鈕、校準滑桿、手勢列)。
@@ -94,6 +95,18 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
   量出 0.42 的假浮空(我自己踩過,追了幾輪才發現是量法問題不是 bug)。
 
 ## 陷阱(踩過的)
+
+- **上傳規範(規劃中,使用者 2026-07-30:「之後還要進行規範 避免玩家亂做」)**:把關點=slim.js 的匯出路
+  (所有玩家角色檔的唯一出口,匯出=已通過)。現況是**軟警告**(avatarReport:缺骨硬失敗/面數 >7 萬/無貼圖
+  /morph);升級成**硬規則**時在 `slimAvatarGlb` 前加驗:①面數上限(拒絕不是警告)②瘦身後檔案大小上限
+  ③網格範圍 vs 骨架包圍盒 ×K(防「巨劍蒙在手骨上」遮全場)④貼圖張數上限。**內容審查(圖案/命名)不在
+  本機管線範圍**——單機檔案只存在玩家自己的瀏覽器,亂做只影響自己;等分享/對戰功能出現才需要伺服器端
+  用同一套規則再驗一次(規則寫成純函式,兩端共用)。
+
+0. **貼圖絕不輸出 JPEG(2026-07-30 實測)**:Chrome 把 JPEG 解成 YUV 底的 ImageBitmap——2D canvas 取樣
+   會軟體轉 RGB(顏色全對=看不出問題),但 **SwiftShader 的 WebGL 上傳把它變全零=貼圖全黑**。
+   readRenderTargetPixels 逐張量化:黑的 6/6 全是 JPEG、好的 9/9 全是 PNG。slim.js 因此一律輸出 PNG;
+   任何要進遊戲的 GLB 資產同理(headless 驗收全在 SwiftShader 上)。**驗貼圖要 GPU 回讀,別信 2D canvas 取樣。**
 
 1. **per-file hoisting**(README 規則):載入期程式碼只能呼叫更早載入的檔;跨檔前向引用用 `typeof fn==='function'` 守衛。
 2. **GLB 載入一律走 `psMakeGltfLoader()`(rig.js)**,別直接 `new THREE.GLTFLoader()`——Meshy 模型預設

@@ -60,7 +60,9 @@ await page.evaluate(() => new Promise(res => { const v = __v2, t0 = v.game.time;
     if (v.game.time - t0 > 0.25) { clearInterval(iv); res(); } }, 25); }));
 const fireRes = await page.evaluate(() => { const f = __v2.fighters[0]; const s = Math.round(f.stability);
   f.x = 100; f.y = 100; f._jumpT = -9; return s; });
-R('空中免地板化學(火海上方滯空,穩定值不掉)', fireDodge.jumped && fireRes === 100, 'stab=' + fireRes);
+// 門檻 90:每 25ms 重釘 _jumpT 仍擋不住 turbo 大批次(一批可跨 0.5s 遊戲時,落地+著火發生在兩釘之間,
+// CONC=3 實測掉 3~4)。鑑別力仍在:整段站在火上會掉 ~15+(≤85),滯空只有批次縫隙的零頭。
+R('空中免地板化學(火海上方滯空,穩定值幾乎不掉)', fireDodge.jumped && fireRes >= 90, 'stab=' + fireRes);
 
 // ---------- ⑤ 鎖滑中起跳=跳出冰面 ----------
 await page.evaluate(() => { const v = __v2; const f = v.fighters[0];

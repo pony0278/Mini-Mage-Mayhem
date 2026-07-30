@@ -13,7 +13,8 @@
 4. `editor-ui.js` — 滑桿/時間軸/phase tabs UI、按鍵綁定、白模/鏡像、contact sheet、匯出匯入
 5. `parts.js` — 部位掛載系統(sockets.json→slot、GLB 掛載、裝備/rigged 手+手勢庫)
 6. `avatar.js` — 基底角色(rigged avatar)模式:16 骨角色 GLB 世界差量重定向 + 開機自動載入調度(角色優先→Meshy 部位人偶退路)
-7. `game-bridge.js` — `window.__ps` 健檢 hook + 遊戲整合面板(招式庫/遊戲視角/impact 讀出)
+7. `slim.js` — 匯出遊戲角色檔(瘦身;ugc-2):GLB 空殼化(拔 morph/動畫/VRM、貼圖 ≤512 一律 PNG)+ 匯出鈕(要用 avatar.js 的 `AVATAR_LAST_*`/`loadAvatarBuffer`,故載其後)
+8. `game-bridge.js` — `window.__ps` 健檢 hook + 遊戲整合面板(招式庫/遊戲視角/impact 讀出)
 
 接縫規格已抽成 `sockets-data.js`(古典 script,`SOCKETS_JSON_RAW` 全域,同步載入=保留 file:// 直開)。
 

@@ -340,6 +340,9 @@
 ## 陷阱(踩過的)
 
 1. headless rAF 節流(見上)——測試「沒反應」先懷疑這個,不是程式壞。
+1b. **GLB 內的 JPEG 貼圖在 SwiftShader 下上傳全黑**(ugc-2 踩到;與冰霜瓶「內嵌 JPEG 上傳全黑」是同一族):
+   Chrome 的 JPEG ImageBitmap 是 YUV 底,2D canvas 取樣顏色全對、WebGL 上傳全零——**驗貼圖要
+   readRenderTargetPixels 回讀,別信 canvas 取樣**。資產一律 PNG(玩家角色檔由 punch-studio slim.js 匯出時強制轉)。
 2. ~~本機玩家 facing 每幀從滑鼠重算~~ **keys-1(2026-07-21)滑鼠退役**:facing=移動方向(8 向,停下保留)——測試直接設 f.facing 即可,不再被滑鼠蓋掉;按住方向鍵時 facing 跟輸入走。
 3. `game.props`/ground markers **每幀重建**(v2.js 幀尾)——對它們的直接修改活不過一幀。
 4. `POD.r=46` 是**判定**半徑;render-lab `CENTER_SCALE` 只縮**視覺**,兩者獨立。
