@@ -85,6 +85,12 @@ ok(y180.loaded === true && y180.yawFix === 180,
 ok(y180.uarmL === nat.uarmL, `②b 轉完重收=左右重判(upperarm_l=${y180.uarmL} 同 native)`);
 ok(nat.yawFix === 0, `②b 慣例合規的角色不動(native yawFix=${nat.yawFix})`);
 
+// ---------- ②c 肢段粗細(ugc-4;與遊戲 bakeLimbThickness 同規格)----------
+const tk = await page.evaluate(() => { const a = window.__psAvatar.avatar();
+  return a && a.thickRep ? { shin: a.thickRep.shin_l, ua: a.thickRep.upperarm_l } : null; });
+ok(tk && tk.shin > 1.8 && tk.shin <= 2.5,
+  `②c 白針小腿加粗係數落在預期(shin ${tk && tk.shin};目標=素體橫截 19.9%身高)`);
+
 // ---------- ③ rest 正規化 ----------
 const aOff = await load(buildSkinGlb('native-apose'), 'apose.glb', false);
 ok(aOff.restDev >= 40 && aOff.restResid === aOff.restDev, `③ A-pose 未校正=偏離留著(${aOff.restDev}°)`);

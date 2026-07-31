@@ -7,4 +7,4 @@ tests/package-lock.json
 dist/
 
 # 一次性模型體檢用的暫存(18MB 級 GLB,別誤進版控)
-.probe/
+.probe*

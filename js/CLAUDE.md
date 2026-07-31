@@ -236,9 +236,19 @@
 > → 那個替代量從此低估頭高、把數字吹高(修完會報 3.85 而其實頭高跟內建幾乎一樣)。改成量**真頭高
 >(下巴→頭頂)**的 `headsRatio()`。**基準值從 3.08 變 2.95**(同一具內建角色,只是量法不同);
 > 實測 VRoid 6.68 → **3.02**(內建 2.95)。舊文件裡的 3.08/3.15/3.18 都是舊定義,別再拿來比。
-> ⚠ **殘留(已量、未修)**:四肢的**長度**已對上 chibi(誤差 <0.5pp),但**粗細**沒動——小腿深度
-> 9.8% vs 內建 20.4%、手 6px vs 內建 19px,遠鏡頭下手臂看起來像白針。做法會是把非等比的 rest 粗細
-> 烤進骨頭、讓 `setS`/`setStretch` **乘**上去而不是覆寫(現在是 `setScalar` 直接蓋)。
+> **ugc-4 肢段粗細(`THICK`/`bakeLimbThickness`)**:ugc-1c 只 conform 長度,粗細沒動——實測 VRoid
+> 小腿橫截 9.2%身高 vs 內建 19.9%(×2.16)、前臂 6.8 vs 8.8,腿像白針(手已被拳套蓋掉)。
+> **沒走原計畫的「骨縮放+setS 改乘法」**:非等比骨縮放沿骨鏈繼承,子骨一彎(手肘/膝 90°+)=剪切
+> 變形,而且要動每幀路徑。改成**載入時烤進蒙皮頂點**:bind 骨局部把垂直於骨軸的兩座標乘係數
+>(骨軸過局部原點=繞骨軸外推;沿骨軸=子骨 local 位移主軸),位移按 skin weight 加權=關節自動平滑,
+> 衣服蒙同一根骨=跟著粗(要的就是這樣)。零每幀成本,setS/setStretch 照舊覆寫不衝突。
+> 目標=內建的橫截平均÷身高(scratchpad/thick0.mjs 實測:上臂 7.0/前臂 8.8/大腿 11.8/小腿 19.9%);
+> 只加粗不削瘦、上限 2.5×、腳掌不做(鞋 OK+骨軸推斷不可靠)。`?thick=0` 關;`av.thickRep` 供測試。
+> ⚠⚠ **防重烤旗標掛 position attribute 不是 geometry**:glTF 同 mesh 的多個 primitive 被 GLTFLoader
+> 拆成多個 BufferGeometry 但共用同一份 attribute(同 accessor)——掛 geometry 每個 primitive 各烤一次
+> =係數連乘(實測小腿 2.07 被乘 5 次,頂點飛到 22 單位外);clone 的第二個 fighter 也共用 → 一併擋掉
+>(它的 thickRep 重量到已加粗幾何=係數≈1,這是「單烤」的簽名,⑭ 測試鎖這個)。
+> morph target 不跟著改(正式管線 slim.js 已拔 morph)。studio 同步(`AV_THICK`/`bakeAvatarLimbThickness`)。
 >
 > **ugc-2e rest yaw 正規化(`restYawSnap`)**(使用者截圖:「面向箭頭朝左、人朝右」——整隻反 180°,
 > 而且左右手是鏡像的):慣例=**rest 面向 +Z**(`g.rotation.y=yaw` 把 g 本地 +Z 轉到 facing),但

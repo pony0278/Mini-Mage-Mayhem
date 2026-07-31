@@ -271,6 +271,100 @@ function conformAvatarProportions(sc, by){
   return before;
 }
 
+// ===== ugc-4 肢段粗細(與遊戲 js/actor-avatar.js 的 THICK/bakeLimbThickness **同一份規格**,改一邊要
+// 同步另一邊)=====:ugc-1c 只 conform 長度,粗細沒動(VRoid 小腿 9.2%身高 vs 基準 19.9%=白針腿)。
+// 不走骨縮放(非等比縮放沿骨鏈繼承,子骨一彎=剪切變形),**載入時烤進蒙皮頂點**:bind 骨局部把
+// 垂直於骨軸的兩座標乘係數(骨軸過原點=繞骨軸外推),位移按 skin weight 加權=關節平滑;只加粗
+// 不削瘦,上限 2.5×;腳掌不做。⚠ 防重烤旗標掛 **position attribute**(多 primitive 共用 attribute,
+// 掛 geometry 每個 primitive 各烤一次=係數連乘,頂點飛出去)。
+const AV_THICK = { upperarm: 0.070, forearm: 0.088, thigh: 0.118, shin: 0.199 };
+const AV_THICK_CHILD = { upperarm: 'forearm', forearm: 'hand', thigh: 'shin', shin: 'foot' };
+function bakeAvatarLimbThickness(sc, by){
+  sc.updateMatrixWorld(true);
+  const H = sampledBox(sc, _pbox).max.y - _pbox.min.y;
+  if(!(H > 1e-6)) return null;
+  const cand = new Map();
+  for(const seg in AV_THICK) for(const sd of ['_l', '_r']){
+    const e = by[seg + sd], c = by[AV_THICK_CHILD[seg] + sd];
+    if(e && c) cand.set(e.bone, { key: seg + sd, seg, child: c.bone });
+  }
+  if(!cand.size) return null;
+  const boxes = new Map();
+  const v = new THREE.Vector3();
+  const domi = (SI, SW, i) => { let bi = SI.getX(i), bw = SW.getX(i);
+    if(SW.getY(i) > bw){ bw = SW.getY(i); bi = SI.getY(i); }
+    if(SW.getZ(i) > bw){ bw = SW.getZ(i); bi = SI.getZ(i); }
+    if(SW.getW(i) > bw){ bw = SW.getW(i); bi = SI.getW(i); }
+    return bi; };
+  const bindM = (o, bi) => new THREE.Matrix4().multiplyMatrices(o.skeleton.boneInverses[bi], o.bindMatrix);
+  sc.traverse(o => {
+    if(!o.isSkinnedMesh || !o.skeleton) return;
+    const P = o.geometry.attributes.position, SI = o.geometry.attributes.skinIndex, SW = o.geometry.attributes.skinWeight;
+    if(!P || !SI || !SW) return;
+    const mc = new Map();
+    const step = Math.max(1, Math.floor(P.count / 8000));
+    for(let i = 0; i < P.count; i += step){
+      const bi = domi(SI, SW, i);
+      const bone = o.skeleton.bones[bi]; if(!bone || !cand.has(bone)) continue;
+      let m = mc.get(bi); if(!m){ m = bindM(o, bi); mc.set(bi, m); }
+      v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(m);
+      (boxes.get(bone) || boxes.set(bone, new THREE.Box3()).get(bone)).expandByPoint(v);
+    }
+  });
+  const plan = new Map();
+  const rep = {};
+  for(const [bone, info] of cand){
+    const bb = boxes.get(bone); if(!bb || bb.isEmpty()) continue;
+    const cp = info.child.position;
+    const a = [Math.abs(cp.x), Math.abs(cp.y), Math.abs(cp.z)];
+    const ax = a.indexOf(Math.max(...a));
+    bb.getSize(v); const dims = [v.x, v.y, v.z];
+    const cur = (dims[(ax + 1) % 3] + dims[(ax + 2) % 3]) / 2;
+    if(!(cur > 1e-6)) continue;
+    const f = Math.min(2.5, Math.max(1, AV_THICK[info.seg] * H / cur));
+    rep[info.key] = +f.toFixed(2);
+    if(f > 1.02) plan.set(bone, { ax, f });
+  }
+  if(!plan.size) return rep;
+  const dv = new THREE.Vector3();
+  sc.traverse(o => {
+    if(!o.isSkinnedMesh || !o.skeleton) return;
+    const g = o.geometry;
+    const P = g.attributes.position, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight;
+    if(!P || !SI || !SW) return;
+    if(P.__thickBaked) return;
+    P.__thickBaked = true;
+    const cache = new Map();
+    const entryFor = (bi) => {
+      let e = cache.get(bi);
+      if(e === undefined){
+        const b = o.skeleton.bones[bi], pl = b && plan.get(b);
+        e = pl ? { m: bindM(o, bi), ax: pl.ax, f: pl.f } : null;
+        if(e) e.mi = e.m.clone().invert();
+        cache.set(bi, e);
+      }
+      return e;
+    };
+    for(let i = 0; i < P.count; i++){
+      let dx = 0, dy = 0, dz = 0;
+      for(const [bi, w] of [[SI.getX(i), SW.getX(i)], [SI.getY(i), SW.getY(i)], [SI.getZ(i), SW.getZ(i)], [SI.getW(i), SW.getW(i)]]){
+        if(!(w > 0.01)) continue;
+        const e = entryFor(bi); if(!e) continue;
+        v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(e.m);
+        if(e.ax !== 0) v.x *= e.f;
+        if(e.ax !== 1) v.y *= e.f;
+        if(e.ax !== 2) v.z *= e.f;
+        v.applyMatrix4(e.mi).sub(dv.set(P.getX(i), P.getY(i), P.getZ(i)));
+        dx += w * v.x; dy += w * v.y; dz += w * v.z;
+      }
+      if(dx || dy || dz) P.setXYZ(i, P.getX(i) + dx, P.getY(i) + dy, P.getZ(i) + dz);
+    }
+    P.needsUpdate = true;
+    g.computeBoundingSphere();
+  });
+  return rep;
+}
+
 // ===== 匯入檢查報告(實驗室的主產出:告訴玩家這顆模型能不能用、哪裡要修)=====
 const AV_SLOTS = ['root','torso','neck','head','upperarm_l','upperarm_r','forearm_l','forearm_r',
                   'hand_l','hand_r','thigh_l','thigh_r','shin_l','shin_r','foot_l','foot_r'];
@@ -408,6 +502,9 @@ async function loadAvatarBuffer(ab, label, builtin){
   // ③b ugc-1c 比例正規化(**在量包圍盒之前**——改完比例身高會變,S 要照改完的算)
   const fitOn = AV_CHIBI_FIT && !builtin;
   const headsBefore = fitOn ? conformAvatarProportions(sc, by) : null;
+  // ③c ugc-4 肢段粗細(conform 完身高定案才烤;蒙皮限定)
+  const skinnedPre = (() => { let s = false; sc.traverse(o => { if (o.isSkinnedMesh) s = true; }); return s; })();
+  const thickRep = (fitOn && skinnedPre) ? bakeAvatarLimbThickness(sc, by) : null;
 
   // ③ 縮放到素體身高,掛進場景(用 sampledBox 不用 setFromObject:蒙皮角色後者量到 bind pose)
   const bb = sampledBox(sc, new THREE.Box3()), size = new THREE.Vector3(); bb.getSize(size);
@@ -445,9 +542,9 @@ async function loadAvatarBuffer(ab, label, builtin){
     ? +((avFootBoneY(by) - sampledBox(wrap, _pbox).min.y) / (wrap.scale.y || 1)).toFixed(5) : null;
   const headsAfter = avHeadsRatio(wrap, by, sampledBox(wrap, _pbox));
   AVATAR = { wrap, S, label, by, order, skinned, restDev, restResid, fixOn, builtin: !!builtin, yawFix,
-             chibiFit: fitOn, headsBefore, headsAfter, soleOffset, fillers: [] };
+             chibiFit: fitOn, headsBefore, headsAfter, soleOffset, thickRep, fillers: [] };
   AVATAR_REPORT = avatarReport(sc, by, label, [], { skinned, restDev, restResid, S, fixOn, builtin: !!builtin,
-             yawFix, chibiFit: fitOn, headsBefore, headsAfter });
+             yawFix, thickRep, chibiFit: fitOn, headsBefore, headsAfter });
   renderAvatarReport();
   buildJointFillers();
   if(typeof remountHeadgear === 'function') remountHeadgear();   // item-3b:角色到位 → 已掛的頭戴道具改掛 avatar 頭骨(校準值語意不變)

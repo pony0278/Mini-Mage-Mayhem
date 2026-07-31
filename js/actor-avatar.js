@@ -242,6 +242,114 @@ function conformProportions(sc, by) {
   return before;
 }
 
+// ===== ugc-4 肢段粗細:把匯入角色的四肢「加粗」烤進蒙皮頂點 =====
+// ugc-1c 只 conform 長度,粗細沒動——實測 VRoid 小腿橫截 9.2%身高 vs 內建 19.9%(×2.16)、前臂
+// 6.8 vs 8.8,遠鏡頭下腿像白針。**為什麼不走骨縮放**(setS/setStretch 乘上去):非等比骨縮放會沿
+// 骨鏈繼承,子骨一旋轉(手肘/膝蓋彎 90°+)就變剪切變形;而且得動每幀路徑。改成**載入時烤進幾何**:
+// bind 骨局部空間把「垂直於骨軸的兩個座標」乘係數(骨軸過局部原點=繞骨軸線外推),位移按 skin
+// weight 加權=關節處自動平滑過渡;衣服蒙在同一根骨上=跟著變粗(要的就是這樣)。零每幀成本,
+// setS/setStretch 照舊覆寫不衝突。
+// 目標=內建 base-avatar 的橫截平均 ÷ 身高(scratchpad/thick0.mjs 實測);只加粗不削瘦(f<1 不動),
+// 上限 2.5×。腳掌不做(鞋看起來 OK,而且腳的骨軸推斷不可靠)。morph target 不跟著改(正式管線
+// slim.js 已拔掉 morph;fixture 的 -fat 變體會有極小的位移不匹配,無妨)。
+// ⚠ `Object3D.clone()` 共享 geometry → **烤一次全部 clone 都變**,geometry.userData.__thickBaked
+// 防第二個 fighter 重複烤(重烤=粗細平方)。與 punch-studio 同規格(tools/ps/avatar.js),改一邊同步另一邊。
+const THICK = { upperarm: 0.070, forearm: 0.088, thigh: 0.118, shin: 0.199 };
+const THICK_CHILD = { upperarm: 'forearm', forearm: 'hand', thigh: 'shin', shin: 'foot' };
+function bakeLimbThickness(sc, by) {
+  sc.updateMatrixWorld(true);
+  const H = sampledBox(sc, _cbox).max.y - _cbox.min.y;    // conform 後檔案身高(目標比例的分母)
+  if (!(H > 1e-6)) return null;
+  // 候選骨集合(bone → seg key)
+  const cand = new Map();
+  for (const seg in THICK) for (const sd of ['_l', '_r']) {
+    const e = by[seg + sd], c = by[THICK_CHILD[seg] + sd];
+    if (e && c) cand.set(e.bone, { key: seg + sd, seg, child: c.bone });
+  }
+  if (!cand.size) return null;
+  // Pass A:主導頂點的 bind 骨局部盒(自包含,不依賴 localBox——studio 版沒有它)
+  const boxes = new Map();                                 // bone → Box3
+  const v = new THREE.Vector3();
+  const domi = (SI, SW, i) => { let bi = SI.getX(i), bw = SW.getX(i);
+    if (SW.getY(i) > bw) { bw = SW.getY(i); bi = SI.getY(i); }
+    if (SW.getZ(i) > bw) { bw = SW.getZ(i); bi = SI.getZ(i); }
+    if (SW.getW(i) > bw) { bw = SW.getW(i); bi = SI.getW(i); }
+    return bi; };
+  const bindM = (o, bi) => new THREE.Matrix4().multiplyMatrices(o.skeleton.boneInverses[bi], o.bindMatrix);
+  sc.traverse(o => {
+    if (!o.isSkinnedMesh || !o.skeleton) return;
+    const P = o.geometry.attributes.position, SI = o.geometry.attributes.skinIndex, SW = o.geometry.attributes.skinWeight;
+    if (!P || !SI || !SW) return;
+    const mc = new Map();
+    const step = Math.max(1, Math.floor(P.count / 8000));
+    for (let i = 0; i < P.count; i += step) {
+      const bi = domi(SI, SW, i);
+      const bone = o.skeleton.bones[bi]; if (!bone || !cand.has(bone)) continue;
+      let m = mc.get(bi); if (!m) { m = bindM(o, bi); mc.set(bi, m); }
+      v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(m);
+      (boxes.get(bone) || boxes.set(bone, new THREE.Box3()).get(bone)).expandByPoint(v);
+    }
+  });
+  // 係數表:f = 目標橫截 ÷ 現況橫截;沿骨軸=子骨 local 位移的主軸
+  const plan = new Map();                                  // bone → { ax, f }
+  const rep = {};
+  for (const [bone, info] of cand) {
+    const bb = boxes.get(bone); if (!bb || bb.isEmpty()) continue;
+    const cp = info.child.position;
+    const a = [Math.abs(cp.x), Math.abs(cp.y), Math.abs(cp.z)];
+    const ax = a.indexOf(Math.max(...a));
+    bb.getSize(v); const dims = [v.x, v.y, v.z];
+    const cur = (dims[(ax + 1) % 3] + dims[(ax + 2) % 3]) / 2;
+    if (!(cur > 1e-6)) continue;
+    const f = Math.min(2.5, Math.max(1, THICK[info.seg] * H / cur));
+    rep[info.key] = +f.toFixed(2);
+    if (f > 1.02) plan.set(bone, { ax, f });
+  }
+  if (!plan.size) return rep;
+  // Pass B:位移(全頂點,按 weight 加權;>0.01 才算)
+  const dv = new THREE.Vector3();
+  sc.traverse(o => {
+    if (!o.isSkinnedMesh || !o.skeleton) return;
+    const g = o.geometry;
+    const P = g.attributes.position, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight;
+    if (!P || !SI || !SW) return;
+    // ⚠ 防重烤旗標掛在 **position attribute** 不是 geometry:glTF 同一顆 mesh 的多個 primitive 會被
+    // GLTFLoader 拆成多個 BufferGeometry 但**共用同一份 attribute**(同 accessor)——掛 geometry 上
+    // 每個 primitive 各烤一次=係數連乘(實測 VRoid 小腿 2.07 被乘了 5 次,頂點飛到 22 單位外)。
+    // clone 出的第二個 fighter 也共用同一份 attribute → 一併擋掉。
+    if (P.__thickBaked) return;
+    P.__thickBaked = true;
+    const cache = new Map();                               // boneIndex → {m,mi,ax,f} | null
+    const entryFor = (bi) => {
+      let e = cache.get(bi);
+      if (e === undefined) {
+        const b = o.skeleton.bones[bi], pl = b && plan.get(b);
+        e = pl ? { m: bindM(o, bi), ax: pl.ax, f: pl.f } : null;
+        if (e) e.mi = e.m.clone().invert();
+        cache.set(bi, e);
+      }
+      return e;
+    };
+    for (let i = 0; i < P.count; i++) {
+      let dx = 0, dy = 0, dz = 0;
+      for (const [bi, w] of [[SI.getX(i), SW.getX(i)], [SI.getY(i), SW.getY(i)], [SI.getZ(i), SW.getZ(i)], [SI.getW(i), SW.getW(i)]]) {
+        if (!(w > 0.01)) continue;
+        const e = entryFor(bi); if (!e) continue;
+        v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(e.m);
+        if (e.ax !== 0) v.x *= e.f;
+        if (e.ax !== 1) v.y *= e.f;
+        if (e.ax !== 2) v.z *= e.f;
+        v.applyMatrix4(e.mi).sub(dv.set(P.getX(i), P.getY(i), P.getZ(i)));
+        dx += w * v.x; dy += w * v.y; dz += w * v.z;
+      }
+      if (dx || dy || dz) P.setXYZ(i, P.getX(i) + dx, P.getY(i) + dy, P.getZ(i) + dz);
+    }
+    P.needsUpdate = true;
+    g.computeBoundingSphere();                             // raycast 等讀它,別過期
+  });
+  return rep;
+}
+
 // T-pose:box rig 的中性測量姿勢(雙臂水平放下=角色 rest 對齊)。與編排器 inspectTposePose 同義:
 // 手臂 sz=90(水平)、其餘 0。用來建立 box↔角色的世界四元數對照。
 function tposePose() {
@@ -315,6 +423,9 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
 
   // ugc-1c 比例正規化:**必須在量包圍盒之前**——改完比例身高會變,S 要照改完的身高算才會正規化到同站高。
   const headsBefore = CHIBI_FIT ? conformProportions(sc, by) : null;
+  // ugc-4 肢段粗細:conform 完(身高定案)才烤;`?thick=0` 關(A/B 用)
+  const thickRep = (CHIBI_FIT && skinned && new URLSearchParams(location.search).get('thick') !== '0')
+    ? bakeLimbThickness(sc, by) : null;
 
   // 縮放角色到 box rig 身高。box brawler 世界高 ≈ hipY + torso 頂 + head ≈ 用包圍盒估。
   // ⚠ 用 sampledBox 不用 setFromObject:蒙皮角色(尤其比例正規化過的)後者量到的是 bind pose,身高會差 18%。
@@ -348,7 +459,7 @@ export function buildAvatar(g, boxRig, applyBrawlerPose) {
   // 這個**姿勢無關**的偏移(腳骨位置是姿勢準確的),每幀用腳骨反推腳底。剛體角色維持原本的網格包圍盒路徑。
   const soleOffset = skinned ? +(footBoneY(by) - fin.min.y).toFixed(3) : null;
   const av = { wrap, S, by, order, skinned, wrapQT, tposeFix: TPOSE_FIX, restDevDeg, restResidDeg, yawFixDeg,
-    chibiFit: CHIBI_FIT, headsBefore, headsAfter, soleOffset, standH: +(fin.max.y - fin.min.y).toFixed(1) };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
+    chibiFit: CHIBI_FIT, headsBefore, headsAfter, soleOffset, thickRep, standH: +(fin.max.y - fin.min.y).toFixed(1) };   // standH=渲染後真實站高(px);被扛拎頭吊掛時頭→腳的身長(positionCarried 讀)
 
   // 隱藏 box 網格(保留骨架群組當 driver);記錄以便切回
   av.hidden = [];

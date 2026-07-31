@@ -108,6 +108,11 @@ HTML 靜態面板:timeline/播放/顯示開關/preset/**15 PARTS 面板**(含裝
      GLOVE_REST=base 手骨 rest 在作者空間的朝向,L 繞 Z +90°/R −90°)、尺寸 0.28×素體站高反推,
      **都烘 node 層**;cfg(滑桿)照常疊 wrap 層,起始值 identity 不互蓋。
      **與遊戲 `js/actor-hands-rigged.js` 同規格,改一邊要同步另一邊。**
+  ④e **ugc-4 肢段粗細 `AV_THICK`/`bakeAvatarLimbThickness`**:conform 只做長度,粗細烤進蒙皮頂點
+     (bind 骨局部橫向外推、skin weight 加權;只加粗上限 2.5×;腳不做)。目標=素體橫截÷身高
+     (上臂 7.0/前臂 8.8/大腿 11.8/小腿 19.9%)。⚠ 防重烤旗標掛 **position attribute**(多 primitive
+     共用 attribute,掛 geometry=各烤一次係數連乘、頂點飛出去)。`AVATAR.thickRep`/`report().thickRep`。
+     **與遊戲 `js/actor-avatar.js` 的 `THICK`/`bakeLimbThickness` 同規格,改一邊要同步另一邊。**
   ⑤ **踩地改用腳骨推算(蒙皮)**:`Box3.setFromObject` 不算蒙皮形變(見 ③),比例改完拿它量腳底會浮空。
      改記「腳骨世界 Y − 真實腳底 Y」這個**姿勢無關**的偏移(載入時用 `sampledBox` 逐頂點 `boneTransform` 量),
      每幀用腳骨反推。**存 wrap 局部單位**——`updateAvatarPose` 每幀 `w.scale.copy(root.scale)×S` 鏡射素體的

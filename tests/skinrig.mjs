@@ -329,6 +329,48 @@ ok(Y1.fwd > Y1.back, `⑬ 修正後腳尖朝 facing(前伸 ${Y1.fwd} > 後伸 ${
 ok(Y1.uarmL === Y0.uarmL && Y1.bones === Y0.bones,
   `⑬ 轉完**重收骨頭**=左右重判(upperarm_l=${Y1.uarmL} 同 native;${Y1.bones} 骨)——沒重收就是左右鏡像`);
 
+// ---- ⑭ 肢段粗細(ugc-4):conform 只做長度,粗細烤進蒙皮頂點(白針腿修正)----
+// fixture 的肢是 0.15 見方的細盒(≈8%身高)→ 小腿目標 19.9% = 係數 ~2.4。
+// ⚠ 兩個 fighter 的 clone **共用 position attribute** → 只能烤一次;f0 的 thickRep 有真係數、
+// f1 重量到的是已加粗的幾何(係數≈1)= 單烤不重烤的簽名。多 primitive 共用 attribute 同理。
+const thickOf = (page) => page.evaluate(() => {
+  const T = window.THREE, out = {};
+  // ⚠ 量 **bind 骨局部**不量世界盒:idle 姿勢小腿是斜的,肢段長度會投影進世界橫向(實測把 8% 吹成
+  //   17%),加粗前後的比值被稀釋成假 FAIL。bind 空間無姿勢,橫截乾淨。
+  const meas = (av) => {
+    const bone = av.by.shin_l.bone;
+    const bb = new T.Box3(), v = new T.Vector3();
+    av.wrap.traverse(o => {
+      if (!o.isSkinnedMesh) return;
+      const bi0 = o.skeleton.bones.indexOf(bone); if (bi0 < 0) return;
+      const m = new T.Matrix4().multiplyMatrices(o.skeleton.boneInverses[bi0], o.bindMatrix);
+      const P = o.geometry.attributes.position, SI = o.geometry.attributes.skinIndex, SW = o.geometry.attributes.skinWeight;
+      const step = Math.max(1, Math.floor(P.count / 4000));
+      for (let i = 0; i < P.count; i += step) {
+        let bi = SI.getX(i), bw = SW.getX(i);
+        for (const [ix, w] of [[SI.getY(i), SW.getY(i)], [SI.getZ(i), SW.getZ(i)], [SI.getW(i), SW.getW(i)]])
+          if (w > bw) { bw = w; bi = ix; }
+        if (o.skeleton.bones[bi] !== bone) continue;
+        v.fromBufferAttribute(P, i).applyMatrix4(m);
+        bb.expandByPoint(v);
+      }
+    });
+    const s = new T.Vector3(); bb.getSize(s);
+    return +(Math.max(s.x, s.z) / (av.standH / av.S) * 100).toFixed(1);   // ÷檔案身高=橫截佔比
+  };
+  for (let fi = 0; fi < 2; fi++) { const av = window.__avatars[fi];
+    out['f' + fi] = av && av.skinned ? { shinPct: meas(av), rep: av.thickRep && av.thickRep.shin_l } : null; }
+  return out;
+});
+const pTk = await openPage(buildSkinGlb('native'), '&chibi=1');         const Tk = await thickOf(pTk);  await pTk.close();
+const pTk0 = await openPage(buildSkinGlb('native'), '&chibi=1&thick=0'); const Tk0 = await thickOf(pTk0); await pTk0.close();
+ok(Tk.f0 && Tk.f0.rep > 1.8 && Tk.f0.rep <= 2.5,
+  `⑭ 小腿加粗係數落在預期(${Tk.f0 && Tk.f0.rep};目標 19.9%身高,fixture 現況 ~8%)`);
+ok(Tk.f0 && Tk0.f0 && Tk.f0.shinPct > Tk0.f0.shinPct * 1.5,
+  `⑭ 世界橫截真的變粗(${Tk0.f0 && Tk0.f0.shinPct}% → ${Tk.f0 && Tk.f0.shinPct}%);?thick=0 可關`);
+ok(Tk.f1 && Tk.f1.rep < 1.3 && Math.abs(Tk.f1.shinPct - Tk.f0.shinPct) < Tk.f0.shinPct * 0.4,
+  `⑭ 共用 attribute 只烤一次(f1 重量到已加粗幾何,係數 ${Tk.f1 && Tk.f1.rep};兩人粗細一致)——重烤=係數連乘頂點飛出去`);
+
 ok(errs.length === 0, '⑦ 無 console 錯誤' + (errs.length ? ':' + errs.slice(0, 3).join(' | ') : ''));
 
 await B.close();
