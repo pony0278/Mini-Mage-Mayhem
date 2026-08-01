@@ -23,7 +23,15 @@ const AVATAR_SCALE = (() => { const v = parseFloat(new URLSearchParams(location.
 let TEMPLATE = null;          // 載入一次的 GLB 場景(每個 fighter clone 一份)
 let loadState = 0;            // 0 未載 / 1 載入中 / 2 成功 / 3 失敗
 // avatar=正式產品外觀,**預設開啟**;?avatar=0 退回方塊人(box driver 除錯/低配比對用)。
-export function avatarEnabled() { return new URLSearchParams(location.search).get('avatar') !== '0'; }
+// ugc-6(使用者 2026-08-01 拍板):**方塊人回任預設角色**。試玩回饋是「客製化角色非常醜,還是最喜歡
+// 原本的方塊人角色,很可愛」,加上 ugc-5 把道具改成程序化幾何之後,GLB 角色成了全場唯一的外來美術。
+// 現在整個可見層 100% 程序化 three.js(角色 BRAWLER_SPEC + 道具 prop-shapes),風格徹底統一。
+// avatar 管線**整套留著**(骨名別名/rest 校正/比例正規化/拳套/粗細,50 條測試護著):`?avatar=1`
+// 開內建 chibi、`?avatar=<路徑或 blob:>` 開玩家自製角色——降級成進階選項,不是預設體驗。
+export function avatarEnabled() {
+  const q = new URLSearchParams(location.search).get('avatar');
+  return q !== null && q !== '0';
+}
 export function avatarReady() { return loadState === 2; }
 
 export function preloadAvatar() {

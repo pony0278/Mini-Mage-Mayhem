@@ -21,7 +21,7 @@ async function load(mobile, url) {
 
 // ---------- 桌機:雙卡下方 + GLB 頭像 + 像素取樣 ----------
 {
-  const { page, errs } = await load(false, 'http://localhost:8099/v2.html?turbo=8');
+  const { page, errs } = await load(false, 'http://localhost:8099/v2.html?turbo=8&avatar=1');
   await page.evaluate(() => { __v2.v2s.introT = 0; __v2.fighters[1].ai = false; });
   const glb = await page.waitForFunction(`__hud.cards[0].portrait === 'glb' && __hud.cards[1].portrait === 'glb'`, { timeout: 20000 }).then(() => true).catch(() => false);
   const h = await page.evaluate('window.__hud');
@@ -43,7 +43,7 @@ async function load(mobile, url) {
 
 // ---------- 手機模擬:錨上方(下方=搖桿/按鈕) ----------
 {
-  const { page, errs } = await load(true, 'http://localhost:8099/v2.html?turbo=8');
+  const { page, errs } = await load(true, 'http://localhost:8099/v2.html?turbo=8&avatar=1');
   const top = await page.waitForFunction(`__hud.anchor === 'top'`, { timeout: 15000 }).then(() => true).catch(() => false);
   R('手機:雙卡錨上方(讓位搖桿/按鈕)', top, JSON.stringify(await page.evaluate('window.__hud && __hud.anchor')));
   R('手機:無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));

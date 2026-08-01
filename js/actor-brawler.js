@@ -15,7 +15,12 @@ import { updateBurnFx } from './render-burn.js';
 
 // ===== 建模規格表:尺寸/位置(世界 px)/配色。關節鏈長 Lu/Ll(腿)、Au/Al(臂)給自動踩地/組裝用 =====
 export const BRAWLER_SPEC = {
-  colors: { limbShade: 0.68, paleLighten: 0.42, eye: 0x17101c, glow: 0.06 },
+  // ugc-6 角色配色:方塊人回任預設 → 從「單色機器人」補成「像個人」。
+  // 分工:**隊伍色留在會動、面積大的部位**(軀幹/肩甲/袖子/髮/拳套)=1v1 一眼分敵我、45° 鏡頭
+  // 由上往下看得最多的是頭頂的髮;**中性色給臉與下半身**(膚/褲/靴)=打破同色相、讀得出是人。
+  // 配色照 ugc-5 量到的曲線挑(l .30~.50 存活、亮色會被 ACES 洗灰),見 js/prop-shapes.js 表頭。
+  colors: { limbShade: 0.68, paleLighten: 0.42, eye: 0x17101c, glow: 0.06,
+            skin: 0xd99a6c, pants: 0x39476b, boot: 0x2a2630, collar: 0xdcbf95 },
   hipY: 14, hipX: 5.4,
   thigh: { w: 7, h: 7.5, d: 8 }, shin: { w: 6.2, h: 6.5, d: 7.2 },      // Lu=7.5, Ll=6.5
   foot: { w: 6.6, h: 2.6, d: 8.6, fwd: 1.4, shade: 0.45 },               // 腳掌(踝下小靴,略前伸;shade=底色暗度)。站高因此 +h(applyBrawlerPose 抬 root)
@@ -26,8 +31,16 @@ export const BRAWLER_SPEC = {
   fist: { w: 8.4, h: 7.2, d: 8.4, dropY: -2.8 },
   headPivotY: 18,                                                        // spine-local(世界 y32=軀幹頂)
   head: { w: 14.5, h: 13, d: 13.5, cy: 7.5 }, hair: { w: 15.2, h: 4.5, d: 14.2, cy: 15.5 },
+  collar: { w: 12.6, h: 2.6, d: 11.4, cy: 16.6 },                          // 領口(膚色細片,把頭與軀幹分開)
+  belt: { w: 22.6, h: 2.8, d: 13.4, cy: 2.0 },                             // 腰帶(暗色細片,分出上衣與褲子)
   eye: { x: 3.5, cy: 8.5, z: 6.9, w: 3, h: 3.6, d: 1.2 },
   PX: 25,   // 編排器 1 世界單位 ≈ 25px(root_pz/root_py/head_pz 的換算)
+  // ugc-6:方塊人回任預設角色 → **整體放大到與 avatar 同站高**。實測本體 52.2px、avatar 77px,
+  // 而 ITEM_VIS_H(78)/火帽包覆規則/火場高度/搬運錨點全套道具校準都是照 ~78px 角色調的
+  //(不放大的症狀:角色矮 1/3、道具卻沒縮 → 火帽大到蓋住半個身體)。放大只在**方塊人模式**生效:
+  // avatar 模式的 box rig 是隱形 driver,它的絕對尺寸是 avatar 的身高基準(boxRigHeight),縮了 avatar 會跟著長大。
+  // ⚠ 縮放要插在 **P 之上**的獨立群組——`P.scale` 是 applyBrawlerPose 每幀在寫的(root 擠壓/蹲)。
+  boxScale: 1.49,
 };
 
 // ===== 程序動作參數表(clips 之外的狀態:走路/被扛/扛人/暈眩/受擊)=====
@@ -74,28 +87,34 @@ function lightenHex(h, t) {
   return (r << 16) | (g << 8) | b;
 }
 const grp = (parent, x, y, z = 0) => { const p = new THREE.Group(); p.position.set(x, y, z); parent.add(p); return p; };
+// 方塊人模式的可見站高(=本體 52.2 × boxScale)。消費者:render-burn 火場高、render-shock X 光骨架。
+export const BOX_STAND_H = +(52.2 * BRAWLER_SPEC.boxScale).toFixed(1);
 
 // 組裝:編排器骨架階層。g(=render-actors 給的實體根)→ P(姿勢根:root 旋轉/擠壓)
 //   → pelvis → 髖L/R → 膝 → 小腿;→ spine → 軀幹/肩甲/肩L/R → 肘 → lm(前臂+腕+拳,命中放大)
 export function buildBrawler(g, tints, tintable, base) {
   const S = BRAWLER_SPEC, C = S.colors;
   const limb = shadeHex(base, C.limbShade), pale = lightenHex(base, C.paleLighten);
-  const P = grp(g, 0, 0);
+  const SC = grp(g, 0, 0);                                   // ugc-6 整體放大層(見 SPEC.boxScale)
+  SC.scale.setScalar(avatarEnabled() ? 1 : S.boxScale);      // avatar 模式維持 1:box rig 是 avatar 的身高基準
+  const P = grp(SC, 0, 0);
   const pelvis = grp(P, 0, S.hipY);
   const mkLeg = (side) => {
     const hp = grp(pelvis, side * S.hipX, 0);
-    const th = makeBox(S.thigh.w, S.thigh.h, S.thigh.d, limb); th.position.y = -S.thigh.h / 2; hp.add(th);
+    const th = makeBox(S.thigh.w, S.thigh.h, S.thigh.d, C.pants); th.position.y = -S.thigh.h / 2; hp.add(th);
     const kn = grp(hp, 0, -S.thigh.h);
     const lm = grp(kn, 0, 0);                                            // 小腿+腳的放大群組(命中放大,對齊編排器 legL.lm → lL_scale)
-    const sh = makeBox(S.shin.w, S.shin.h, S.shin.d, limb); sh.position.y = -S.shin.h / 2; lm.add(sh);
+    const sh = makeBox(S.shin.w, S.shin.h, S.shin.d, C.pants); sh.position.y = -S.shin.h / 2; lm.add(sh);
     const ankle = grp(lm, 0, -S.shin.h);                                 // 踝關節(lL_ax/lL_ty + 自動壓平/墊腳;avatar foot driver 也吃這節點)
-    const foot = makeBox(S.foot.w, S.foot.h, S.foot.d, shadeHex(base, S.foot.shade)); foot.position.set(0, -S.foot.h / 2, S.foot.fwd); ankle.add(foot);
+    const foot = makeBox(S.foot.w, S.foot.h, S.foot.d, C.boot); foot.position.set(0, -S.foot.h / 2, S.foot.fwd); ankle.add(foot);
     return { hp, kn, lm, ankle, side };
   };
   const legL = mkLeg(-1), legR = mkLeg(1);
   const spine = grp(P, 0, S.hipY);
   const torso = tintable(g, tints, makeBox(S.torso.w, S.torso.h, S.torso.d, base, base, C.glow)); torso.position.y = S.torso.cy; spine.add(torso);
   for (const sd of [-1, 1]) { const pad = makeBox(S.shoulderPad.w, S.shoulderPad.h, S.shoulderPad.d, limb); pad.position.set(sd * S.shoulderPad.x, S.shoulderPad.y, 0); spine.add(pad); }
+  const collar = makeBox(S.collar.w, S.collar.h, S.collar.d, C.collar); collar.position.y = S.collar.cy; spine.add(collar);   // 領口
+  const belt = makeBox(S.belt.w, S.belt.h, S.belt.d, C.boot); belt.position.y = S.belt.cy; spine.add(belt);                   // 腰帶
   const mkArm = (side) => {
     const sh = grp(spine, side * S.armX, S.armY);
     const ua = makeBox(S.upperArm.w, S.upperArm.h, S.upperArm.d, limb); ua.position.y = -S.upperArm.h / 2; sh.add(ua);
@@ -108,7 +127,7 @@ export function buildBrawler(g, tints, tintable, base) {
   };
   const armL = mkArm(-1), armR = mkArm(1);
   const headPivot = grp(spine, 0, S.headPivotY);
-  const head = makeBox(S.head.w, S.head.h, S.head.d, pale); head.position.y = S.head.cy; headPivot.add(head);
+  const head = makeBox(S.head.w, S.head.h, S.head.d, C.skin); head.position.y = S.head.cy; headPivot.add(head);
   const hair = tintable(g, tints, makeBox(S.hair.w, S.hair.h, S.hair.d, base, base, C.glow)); hair.position.y = S.hair.cy; headPivot.add(hair);
   for (const sd of [-1, 1]) { const e = makeBox(S.eye.w, S.eye.h, S.eye.d, C.eye); e.position.set(sd * S.eye.x, S.eye.cy, S.eye.z); headPivot.add(e); }
   g.userData.rig = { P, pelvis, spine, headPivot, legL, legR, armL, armR };

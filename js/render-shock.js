@@ -21,6 +21,7 @@
 //  · 鋸齒路徑用 ping-pong Float32Array,**零 Vector3 配置**(demo 每次重擲 new 150~300 個=GC 抖動)。
 //  · 幾何/材質 module 級共用,開機 prewarm 預編譯。FX_LOW 砍節點光點+分支+外暈層。
 import { game } from './state.js';
+import { BOX_STAND_H } from './actor-brawler.js';
 import { scene, renderer, camera } from './render-core.js';
 import { FX_LOW } from './render-lab.js';
 
@@ -44,7 +45,10 @@ const P = {
   nodeSize: 0.16 / DEMO_H,
   fade: 0.25,                                       // 尾段淡出秒數(demo envelope)
 };
-const BOX_H = 47.6;                                 // 方塊人站高(hipY14+torso18+head13+foot2.6;?avatar=0 退路)
+// 方塊人站高:ugc-6 起方塊人是預設角色且整體放大到與 avatar 同高(見 actor-brawler SPEC.boxScale)。
+// ⚠ **不能在模組層取值**:render-shock ↔ actor-brawler 之間有 import 循環,模組層讀會是 TDZ
+//(實測 `Cannot access 'BOX_STAND_H' before initialization`,整頁掛掉)→ 一律呼叫時才讀。
+const boxH = () => BOX_STAND_H;
 const CORE = 0xffffff, GLOW = 0xffe14d;             // 使用者定稿黃白(拍板 2026-07-27:武器藍/觸電黃白不強求一致)
 const BONE = 0xffffff, HOLE = 0x1a0e06, SIL = 0x33200f;
 
@@ -181,7 +185,7 @@ function buildRig(R) {
     nodeGeo = new THREE.BufferGeometry();
     nodeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_NODE * 3), 3));
     nodeGeo.setDrawRange(0, 0);
-    nodeMat = new THREE.PointsMaterial({ size: P.nodeSize * BOX_H, map: glowTex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true, fog: false });
+    nodeMat = new THREE.PointsMaterial({ size: P.nodeSize * boxH(), map: glowTex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true, fog: false });
     nodePoints = new THREE.Points(nodeGeo, nodeMat);
     nodePoints.frustumCulled = false; nodePoints.renderOrder = 21; nodePoints.userData.__shock = true;
     fx.add(nodePoints);
@@ -427,7 +431,7 @@ function sampleEllipsoid(rig) {
   return _samp;
 }
 // 身形量測(shock-1b):橢球/星芒/中心高全部照受害者實際站高現算——avatar=av.standH(渲染後真實站高,
-// 含 AVATAR_SCALE),方塊人退 BOX_H。avatar 非同步建好/換模型時 bodyH 一變就重算。
+// 含 AVATAR_SCALE),方塊人退 boxH()。avatar 非同步建好/換模型時 bodyH 一變就重算。
 function refreshSize(rig, H) {
   if (rig.bodyH === H) return;
   rig.bodyH = H;
@@ -477,7 +481,7 @@ export function updateShock(e, g, R) {
   }
   // 骨架掛點:avatar 是非同步建好的 → 一出現就把骨架從 box rig 改掛 avatar 骨(同 item-4b 手套的重掛)
   const av = u.avatar;
-  refreshSize(rig, av && av.standH ? av.standH : BOX_H);
+  refreshSize(rig, av && av.standH ? av.standH : boxH());
   if (!!av !== rig.onAvatar || !rig.skel.length) {
     disposeSkel(rig.skel);
     if (rig.face && rig.face.parent) rig.face.parent.remove(rig.face);

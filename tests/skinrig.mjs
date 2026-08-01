@@ -32,7 +32,7 @@ async function openPage(glb, query) {
       } else r.continue();
     });
   }
-  await page.goto('http://localhost:8099/v2.html?turbo=8' + (query || ''), { waitUntil: 'networkidle0' });
+  await page.goto('http://localhost:8099/v2.html?turbo=8&avatar=1' + (query || ''), { waitUntil: 'networkidle0' });   // ugc-6:方塊人是預設,avatar 功能測試要明確 opt-in(?avatar=1)
   await page.bringToFront();
   await page.waitForFunction('window.__avatars && window.__avatars.length >= 2', { timeout: 30000 });
   return page;

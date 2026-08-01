@@ -21,6 +21,32 @@
 **render 家族(門面=`render.js`,外部只 import 它;邊界見 docs/render-module-boundaries.md)**
 `render-core`(renderer/scene/camera/快取/project)→ `render-world`(地板烘焙/牆/toybox decor)/`render-actors`(體素小人+brawler 委派)/`render-entities`(props/投射物/zones/粒子/地面標記;**風壓扇形/雷直線** `windSector`/`windStreak`=讀 `game.windFans`/`windAims`(風扇形)+`game.fireAims`(火扇形)+`game.boltAims`/`bolts`(雷直線起手預告+發射亮束))/`render-hud`(單機 2D HUD)/`render-lab`(**v2 專屬場景** 1175 行:工業回收中心、`labAnimated[]` 每幀 update、**地板化學動態 tile 層 `updateFloorFx`**(讀 v2-floor 格,粗色塊 MVP)、**四色地面指引:已整組拆除(2026-07-19 使用者反饋 GLB 箭頭牌太突兀)**——演進史:往外脈動導軌(違直覺+閃眼)→ 朝內靜態箭頭 buildSortingRoutes → THROW IN! 浮雕牌 loadSignGlb → 全拆(A 款艙=丟對手目標,四色元素語意屬凍結的 B 款分類玩法;實作找 git c63a0cf 前);`assets/scene/throw-in-sign.glb` 留庫未載入。**若要重加指引:走狀態驅動(扛人/對手暈時才亮的低調提示),別再放常駐地標**、**中央回收艙底座=使用者 GLB `assets/scene/recycling-pod.glb`(`loadPodGlb` async fetch+parse:轉平沉入近齊平微凸 ~4px、沉入基準=盤面 p90 非 bbox.max(輪頂不平,用 max 會全埋只露轂尖);載成拆舊分揀陣列貼圖(被輪盤蓋住);**舊環甲板保留**(使用者反饋:加回更立體)+ `buildRuneRing` 符文環帶(程序化符文 canvas,索引種子=確定性;雙層反向緩轉;**底下墊不透明深色艙底「環」y=0.4(RingGeometry 內2.55/外4.75)**——蓋住原始地磚格線(使用者反饋:符文縫隙透地面)、壓在地板化學 tile y=0.6 之下(艙內冰面/油膜照常顯示);**必須環形不能滿盤**:滿盤會蓋掉輪盤面 y=0.125 連中心回收標誌(使用者截圖抓到))填輪盤與甲板之間地面——三層:輪盤嵌件→符文帶→金屬甲板,失敗保留舊底座;場景 GLB 入庫規範=離線解 Draco+simplify+quantize,見 assets/README)**、**收容演出玻璃罩 `setPodPerform`**(v2.js 每幀驅動:加法薄殼+三圈緯線蝕刻+底圈+頂部反光點+掃描環;**不走 transmission**——SwiftShader/深色地板上近隱形,風格化力場玻璃到處都讀得出;LED 飄字在 v2-hud `drawPerformLED`)、`FX_LOW`=**手機自動開**(render-core `IS_MOBILE`:可觸控+粗指針/行動 UA;`?fx=low`/`?fx=full` 手動覆蓋;2026-07 手機卡頓診斷:18 點光+13 transmission 玻璃=主因,FX_LOW 主執行緒 2.1×、p99 3770ms→15.5ms;render-core 同時對手機把 dpr 2→1.5)、`window.__lab`(含 `podGlbReady()`、`domeVisible()`、`fxLow()`))。
 
+> **ugc-6 方塊人回任預設角色**(使用者 2026-08-01:「目前 glb 小人也取消了」;前情=試玩回饋
+> 「客製化角色非常醜,還是最喜歡原本的方塊人角色,很可愛」)。`avatarEnabled()` 預設翻成 **off**
+>(`?avatar=1` 開內建 chibi、`?avatar=<路徑|blob:>` 開玩家自製;`?avatar=0` 語意不變)。
+> 配合 ugc-5,**整個可見層現在 100% 程序化 three.js**(角色 `BRAWLER_SPEC` + 道具 `prop-shapes`),
+> 零外來美術資產。avatar 管線整套留著(別名表/rest 校正/yaw/比例/拳套/粗細,50 條測試護著)——
+> 降級成進階選項,不是預設體驗;**別因為「預設沒用到」就刪它**。
+> **方塊人美術補強**(原本是還沒美術化的驅動骨架=單色機器人:髮/軀幹=隊伍色、四肢=暗版、頭/拳=亮版,
+> 整隻同一個色相):分工改成「**隊伍色留在會動、面積大的部位**(軀幹/肩甲/袖/髮/拳套)——1v1 一眼分敵我,
+> 45° 鏡頭由上往下看最多的是頭頂的髮;**中性色給臉與下半身**(`skin`/`pants`/`boot`)——打破同色相、讀得出是人」,
+> 另加 `collar`(領口)/`belt`(腰帶)兩片細條把頭↔軀幹、上衣↔褲子分開。配色照 ugc-5 量到的曲線挑。
+> ⚠⚠ **翻預設踩到的真坑:方塊人比 avatar 矮 1/3,而全套道具校準是照 avatar 調的**。實測本體
+> **52.2px vs avatar 77px**,而 `ITEM_VIS_H`(78,「道具一律等人高」)、火帽包覆規則(×headH)、
+> 火場高(`render-burn` 的 `standH`)、搬運錨點全部是 ~78px 角色的基準 → 直接翻預設的症狀是
+> 「角色矮一截、道具卻沒縮」(火帽大到蓋住半個身體;burn 測試也抓到火場 span 64 < 門檻 85)。
+> 修法=`BRAWLER_SPEC.boxScale = 1.49` 把方塊人**整體放大到同站高**(實測 77.7 vs 77.1),
+> 所有既有校準原封不動繼續有效。兩個實作要點:
+>   · **縮放層要插在 `P` 之上的獨立群組**——`P.scale` 是 `applyBrawlerPose` 每幀在寫的(root 擠壓/蹲)。
+>   · **只在方塊人模式縮**(`avatarEnabled() ? 1 : boxScale`)——avatar 模式的 box rig 是隱形 driver,
+>     它的絕對尺寸是 `boxRigHeight()` 給 avatar 算身高的基準,縮了 avatar 會跟著長大。
+> 導出 `BOX_STAND_H`(=52.2×boxScale)給 `render-burn` 火場高與 `render-shock` X 光骨架用,取代兩處
+> 各自寫死的 `47.6`。⚠ **`render-shock` 不能在模組層取值**:它與 actor-brawler 有 import 循環,
+> 模組層讀會 TDZ(`Cannot access 'BOX_STAND_H' before initialization`,整頁掛掉)→ 包成 `boxH()` 呼叫時才讀。
+> ⚠ **測試分工**:方塊人是預設 → 驗 avatar 功能的套件要**明確 opt-in `?avatar=1`**
+>(gauntlet/hat/hudcards/psslim/shock/skinrig 已加;漏加的症狀是 `waitForFunction('__avatars…')` 逾時)。
+> `render-portrait` 早就有方塊人模式的 2D 臉退路,HUD 頭像不受影響。
+>
 > **ugc-5 道具外觀=程序化(`js/prop-shapes.js`)**:使用者 2026-08-01「那些 GLB 裝備部件應該要先轉成
 > three.js 3D 型態,不然風格會差異很大,要風格一致」。**風格差是可量的**:角色 = MeshStandardMaterial +
 > vertexColors + roughness .85 + metalness 0 + **無貼圖**、全身 24641 面;火帽 = **照相 JPEG map +

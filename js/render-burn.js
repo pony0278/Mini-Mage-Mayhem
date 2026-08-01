@@ -8,6 +8,7 @@
 // perf(js/CLAUDE.md 特效鐵則):**不加燈**(demo 的 fireLight 拿掉)、每 fighter 一副 rig 建一次+
 // per-frame 只改 uniform/transform、開機 prewarm 預編譯、FX_LOW 砍火舌數/黑煙/帽火只留核心。
 import { game } from './state.js';
+import { BOX_STAND_H } from './actor-brawler.js';
 import { scene, renderer, camera } from './render-core.js';
 import { FX_LOW } from './render-lab.js';
 
@@ -206,7 +207,7 @@ export function updateBurnFx(e, g, R) {
   const wantChar = !!e._burnCh && (now - e._burnCh.t0) < BC.black + BC.T + BC.out && !u.xray;
   if (wantChar && !rig.charred) { rig.charList = collectChar(g); CHAR_MAT.color.setHex(0x171310); for (const c of rig.charList) c.m.material = CHAR_MAT; rig.charred = true; u.charred = true; }
   else if (!wantChar && rig.charred) { for (const c of rig.charList) c.m.material = c.mat; rig.charList = null; rig.charred = false; u.charred = false; }   // u.charred=render-actors tint pass 的閘(同 u.xray)
-  const H = (u.avatar && u.avatar.standH) || 47.6;                         // 實際站高(方塊人退 47.6;shock-1b 教訓)
+  const H = (u.avatar && u.avatar.standH) || BOX_STAND_H;                  // 實際站高(方塊人退 BOX_STAND_H;shock-1b 教訓)
   const on = fireInt > 0.01;
   // **錨=身體中心經身體姿態變換**(demo _fireCenter=(0,0.85,0)×quaternion 的原式):
   // 站立=胸口、拋飛翻滾/趴姿=跟著身體到正確位置;火在世界空間永遠直立。

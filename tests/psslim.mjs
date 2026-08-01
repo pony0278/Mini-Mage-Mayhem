@@ -117,7 +117,7 @@ gp.on('request', r => {
     r.respond({ status: 200, contentType: 'model/gltf-binary', headers: { 'access-control-allow-origin': '*' }, body: slimGlb });
   } else r.continue();
 });
-await gp.goto('http://localhost:8099/v2.html?turbo=8&chibi=0', { waitUntil: 'networkidle0' });
+await gp.goto('http://localhost:8099/v2.html?turbo=8&chibi=0&avatar=1', { waitUntil: 'networkidle0' });   // ugc-6:方塊人是預設,avatar 功能測試要明確 opt-in(?avatar=1)
 await gp.bringToFront();
 await gp.waitForFunction('window.__avatars && window.__avatars.length >= 2', { timeout: 30000 });
 const G = await gp.evaluate(async () => {
