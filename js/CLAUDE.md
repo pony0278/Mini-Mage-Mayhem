@@ -21,6 +21,22 @@
 **render 家族(門面=`render.js`,外部只 import 它;邊界見 docs/render-module-boundaries.md)**
 `render-core`(renderer/scene/camera/快取/project)→ `render-world`(地板烘焙/牆/toybox decor)/`render-actors`(體素小人+brawler 委派)/`render-entities`(props/投射物/zones/粒子/地面標記;**風壓扇形/雷直線** `windSector`/`windStreak`=讀 `game.windFans`/`windAims`(風扇形)+`game.fireAims`(火扇形)+`game.boltAims`/`bolts`(雷直線起手預告+發射亮束))/`render-hud`(單機 2D HUD)/`render-lab`(**v2 專屬場景** 1175 行:工業回收中心、`labAnimated[]` 每幀 update、**地板化學動態 tile 層 `updateFloorFx`**(讀 v2-floor 格,粗色塊 MVP)、**四色地面指引:已整組拆除(2026-07-19 使用者反饋 GLB 箭頭牌太突兀)**——演進史:往外脈動導軌(違直覺+閃眼)→ 朝內靜態箭頭 buildSortingRoutes → THROW IN! 浮雕牌 loadSignGlb → 全拆(A 款艙=丟對手目標,四色元素語意屬凍結的 B 款分類玩法;實作找 git c63a0cf 前);`assets/scene/throw-in-sign.glb` 留庫未載入。**若要重加指引:走狀態驅動(扛人/對手暈時才亮的低調提示),別再放常駐地標**、**中央回收艙底座=使用者 GLB `assets/scene/recycling-pod.glb`(`loadPodGlb` async fetch+parse:轉平沉入近齊平微凸 ~4px、沉入基準=盤面 p90 非 bbox.max(輪頂不平,用 max 會全埋只露轂尖);載成拆舊分揀陣列貼圖(被輪盤蓋住);**舊環甲板保留**(使用者反饋:加回更立體)+ `buildRuneRing` 符文環帶(程序化符文 canvas,索引種子=確定性;雙層反向緩轉;**底下墊不透明深色艙底「環」y=0.4(RingGeometry 內2.55/外4.75)**——蓋住原始地磚格線(使用者反饋:符文縫隙透地面)、壓在地板化學 tile y=0.6 之下(艙內冰面/油膜照常顯示);**必須環形不能滿盤**:滿盤會蓋掉輪盤面 y=0.125 連中心回收標誌(使用者截圖抓到))填輪盤與甲板之間地面——三層:輪盤嵌件→符文帶→金屬甲板,失敗保留舊底座;場景 GLB 入庫規範=離線解 Draco+simplify+quantize,見 assets/README)**、**收容演出玻璃罩 `setPodPerform`**(v2.js 每幀驅動:加法薄殼+三圈緯線蝕刻+底圈+頂部反光點+掃描環;**不走 transmission**——SwiftShader/深色地板上近隱形,風格化力場玻璃到處都讀得出;LED 飄字在 v2-hud `drawPerformLED`)、`FX_LOW`=**手機自動開**(render-core `IS_MOBILE`:可觸控+粗指針/行動 UA;`?fx=low`/`?fx=full` 手動覆蓋;2026-07 手機卡頓診斷:18 點光+13 transmission 玻璃=主因,FX_LOW 主執行緒 2.1×、p99 3770ms→15.5ms;render-core 同時對手機把 dpr 2→1.5)、`window.__lab`(含 `podGlbReady()`、`domeVisible()`、`fxLow()`))。
 
+> **ugc-5 道具外觀=程序化(`js/prop-shapes.js`)**:使用者 2026-08-01「那些 GLB 裝備部件應該要先轉成
+> three.js 3D 型態,不然風格會差異很大,要風格一致」。**風格差是可量的**:角色 = MeshStandardMaterial +
+> vertexColors + roughness .85 + metalness 0 + **無貼圖**、全身 24641 面;火帽 = **照相 JPEG map +
+> emissiveMap**、比頭還小卻 6028 面(手套 10140)→ 戴身上=兩個美術世界硬拼。改成用 three.js 基本幾何
+> 堆的程序化道具(帽/手套/桶/瓶四件),**沿用完全相同的 proto 慣例**(高=1、底貼 y0 或置心、外層 group、
+> `userData.__*` 旗)→ 掛載/校準/測試一行都不用改。`?props=glb` 切回舊 GLB(A/B)。
+> 附帶:不再下載那 4 顆 GLB + 4 張 JPEG = **省 1.48MB**,也順手繞開內嵌 JPEG 全黑那組坑。
+> ⚠ **兩個踩過、寫進 prop-shapes 表頭的坑**:
+> ① **剪影長寬比要貼齊被取代的 GLB**——火帽掛載端(item-3c)的包覆規則三取 max,其中「寬度包覆」讀
+>   `protoW`。第一版做大帽簷 protoW 1.275(GLB 是 1.01)→ 世界寬 63.6px vs 51.6,戴上去像大香菇吃掉角色。
+> ② **配色要選 l 0.30~0.50 / s ≥ 0.70,亮色一律渲成灰**——lab 是 ACES+曝光 1.16,實測 source→rendered
+>   飽和保留率隨明度暴跌(l .31 留 68%、l .50 留 61%、l .58 留 43%、l .82 **只留 14%**),暗色明度被提亮
+>   ~+0.14。第一版用奶油/天藍當主色 → 一排米黃泥巴。**要亮點只能用 emissive**(自發光不吃 tone map 洗白)。
+>   量法:scratchpad/curve.mjs(場上擺已知色方塊 → 投影 → `gl.readPixels`)。**改任何場上物件配色前先跑它。**
+> 場景 GLB(回收艙底座等)維持不動——背景可以細,那是「工業實驗室 vs 可愛角色」的對比,不是衝突。
+>
 > **頭戴裝備(item-3 火帽 The Golden Maw)**:render-core `loadFireHatGlb`/`fireHatClone`/`fireHatReady`
 > (proto 高度正規化成 1、底貼 y=0、xz 置中)。actor-brawler `updateHeadgear`:持噴火帽(`e.item==='fire'`)時戴頭上。
 > **⚠ 掛點=avatar 頭骨(item-3b,2026-07-27;病 3 第三次)**:`av.by.head.bone`,方塊人(?avatar=0)退 `R.headPivot`;

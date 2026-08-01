@@ -18,15 +18,42 @@ R('冰霜瓶 GLB 載成(frostBottleReady)', ready);
 
 await page.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false; v.fighters[1].x = 100; v.fighters[1].y = 100; });
 
-// ---------- ①b 貼圖可對應:mesh 有 UV + 材質綁貼圖(鎖 2026-07-20 坑:去圖 prune 砍 UV → 渲成素色) ----------
+// ---------- ①b 風格契約(ugc-5:道具改程序化幾何,與角色同一份語言)----------
+// 使用者 2026-08-01:「那些 GLB 裝備部件應該要先轉成 three.js 3D 型態,不然風格會差異很大」。
+// 契約=**無 map**(平塗色;要亮點用 emissive)+ roughness .85 + metalness 0 + 低多邊形。
+// GLB 那條路(?props=glb)另外驗,見 ①c。
 await page.evaluate(() => { const b = __v2.bottles; b[0].elem = 'ice'; b[0].r = 9; b[0].x = 520; b[0].y = 470; b[0].z = 0; b[0].vx = 0; b[0].vy = 0; b[0].held = false; b[0].alive = true; });
-const texOk = await page.evaluate(() => new Promise(res => { setTimeout(() => {
-  const s = __lab.labGroup.parent; let mesh = null;
+const firstFrostMesh = () => { const s = __lab.labGroup.parent; let mesh = null;
   s.traverse(o => { if (o.userData && o.userData.__frost) o.traverse(m => { if (m.isMesh && !mesh) mesh = m; }); });
+  return mesh; };
+const styleOk = await page.evaluate((src) => new Promise(res => { setTimeout(() => {
+  const mesh = new Function('return (' + src + ')')()();
+  if (!mesh) return res({ found: false });
+  const m = mesh.material, g = mesh.geometry;
+  res({ found: true, hasMap: !!m.map, rough: m.roughness, metal: m.metalness,
+        tris: Math.round((g.index ? g.index.count : g.attributes.position.count) / 3) });
+}, 500); }), firstFrostMesh.toString());
+R('ugc-5 風格契約:無貼圖 + 霧面非金屬 + 低多邊形(與角色同語言)',
+  styleOk.found && !styleOk.hasMap && styleOk.rough >= 0.8 && styleOk.metal === 0 && styleOk.tris < 200,
+  JSON.stringify(styleOk));
+
+// ---------- ①c GLB 路(?props=glb)仍可用,且鎖住「去圖別 prune 砍 UV」那個坑 ----------
+// 程序化是預設,但 GLB 那條路留著當 A/B;它的入庫規範坑(prune 砍 UV → 渲成素色)照樣要有人守。
+const pg = await B.newPage();
+await pg.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
+await pg.goto('http://localhost:8099/v2.html?props=glb', { waitUntil: 'networkidle0' });
+await pg.waitForFunction('window.__v2 && window.__lab', { timeout: 20000 });
+const glbReady = await pg.waitForFunction('__lab.frostBottleReady() === true', { timeout: 25000 }).then(() => true).catch(() => false);
+await pg.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false;
+  const b = v.bottles; b[0].elem = 'ice'; b[0].r = 9; b[0].x = 520; b[0].y = 470; b[0].z = 0; b[0].vx = 0; b[0].vy = 0; b[0].held = false; b[0].alive = true; });
+const texOk = await pg.evaluate((src) => new Promise(res => { setTimeout(() => {
+  const mesh = new Function('return (' + src + ')')()();
   if (!mesh) return res({ found: false });
   res({ found: true, hasUV: !!mesh.geometry.attributes.uv, hasMap: !!(mesh.material && mesh.material.map) });
-}, 500); }));
-R('貼圖可對應:mesh 帶 UV + 材質綁貼圖(去圖別 prune)', texOk.found && texOk.hasUV && texOk.hasMap, JSON.stringify(texOk));
+}, 800); }), firstFrostMesh.toString());
+await pg.close();
+R('?props=glb 仍載得起來,且 mesh 帶 UV + 材質綁貼圖(去圖別 prune)',
+  glbReady && texOk.found && texOk.hasUV && texOk.hasMap, JSON.stringify(texOk));
 
 // ---------- ①c 冰瓶飄雪(取代舊青色光圈):scene 有雪花 Points(o.isPoints) ----------
 const snowOk = await page.evaluate(() => { const s = __lab.labGroup.parent; let pts = 0;

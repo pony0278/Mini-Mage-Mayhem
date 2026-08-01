@@ -20,7 +20,7 @@ const SUITES = [
   ['itemlock',  '道具施法承諾 item-4g/4i(施法中鎖腳不能走+鎖面向不能瞬轉/teleport 瞬發不鎖)'],
   ['switches',  '總開關移左右兩側(揍任一支 arm 四站/舊中央位置失效/範圍外不觸發)'],
   ['podglb',    '回收艙底座 GLB(開局載入+擺位/換裝生效)'],
-  ['frostbottle','冰霜瓶 GLB 三狀態(載成/地面冰瓶掛GLB/油瓶留方塊/握持冰瓶掛GLB)'],
+  ['frostbottle','冰霜瓶三狀態 + ugc-5 風格契約(程序化=無貼圖/霧面/低多邊形;?props=glb A/B 路仍守 UV-prune 坑)'],
   ['barrel',    '爆桶 GLB 三狀態 item-2(載成/地面兩桶掛GLB/引信疊加光暈/握持掛GLB)'],
   ['hat',       '火帽 GLB 頭戴 item-3/3b/3c(載成/掛 avatar 頭骨=病3/包覆規則三取 max=頭不露出帽口/無道具=隱藏)'],
   ['skinrig',   '蒙皮 GLB 角色 ugc-1/1b(骨名別名表 native+VRM 各 16 骨/clone 重綁骨架/蒙皮真變形/定位/縮骨頭/A-pose rest 校正/剛體不受影響)'],

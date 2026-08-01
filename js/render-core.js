@@ -4,6 +4,7 @@
 import { W, H } from './constants.js';
 import { clamp } from './utils.js';
 import { mouse, CAM } from './state.js';
+import { makeFireHat, makeWindGauntlet, makeBarrelProp, makeBottleProp } from './prop-shapes.js';   // ugc-5 程序化道具外觀
 
 const canvas = document.getElementById('game');
 // 視圖尺寸(畫布內部解析度)由 HTML 殼的 canvas 屬性決定,與世界尺寸(W/H,模擬座標)解耦:
@@ -109,6 +110,21 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
     return mat;
   }
 
+  // ===== ugc-5 道具外觀:預設**程序化**(js/prop-shapes.js,與角色同一份風格契約)=====
+  // 使用者 2026-08-01 試玩回饋的延伸:角色是低多邊形平塗色塊、GLB 道具是照相寫實貼圖的華麗模型
+  //(實測火帽 6028 面+JPEG map 戴在 24641 面的全身上),戴身上=兩個美術世界硬拼。
+  // 程序化版沿用**完全相同的 proto 慣例**(高=1、底貼 y0/置心、外層 group、userData 旗)
+  // → 掛載/校準/測試一行都不用改。`?props=glb` 切回舊的 GLB 外觀(A/B 對照)。
+  const PROC_PROPS = new URLSearchParams(location.search).get('props') !== 'glb';
+  // 程序化 proto 就位(同步、無 fetch、無貼圖)。回傳是否已處理。
+  function procProto(make, set) {
+    if (!PROC_PROPS) return false;
+    const n = make();
+    set(n);
+    if (renderer) renderer.compile(scene, camera);   // perf-1 預熱(同 GLB 路)
+    return true;
+  }
+
   // 道具 GLB(item-1:使用者的冰霜瓶 Meshy 模型;之後其他道具照同一 helper 加）。
   // 載一次→存正規化 proto(外層 group 高度 1、底部貼 y=0、xz 置中）→ 每個瓶實例 clone(true)（geometry/material 共用=clone 便宜，
   // 可每幀重建也不心疼)。三狀態消費:握持(actor-brawler)/地面+飛行(render-entities);未載成 clone 回 null=呼叫端退方塊。
@@ -119,7 +135,9 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   //   去圖只 setBaseColorTexture(null)+tex.dispose(),**不 prune**(保 UV)。見 assets/README。
   let _frostProto = null;
   export function loadFrostBottleGlb() {
-    if (_frostProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,冰瓶退方塊'); return; }
+    if (_frostProto) return;
+    if (procProto(() => makeBottleProp('ice'), n => { _frostProto = n.group; _frostProto.userData.__frost = true; })) return;
+    if (!THREE.GLTFLoader) { console.warn('[core] GLTFLoader 未載入,冰瓶退方塊'); return; }
     const tex = new THREE.TextureLoader().load('assets/scene/frost-bottle-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
     tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
     fetch('assets/scene/frost-bottle.glb')
@@ -154,7 +172,9 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   // 桶本體固定紫,充能/引信狀態靠呼叫端疊加 makeGlowSphere 光暈表達(使用者拍板 2026-07-20:疊加光暈,不換貼圖)。
   let _barrelProto = null;
   export function loadBarrelGlb() {
-    if (_barrelProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,爆桶退方塊'); return; }
+    if (_barrelProto) return;
+    if (procProto(makeBarrelProp, n => { _barrelProto = n.group; _barrelProto.userData.__barrel = true; })) return;
+    if (!THREE.GLTFLoader) { console.warn('[core] GLTFLoader 未載入,爆桶退方塊'); return; }
     const tex = new THREE.TextureLoader().load('assets/scene/barrel-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
     tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
     fetch('assets/scene/barrel.glb')
@@ -182,7 +202,9 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   // 火帽 GLB(item-3:使用者的 The Golden Maw 金色大嘴帽;持有噴火帽時戴頭上)。同冰瓶四步入庫+同 helper 慣例。
   let _hatProto = null;
   export function loadFireHatGlb() {
-    if (_hatProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,火帽不顯示'); return; }
+    if (_hatProto) return;
+    if (procProto(makeFireHat, n => { _hatProto = n.group; _hatProto.userData.__hat = true; _hatProtoW = n.protoW; })) return;
+    if (!THREE.GLTFLoader) { console.warn('[core] GLTFLoader 未載入,火帽不顯示'); return; }
     const tex = new THREE.TextureLoader().load('assets/scene/fire-hat-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
     tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
     fetch('assets/scene/fire-hat.glb')
@@ -215,7 +237,9 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
   // WIND_CAL 縮到貼手大小。emissive=azure 冷光(ACES 暗場防洗灰;渦輪扇/管線發青光)。
   let _gauntletProto = null;
   export function loadWindGauntletGlb() {
-    if (_gauntletProto || !THREE.GLTFLoader) { if (!THREE.GLTFLoader) console.warn('[core] GLTFLoader 未載入,風壓手套不顯示'); return; }
+    if (_gauntletProto) return;
+    if (procProto(makeWindGauntlet, n => { _gauntletProto = n.group; _gauntletProto.userData.__gauntlet = true; })) return;
+    if (!THREE.GLTFLoader) { console.warn('[core] GLTFLoader 未載入,風壓手套不顯示'); return; }
     const tex = new THREE.TextureLoader().load('assets/scene/wind-gauntlet-tex.jpg'); // 外部貼圖(繞過內嵌黑圖坑)
     tex.flipY = false; tex.encoding = THREE.sRGBEncoding;
     fetch('assets/scene/wind-gauntlet.glb')
