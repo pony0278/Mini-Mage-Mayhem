@@ -328,12 +328,23 @@ function updateHeadgear(e, g, R) {
 // → 靜態校準補不了。av.by.hand_r.bone=rigged 手同一掛點=永遠貼手;方塊人(?avatar=0)退回 R.armR.wr。
 // WIND_CAL(box 腕)/WIND_CAL_AV(avatar 手骨)各自對位:size=世界 px;avatar 骨局部單位=px÷av.S,
 // 伸臂 stretch 的骨縮放自然流入=手套跟手一起放大(戴著的手感)。clone 網格帶 __equip 旗(avatar 藏方塊人跳過)。
-const WIND_CAL = { size: 17, x: 0, y: -4, z: 0, rx: 90, ry: 0, rz: 0 };
+// WIND_CAL(box 腕)**由 avatar 那組換算而來**(gaunt-4,使用者 2026-08-03:「發射時掌心沒有跟角色一起
+// 正面發射,反而變成垂直的」)。病史:舊值 rx90/ry0/rz0 是 avatar 當預設時期的粗略佔位——**ugc-6 把方塊人
+// 翻回預設後,大家看到的就是這條沒校準過的路**。實測掌心朝向:box 腕 (0.04,0.20,−0.98)=側向 vs
+// avatar 手骨 (0.97,−0.23,0.09)=正對瞄準方向,差在 **rz 少了 −95°**。
+// 換算法(scratchpad,結果與姿勢無關=可當常數烤進來):在 ?avatar=1 下(box rig 是隱形 driver,兩個掛點
+// 同時存在)取 `wr.matrixWorld⁻¹ · gauntlet.matrixWorld` 分解 → 位移/旋轉/縮放。
+// **位移不可照搬**:換算出的 (−1.76,−22.67,5.28) 是「avatar 的手」相對 box 腕的位置,而 avatar 比 box rig
+// 大 AVATAR_SCALE 倍、手在完全不同的地方;box 路要貼的是**方塊人自己的拳頭**,故位移保留原值(使用者:
+// 「戴起來正確」;proto 是 center 正規化=繞自身中心轉,只改旋轉不會位移)。
+// **縮放要對齊**:size 17 × boxScale 1.49 = 25.33,比 avatar 那條(20.07)大 26%——使用者當初在 punch-studio
+// 調的就是 avatar 那組,「像我之前調的那樣」= 連大小一起對齊 → 20.068 ÷ 1.49 = 13.5。
+export const WIND_CAL = { size: 13.5, x: 0, y: -4, z: 0, rx: 85, ry: 5, rz: -95 };
 // WIND_CAL_AV = 使用者 punch-studio 匯出的 bow slot 對位**原樣**(2026-07-23 定稿)。studio 與遊戲掛同一根
 // avatar 手骨(item-4b)→ 位移/旋轉=骨局部 GLB 單位,直搬零換算;只有 scale 要 ×GAUNT_RAW_H(遊戲 proto
 // 把原始 GLB 高度正規化成 1,studio 掛的是 raw 檔——乘回原始高=同一個世界尺寸)。
-const WIND_CAL_AV = { s: 0.3, x: 0.02, y: 0.26, z: 0.04, rx: -85, ry: -5, rz: 85 };
-const GAUNT_RAW_H = 1.064;   // wind-gauntlet.glb 原始高(y);proto 正規化除掉的係數
+export const WIND_CAL_AV = { s: 0.3, x: 0.02, y: 0.26, z: 0.04, rx: -85, ry: -5, rz: 85 };
+export const GAUNT_RAW_H = 1.064;   // wind-gauntlet.glb 原始高(y);proto 正規化除掉的係數
 function updateGauntlet(e, g, R) {
   const u = g.userData;
   // item-4h:持風壓手套 OR 正在放風壓(_itemVisType+itemCastCd>0)=顯示——最後一發按下即扣次數清 f.item,靠施法窗撐到動畫播完才收

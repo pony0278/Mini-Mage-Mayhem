@@ -65,6 +65,32 @@ const follow = await page.evaluate(() => {
 const calOk = follow.skip || (follow.onBone && Math.hypot(follow.lp[0] - 0.02, follow.lp[1] - 0.26, follow.lp[2] - 0.04) < 0.001);
 R('掛 avatar 手骨+局部對位=校準值(出拳中不變)', calOk, JSON.stringify(follow));
 
+// ---------- ②c 兩條掛載路必須等價(gaunt-4,使用者 2026-08-03「發射時掌心變成垂直的」) ----------
+// 病史:`WIND_CAL`(box 腕)是 avatar 當預設時期的粗略佔位(rx90/ry0/rz0),**ugc-6 把方塊人翻回預設後
+// 大家看到的就是這條沒校準過的路**——實測掌心朝側面(rz 少了 −95°)、尺寸大 26%。
+// 這裡在 ?avatar=1 下(box rig 是隱形 driver,兩個掛點同時存在)驗「box 腕套上 WIND_CAL 後的世界變換
+// == avatar 手骨那條(使用者 punch-studio 校準的真相)」,姿勢無關。
+const equiv = await page.evaluate(async () => {
+  const AB = await import('./js/actor-brawler.js');
+  const s = __lab.labGroup.parent; let gw = null; s.traverse(o => { if (o.name === 'GAUNTLET') gw = o; });
+  if (!gw) return { skip: true };
+  let actor = gw; while (actor && !(actor.userData && actor.userData.rig)) actor = actor.parent;
+  const wr = actor.userData.rig.armR.wr;
+  s.updateMatrixWorld(true);
+  const D2R = Math.PI / 180, C = AB.WIND_CAL;
+  const want = gw.getWorldQuaternion(new THREE.Quaternion());                       // avatar 路=真相
+  const qBox = wr.getWorldQuaternion(new THREE.Quaternion())
+    .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(C.rx * D2R, C.ry * D2R, C.rz * D2R)));
+  const dot = Math.abs(want.dot(qBox));
+  const wsG = new THREE.Vector3(); gw.getWorldScale(wsG);
+  const wsW = new THREE.Vector3(); wr.getWorldScale(wsW);
+  return { angDeg: +(2 * Math.acos(Math.min(1, dot)) * 180 / Math.PI).toFixed(1),   // 兩條路的朝向夾角
+    boxSize: +(C.size * AB.BRAWLER_SPEC.boxScale).toFixed(2),                       // box 模式的世界尺度
+    avSize: +(wsG.x / wsW.x).toFixed(2) };                                          // avatar 路換算到同一基準
+});
+R('box 腕校準 ≡ avatar 手骨校準(朝向 <5°、尺寸差 <8%)',
+  equiv.skip || (equiv.angDeg < 5 && Math.abs(equiv.boxSize - equiv.avSize) / equiv.avSize < 0.08), JSON.stringify(equiv));
+
 // ---------- ②c 最後一發:useItem 清 item,但施法未走完(itemCastCd>0)手套仍在(item-4h) ----------
 await page.evaluate(() => { if (window.__pin) clearInterval(window.__pin); });
 const lastUse = await page.evaluate(() => {

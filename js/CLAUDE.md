@@ -92,6 +92,20 @@
 > 朝向:頭骨 rest 軸每個 GLB 不同 → 掛載時烘一次 `boneWorldQuat⁻¹ × gWorldQuat` 進 wrapper(之後跟著骨轉)。
 > clone 網格帶 `__equip`(avatar 藏方塊人掃描跳過)+ `__hat`(測試計數)旗。
 
+> **⚠ gaunt-4(使用者 2026-08-03 第三輪:「發射時掌心沒有跟角色一起正面發射,反而變成垂直的」)——
+> `WIND_CAL`(box 腕)從來沒被校準過**:舊值 rx90/ry0/rz0 是「avatar 當預設」時期的粗略佔位,
+> **ugc-6 把方塊人翻回預設後,所有玩家看到的就是這條沒校準的路**(掌心朝側面、尺寸大 26%)。
+> 修法=把 avatar 那組(使用者 punch-studio 校準的真相)換算回 box 腕局部:在 `?avatar=1` 下 box rig 是
+> 隱形 driver、**兩個掛點同時存在** → `wr.matrixWorld⁻¹ · gauntlet.matrixWorld` 分解即得(結果與姿勢無關
+> =可當常數烤);旋轉/縮放照搬(rx85/ry5/**rz−95**、size 20.07÷boxScale 1.49=13.5),**位移不可照搬**
+>(那是 avatar 的手相對 box 腕的位置,avatar 大 AVATAR_SCALE 倍且手在別處;box 路要貼方塊人自己的拳)。
+> 迴歸鎖在 gauntlet.mjs ②c(兩條掛載路的世界朝向 <5°、尺寸差 <8%)。
+> **這類「A/B 兩條掛載路」的通病**:預設路一翻,沒校準的那條就直接上線——翻預設時要把**兩條路都拍一次**。
+> ⚠⚠ **量施法姿勢的探針陷阱(踩了三輪才發現)**:①turbo 下 `game.time` 在兩次 evaluate 之間會跳過 clip
+> 尾端 → 釘 `itemFx` 那套會量到**待機姿勢**;用 **`?clip=<名字>` 循環試播**(專案內建旗)最省事,
+> 伸手定格 0.5s 很好抓。②`scene.traverse` 找 rig 會抓到**最後一個 actor=閒置的對手**,要從 GAUNTLET
+> 往上找祖先。③`getWorldQuaternion` **不含縮放**——只比朝向會漏掉「變超大」那半個病。
+
 > **右手裝備(item-4 風壓手套)**:render-core `loadWindGauntletGlb`/`windGauntletClone`/`windGauntletReady`(Meshy Azure Turbine Gauntlet;
 > 同四步入庫,proto 正中置心非底貼地=裝備繞腕;**原模型左手→入庫時 X 鏡像成右手**)。actor-brawler `updateGauntlet`:
 > 持風壓手套(`e.item==='wind'`)時戴右手。**掛點=avatar 手骨優先**(`av.by.hand_r.bone`=rigged 手同一掛點),
