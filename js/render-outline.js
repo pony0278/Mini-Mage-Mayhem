@@ -27,22 +27,31 @@ const q = new URLSearchParams(location.search).get('mark');
 export const MARK_MODE = q === 'outline' || q === 'none' || q === 'arrow' ? q : 'arrow'; // 預設維持頭頂浮標(ui-1)
 export const RIM_ON = MARK_MODE === 'outline';
 
-// 旋鈕:width=**世界空間固定線寬**(px)、tint=線色往白色拉的比例(0=純隊伍色)、alpha。
-// ⚠ 兩個踩過的坑,都會讓線「明明建出來了卻看不見」:
+// 旋鈕:width=**世界空間固定線寬**(px)、color=線色(null=用隊伍色)、alpha、maxGrow=薄片夾制。
+// ⚠ 四個踩過的坑,都會讓線「明明建出來了卻看不見」:
 //   ① **線寬不能用百分比放大**(scale×1.17):粗軀幹 22px 撐出 1.9px、細肢 6px 只撐出 0.5px=次像素。
 //      要照父網格的實際尺寸反算每軸的放大率,線寬才會處處一致。
-//   ② **線色不能用純隊伍色**:身體本來就是隊伍色(藍描藍/紅描紅)=零對比。往白色拉才跳得出來。
+//   ② **線色不能跟身體同明度**:第一版往白色拉 85% → 角色本身就是近白的淺藍,線貼在身上等於沒對比
+//      (使用者 2026-08-03 回報「輪廓線不太明顯」)。線是畫在**剪影外面**,要同時贏過兩個東西:
+//      深色地板(所以不能用暗線)+ 淺色身體(所以不能用白線)→ **飽和的隊伍色**才兩邊都跳得出來。
+//   ③ **描邊材質要 `toneMapped = false`**:lab 是 ACES+曝光 1.16,飽和亮色會被 tone map 洗掉
+//      (ugc-5 量過:l .82 只剩 14% 飽和)。關掉 tone map 才是「所見即所填」的 UI 級純色。
+//   ④ 細肢只有 6px 寬,線寬 3.2 就等於半條腿=白霧;2 左右是「明顯但仍是線」的甜蜜點。
 //   對手預設不描(width 0)——「只有你有線」這個不對稱本身就是最省事的身分訊號(恰吉即此路)。
-export const RIM = { me: { width: 1.2, tint: 0.85, alpha: 1, maxGrow: 1.5 }, foe: { width: 0, tint: 0, alpha: 0.6, maxGrow: 1.5 } };
+export const RIM = {
+  me: { width: 2.0, color: '#2f6bff', alpha: 1, maxGrow: 1.7 },   // 飽和藍:比地板亮、比身體濃
+  foe: { width: 0, color: null, alpha: 0.6, maxGrow: 1.7 },
+};
 
 const SKIP_FLAGS = ['__equip', '__hat', '__gauntlet', '__whip', '__frost', '__barrel', '__shockbone', '__burnfx', '__hatflame', '__sprayfx', '__outline'];
 const _mats = new Map();                                  // 隊伍色 → 共用描邊材質(不每幀 new)
 function hullMat(hex, cfg) {
-  const key = hex + '|' + cfg.tint + '|' + cfg.alpha;
+  const c = cfg.color || hex;
+  const key = c + '|' + cfg.alpha;
   let m = _mats.get(key);
   if (!m) {
-    const c = new THREE.Color(hex).lerp(new THREE.Color(0xffffff), cfg.tint);   // 往白拉=跟同色身體拉開對比
     m = new THREE.MeshBasicMaterial({ color: c, side: THREE.BackSide, transparent: cfg.alpha < 1, opacity: cfg.alpha, depthWrite: false });
+    m.toneMapped = false;                       // ⚠ 見表頭 ③:不關掉的話 ACES 會把飽和線色洗成灰
     _mats.set(key, m);
   }
   return m;
