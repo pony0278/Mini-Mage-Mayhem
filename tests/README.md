@@ -30,7 +30,8 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `ice_slide.mjs` | 冰面鎖滑:帶動量直線滑、撞牆停+暈、滑進艙=收容、靜止站上=小心走 |
 | `mobilefx.mjs`  | 手機自動降級:觸控+行動 UA → FX_LOW 自動開(點光剝除/無 transmission)+ dpr 夾 1.5;桌機完整;`?fx=full` 覆蓋 |
 | `onboard.mjs`   | 上手開場框架(只驗易讀層):首局教學旗標(localStorage)、AI 對手開場即開(fight 純戰鬥)、開場字幕/鏡頭帶場計時、就位期 AI 靜止、首局打完記 localStorage |
-| `perform.mjs`   | 回收演出 V0.8:收容→演出啟動(即時計分/罩/釘艙心/受保護)、演出中不二次收容、收尾才彈回+升階、第 2 次失控風味、第 3 次壓縮→matchOver+報告 |
+| `perform.mjs`   | 收容封存演出(規格 G 改版):中段(記錄<3)入艙=**拒收吐回不封存**、賽末點入艙=完整演出(n=3/final/罩/釘艙心/受保護)、演出中不二次收容、壓縮→matchOver+報告。記錄累積規則歸 finisher.mjs,這裡 pin `__v2.roundWins` 造局 |
+| `finisher.mjs`  | 規格 G flow-1 全機:中段擊暈=+1 記錄不重置場地、中段入艙=記錄+拒收(釘艙心→北管道彈出+短保護)、集滿 3=收容指令(stage 3 比賽繼續)、賽末點擊暈=終演窗口(prompt/倒地延長)、窗口過期=取消打續、`pressFinisher`(hook 直呼,鍵盤在 rAF 節流下漏拍)→自動 run→carry→throw→封存(final n=3)→報告、letterbox letterK、restartMatch 清乾淨。⚠ 兩人擺位離艙 >POD.r(貼艙擊暈=stun+入艙雙記錄);擊暈之間等醒+清 restunT(fresh 轉換才記錄) |
 | `jump.mjs`      | 跳躍+下壓拳 brawl-2:跑=預設(雙擊退役)、空白跳/Shift防、空中免地板化學+鎖滑中起跳解鎖、下壓命中削45穿防/落空硬直、空中挨拳拍落、跳越艙口不觸發失控收容。⚠ ④「空中免地板化學」**直接餵 dt 呼叫 `__v2.floorHazards(f,dt)`**(規則的唯一實作點就是它開頭的 `if (airborne(f)) return`),不追跳躍弧線的時間窗——弧線自己會結束、turbo=8 一批可跨 0.5s,追時間窗註定假 FAIL(門檻放寬到 90 之後 CONC=3 還是量到 88)。滯空/落地各跑一次 = 自帶對照組(100 vs 70) |
 | `dash.mjs`      | 衝刺攻擊 feel-1:持續跑 ≥ DASH_RUN_T 出拳=衝刺(kind4 不入連段)、短移動=普通拳、命中削30+推、可擋+擋下開反擊窗、起手前衝、對已暈者=挑飛、揮空冷卻;clip 槽位 dash_punch/hit_flinch/walk_cycle 缺槽安全 |
 | `hitfx.mjs`     | 漫畫打擊爆花 hitfx-1:命中推 game.bursts(鉤=小橘/挑飛=size46+集中線+白閃/打暈=琥珀/反擊=金/下壓=紅)、壽命到移除、揮空無爆花 |
@@ -39,7 +40,7 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
 | `psimport.mjs`  | punch-studio **匯入實驗室** ugc-1/1b:蒙皮 GLB 載得進(舊版 VRM 命名被 `AVATAR_REQUIRED` 硬擋)、別名表 native+VRM 各 16 骨、A-pose rest 校正 45°→0° 且骨頭方向對齊 T-pose 版、**內建 base-avatar 不套校正**(與遊戲同規則=WYSIWYG 命脈)、匯入檢查報告(骨頭對照/面數/提醒)、缺骨頭=明確失敗、**chibi 比例正規化與遊戲一致**(21.2→3.4 頭身、腳骨推算踩地、內建不套)。⚠ 量蒙皮腳底要在**雙腳著地的幀**(idle 0f)——anti 那格單腳抬起,拿「最低頂點=地面」會量出假浮空。⚠ 造「壞模型」要**等長替換**骨名(GLB 檔頭記著 JSON chunk 長度,改長度變成「壞檔」就測錯東西了) |
 | `psslim.mjs`    | 匯出遊戲角色檔(瘦身)ugc-2:morph target/動畫/VRM extension 全拔、貼圖 ≤512 **一律 PNG**、孤兒縮圖(VRM thumbnail)空殼成 1×1、GLB 空殼化不重排索引(惰性載入下孤兒條目沒人讀)、瘦身檔載回 r128 + 進遊戲 r149 且蒙皮會動、Draco/KTX2/meshopt 明確拒絕。⚠ **JPEG 禁用**:Chrome 的 JPEG ImageBitmap 是 YUV 底,SwiftShader WebGL 上傳會**全黑**——2D canvas 取樣看不出來(軟體轉 RGB 顏色全對),要 readRenderTargetPixels 量化才現形(⑥b 就是這支迴歸鉤)。fixture= mkskin `-fat` 變體(雜訊貼圖=PNG 最壞情況,尺寸門檻照此校) |
 | `frostbottle.mjs` | 冰霜瓶三狀態 + **ugc-5 道具風格契約**:程序化道具=**無 map** + roughness .85 + metalness 0 + 低多邊形(冰瓶 32 面,原 GLB 上萬);`?props=glb` A/B 路仍載得起來且守住「去圖別 prune 砍 UV」那個入庫坑。⚠ 改場上物件配色前先跑 `scratchpad/curve.mjs` 量 source→rendered:lab 是 ACES+曝光 1.16,亮色飽和度會被吃光(l .82 只留 14%),亮點只能靠 emissive |
-| `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=resolveContain 計分+containLog、endMatch=事故報告 |
+| `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=+1 記錄+拒收(規格 G 中段;**前面的擊暈也各記一筆**——抓「containLog 長出 carry」別等 roundWins,不然舊斷言被 stun 記錄搶跑)、endMatch=事故報告 |
 
 ## 提速(2026-07-20:全套 10min+ → ~3.5min)
 

@@ -421,6 +421,26 @@
 > (ice_slide 實測 clamp 仍能撞暈);測試把物件擺在 y>576/x<64 等邊帶=會落井(bottles ⑬ 內移過)。
 > 退路:TERRAIN 改回 'flat'=舊全牆平台。測試:tests/ring.mjs;perform.mjs 已改寫成儀式分級規格。
 
+> **flow-1 規格 G:事故記錄計分 + 收容終演(使用者拍板 2026-08-01「先寫 spec 再開工+最後表演=鏡頭特寫+
+> 玩家只按表演鍵,人物自己搬運+丟」;規格=docs/v2-spec-G-records-finisher.md,取代 ring-1 的「儀式分級」)**:
+> 診斷數據:舊循環 AI 對局 7 分全 fall、0 次搬運收容、116s 死空窗——「每回合都要回收」的不流暢=中段收容
+> 太重。新循環:**任何失能=+1 事故記錄**(stunFighter fresh 轉換/墜井/中段入艙;`recordIncident`,中段
+> 不重置場地=軟重整退役)→ 集滿 `RECORD_TARGET`(=WIN_TARGET 3)=**收容指令**(賽末點;stage 3+艙脈動)
+> → 賽末點擊暈=**終演窗口**(`v2s.finisher` prompt 2.5s,倒地延長)→ X=表演鍵(`pressFinisher`;AI 延遲
+> 0.5s 自動按)→ **自動駕駛** run(奔向倒地者)→carry(扛向艙)→throw(拋入)→ 完整封存演出(n=3)→報告。
+> 分流要點:**中段入艙=記錄+拒收吐回**(`startReject` 釘艙心 REJECT_T 1.4s→北管道彈出+短保護=艙是中段
+> 玩具、儀式只留終場);**賽末點墜井=fallSeal、剛好集滿那筆墜井=不 seal**(每場都以終演/賽末點事故收尾);
+> 窗口過期(對手醒)=取消打續。實作分佈:狀態機+計分=v2-combat(`recordIncident/resolveContain 分流/
+> startReject/updateReject/pressFinisher/updateFinisher`)、佈線=v2.js(`finBusy` input 閘+moveFighter skip、
+> `updateFinisherCam` 終演鏡頭:近拍 dist 360(fov 27 是望遠鏡頭,130/190 都太近——**要等 lerp 穩態再截圖**,
+> 中途值騙過兩次)→拋入拉回框艙 260→結束還原,原值存 `v2s.finCam`)、HUD=v2-hud `drawFinisherUi`
+> (letterbox `v2s.letterK`+「按 X 收容!」提示+白閃;letterK>0.3 時 coach line/winBanner 壓掉)。
+> 常數:`RECORD_TARGET/FINISHER_WINDOW/FINISHER_AI_DELAY/REJECT_T`(v2-state)。
+> ⚠ 測試連鎖:**stun=得分**了——任何造暈的套件都可能推進 roundWins,貼艙擊暈=stun+入艙**雙記錄**;
+> 賽末點(≥3)再造暈會開終演窗口(stunT 被延長到 2.5)。擺位離艙、必要時 pin `__v2.roundWins`。
+> 驗收:tests/finisher.mjs(全機)+ perform/ring/brawl 規格 G 改寫。AI 對局實測:68.6s 一場、最大空窗
+> 27s(DoD ≤30s)、終演自動按+拋入封存跑通。
+
 ## 測試(headless;範式先抄再改)
 
 - **落地的回歸套件在 `tests/`**(repo 內,非 scratchpad):`cd tests && npm i && npm test`(`run-all.mjs`

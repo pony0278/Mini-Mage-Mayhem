@@ -1,7 +1,7 @@
 // 開放邊緣+墜落計分(ring-1;朋友提案、使用者拍板「對等計分+儀式分級」2026-07-29)驗收:
 // ①rim 地形(邊帶=虛空/內圈+四角平台=實心;__lab.rimOn 井視覺在)②走出邊=死亡劇場→對手得分
-// (containLog method='fall'、警戒升階)→ 出生點重生+短無敵 ③自摔歸因(lastHitBy<0 → inc.selfFalls)
-// ④被打下去歸因(lastHitBy=對手 → inc.knockoffs)⑤終局 by 墜落=廢料井封存(matchOver+報告,不開罩)
+// (containLog method='fall'、規格 G 記錄計分)→ 出生點重生+短無敵 ③自摔歸因(lastHitBy<0 → inc.selfFalls)
+// ④被打下去歸因(lastHitBy=對手 → inc.knockoffs)⑤規格 G:第 3 筆墜落=收容指令不 seal;賽末點再墜=廢料井封存
 // ⑥AI 邊緣迴避(站邊上追對面的目標,3s 不自己走下去)⑦道具落井(瓶丟進邊帶=落井 despawn)⑧無 console 錯誤
 // 陷阱:①墜落鏈 0.6s 劇場+1.3s respawn——turbo=8 下一批就跨過,斷言抓「結果狀態」別抓中途
 //       ②墜落者 down 期間 game.enemies 過濾掉=渲染正常 ③AI 迴避測試要把 AI 放邊帶內緣、目標放對面(誘導直線穿越)
@@ -28,7 +28,7 @@ R('rim 地形(矩形+四圓台實心/邊帶與舊角平台=虛空/井視覺在)'
 await page.evaluate(() => { const f = __v2.fighters[0]; f.x = 480; f.y = 100; f.vx = 0; f.vy = -420; f.lastHitBy = -1; f.invuln = 0; });
 await page.waitForFunction('__v2.roundWins[1] === 1', { timeout: 30000 }).then(() => true).catch(() => false);
 const fall1 = await page.evaluate(() => ({ wins: [...__v2.roundWins], log: __v2.containLog.map(c => c.method), stage: __v2.v2s.stage, self: __v2.inc.selfFalls[0] }));
-R('自摔=對手得分(method=fall、警戒升階)', fall1.wins[1] === 1 && fall1.log[0] === 'fall' && fall1.stage === 2, JSON.stringify(fall1));
+R('自摔=對手記錄一筆(method=fall;規格 G 階段對映:1 筆=stage 1)', fall1.wins[1] === 1 && fall1.log[0] === 'fall' && fall1.stage === 1, JSON.stringify(fall1));
 R('自摔歸因(inc.selfFalls)', fall1.self === 1, 'selfFalls=' + fall1.self);
 const back = await page.waitForFunction('__v2.fighters[0].state === "alive" && __v2.fighters[0].y > 400', { timeout: 30000 }).then(() => true).catch(() => false);
 const inv = await page.evaluate(() => +__v2.fighters[0].invuln.toFixed(1));
@@ -40,12 +40,18 @@ await page.waitForFunction('__v2.roundWins[1] === 2', { timeout: 30000 }).then((
 const fall2 = await page.evaluate(() => ({ wins: [...__v2.roundWins], ko: __v2.inc.knockoffs[1] }));
 R('被打下去=擊落歸因(inc.knockoffs)', fall2.wins[1] === 2 && fall2.ko === 1, JSON.stringify(fall2));
 
-// ---------- ⑤ 終局 by 墜落=廢料井封存(不開罩,直接 matchOver+報告) ----------
+// ---------- ⑤ 規格 G:第 3 筆墜落=收容指令(不 seal,比賽繼續);賽末點再墜=廢料井封存 ----------
+// 「剛好集滿那一筆不 seal」=確保每場都以收容終演/賽末點事故收尾(招牌只演一次,但一定演)。
+await page.waitForFunction('__v2.fighters[0].state === "alive"', { timeout: 30000 });
+await page.evaluate(() => { const f = __v2.fighters[0]; f.invuln = 0; f.x = 480; f.y = 100; f.vx = 0; f.vy = -420; f.lastHitBy = 1; });
+await page.waitForFunction('__v2.roundWins[1] === 3', { timeout: 30000 }).then(() => true).catch(() => false);
+const mp = await page.evaluate(() => ({ wins: [...__v2.roundWins], over: __v2.state().matchOver, stage: __v2.v2s.stage, perform: !!__v2.state().perform }));
+R('第 3 筆墜落=收容指令(stage 3、不 seal、比賽繼續)', mp.wins[1] === 3 && !mp.over && mp.stage === 3 && !mp.perform, JSON.stringify(mp));
 await page.waitForFunction('__v2.fighters[0].state === "alive"', { timeout: 30000 });
 await page.evaluate(() => { const f = __v2.fighters[0]; f.invuln = 0; f.x = 480; f.y = 100; f.vx = 0; f.vy = -420; f.lastHitBy = 1; });
 await page.waitForFunction('__v2.state().matchOver', { timeout: 30000 }).then(() => true).catch(() => false);
 const fin = await page.evaluate(() => ({ over: __v2.state().matchOver, report: !!__v2.state().report, wins: [...__v2.roundWins], dome: __lab.domeVisible(), perform: !!__v2.state().perform }));
-R('終局 by 墜落=廢料井封存(matchOver+報告、不開玻璃罩)', fin.over && fin.report && fin.wins[1] === 3 && !fin.dome && !fin.perform, JSON.stringify(fin));
+R('賽末點再墜=廢料井封存(matchOver+報告、不開玻璃罩)', fin.over && fin.report && fin.wins[1] === 4 && !fin.dome && !fin.perform, JSON.stringify(fin));
 
 // ---------- ⑥ AI 邊緣迴避 ----------
 await page.evaluate(() => { __v2.restartMatch(); __v2.v2s.introT = 0; });

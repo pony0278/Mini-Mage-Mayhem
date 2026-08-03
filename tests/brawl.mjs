@@ -1,7 +1,7 @@
 // 爽鬥核心(A 款 brawl-1;docs/game-split.md A-v0 手術)驗收——勝負回歸+戰鬥解鎖+系統解休眠:
 // ①開局系統全醒(桶/補給座/瓶/拉桿;不再需要 ?props=full)+ AI=純戰鬥 + charter 殘留清除
 // ②穩定值歸零=擊暈(無能量閘,連拳直接打暈)③終結技(第三拳)=打飛(PUNCH_LAUNCH_LOB 彈道)
-// ④完美格擋=反暈攻擊者 ⑤搬進艙=resolveContain(roundWins+containLog 記法)⑥endMatch=事故報告 ⑦無 console 錯誤
+// ④完美格擋=反暈攻擊者 ⑤搬進艙=+1 記錄+拒收(規格 G 中段;stun 也記錄)⑥endMatch=事故報告 ⑦無 console 錯誤
 // 陷阱:punch() 在 carryObj/carrying 時靜默 no-op → 判定測試直接呼叫 resolveStrike;
 //       戰鬥測試把角色放艙南(y≈540)防 POD(480,320,r46) 收容污染;完整演出節奏由 perform.mjs 驗。
 import puppeteer from 'puppeteer';
@@ -71,16 +71,18 @@ R('擋下鉤拳=開反擊窗口', counter.opened, JSON.stringify(counter));
 R('停頓內太早按=喪失反擊(逼你別狂按)', counter.earlyLost, JSON.stringify(counter));
 R('窗口內左鍵=反擊反暈攻擊者', counter.counterStunned, JSON.stringify(counter));
 
-// ---------- ⑤ 搬進艙=resolveContain(roundWins+containLog) ----------
+// ---------- ⑤ 搬進艙=resolveContain(規格 G:中段=+1 記錄+拒收吐回,不封存) ----------
+// 前面 ②④ 的擊暈已各記一筆(規格 G:stun=記錄)→ 基準先抓當下,等 containLog 長出「carry」那筆。
+const base = await page.evaluate(() => ({ wins: [...__v2.roundWins], logN: __v2.containLog.length }));
 await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
   a.stunned = false; a.stunT = 0; a.carrying = null; a.carryObj = null;
   o.stunned = true; o.stunT = 9; o.restunT = 0; o.invuln = 0; o.carriedBy = null; o.fumbleT = 0; o._performing = false;
   a.x = 430; a.y = 320; o.x = 435; o.y = 320;
   v.startCarry(a, o);
   a.x = v.POD.x - 10; a.y = v.POD.y; a.facing = 0; });
-await page.waitForFunction('__v2.state().roundWins[1] >= 1', { timeout: 60000 });
-const cont = await page.evaluate(() => { const s = __v2.state(); return { wins: s.roundWins, log: s.containLog, perform: !!s.perform }; });
-R('搬進艙=收容得分(roundWins+containLog 記「carry」;第1分=輕演出不開罩=ring-1 儀式分級)', cont.wins[1] === 1 && cont.log.length === 1 && cont.log[0].m === 'carry' && !cont.perform, JSON.stringify(cont));
+await page.waitForFunction(`__v2.containLog.length > ${base.logN}`, { timeout: 60000 });
+const cont = await page.evaluate(() => { const s = __v2.state(); return { wins: s.roundWins, last: s.containLog.at(-1), reject: !!s.reject, perform: !!s.perform }; });
+R('搬進艙=+1 記錄(containLog 記「carry」)+拒收吐回不封存(規格 G 中段)', cont.wins[1] === base.wins[1] + 1 && cont.last.m === 'carry' && cont.last.w === 1 && cont.reject && !cont.perform, JSON.stringify({ base, cont }));
 
 // ---------- ⑥ endMatch=事故報告(分享引擎復活) ----------
 await page.evaluate(() => __v2.endMatch(1));

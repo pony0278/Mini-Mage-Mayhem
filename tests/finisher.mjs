@@ -51,7 +51,7 @@ await stunFar(); await gwait(0.15);
 const s3 = await page.evaluate(() => { const v = __v2; const st = v.state(); return { wins: st.roundWins, stage: st.stage, over: st.matchOver,
   p: !!st.perform, fin: st.finisher, stunT: +v.fighters[1].stunT.toFixed(1) }; });
 R('集滿 3 筆=收容指令(stage 3/比賽未結束)', s3.wins[0] === 3 && s3.stage === 3 && !s3.over && !s3.p, JSON.stringify(s3));
-R('賽末點擊暈=終演窗口開(prompt/倒地延長≥窗口)', s3.fin && s3.fin.phase === 'prompt' && s3.fin.w === 0 && s3.stunT >= 2.4, JSON.stringify(s3));
+R('賽末點擊暈=終演窗口開(prompt/倒地延長超過素 STUN_T)', s3.fin && s3.fin.phase === 'prompt' && s3.fin.w === 0 && s3.stunT + s3.fin.t >= 2.4, JSON.stringify(s3)); // stunT 在倒數:量到的值+已流逝 t 才是原始延長量(2.5)
 
 // ---------- ⑤ 窗口過期(對手醒)= 終演取消,打續 ----------
 await page.evaluate(() => { __v2.fighters[1].stunT = 0.06; });
