@@ -886,8 +886,10 @@ export function aiMove(f) {
     if (fd.x || fd.y) f.facing = Math.atan2(fd.y, fd.x);
     return fd;
   }
-  if (v2s.aiTier === 'intern' && !v2s.aiCalled && f.state === 'alive' && !f.stunned && !f.carriedBy
+  if (v2s.aiTier === 'intern' && !v2s.aiCalled && f.pid === 1 && f.state === 'alive' && !f.stunned && !f.carriedBy
       && roundWins[1 - f.pid] >= WIN_TARGET - 1 && f.stability <= FLEE_STAB) {   // 快輸(你聽牌+他被打殘)=不戀戰
+      // ⚠ f.pid===1:逃跑/搬救兵整組機械是為 pid1 對手寫的(updateAiCall 硬重置 fighters[1])——
+      // 雙 AI 探針把 pid0 也開 AI 時,pid0 逃跑=away+_hidden 永遠回不來(tempo 探針 200s 卡死實測)。
     v2s.aiCalled = true; f._fleeing = true;
     let best = FLEE_EXITS[0], bd = Infinity;
     for (const e of FLEE_EXITS) { const dd = Math.hypot(e[0] - f.x, e[1] - f.y); if (dd < bd) { bd = dd; best = e; } }

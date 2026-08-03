@@ -1,7 +1,7 @@
 // v2 事故報告生成 (spec E / V0.8;docs/v2-module-boundaries.md §3)。
 // Phase 1「把事故做雜做好笑」的主要擴充點:事故名稱/安全委員會吐槽/稱號都在這裡加。
-// 只讀 v2-state 的計數器(inc),不碰玩法/繪製。
-import { inc, NAMES } from './v2-state.js';
+// 只讀 v2-state 的計數器(inc)與記錄簿(containLog),不碰玩法/繪製。
+import { inc, NAMES, containLog } from './v2-state.js';
 
 export function mostUsedItem() {
   const u = inc.itemUses, max = Math.max(u.wind, u.teleport, u.fire, u.water, u.lightning); // 裝備類道具(投擲瓶改場上物件後退出道具統計)
@@ -22,8 +22,13 @@ export function pickComment() {
 export function generateReport(winner) {
   const ac = inc.accidentContains, accTotal = ac.wind + ac.ice + ac.barrel;
   const dangerKinds = (inc.itemUses.teleport > 0 ? 1 : 0) + (inc.barrelBooms > 0 ? 1 : 0); // 涉案危險級道具種類(概念§8)
+  // 規格 G(flow-1):chaos 吃記錄型別分佈——記錄多=事故素材多(封頂防灌水),打法混用(擊暈/墜落/搬拋…)
+  // 比單一套路更「混亂」。全墜落的無聊場 = 0 加成照樣 D(這正是規格 G 要診斷出來的病)。
+  // 校準:標準混打場(stun+fall+終演 throw)≈ B、全墜落無聊場=D、A/S 要靠反向/環境/自炸那些真笑料堆上去。
+  const recMethods = containLog.map(c => c.method), recVariety = new Set(recMethods).size;
+  const recChaos = Math.min(3, Math.floor(recMethods.length / 2)) + (recVariety >= 2 ? 1 : 0);
   const chaos = inc.carries[0] + inc.carries[1] + accTotal * 2 + inc.reverseContains * 3
-    + inc.throwContains * 2 + inc.itemBackfires + inc.barrelBooms + dangerKinds;
+    + inc.throwContains * 2 + inc.itemBackfires + inc.barrelBooms + dangerKinds + recChaos;
   const level = chaos >= 14 ? 'S+' : chaos >= 10 ? 'S' : chaos >= 7 ? 'A' : chaos >= 5 ? 'B' : chaos >= 3 ? 'C' : 'D';
   let name, summary;
   if (inc.reverseContains >= 2) { name = '反向收容拉鋸事件'; summary = `收容員與受測體多次互換身分，反向收容共 ${inc.reverseContains} 次。`; }
