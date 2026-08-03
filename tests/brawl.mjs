@@ -38,16 +38,18 @@ const stun = await page.evaluate(() => { const v = __v2;
 });
 R('連拳削穩定值歸零=擊暈(無能量閘)', stun.stunned && stun.punches <= 8, JSON.stringify(stun));
 
-// ---------- ③ 對「已暈」的對手出拳=挑飛 launcher(brawl-3 連段收尾;連段中的拳不飛走) ----------
+// ---------- ③ 終結技=唯一挑飛動詞(combo-4:鉤拳打已暈=不飛,kind2 才飛) ----------
 const fling = await page.evaluate(() => { const v = __v2;
   const a = v.fighters[1], o = v.fighters[0];
-  o.stunned = true; o.stunT = 5; o.restunT = 0; o.stability = 0; o.invuln = 0; o.fumbleT = 0; o._lob = null; o.carrying = null; // 已暈的對手
-  a.x = 470; a.y = 540; o.x = 500; o.y = 540; o.vx = o.vy = 0; a.punchCd = 0;
-  a._strikeKind = 0; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a); // 普通鉤拳打已暈者=挑飛
+  const rst = () => { o.stunned = true; o.stunT = 5; o.restunT = 0; o.stability = 0; o.invuln = 0; o.fumbleT = 0; o._lob = null; o._thrownT = -9; o.z = 0; o.carrying = null;
+    a.x = 470; a.y = 540; o.x = 500; o.y = 540; o.vx = o.vy = 0; a.punchCd = 0; a._recoverT = 0; v.game.hitstop = 0; };
+  rst(); a._strikeKind = 0; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a); // 鉤拳打已暈者=不飛
+  const hookLob = o._lob === v.PUNCH_LAUNCH_LOB;
+  rst(); a._strikeKind = 2; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a); // 終結技=挑飛
   const lobV = v.PUNCH_LAUNCH_LOB.range / v.PUNCH_LAUNCH_LOB.T;
-  return { lob: o._lob === v.PUNCH_LAUNCH_LOB, fumble: +o.fumbleT.toFixed(2), speed: Math.round(Math.hypot(o.vx, o.vy)), lobV: Math.round(lobV) };
+  return { hookLob, lob: o._lob === v.PUNCH_LAUNCH_LOB, fumble: +o.fumbleT.toFixed(2), speed: Math.round(Math.hypot(o.vx, o.vy)), lobV: Math.round(lobV) };
 });
-R('對已暈者出拳=挑飛(PUNCH_LAUNCH_LOB;連段收尾/接風壓入口)', fling.lob && fling.fumble > 0 && Math.abs(fling.speed - fling.lobV) <= 5, JSON.stringify(fling));
+R('終結技=唯一挑飛(kind2 飛/鉤拳打已暈不飛=combo-4)', !fling.hookLob && fling.lob && fling.fumble > 0 && Math.abs(fling.speed - fling.lobV) <= 5, JSON.stringify(fling));
 
 // ---------- ④ 反擊拳(brawl-3.1:擋下鉤拳→停頓→左鍵反擊反暈) ----------
 const counter = await page.evaluate(() => { const v = __v2;

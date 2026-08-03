@@ -1,6 +1,6 @@
 // 衝刺攻擊+clip 槽位(feel-1;使用者拍板 2026-07-16:跑+攻擊——中性=連段/跑=衝刺/空中=下壓)驗收:
 // ①短移動出拳=普通連段(門檻分派)②持續跑 ≥ DASH_RUN_T 出拳=衝刺(kind4+不入連段)③命中=削 DASH_STAB+推
-// ④可擋+擋下開反擊窗(融入三角)⑤起手前衝(滑步突進)⑥對已暈者衝刺=挑飛(規則一致)⑦揮空=冷卻+無爆花
+// ④可擋+擋下開反擊窗(融入三角)⑤起手前衝(滑步突進)⑥對已暈者衝刺=不挑飛+推(combo-4 挑飛只留終結技)⑦揮空=冷卻+無爆花
 // ⑧clip 槽位安全(dash_punch/hit_flinch/walk_cycle 缺槽不炸)⑨無 console 錯誤
 // 陷阱:v2.js 每幀重算 _runT(不跑=歸零)→ 測試要在同一個 evaluate 內設 _runT 並呼叫 punch;
 //       fighters[1] 當攻擊者(fighters[0] facing 吃滑鼠);角色放艙南 y≈540 防收容污染。
@@ -66,13 +66,13 @@ const lunged = await page.evaluate(() => { const a = __v2.fighters[1];
   const x = Math.round(a.x); a._strikeAt = __v2.game.time; __v2.resolveStrike(a); return x; }); // 收招(清 _dashT0)
 R('起手期間前衝(滑步突進 ≥60px)', lunged - lungeStart >= 60, `x ${lungeStart}→${lunged}`);
 
-// ---------- ⑥ 對已暈者衝刺=挑飛(規則一致) ----------
+// ---------- ⑥ 對已暈者衝刺=不挑飛,帶推(combo-4:只有終結技 kind2 能挑飛) ----------
 const launch = await page.evaluate(`(() => { ${fresh}
-  o.stunned = true; o.stunT = 5; o.restunT = 0; o.stability = 0;
+  o.stunned = true; o.stunT = 5; o.restunT = 0; o.stability = 0; o.vx = 0; o.vy = 0;
   a._runT = 0.5; v.punch(a);
   a._strikeAt = v.game.time; v.resolveStrike(a);
-  return { lob: o._lob === v.PUNCH_LAUNCH_LOB, fumble: +o.fumbleT.toFixed(2) }; })()`);
-R('對已暈者衝刺=挑飛 launcher(規則一致)', launch.lob && launch.fumble > 0, JSON.stringify(launch));
+  return { lob: o._lob === v.PUNCH_LAUNCH_LOB, pushed: Math.round(Math.hypot(o.vx, o.vy)), stillStunned: o.stunned }; })()`);
+R('對已暈者衝刺=不挑飛+衝撞推(combo-4 挑飛只留終結技)', !launch.lob && launch.pushed > 50 && launch.stillStunned, JSON.stringify(launch));
 
 // ---------- ⑦ 揮空=冷卻+無爆花 ----------
 const whiff = await page.evaluate(`(() => { ${fresh}

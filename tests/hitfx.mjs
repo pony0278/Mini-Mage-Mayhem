@@ -31,7 +31,7 @@ R('鉤拳命中=小橘爆花(無速度線/白閃)', hook.n === 1 && hook.b.col =
 
 // ---------- ② 挑飛=最大檔(集中線) ----------
 const launch = await hit(`o.stunned=true; o.stunT=5; o.restunT=0; o.stability=0; o.carriedBy=null;
-  a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`);
+  a._strikeKind=2; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`); // combo-4:挑飛只剩終結技(kind2),kind0 打已暈=hook 爆花不飛
 R('挑飛=最大檔爆花(size46+速度線+白閃+集中線)', launch.n === 1 && launch.b.size === 46 && launch.b.streaks > 0 && launch.b.flash > 0 && launch.b.focus, JSON.stringify(launch));
 
 // ---------- ③ 打暈那拳=琥珀檔 ----------
@@ -75,7 +75,7 @@ const hstop = (setup) => page.evaluate((code) => { const v = __v2; const a = v.f
 const hsPunch = await hstop(`o.stunned=false; o.restunT=9; o.stability=100;
   a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`);
 const hsLaunch = await hstop(`o.stunned=true; o.stunT=5; o.restunT=0; o.stability=0; o.carriedBy=null;
-  a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`);
+  a._strikeKind=2; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`); // combo-4:kind2 才挑飛
 const hsStun = await hstop(`o.stunned=false; o.restunT=0; o.stability=10;
   a._strikeKind=0; a._strikeDir=Math.atan2(o.y-a.y,o.x-a.x); v.resolveStrike(a);`);
 const hsCounter = await hstop(`o.stunned=false; o.stability=100; o.pushCd=0; o.punchCd=0; o.guardStam=100; a.stability=100; a.restunT=0;

@@ -509,31 +509,32 @@ export function resolveStrike(f) { // impact 影格:執行命中掃描+全部打
     }
     const stunsNow = o.stability <= 0 && !o.stunned && o.restunT <= 0;
     if (stunsNow) stunFighter(o);                                       // 穩定值歸零 → 擊暈(無能量閘)
-    // 挑飛條件(combo-3b,使用者拍板 2026-07-29「combo3 都要擊飛」):①命中前已暈=補拳挑飛(原規則)
-    // ②**三段終結技=必挑飛**(不再限打暈那拳;沒暈=飛出去落地自己爬起來,有暈=挑飛+暈著落地可追)
-    // ——開放邊緣(ring-1)後終結技=穩定的位移動詞:三連打滿就是把人往你瞄的方向送(邊緣壓力/接風壓/瞄艙)。
-    // 前兩段打暈仍原地=停在兩段暈可就地抓;打滿三段=送飛——玩家自選節奏(2026-07-21 拍板保留)。
-    const launches = wasStunned || fin;
+    // 挑飛權收斂(combo-4,使用者拍板 2026-08-03「只有 combo3 可以有擊飛效果;空中補拳=打一下後倒地」):
+    // **只有三段終結技挑飛**(舊「對已暈者任何拳=挑飛」退役——那條讓空中補拳一拳又打上天:
+    // 被挑飛者通常暈著,wasStunned 分支比「空中拍落」先吃到)。空中規則改最優先且涵蓋**被挑飛中**
+    // (inThrowFlight/z——舊檢查只認自己跳的):天上的人只能被拍下來=juggle 唯一收尾,不能無限升空。
+    const airHit = jumping(o) || o._diveT0 > -5 || inThrowFlight(o) || (o.z || 0) > 1;
+    const launches = fin && !airHit;
     // 漫畫打擊爆花(hitfx-1):單發挑檔(挑飛>打暈>終結>鉤拳),開在拳頭接觸點、線往擊退反向甩
     addBurst(cpx, cpy, { ...HIT_BURST[launches ? 'launch' : stunsNow ? 'stun' : dash ? 'dash' : fin ? 'fin' : 'hook'], streakA: a });
-    // brawl-3 打飛三分層(fin 打暈=挑飛 之外維持):①已暈/終結打暈=挑飛 launcher(接風壓吹進艙的入口)
-    // ②前段打暈=原地暈(連段黏臉、不飛走)③還有穩定值=純踉蹌不位移。空中被鉤拳=拍蚊子小翻滾(brawl-2 空中規則)。
-    if (launches) {                                                     // 挑飛(瞄向出拳方向,接追擊/風壓接送/瞄艙)
-      const F = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;            // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
-      o.vx = Math.cos(a) * F; o.vy = Math.sin(a) * F;
-      o._thrownT = game.time; o._lob = PUNCH_LAUNCH_LOB; o.fumbleT = PUNCH_LAUNCH_LOB.T + 0.1;
-      o._jumpT = -9; o._diveT0 = -9;                                    // 空中被再擊=照樣挑飛(彈道覆蓋跳躍)
-      if (o.carrying) dropCarry(o);                                     // 飛行中不可能繼續扛人(扛桶由 v2.js 扛桶 loop 的 fumbleT 條件掉)
-      stopHit('launch');                                                // 挑飛=第二重頓點(addHitstop 取 max,蓋過下方按 stage 給的檔)
-      addText(o.x, o.y - 40, '挑飛！', '#ffd36d');
-    } else if (stunsNow) {                                              // 打暈那拳:原地暈(不飛走,連段接得住;之後補一拳=挑飛 或 抓→丟)
-      addShake(5); addText(o.x, o.y - 40, '打暈！', '#ffe97a');
-    } else if (jumping(o) || o._diveT0 > -5) {                          // 空中挨鉤拳=拍蚊子:小翻滾落地
+    // combo-4 打飛分層:①空中(含被挑飛中)挨任何拳=拍落小翻滾倒地 ②地面三段終結技=挑飛 launcher
+    // (沒暈=飛出去落地自己爬起來,有暈=挑飛+暈著落地可追;接風壓吹進艙的入口)③打暈那拳=原地暈
+    // (連段黏臉)④還有穩定值=純踉蹌不位移。對已暈的地面對手補鉤拳=只有回饋不位移(抓/終結才是後續)。
+    if (airHit) {                                                       // 空中挨拳=拍落:小翻滾摔回地面(juggle 收尾)
       o._jumpT = -9; o._diveT0 = -9;
       const F2 = AIR_HIT_LOB.range / AIR_HIT_LOB.T;
       o.vx = Math.cos(a) * F2; o.vy = Math.sin(a) * F2;
       o._thrownT = game.time; o._lob = AIR_HIT_LOB; o.fumbleT = AIR_HIT_LOB.T + 0.1;
       addText(o.x, o.y - 40, '拍落！', '#ffd36d');
+    } else if (launches) {                                              // 挑飛(瞄向出拳方向,接追擊/風壓接送/瞄艙)
+      const F = PUNCH_LAUNCH_LOB.range / PUNCH_LAUNCH_LOB.T;            // 出手當下現算(?tune=1/控制台改 LOB 即時生效)
+      o.vx = Math.cos(a) * F; o.vy = Math.sin(a) * F;
+      o._thrownT = game.time; o._lob = PUNCH_LAUNCH_LOB; o.fumbleT = PUNCH_LAUNCH_LOB.T + 0.1;
+      if (o.carrying) dropCarry(o);                                     // 飛行中不可能繼續扛人(扛桶由 v2.js 扛桶 loop 的 fumbleT 條件掉)
+      stopHit('launch');                                                // 挑飛=第二重頓點(addHitstop 取 max,蓋過下方按 stage 給的檔)
+      addText(o.x, o.y - 40, '挑飛！', '#ffd36d');
+    } else if (stunsNow) {                                              // 打暈那拳:原地暈(不飛走,連段接得住;之後終結挑飛 或 抓→丟)
+      addShake(5); addText(o.x, o.y - 40, '打暈！', '#ffe97a');
     } else if (dash) {                                                  // 衝刺命中=帶推(唯一有位移的普通命中=衝擊感)
       o.vx += Math.cos(a) * DASH_KNOCK; o.vy += Math.sin(a) * DASH_KNOCK;
       addText(o.x, o.y - 34, '衝撞！', '#ffb14a');

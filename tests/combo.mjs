@@ -2,7 +2,8 @@
 // feel-4 增修 2026-07-21:終結技打暈=連帶挑飛;combo-3b 2026-07-29 使用者拍板:**終結技必挑飛**(滿穩定值也飛、
 // 沒暈=落地自己爬起來);前段打暈仍原地=停兩段可就地抓)驗收:
 // ①三連擊全中=一次暈+終結挑飛 ①b 前段(非終結)打暈=原地暈 ②連段中每一拳都不位移(有穩定值時純踉蹌)
-// ③對已暈者出拳=挑飛 launcher ④風壓打空中目標=乾淨接送(往瞄準方向直送/不墊穩定/換 WIND_CARRY_LOB)
+// ③挑飛權收斂(combo-4,2026-08-03):**只有終結技(kind2)挑飛**;鉤拳/衝刺打已暈=不飛;
+//   空中(含被挑飛中)補任何拳=拍落倒地 ④風壓打空中目標=乾淨接送(往瞄準方向直送/不墊穩定/換 WIND_CARRY_LOB)
 // ⑤風壓打地面目標=維持吹翻滾(墊穩定防站樁,不搶連段接送)⑥全鏈:挑飛→風壓接送→進艙(記 wind)
 // ⑦出拳承諾(feel-2):面向硬鎖+不能跳/舉防——起手+收招=整段揮拳(⑦b _recoverT 蓋章/演完放開)⑧本機起手鎖腳→收招恢復 ⑨無錯
 // 陷阱:resolveStrike 直接呼叫(免輸入管線);角色放艙南 y≈540 防污染;全鏈把 o 挑飛朝 POD、半程補風壓。
@@ -49,14 +50,29 @@ R('終結技=必挑飛(滿穩定值也飛=位移動詞;沒暈=落地自己爬起
 // ---------- ② 連段中的拳(有穩定值)都不位移 ----------
 R('連段中每拳都純踉蹌不位移(前兩拳不觸發翻滾)', combo.midFlung === false);
 
-// ---------- ③ 對已暈者出拳=挑飛 launcher ----------
+// ---------- ③ 挑飛權收斂(combo-4,使用者拍板 2026-08-03「只有 combo3 可以有擊飛效果」) ----------
+// 舊規則「對已暈者任何拳=挑飛」退役——它讓空中補拳一拳又打上天(被挑飛者通常暈著,舊分支先吃到)。
 const launch = await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
-  o.stunned = true; o.stunT = 5; o.restunT = 0; o.stability = 0; o.invuln = 0; o.fumbleT = 0; o._lob = null; o.carrying = null;
-  a.x = 470; a.y = 540; o.x = 500; o.y = 540; o.vx = o.vy = 0; a.punchCd = 0;
-  a._strikeKind = 0; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a);
-  return { lob: o._lob === v.PUNCH_LAUNCH_LOB, fumble: +o.fumbleT.toFixed(2), speed: Math.round(Math.hypot(o.vx, o.vy)) };
+  const rst = () => { o.stunned = true; o.stunT = 5; o.restunT = 0; o.stability = 0; o.invuln = 0; o.fumbleT = 0; o._lob = null; o._thrownT = -9; o.z = 0; o.carrying = null;
+    a.x = 470; a.y = 540; o.x = 500; o.y = 540; o.vx = o.vy = 0; a.punchCd = 0; a._recoverT = 0; v.game.hitstop = 0; };
+  rst(); a._strikeKind = 0; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a);   // 鉤拳打地面已暈者
+  const hook = { lob: o._lob === v.PUNCH_LAUNCH_LOB, thrown: o._thrownT > -5, stillStunned: o.stunned };
+  rst(); a._strikeKind = 2; a._strikeDir = Math.atan2(o.y - a.y, o.x - a.x); v.resolveStrike(a);   // 終結技打地面已暈者
+  const fin = { lob: o._lob === v.PUNCH_LAUNCH_LOB, fumble: +o.fumbleT.toFixed(2) };
+  // 被挑飛中(throw flight)再補拳=拍落小翻滾倒地,不是又一次挑飛(juggle 唯一收尾)
+  o.z = 25; a.x = o.x - 30; a.y = o.y; a.punchCd = 0; a._recoverT = 0; v.game.hitstop = 0;
+  a._strikeKind = 0; a._strikeDir = 0; v.resolveStrike(a);
+  const air = { airLob: o._lob === v.AIR_HIT_LOB, reLaunched: o._lob === v.PUNCH_LAUNCH_LOB };
+  // 空中連終結技也只拍落(挑飛只從地面出發)
+  rst(); a._strikeKind = 2; a._strikeDir = 0; v.resolveStrike(a); o.z = 25; a.x = o.x - 30; a.punchCd = 0; a._recoverT = 0; v.game.hitstop = 0;
+  a._strikeKind = 2; a._strikeDir = 0; v.resolveStrike(a);
+  const airFin = { reLaunched: o._lob === v.PUNCH_LAUNCH_LOB, airLob: o._lob === v.AIR_HIT_LOB };
+  return { hook, fin, air, airFin };
 });
-R('對已暈者出拳=挑飛(PUNCH_LAUNCH_LOB)', launch.lob && launch.fumble > 0 && launch.speed > 20, JSON.stringify(launch)); // feel-6 豎直挑空:range 80→18,F=30px/s(舊斷言 >100 配 range 80;挑飛主體在垂直 apex,水平速度小是特性)
+R('鉤拳打地面已暈者=不挑飛(留給抓/終結)', !launch.hook.lob && !launch.hook.thrown && launch.hook.stillStunned, JSON.stringify(launch.hook));
+R('終結技打地面已暈者=挑飛(唯一擊飛動詞)', launch.fin.lob && launch.fin.fumble > 0, JSON.stringify(launch.fin));
+R('被挑飛中補鉤拳=拍落倒地(不再升空)', launch.air.airLob && !launch.air.reLaunched, JSON.stringify(launch.air));
+R('空中連終結技也只拍落(挑飛只從地面出發)', launch.airFin.airLob && !launch.airFin.reLaunched, JSON.stringify(launch.airFin));
 
 // ---------- ④ 風壓打空中目標=乾淨接送 ----------
 const carry = await page.evaluate(() => { const v = __v2; const a = v.fighters[1], o = v.fighters[0];
@@ -81,7 +97,7 @@ const chain = await page.evaluate(() => new Promise(res => { const v = __v2; con
   v.v2s.perform = null; v.roundWins[0] = 0; v.roundWins[1] = 0; v.containLog.length = 0;
   o.stunned = true; o.stunT = 5; o.restunT = 0; o.invuln = 0; o.fumbleT = 0; o._lob = null; o._thrownT = -9; o.carrying = null; o.stability = 5;
   o.x = 360; o.y = 320; a.x = 300; a.y = 320; a.facing = 0; a.punchCd = 0; a.item = 'wind'; a.itemUses = 3;
-  a._strikeKind = 0; a._strikeDir = 0; v.resolveStrike(a);                              // 挑飛往 +x(朝 POD 480,320)
+  a._strikeKind = 2; a._strikeDir = 0; v.resolveStrike(a);                              // 終結技挑飛往 +x(朝 POD 480,320;combo-4 後只有 kind2 能挑飛)
   setTimeout(() => { a.x = o.x - 120; a.y = o.y; a.facing = Math.atan2(o.y - a.y, o.x - a.x); v.castWind(a); // 半程補風壓接送
     const t0 = v.game.time;
     const iv = setInterval(() => { const s = v.state();
