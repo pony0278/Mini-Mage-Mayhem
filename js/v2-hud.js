@@ -480,7 +480,7 @@ export function drawHud() {
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
   drawRecordBeat();
   drawFinisherUi();
-  hctx.fillText('build: ui-2b', VW - 10, VH - 4);
+  hctx.fillText('build: ui-2c', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====

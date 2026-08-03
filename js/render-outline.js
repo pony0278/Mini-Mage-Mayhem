@@ -60,6 +60,17 @@ function hullMat(hex, cfg) {
 let _low = false;
 export function setOutlineLow(low) { _low = !!low; }      // FX_LOW(手機)整組關
 
+// 除錯 hook(同 __lab/__hud/__shock 慣例):線上出問題時在 console 打 `__outline()` 一行問出全部答案。
+// 回傳:mode=URL 旗實際收到什麼、on=有沒有開、low=是不是被 FX_LOW 關掉、hulls=場上描邊殼數量。
+if (typeof window !== 'undefined') {
+  window.__outline = () => {
+    let hulls = 0;
+    const sc = window.__lab && __lab.labGroup && __lab.labGroup.parent;
+    if (sc) sc.traverse(o => { if (o.userData && o.userData.__hull) hulls++; });
+    return { mode: MARK_MODE, on: RIM_ON, low: _low, hulls, raw: location.search, width: RIM.me.width };
+  };
+}
+
 // 每幀由 render-actors 的 updateActor 尾端呼叫(便宜:已建好就直接 return)。
 // 網格數變了(avatar/裝備非同步就緒)才重掃,同火帽/手套的 async 重掛慣例。
 export function applyRimOutline(e, g) {
