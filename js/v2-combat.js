@@ -8,6 +8,7 @@ import { game, keys, CAM, touchInput } from './state.js';
 import { circleHitsSolid, addShake, addHitstop, addRing, hitSpark, addText, addBurst } from './fx.js';
 import {
   v2s, fighters, LOCAL, dlog, COLORS, NAMES, inc, roundWins, containLog, WIN_TARGET,
+  RECORD_TARGET, FINISHER_WINDOW, FINISHER_AI_DELAY, REJECT_T,
   SPEED, RUN_MULT, PUNCH_MOVE, POD, inPod, resetFighter, applyStage, barrels, bottles, labSwitches,
   STAB_MAX, PUNCH_RANGE, PUNCH_CONE, COMBO_STAB, COMBO_CD, COMBO_WINDOW, STRIKE_DELAY, PUNCH_RECOVER, PUNCH_LAUNCH_LOB, HIT_STOP,
   PUSH_WIN, PUSH_CDT, PUSH_RANGE, PUSH_FORCE, PUSH_STAGGER, AI_PUSH_CHANCE, AI_PUNCH_CHANCE, AI_GRAB_DELAY, AI_BACKOFF_T,
@@ -209,11 +210,45 @@ const stopHit = k => addHitstop(HIT_STOP[k] * (v2s.hitstopMul || 1));
 
 // --- 基礎動詞 (spec F §2): 揮拳(削穩定值→擊暈) + 情境動作鍵(暈眩對手在近處→抓; 搬運中→放下; 否則→揮拳) ---
 export function stunFighter(o) {
+  const fresh = !o.stunned;                  // 規格 G:只在 false→true 轉換記一筆(restun 免疫已天然防連刷)
   o.stunned = true; o.stunT = STUN_T; o.vx *= 0.4; o.vy *= 0.4;
   o._slideVx = 0; o._slideVy = 0; // 任何擊暈都清鎖滑向量(否則兩滑行者對撞後,殘留向量會在醒來瞬間瞬移續滑)
   addText(o.x, o.y - 30, '暈！', '#ffd36d'); addRing(o.x, o.y, 30, '#ffd36d', 0.3, 4);
   stopHit('stun'); addShake(6); game.sfx.push('hurt'); // 擊暈=大事件:更長定格+重音,把「打崩了」讀出來
   if (o.pid === LOCAL) v2s.localFlash = 0.3;
+  if (fresh) {
+    recordIncident(o, 'stun');
+    // 收容終演觸發(規格 G §4.1):攻方已達收容指令(含這一筆剛集滿)→ 開表演窗口,倒地延長到 FINISHER_WINDOW
+    const w = 1 - o.pid;
+    if (roundWins[w] >= RECORD_TARGET && !v2s.finisher && !v2s.perform && !v2s.reject && !v2s.matchOver && o.state === 'alive') {
+      v2s.finisher = { phase: 'prompt', t: 0, w, v: o.pid };
+      o.stunT = Math.max(o.stunT, FINISHER_WINDOW);       // 取 max:燃燒鏈/觸電的長暈不縮短
+      addText(o.x, o.y - 56, '收容窗口！', COLORS[w]);
+    }
+  }
+}
+
+// ===== 規格 G(flow-1):事故記錄計分(docs/v2-spec-G-records-finisher.md §2)=====
+// 規則一句話:對手任何「失能」= 你 +1 記錄。1v1 歸因給對面(含自摔/自炸——歸因交給報告去笑)。
+// 中段不重置場地、不演出(軟重整退役)——只蓋章+飄字,打續;報告句子提前現場化(規格 E)。
+const RECORD_PHRASE = { stun: '擊暈', fall: '墜入廢料井', carry: '塞進回收口', throw: '拋進回收口',
+  reverse: '反向收容', wind: '被吹進回收口', ice: '滑進回收口', barrel: '被炸進回收口' };
+export function recordIncident(victim, method) {
+  if (v2s.perform || v2s.matchOver || v2s.finisher || v2s.reject) return false;
+  const w = 1 - victim.pid;
+  roundWins[w]++; v2s.winnerPid = w;
+  containLog.push({ winner: w, method, stage: v2s.stage });
+  const lead = Math.max(roundWins[0], roundWins[1]);     // 階段對映改記錄數(0-1→普通/2→黃色警戒/滿→全面失控)
+  applyStage(lead >= RECORD_TARGET ? 3 : lead >= 2 ? 2 : 1);
+  addText(victim.x, victim.y - 44, '事故記錄 #' + Math.min(roundWins[w], RECORD_TARGET) + ':' + (RECORD_PHRASE[method] || method), '#ffd36d');
+  v2s.recordFlash = 0.6;
+  if (roundWins[w] === RECORD_TARGET) {                  // 剛集滿:收容指令下達(賽末點;艙發光=v2.js 脈動)
+    v2s.bannerText = '⚠ 收容指令:對 ' + NAMES[victim.pid] + ' 執行收容封存'; v2s.winBannerT = 2.4;
+    addRing(POD.x, POD.y, POD.r * 2.2, COLORS[w], 0.6, 6); game.sfx.push('upgrade');
+    dlog('SEAL ORDER →', NAMES[w]);
+  }
+  dlog('RECORD', RECORD_PHRASE[method] || method, NAMES[victim.pid], '→', NAMES[w], 'score', roundWins[0] + '-' + roundWins[1]);
+  return true;
 }
 // 冰上保齡球(玩家反饋 2026-07):鎖滑者撞上另一名角色 → 兩人一起摔出去跌倒(同「滑行碰撞=跌倒」規則的對稱版)。
 // 被撞者順滑行方向飛(0.75×滑速)、滑撞者反彈(0.4×);雙方擊暈(restun 免疫則不重複暈但照樣被撞飛+踉蹌);
@@ -620,28 +655,45 @@ export function containByEnviron(v, cause) { // 被擊退/打滑失控進艙 →
 }
 // --- 三階段收容 (spec F §2.5): 每次收容 → 記 log + 計分; 前兩次軟重整升級, 第三次最終封存 ---
 export function resolveContain(w, loser, method) {
-  roundWins[w]++; v2s.winnerPid = w;
-  containLog.push({ winner: w, method, stage: v2s.stage });
+  // 規格 G:艙=中段玩具(好笑+得分但不能提前贏)。賽末點(收容指令已下)入艙才是封存;
+  // 中段入艙=+1 記錄 + 「拒收吐回」短演出(檔案不齊!)——儀式只留給終場(MK Fatality 結構)。
   addRing(POD.x, POD.y, POD.r * 1.8, COLORS[w], 0.5, 5); addShake(6);
   dlog('CONTAIN', NAMES[loser.pid], '→', NAMES[w], method, 'score', roundWins[0] + '-' + roundWins[1]);
-  // 儀式分級(ring-1,使用者拍板 2026-07-29,朋友引 MK「終結=最後的儀式」):前兩分=輕演出快節奏
-  // (計分 beat+彈回,不開玻璃罩),**最後一分才播完整收容演出**(startPerform n=3 → finalSeal)。
-  if (roundWins[w] >= WIN_TARGET) startPerform(w, loser);
-  else { addHitstop(0.2); game.sfx.push('thud'); softReintegrate(loser, roundWins[0] + roundWins[1]); }
+  if (roundWins[w] >= RECORD_TARGET || (v2s.finisher && v2s.finisher.w === w)) {   // 封存(終演拋入走這裡)
+    roundWins[w]++; v2s.winnerPid = w;
+    containLog.push({ winner: w, method, stage: v2s.stage });
+    startPerform(w, loser);
+  } else {
+    recordIncident(loser, method);
+    startReject(loser);
+  }
+}
+// 拒收吐回(規格 G §2):中段被弄進艙 → 釘艙心短演出 → 北管道吐出(翻滾+短保護)。不重置場地。
+export function startReject(loser) {
+  loser.x = POD.x; loser.y = POD.y; loser.vx = 0; loser.vy = 0; loser.z = 0;
+  loser._thrownT = -9; loser._lying = false; loser.fumbleT = 0; loser._slideVx = 0; loser._slideVy = 0;
+  loser.stunned = true; loser.stunT = 99; loser.frozen = false; loser.invuln = 99; loser._performing = true;
+  v2s.reject = { t: 0, loser: loser.pid };
+  v2s.bannerText = '檔案不齊,拒收!'; v2s.winBannerT = 1.2;
+  addText(POD.x, POD.y - 48, '拒收!', '#ff9a4a'); addRing(POD.x, POD.y, POD.r * 1.4, '#ff9a4a', 0.4, 5);
+  game.sfx.push('thud');
 }
 // --- 墜落得分(ring-1,朋友提案:邊緣=廢料井,掉下去也算一分;自摔=對手得分=蠢死法) ---
 export function resolveFall(v) {
-  if (v2s.perform || v2s.matchOver) return;               // 演出/終局中不計分(墜落者照常重生)
+  if (v2s.perform || v2s.matchOver || v2s.reject) return; // 演出/終局中不計分(墜落者照常重生)
   const w = 1 - v.pid;
-  roundWins[w]++; v2s.winnerPid = w;
-  containLog.push({ winner: w, method: 'fall', stage: v2s.stage });
   addShake(6); game.sfx.push('thud');
   dlog('FALL', NAMES[v.pid], '→', NAMES[w], 'score', roundWins[0] + '-' + roundWins[1]);
-  if (roundWins[w] >= WIN_TARGET) fallSeal(w);            // 終局=廢料井封存版(人已墜井,不開罩)
-  else {                                                  // 輕演出:橫幅+警戒升級;墜落者走 down→respawn 自然回場(v2.js)
-    const total = roundWins[0] + roundWins[1];
-    applyStage(Math.min(3, total + 1));
-    v2s.bannerText = NAMES[w] + ' 得分！對手墜入廢料井'; v2s.winBannerT = 1.6;
+  // 規格 G:賽末點(已在收容指令下)對手墜井=直接封存(人已在下層);中段=+1 記錄+重生,不重置場地。
+  // 剛好集滿那一筆**不** seal——確保每場都以收容終演收尾(招牌只演一次,但一定演)。
+  if (roundWins[w] >= RECORD_TARGET) {
+    roundWins[w]++; v2s.winnerPid = w;
+    containLog.push({ winner: w, method: 'fall', stage: v2s.stage });
+    if (v2s.finisher) v2s.finisher = null;                // 窗口中對手自己掉下去=直接結案
+    fallSeal(w);
+  } else {
+    recordIncident(v, 'fall');
+    v2s.bannerText = NAMES[w] + ' 記錄一筆！對手墜入廢料井'; v2s.winBannerT = 1.6;
     addHitstop(0.2);
   }
 }
@@ -668,9 +720,73 @@ export function startPerform(w, loser) {
     const a = d > 1 ? Math.atan2(win.y - POD.y, win.x - POD.x) : Math.PI;
     win.x = POD.x + Math.cos(a) * rNeed; win.y = POD.y + Math.sin(a) * rNeed;
   }
+  if (v2s.finisher) { v2s.finisher = null; win.invuln = 0; }   // 終演拋入完成 → 交棒給封存演出(鏡頭回拉由 v2.js finCam 管)
+  v2s.reject = null;
   v2s.perform = { n, total, final, t: 0, T: PERFORM_T[n - 1], loser: loser.pid, winner: w, cls, phase: 'capture', pk: 0, line: '回收目標已捕捉', fired: 0, cube: null };
   game.sfx.push('thud');
   dlog('PERFORM start #' + n, NAMES[loser.pid], final ? '(final)' : '');
+}
+// ===== 規格 G §4:收容終演狀態機(v2.js step 每幀呼叫;與 updatePerform 並列)=====
+// prompt(等按 X)→ run(自動奔向倒地對手)→ carry(自動扛向艙)→ throw(拋入→艙捕捉→封存)。
+// 按下後雙方 input 切斷(v2.js finBusy 閘)+ 雙方 invuln(地板化學/爆桶自然免疫:floorHazards 對 invuln 早退)。
+const FIN_RUN_SPEED = 230, FIN_CARRY_SPEED = 150;
+export function pressFinisher(f) {
+  const F = v2s.finisher; if (!F || F.phase !== 'prompt' || f.pid !== F.w || f.carryObj) return false;
+  const w = fighters[F.w], v = fighters[F.v];
+  F.phase = 'run'; F.t = 0;
+  w.invuln = 99; v.invuln = 99; v.stunT = 99; w.guarding = false; w._recoverT = 0;
+  v2s.finFlash = 0.35; addHitstop(0.3); addShake(5); game.sfx.push('upgrade');
+  addText(w.x, w.y - 44, '收容!', COLORS[F.w]);
+  dlog('FINISHER pressed by', NAMES[F.w]);
+  return true;
+}
+export function updateFinisher(dt) {
+  const F = v2s.finisher; if (!F) return;
+  const w = fighters[F.w], v = fighters[F.v];
+  if (v2s.perform || v2s.matchOver) { v2s.finisher = null; return; }
+  if (F.phase === 'prompt') {
+    F.t += dt;
+    if (!v.stunned || v.state !== 'alive' || w.state !== 'alive') { v2s.finisher = null; return; } // 醒了/掉了=窗口關,打續
+    if (w.ai && F.t >= FINISHER_AI_DELAY) pressFinisher(w);                                        // AI 自動按(可讀性延遲)
+    return;
+  }
+  v.stunT = 99;                                            // 按下後受害者鎖定倒地(不再醒)
+  if (F.phase === 'run') {
+    const dx = v.x - w.x, dy = v.y - w.y, d = Math.hypot(dx, dy) || 1;
+    w.facing = Math.atan2(dy, dx);
+    if (d <= GRAB_RANGE + v.r - 6) {
+      v._burnCh = null; v.z = 0; v._diveT0 = -9; v._jumpT = -9; w.z = 0; w._diveT0 = -9; w._jumpT = -9; // 守 startCarry 的空中/燃燒守衛
+      w.regrabCd = 0;
+      startCarry(w, v);
+      if (!w.carrying) { w.carrying = v; v.carriedBy = w; }  // 保底欽點(守衛全清過,不應走到)
+      v.escape = -999;                                       // 掙脫關閉(規格 §4.2:強制成功)
+      F.phase = 'carry';
+    } else { w.x += dx / d * FIN_RUN_SPEED * dt; w.y += dy / d * FIN_RUN_SPEED * dt; w.vx = 0; w.vy = 0; }
+  } else if (F.phase === 'carry') {
+    const dx = POD.x - w.x, dy = POD.y - w.y, d = Math.hypot(dx, dy) || 1;
+    w.facing = Math.atan2(dy, dx);
+    v.escape = -999;
+    if (!w.carrying) { v2s.finisher = null; w.invuln = 0; v.invuln = 0; return; }  // 防禦性:被外力拆散=放棄終演,打續
+    if (d <= POD.r + w.r + 26) { F.phase = 'throw'; F.t = 0; throwCarried(w); }
+    else { w.x += dx / d * FIN_CARRY_SPEED * dt; w.y += dy / d * FIN_CARRY_SPEED * dt; w.vx = 0; w.vy = 0; }
+  } else if (F.phase === 'throw') {
+    F.t += dt;                                             // 拋出→飛行→艙捕捉(containByEnviron 'throw')→ resolveContain 封存
+    if (F.t > 1.5) containByEnviron(v, 'throw');           // 守底:1.5s 沒被捕捉直接結案(不該發生)
+  }
+}
+export function updateReject(dt) {
+  const R = v2s.reject; if (!R) return;
+  const loser = fighters[R.loser];
+  R.t += dt;
+  loser.x = POD.x; loser.y = POD.y; loser.vx = 0; loser.vy = 0; loser.stunT = 99;   // 釘艙心
+  if (R.t >= REJECT_T) {                                   // 北管道吐回:翻滾出艙+短保護
+    v2s.reject = null;
+    loser._performing = false; loser.stunned = false; loser.stunT = 0; loser.frozen = false;
+    loser.x = POD.x; loser.y = POD.y - POD.r - 34; loser.vx = 0; loser.vy = -300;
+    loser.invuln = 1.4; loser.fumbleT = 0.6; loser.restunT = 0.8;
+    addRing(POD.x, POD.y - POD.r, 30, '#ff9a4a', 0.4, 4); game.sfx.push('dash');
+    dlog('REJECT eject', NAMES[loser.pid]);
+  }
 }
 export function updatePerform(dt) {
   const p = v2s.perform; if (!p) return;

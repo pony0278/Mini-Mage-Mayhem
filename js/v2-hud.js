@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   INTRO_T, INTRO_GO,
-  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, METHOD_ZH,
+  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, METHOD_ZH, roundWins,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -171,6 +171,7 @@ function nearSwitch(f) { // 附近有未啟動的緊急拉桿(教學提示用;�
   return false;
 }
 function drawCoachLine() {
+  if (v2s.letterK > 0.3) return;   // 終演/封存=過場,壓掉教練線(規格 G §4.3)
   const me = fighters[LOCAL], o = fighters[1 - LOCAL];
   let msg = null, col = '#ffd36d';
   // 爽鬥動態教學:依玩家實際行為即時切提示——一路引到「打暈→抓→丟進回收口」;待機時永遠給核心目標。
@@ -185,7 +186,8 @@ function drawCoachLine() {
   else if (!me.item && !me.carryObj && nearPickup(me)) { msg = 'X 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
   else if (!me.carrying && !me.carryObj && nearBottle(me)) { msg = 'E 撿元素瓶 → 砸人（冰凍／著火／電擊／毒地板）'; col = '#9ee6ff'; }
   else if (nearSwitch(me)) { msg = '⚠ 揍拉桿＝四角元素站開始洩漏（高風險高娛樂）'; col = '#ffab5a'; }
-  else { msg = 'C 三連擊 → 打暈對手 → 抓去中央回收口 ×' + WIN_TARGET; col = '#9ee6ff'; }
+  else if (roundWins[0] >= WIN_TARGET) { msg = '⚠ 收容指令!打暈他 → 按 X 收容'; col = '#ffd36d'; }   // 規格 G 賽末點
+  else { msg = 'C 三連擊 → 記錄對手 ' + WIN_TARGET + ' 次事故（打暈／打下場）'; col = '#9ee6ff'; }
   if (!msg) return;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
@@ -359,8 +361,8 @@ function drawIntro() {
     hctx.font = '900 20px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
     hctx.fillText('🧑‍💼 主管：都給我好好工作！', cx, cy - 46); // 老闆開場監督(世界觀留=喜劇土壤;開始後就消失)
     hctx.font = '900 34px system-ui, sans-serif'; hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(6,12,18,.85)';
-    hctx.strokeText('丟進回收口.或打下場外　先拿 ' + WIN_TARGET + ' 分就贏', cx, cy);
-    hctx.fillStyle = '#9affd0'; hctx.fillText('丟進回收口.或打下場外　先拿 ' + WIN_TARGET + ' 分就贏', cx, cy);
+    hctx.strokeText('打暈.打下場＝記錄事故 ×' + WIN_TARGET + '　然後收容封存他', cx, cy);
+    hctx.fillStyle = '#9affd0'; hctx.fillText('打暈.打下場＝記錄事故 ×' + WIN_TARGET + '　然後收容封存他', cx, cy);
     hctx.font = '800 17px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.92)';
     hctx.fillText('打暈 → 抓起 → 丟進去 · 元素瓶／爆桶／冰面 都能幫你收容他', cx, cy + 30);
     hctx.font = '700 13px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.55)';
@@ -410,7 +412,7 @@ export function drawHud() {
   // title
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 · 收容測試　階段 ' + v2s.stage + '：' + STAGE_NAME[v2s.stage - 1] + '　封存 ' + WIN_TARGET + ' 次獲勝', VW / 2, 28);
+  hctx.fillText('魔法事故報告 · 收容測試　階段 ' + v2s.stage + '：' + STAGE_NAME[v2s.stage - 1] + '　記錄 ' + WIN_TARGET + ' 筆 → 收容封存', VW / 2, 28);
   // AI 狀態(練習模式)— 永遠可見,B 切換
   const aiOn = fighters[1 - LOCAL].ai;
   hctx.font = '800 13px system-ui, sans-serif';
@@ -423,7 +425,7 @@ export function drawHud() {
   drawSwitchLabels();
   if (v2s.introT <= INTRO_GO) drawCoachLine(); // 就位期讓位給開場字幕(反擊提示已移除=玩家自己體會)
   // stage / seal banner
-  if (v2s.winBannerT > 0 && v2s.bannerText) {
+  if (v2s.winBannerT > 0 && v2s.bannerText && v2s.letterK < 0.3) {   // 終演中壓橫幅(過場敘事交給鏡頭)
     hctx.textAlign = 'center'; hctx.font = '900 40px system-ui, sans-serif';
     hctx.fillStyle = COLORS[v2s.winnerPid] || '#eafaff'; hctx.fillText(v2s.bannerText, VW / 2, VH / 2 - 30);
   }
@@ -436,5 +438,36 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: ugc-6', VW - 10, VH - 4);
+  drawFinisherUi();
+  hctx.fillText('build: flow-1', VW - 10, VH - 4);
+}
+
+// ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====
+// letterK 由 v2.js step 緩動(終演自動段+最終封存=1);prompt 期只有提示不進 letterbox。
+function drawFinisherUi() {
+  const F = v2s.finisher;
+  if (v2s.letterK > 0.01) {
+    const h = VH * 0.10 * Math.min(1, v2s.letterK);
+    hctx.fillStyle = '#05060a';
+    hctx.fillRect(0, 0, VW, h); hctx.fillRect(0, VH - h, VW, h);
+  }
+  if (F && F.phase === 'prompt') {
+    const pk = 0.72 + 0.28 * Math.sin(game.time * 12);            // 快閃=緊急感
+    hctx.save();
+    hctx.textAlign = 'center';
+    hctx.font = '900 40px system-ui, sans-serif';
+    hctx.globalAlpha = pk;
+    hctx.strokeStyle = 'rgba(0,0,0,.75)'; hctx.lineWidth = 7;
+    hctx.strokeText('按 X 收容!', VW / 2, VH * 0.34);
+    hctx.fillStyle = '#ffd36d'; hctx.fillText('按 X 收容!', VW / 2, VH * 0.34);
+    hctx.globalAlpha = 1;
+    hctx.font = '700 16px system-ui, sans-serif';
+    hctx.fillStyle = '#eafaff';
+    hctx.fillText('收容窗口開啟——錯過他就爬起來了', VW / 2, VH * 0.34 + 26);
+    hctx.restore();
+  }
+  if (v2s.finFlash > 0) {                                          // 按下瞬間白閃
+    hctx.fillStyle = 'rgba(255,255,255,' + Math.min(0.85, v2s.finFlash * 2.2).toFixed(3) + ')';
+    hctx.fillRect(0, 0, VW, VH);
+  }
 }

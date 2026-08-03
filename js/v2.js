@@ -18,10 +18,10 @@ import {
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, BURN_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
-  camRig, CAMB, NAMES, AI_PROFILE,
+  camRig, CAMB, NAMES, AI_PROFILE, RECORD_TARGET, COLORS,
 } from './v2-state.js';
 import { TERRAIN, RIM, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall, resolveFall } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall, resolveFall, updateFinisher, updateReject, pressFinisher } from './v2-combat.js';
 import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
@@ -58,6 +58,9 @@ function restartMatch() {
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0];
   resetInc(); containLog.length = 0; v2s.bannerText = ''; v2s.winBannerT = 0; resetStage();
   v2s.perform = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 回收演出殘留(分類記憶跨回合、不跨場)
+  // 規格 G 殘態:終演/拒收/鏡頭 snap 還原(再戰要從乾淨鏡頭開始)
+  v2s.finisher = null; v2s.reject = null; v2s.recordFlash = 0; v2s.finFlash = 0; v2s.letterK = 0;
+  if (v2s.finCam) { const C = v2s.finCam; CAM.dist = C.dist; CAM.angle = C.angle; CAM.lookY = C.lookY; CAM.azimuth = C.az; game.camTarget = C.target; v2s.finCam = null; }
   v2s.aiCalled = false; v2s.aiCallAt = 0; v2s.aiCallPos = null; applyAiTier('intern'); // tier-1:再戰從實習生重新開始(逃跑戲重新武裝)
   v2s.introT = INTRO_T; camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 再戰也走開場儀式(就位→開始!)
   resetRound();
@@ -93,7 +96,10 @@ function updateCamRig(dt) {
 // --- 輸入(keys-1 滑鼠退役,使用者拍板 2026-07-21:雙端一致的 GetAmped 式鍵位)---
 // C=攻擊(揮拳/拋投/空中下壓/反擊)、X=互動(抓/撿瓶桶裝備/放下)、Z=道具施放、Shift=按住防禦、空白=跳;
 // 方向鍵+WASD 移動(8 向,面向=移動方向)。J/K/E 留作舊鍵位別名。攻擊裝備開火與撿瓶不再搶鍵(Z/X 分工)。
-function attackAction(f) {                                                      // C=攻擊;扛人=拋擲;扛桶/瓶=丟
+// 規格 G:終演進行中(按下之後)=雙方 input 全切,角色由 updateFinisher 自動駕駛
+const finBusy = () => v2s.finisher && v2s.finisher.phase !== 'prompt';
+function attackAction(f) {
+  if (finBusy()) return;                                                      // C=攻擊;扛人=拋擲;扛桶/瓶=丟
   if (f.state !== 'alive') return;
   if (f.carryObj) { throwBarrel(f); return; }
   if (f.carrying) { throwCarried(f); return; }
@@ -102,6 +108,12 @@ function attackAction(f) {                                                      
 // X/E/觸控情境鍵=互動優先:撿/抓/放——持攻擊裝備時也能撿桶/瓶(開火在 Z,不搶鍵)。
 function contextAction(f) {
   if (f.state !== 'alive') return;
+  // 規格 G §4.1:收容窗口中 X=表演鍵(沿用抓的肌肉記憶);扛著物品先放下再按
+  if (v2s.finisher && v2s.finisher.phase === 'prompt' && f.pid === v2s.finisher.w) {
+    if (f.carryObj) dropBarrel(f);
+    pressFinisher(f); return;
+  }
+  if (finBusy()) return;
   if (f.carryObj) { dropBarrel(f); return; }
   if (f.carrying) { dropCarry(f); return; }
   if (!f.carriedBy && !f.stunned && f.fumbleT <= 0 && f.regrabCd <= 0) {
@@ -122,7 +134,7 @@ function pollAction() {
 const itemPrev = [false, false];
 function pollItem() {
   const pressed = [keys.has('z') || keys.has('k'), keys.has('.')]; // Z=道具施放(keys-1 主鍵;K=舊別名)
-  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !itemPrev[i]) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
+  for (let i = 0; i < 2; i++) { if (i !== LOCAL) continue; if (pressed[i] && !itemPrev[i] && !finBusy()) useItem(fighters[i]); itemPrev[i] = pressed[i]; }
 }
 let attackPrev = false; // C=攻擊(keys-1 主鍵,舊左鍵語意)。頓點中也收邊緣——反擊拳的按壓常落在擋下頓點的凍結幀(舊滑鼠是事件監聽天然不漏,鍵盤 poll 要補)
 function pollAttack() {
@@ -141,6 +153,7 @@ function pollGuard() { // brawl-2 鍵位重排(使用者拍板):防禦=Shift(空
 }
 let jumpPrev = false;
 function pollJump() { // 空白=跳(edge);空中再按攻擊 C=下壓拳(attackAction→punch→dive 分派)
+  if (finBusy()) return;
   const pressed = keys.has(' ');
   const f = fighters[LOCAL];
   if (pressed && !jumpPrev) jump(f);
@@ -275,7 +288,9 @@ function step(dt) {
       f.running = !!(mvIn && !f.carrying && !(f.carryObj && f.carryObj.kind !== 'bottle') && !f.stunned && f.fumbleT <= 0);
       f._runT = f.running ? (f._runT || 0) + dt : 0; // 衝刺狀態計時:持續跑 ≥ DASH_RUN_T 出拳=衝刺攻擊(feel-1)
       floorHazards(f, dt); // 踩電水硬直 / 站火海·毒區削穩定值 → 歸零擊暈(移動前讀最新地板)
-      if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
+      const F = v2s.finisher;
+      if (F && F.phase !== 'prompt' && (f.pid === F.w || f.pid === F.v)) { /* 終演自動駕駛(updateFinisher 定位) */ }
+      else if (!f.carriedBy) moveFighter(f, dt); // carried fighter is positioned by the carry loop below
       // 腳步塵土(run-1):跑動貼地時每步(≈stridePx/2=54px)腳下冒一小撮土——把「踩在地上」賣給眼睛(跑=預設,常駐回饋)
       if (f.state === 'alive' && f.running && (f.z || 0) <= 0 && f.fumbleT <= 0) {
         f._dustAcc = (f._dustAcc || 0) + Math.hypot(f.x - (f._dustPx ?? f.x), f.y - (f._dustPy ?? f.y));
@@ -320,6 +335,17 @@ function step(dt) {
         containByEnviron(f, cause); break;
       }
     }
+    updateFinisher(dt); updateReject(dt); // 規格 G:收容終演 / 拒收吐回
+    if (v2s.recordFlash > 0) v2s.recordFlash -= dt;
+    if (v2s.finFlash > 0) v2s.finFlash -= dt;
+    { const lk = (finBusy() || (v2s.perform && v2s.perform.final)) ? 1 : 0;      // letterbox 進度(終演+最終封存)
+      v2s.letterK += (lk - v2s.letterK) * Math.min(1, dt * 5); if (v2s.letterK < 0.005) v2s.letterK = 0; }
+    podPulseT -= dt;                                                              // 收容指令=艙發光脈動
+    if (podPulseT <= 0 && !v2s.perform && !v2s.matchOver && (roundWins[0] >= RECORD_TARGET || roundWins[1] >= RECORD_TARGET)) {
+      podPulseT = 0.9;
+      addRing(POD.x, POD.y, POD.r * 1.5, COLORS[roundWins[0] >= RECORD_TARGET ? 0 : 1], 0.5, 3);
+    }
+    updateFinisherCam(dt);
     updatePerform(dt); // 回收演出推進(phase/LED 字/收尾彈回或封存)
     updateBarrels(dt); updateBottles(dt); updateStations(dt); updatePads(dt); updateGroundItems(dt); // 廢料桶 / 投擲瓶 / 元素站 / 補給座重刷 / 掉落道具 TTL
   }
@@ -374,6 +400,7 @@ function step(dt) {
   if (v2s.lowFlicker) for (const m of marks) m.pulse = false; // 減閃爍:標記全改常亮
   setGroundMarkers(marks);
   if (game.camTarget === camRig) updateCamRig(dt); // flat mode: smoothed, bounded camera follow
+
 }
 
 // 慢動作觀察:對照 punch-studio 與 v2 的動作(studio 有 0.3× 慢放)。?slowmo=0.25 設初值;按 K 循環。
@@ -423,9 +450,13 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, bottles, shatterBottle, roundWins, containLog, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
   punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, attackAction, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB,
   floorHazards, airborne, // 地板化學/空中判定:測試直接餵 dt 呼叫,不用去追跳躍弧線的時間窗(見 tests/jump.mjs ④)
+  pressFinisher, // 規格 G 終演(tests/finisher.mjs:按鍵在 rAF 節流下會漏拍,測試直接按)
   NAMES, AI_PROFILE, applyAiTier, updateAiCall, // AI 階級(tier-1):檔案表+進場排程(測試/控制台)
   state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
+    finisher: v2s.finisher ? { phase: v2s.finisher.phase, w: v2s.finisher.w, t: +v2s.finisher.t.toFixed(2) } : null,   // 規格 G(測試讀)
+    reject: v2s.reject ? { t: +v2s.reject.t.toFixed(2), loser: v2s.reject.loser } : null,
+    letterK: +v2s.letterK.toFixed(2),
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -528,6 +559,38 @@ if (TERRAIN === 'isles') {
   Object.assign(CAM, { azimuth: 0, panX: 0, panZ: -25 }, CAM_FIGHT); // v2 相機定案(使用者 ?tune 拉定;戰鬥視角=CAM_FIGHT、開場高視角=CAM_INTRO,都在 updateCamRig 上方。改 v2 視角改那裡,不是 state.js——state.js 的 CAM 只是單機預設,v2 開機即蓋掉)
 }
 // flat mode uses the smoothed/bounded camRig; isles/grid follow the fighter directly (their framing differs)
+// ===== 規格 G §4.3 終演鏡頭:近拍跟拍搬運者 → 拋入瞬間拉回框艙 → 演出結束 lerp 回原值 =====
+// CAM 是 live 物件(camera-sandbox 慣例),直接 lerp 欄位;原值存 v2s.finCam,結束還原。
+let podPulseT = 0;
+const _podFocus = { x: POD.x, y: POD.y };
+function updateFinisherCam(dt) {
+  const F = v2s.finisher, P = v2s.perform;
+  const active = (F && F.phase !== 'prompt') || (P && P.final && v2s.finCam);
+  if (active) {
+    if (!v2s.finCam) {
+      v2s.finCam = { dist: CAM.dist, angle: CAM.angle, lookY: CAM.lookY, az: CAM.azimuth, target: game.camTarget, t: 0 };
+    }
+    const C = v2s.finCam; C.t += dt;
+    const k = 1 - Math.exp(-dt * 3.2);
+    if (F && (F.phase === 'run' || F.phase === 'carry')) {                 // 近拍:跟搬運者
+      game.camTarget = fighters[F.w];
+      CAM.dist += (360 - CAM.dist) * k; CAM.angle += (20 - CAM.angle) * k; CAM.lookY += (26 - CAM.lookY) * k;   // 推近跟拍(戰鬥 630;fov 27 是窄鏡頭,190 實測=角色佔 75% 畫面太擠,360≈四成高剛好)
+      CAM.azimuth = C.az + Math.sin(C.t * 0.5) * 0.14;                     // 電影感微環繞
+    } else {                                                               // 拋入/封存:拉回框艙
+      game.camTarget = _podFocus;
+      CAM.dist += (260 - CAM.dist) * k; CAM.angle += (C.angle - CAM.angle) * k; CAM.lookY += (C.lookY - CAM.lookY) * k;
+      CAM.azimuth += (C.az - CAM.azimuth) * k;
+    }
+  } else if (v2s.finCam) {                                                 // 還原(演出結束/終演被取消)
+    const C = v2s.finCam, k = 1 - Math.exp(-dt * 2.2);
+    CAM.dist += (C.dist - CAM.dist) * k; CAM.angle += (C.angle - CAM.angle) * k;
+    CAM.lookY += (C.lookY - CAM.lookY) * k; CAM.azimuth += (C.az - CAM.azimuth) * k;
+    if (Math.abs(CAM.dist - C.dist) < 2 && Math.abs(CAM.angle - C.angle) < 0.5) {
+      CAM.dist = C.dist; CAM.angle = C.angle; CAM.lookY = C.lookY; CAM.azimuth = C.az;
+      game.camTarget = C.target; v2s.finCam = null;
+    }
+  }
+}
 game.camTarget = (TERRAIN === 'flat' || TERRAIN === 'rim') ? camRig : fighters[0];
 game.occludeTarget = fighters[LOCAL]; // see-through walls aim at the REAL player, not the (clamped) camera rig
 game.enemies = fighters.slice();

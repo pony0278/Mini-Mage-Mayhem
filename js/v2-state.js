@@ -318,6 +318,13 @@ export const STAGE_BANNER = ['臨時收容成功！樣本逃逸', '高危險樣�
 export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff', ice: '#9fd8ff', barrel: '#ff9a4a', fire: '#ff7a3a', reverse: '#c98cff', fall: '#9aa4af' };
 export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', fire: '燒', reverse: '反向', fall: '墜' };
 export const WIN_TARGET = 3;
+// ===== 規格 G(flow-1):事故記錄計分 & 收容終演 =====
+// 失能(暈/墜落/被弄進艙)=對面 +1 記錄;記錄滿 RECORD_TARGET=收容指令(賽末點);
+// 此後打暈對手=開表演窗口(按 X)→ 全自動 接近→抓→搬→拋→封存(一鏡到底)。
+export const RECORD_TARGET = WIN_TARGET;               // 記錄滿=收容指令(沿用 3;tempo 重量後再調)
+export const FINISHER_WINDOW = 2.5;                    // 賽末點打暈的延長倒地窗(按鍵時間;取 max 不縮短既有長暈)
+export const FINISHER_AI_DELAY = 0.5;                  // AI 達成條件後的按鍵延遲(玩家看得懂發生什麼)
+export const REJECT_T = 1.4;                           // 中段被弄進艙的「拒收」演出時長(→北管道吐回)
 
 // --- 垃圾瓶=戰鬥道具(四型元素瓶:砸人=冰凍/著火/電弧/毒地板;分類玩法凍結在 B 款=4c92837,docs/game-split.md)---
 export const GARBAGE_ELEMS = ['fire', 'ice', 'poison', 'lightning']; // 四型垃圾瓶(毒不換水——毒綠 vs 冰青可辨、水留給重錘)
@@ -346,6 +353,10 @@ export const v2s = {
   stationTimer: STATION_INTERVAL, stationIntervalCur: STATION_INTERVAL, lastStationIdx: -1, // 元素站輪替(隨機不連續)
   stationsArmed: false,                       // 總開關:開局平靜,揍左右任一緊急拉桿(labSwitches)才 arm 四站循環(單向)
   matchOver: false, report: null,            // 對局結束旗標 + 事故報告物件
+  finisher: null,                            // 收容終演狀態機 {phase:'prompt'|'run'|'carry'|'throw', t, w, v}(規格 G §4)
+  reject: null,                              // 拒收吐回 {t, loser}(中段進艙=玩具不提前贏)
+  recordFlash: 0, finFlash: 0, letterK: 0,   // HUD:記錄章閃光 / 終演白閃 / letterbox 進度
+  finCam: null,                              // 終演鏡頭:按下時存的 CAM 原值(結束 lerp 回)
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝
   hitstopMul: 1,                             // 頓點全域倍率(feel-3;?tune=1 打擊感滑桿,HIT_STOP 表 × 此值)
