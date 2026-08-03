@@ -78,6 +78,46 @@ await gwait(0.3);
 const after = await page.evaluate(() => ({ fat: __v2.fighters.map(f => f.fatigue), wins: [...__v2.roundWins], card: !!__v2.v2s.recordCard }));
 R('restartMatch → 疲態歸零(比分清空後下一幀自然歸零)', after.fat[0] === 0 && after.fat[1] === 0 && after.wins[0] === 0 && !after.card, JSON.stringify(after));
 
+// ---------- ⑦ 瀕界層(flow-2c):心跳只給本機玩家 + 首次一次性提示 + 演出中靜音 ----------
+// ⚠ 心跳 push 進 game.sfx,而 v2.js **在同一個 JS turn 內** step×turbo 完就 drain(`sfx.length=0`)
+//   → 外部輪詢永遠看到空陣列(第一版就這樣假 FAIL)。改成**攔截 push 計數**:drain 用 length=0,
+//   陣列本體不換 → patch 活得過 drain。
+const beats = (sec) => page.evaluate(s => new Promise(res => {
+  const sfx = __v2.game.sfx, orig = sfx.push; let n = 0;
+  sfx.push = function (...a) { for (const k of a) if (k === 'heartbeat') n++; return orig.apply(this, a); };
+  const t0 = __v2.game.time;
+  const iv = setInterval(() => { if (__v2.game.time - t0 >= s) { clearInterval(iv); sfx.push = orig; res(n); } }, 10);
+}), sec);
+// 對手瀕界(roundWins[LOCAL]=2)=好事,不該給玩家壓迫感 → 無心跳
+await page.evaluate(() => { const v = __v2; v.restartMatch(); v.v2s.introT = 0; v.fighters[1].ai = false;
+  v.roundWins[0] = 2; v.roundWins[1] = 0;
+  for (const f of v.fighters) { f.x = 200 + f.pid * 60; f.y = 320; f.stunned = false; f.stunT = 0; f.invuln = 0; } });
+await gwait(0.3);
+const foeBrink = await beats(2.5);
+R('對手瀕界不響心跳(心跳=自己的,不是場上音效)', foeBrink === 0, 'beats=' + foeBrink);
+// 本機瀕界(roundWins[對面]=2)=心跳 + 一次性提示
+await page.evaluate(() => { const v = __v2; v.roundWins[0] = 0; v.roundWins[1] = 2; v.v2s.brinkShown = false; v.v2s.bannerText = ''; });
+await gwait(0.3);
+const warn = await page.evaluate(() => ({ shown: __v2.state().brink.shown, banner: __v2.v2s.bannerText, t: +__v2.v2s.winBannerT.toFixed(1) }));
+R('首次瀕界=一次性提示橫幅(把因果講白)', warn.shown && /收容封存/.test(warn.banner) && warn.t > 0, JSON.stringify(warn));
+const myBeats = await beats(3.2);
+R('本機瀕界=低頻心跳(約 1 秒一次)', myBeats >= 2, 'beats=' + myBeats);
+// 一次性:清掉橫幅後不再重播提示(但心跳繼續)
+await page.evaluate(() => { __v2.v2s.bannerText = ''; __v2.v2s.winBannerT = 0; });
+await gwait(1.2);
+const again = await page.evaluate(() => __v2.v2s.bannerText);
+R('提示本場只播一次(不重複洗版)', again === '', 'banner=' + JSON.stringify(again));
+// 演出/終演中靜音(戲在別處)
+await page.evaluate(() => { __v2.v2s.perform = { n: 3, phase: 'capture', t: 0, T: 9, final: true, loser: 1, winner: 0, cls: {}, pk: 0, line: '', fired: 0, cube: null }; });
+const mute = await beats(2.5);
+await page.evaluate(() => { __v2.v2s.perform = null; });
+R('收容演出中心跳靜音(戲在別處)', mute === 0, 'beats=' + mute);
+// restartMatch → 一次性旗歸零(下一場會重播)
+await page.evaluate(() => __v2.restartMatch());
+await gwait(0.2);
+const reset = await page.evaluate(() => __v2.state().brink);
+R('restartMatch → 一次性提示旗重置(下一場重播)', reset.shown === false, JSON.stringify(reset));
+
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
 await B.close();

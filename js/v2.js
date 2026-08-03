@@ -60,6 +60,7 @@ function restartMatch() {
   v2s.perform = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 回收演出殘留(分類記憶跨回合、不跨場)
   // 規格 G 殘態:終演/拒收/鏡頭 snap 還原(再戰要從乾淨鏡頭開始)
   v2s.finisher = null; v2s.reject = null; v2s.recordFlash = 0; v2s.finFlash = 0; v2s.letterK = 0;
+  v2s.recordCard = null; v2s.brinkT = 0; v2s.brinkShown = false;   // flow-2:立案 beat / 瀕界心跳+一次性提示
   if (v2s.finCam) { const C = v2s.finCam; CAM.dist = C.dist; CAM.angle = C.angle; CAM.lookY = C.lookY; CAM.azimuth = C.az; game.camTarget = C.target; v2s.finCam = null; }
   v2s.aiCalled = false; v2s.aiCallAt = 0; v2s.aiCallPos = null; applyAiTier('intern'); // tier-1:再戰從實習生重新開始(逃跑戲重新武裝)
   v2s.introT = INTRO_T; camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 再戰也走開場儀式(就位→開始!)
@@ -349,6 +350,7 @@ function step(dt) {
       }
     }
     updateFinisher(dt); updateReject(dt); // 規格 G:收容終演 / 拒收吐回
+    updateBrink(dt);                      // flow-2c 瀕界:心跳音 + 首次「只差一筆」提示
     if (v2s.recordFlash > 0) v2s.recordFlash -= dt;
     if (v2s.finFlash > 0) v2s.finFlash -= dt;
     { const lk = (finBusy() || (v2s.perform && v2s.perform.final)) ? 1 : 0;      // letterbox 進度(終演+最終封存)
@@ -470,6 +472,9 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
     finisher: v2s.finisher ? { phase: v2s.finisher.phase, w: v2s.finisher.w, t: +v2s.finisher.t.toFixed(2) } : null,   // 規格 G(測試讀)
     reject: v2s.reject ? { t: +v2s.reject.t.toFixed(2), loser: v2s.reject.loser } : null,
     letterK: +v2s.letterK.toFixed(2),
+    fatigue: [fighters[0].fatigue, fighters[1].fatigue],                          // flow-2 疲態檔位(render 讀同一個欄位)
+    brink: { shown: v2s.brinkShown, t: +v2s.brinkT.toFixed(2) },                  // flow-2c 瀕界:一次性提示旗 + 心跳節拍
+    recordCard: v2s.recordCard ? { n: v2s.recordCard.n, w: v2s.recordCard.w, phrase: v2s.recordCard.phrase, t: +v2s.recordCard.t.toFixed(2) } : null,
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
@@ -572,6 +577,22 @@ if (TERRAIN === 'isles') {
   Object.assign(CAM, { azimuth: 0, panX: 0, panZ: -25 }, CAM_FIGHT); // v2 相機定案(使用者 ?tune 拉定;戰鬥視角=CAM_FIGHT、開場高視角=CAM_INTRO,都在 updateCamRig 上方。改 v2 視角改那裡,不是 state.js——state.js 的 CAM 只是單機預設,v2 開機即蓋掉)
 }
 // flat mode uses the smoothed/bounded camRig; isles/grid follow the fighter directly (their framing differs)
+// ===== flow-2c 瀕界層:只差一筆就被下收容指令時,用**聲音**提醒(視覺已飽和:疲態+立案 beat+階段警報)=====
+// 心跳只在「本機玩家自己」瀕界時響=讀成自己的心跳(對手瀕界是好事,不該給你壓迫感);
+// 首次進入瀕界另給一次性橫幅把因果講白(玩家反饋:不知不覺就被記滿了)。演出/終演/終局中靜音——戲在別處。
+function updateBrink(dt) {
+  const me = fighters[LOCAL];
+  const brink = me.state === 'alive' && me.fatigue >= RECORD_TARGET - 1
+    && !v2s.perform && !v2s.reject && !v2s.finisher && !v2s.matchOver && v2s.introT <= 0;
+  if (!brink) { v2s.brinkT = 0; return; }
+  if (!v2s.brinkShown) {                              // 一次性因果說明(本場一次;restartMatch 清)
+    v2s.brinkShown = true;
+    v2s.bannerText = '⚠ 再被記一筆,對方就能對你執行收容封存'; v2s.winBannerT = 2.6;
+    game.sfx.push('hurt');
+  }
+  v2s.brinkT -= dt;
+  if (v2s.brinkT <= 0) { v2s.brinkT = FATIGUE.brink.every; game.sfx.push('heartbeat'); }
+}
 // ===== 規格 G §4.3 終演鏡頭:近拍跟拍搬運者 → 拋入瞬間拉回框艙 → 演出結束 lerp 回原值 =====
 // CAM 是 live 物件(camera-sandbox 慣例),直接 lerp 欄位;原值存 v2s.finCam,結束還原。
 let podPulseT = 0;

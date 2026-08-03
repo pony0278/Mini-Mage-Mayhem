@@ -338,6 +338,9 @@ export const FATIGUE = {
   armDrop: 6,          // 每檔垂肩角度(aL_sx/aR_sx)
   stagger: { at: 1.6, every: 3.4, T: 0.45, knee: 26, wob: 0.09 }, // 膝軟踉蹌:滿檔才有(at)/週期/時長/下沉量/晃動
   sweat: { at: 0.9, every: 0.62, spd: 26, life: 0.5, r: 1.5, color: '#bfe8ff' }, // 汗滴:1 檔起,每 every 秒一滴(滿檔加倍)
+  // 瀕界層(flow-2c):被記到只差一筆時**用聲音**說話——視覺已接近飽和(疲態+beat+階段警報),
+  // 心跳只給「快被記滿的本機玩家」= 讀成自己的心跳,不是場上音效。演出/終局/終演中靜音(戲在別處)。
+  brink: { every: 1.05, pulse: 3.4 },  // 心跳間隔(秒)/ 對應計分格的脈動速率(rad/s,慢=不搶眼)
 };
 
 // --- 垃圾瓶=戰鬥道具(四型元素瓶:砸人=冰凍/著火/電弧/毒地板;分類玩法凍結在 B 款=4c92837,docs/game-split.md)---
@@ -371,6 +374,7 @@ export const v2s = {
   reject: null,                              // 拒收吐回 {t, loser}(中段進艙=玩具不提前贏)
   recordFlash: 0, finFlash: 0, letterK: 0,   // HUD:記錄章閃光 / 終演白閃 / letterbox 進度
   recordCard: null,                          // flow-2 立案 beat:{ t,T,w,n,phrase,x,y }(存證拍照→印章卡飛進計分格)
+  brinkT: 0, brinkShown: false,              // flow-2c 瀕界:心跳節拍計時 / 本場是否已播過「只差一筆」提示(restartMatch 清)
   finCam: null,                              // 終演鏡頭:按下時存的 CAM 原值(結束 lerp 回)
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝

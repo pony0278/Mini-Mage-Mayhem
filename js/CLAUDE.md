@@ -460,9 +460,16 @@
 >   (project 回的是 `{x,y,behind}` 從不回 null,所以 `|| fallback` 那種寫法接不到,只能靠目視抓)。
 > ⚠ **粒子的選配高度軸**:`fx.updateParticles` 對帶 `vh` 的粒子跑 h 積分+重力(其餘維持 render-entities 的
 >   貼地 y=9)。汗滴是目前唯一使用者。
-> ⚠ **測試取樣坑**:汗滴壽命 0.5s < 生成間隔 0.62s → **單點取樣常常數到 0**(第一版就這樣假 FAIL);
->   要開時間窗用 Set 收集出現過的粒子物件。`recordCard` 在 turbo=8 下只活 ~0.13s 實時:造完立刻讀,
->   要截圖就把 `T` 放大 100×(繪製只吃 `t/T`,相位等於凍住)。驗收:tests/fatigue.mjs。
+> ③ **瀕界層(flow-2c,使用者追加)**:被記到只差一筆時**用聲音**說話——視覺已飽和(疲態+beat+階段警報)。
+>   `updateBrink`(v2.js)每幀:低頻心跳 `heartbeat`(FATIGUE.brink.every 1.05s)**只在本機玩家自己瀕界時響**
+>   (=讀成自己的心跳;對手瀕界是好事,不該給你壓迫感)+ 首次進入瀕界一次性橫幅把因果講白
+>   (`v2s.brinkShown`,restartMatch 清)+ 對應計分格的**下一格慢速脈動**(drawPips;`lowFlicker` 照樣關掉)。
+>   演出/拒收/終演/終局/開場中靜音——戲在別處。
+> ⚠ **測試取樣坑(三個,都踩過)**:①汗滴壽命 0.5s < 生成間隔 0.62s → **單點取樣常常數到 0**(假 FAIL);
+>   要開時間窗用 Set 收集出現過的粒子物件。②`recordCard` 在 turbo=8 下只活 ~0.13s 實時:造完立刻讀,
+>   要截圖就把 `T` 放大 100×(繪製只吃 `t/T`,相位等於凍住)。③**`game.sfx` 外部輪詢永遠是空的**——
+>   v2.js 在同一個 JS turn 內 step×turbo 完就 drain(`sfx.length=0`);要數音效就 **patch `sfx.push`**
+>   (drain 用 length=0、陣列本體不換 → patch 活得過 drain)。驗收:tests/fatigue.mjs。
 
 ## 測試(headless;範式先抄再改)
 

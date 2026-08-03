@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   INTRO_T, INTRO_GO,
-  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, METHOD_ZH, roundWins,
+  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, METHOD_ZH, roundWins, FATIGUE,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -239,11 +239,16 @@ const _pipAt = [[], []];                        // flow-2:每幀記下三格的�
 function drawPips(pid, x0, y0, size, gap, dir) { // 三格收容進度:填色=收容方式(hud-1 併入下方卡片)
   const mine = containLog.filter(c => c.winner === pid);
   const C = v2s.recordCard, landing = C && C.w === pid && C.t > C.T * 0.72; // 卡飛到=該格亮一下
+  const brinkI = mine.length === WIN_TARGET - 1 ? mine.length : -1;         // flow-2c:只差一筆 → 下一格慢速脈動
   for (let i = 0; i < WIN_TARGET; i++) {
     const px = dir === 1 ? x0 + i * (size + gap) : x0 - size - i * (size + gap);
     _pipAt[pid][i] = { x: px + size / 2, y: y0 + size / 2 };
     hctx.fillStyle = mine[i] ? (METHOD_COL[mine[i].method] || COLORS[pid]) : 'rgba(255,255,255,.12)';
     hctx.fillRect(px, y0, size, size);
+    if (i === brinkI && !v2s.lowFlicker) {                                  // 慢脈動(不閃爍:光敏無障礙照 lowFlicker 關掉)
+      const q = 0.16 + 0.30 * (0.5 - 0.5 * Math.cos(game.time * FATIGUE.brink.pulse));
+      hctx.fillStyle = 'rgba(255,211,109,' + q.toFixed(3) + ')'; hctx.fillRect(px, y0, size, size);
+    }
     if (landing && i === C.n - 1) {               // 落格白閃(蓋在填色上,隨 beat 尾段淡出)
       const q = 1 - clamp((C.t - C.T * 0.72) / (C.T * 0.28), 0, 1);
       hctx.fillStyle = 'rgba(255,255,255,' + (0.85 * q).toFixed(3) + ')'; hctx.fillRect(px, y0, size, size);
@@ -448,7 +453,7 @@ export function drawHud() {
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
   drawRecordBeat();
   drawFinisherUi();
-  hctx.fillText('build: flow-2', VW - 10, VH - 4);
+  hctx.fillText('build: flow-2c', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====
