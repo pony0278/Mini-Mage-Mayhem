@@ -112,7 +112,7 @@ const CAM_READY = `(() => { const c = __gl.camera(), f = __v2.fighters[0];
   await page.evaluate(stage);
   await new Promise(r => setTimeout(r, 1200));           // 這三段只驗旗標,不需要等鏡頭
   const info = await page.evaluate(() => __outline());
-  R('預設(無旗標)=arrow 模式、不建殼', info.mode === 'arrow' && info.on === false && info.hulls === 0, JSON.stringify(info));
+  R('預設(無旗標)=tri 模式、不建殼(ui-3 後預設改倒三角)', info.mode === 'tri' && info.on === false && info.hulls === 0, JSON.stringify(info));
   R('預設:頭頂浮標仍在(ui-1 沒被 ui-2 弄掉)', await page.evaluate(() => !!(window.__hudmk && window.__hudmk[0])));
   R('預設:無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
   await page.close();

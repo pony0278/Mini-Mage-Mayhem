@@ -32,7 +32,7 @@ const SUITES = [
   ['smokeroom', 'SMOKE ROOM 道具測試間 smoke-1(開房即測/給道具/彈藥無限/假人無敵+解狀態/地板鋪設/快捷鍵)'],
   ['firespray', '噴火帽 flipbook 噴射 burn-2/2b(atlas 載成/帽口噴射弧由近而遠/前飄下落/逐格播放/播完全收)'],
   ['burn',      '燃燒動作鏈 burn-1(item_fire clip/直擊六段鏈 3.8s/挑飛 z/趴姿/焦黑換材質+還原/restun 鐵則/地形火維持 DoT/帽口常燃火)'],
-  ['hudcards',  '下方狀態卡 hud-1(雙卡桌機下方/手機上方/YOU 標/GLB 頭像快照/2D 退路/像素取樣)'],
+  ['hudcards',  '下方狀態卡 hud-1(雙卡桌機下方/手機上方/YOU 標/GLB 頭像快照/2D 退路/像素取樣)+ 頭頂標記 ui-1/ui-3(?mark=arrow 風箏箭頭轉向;預設倒三角只標本機、腳下乾淨、持道具才補瞄準箭頭)'],
   ['outline',   '輪廓線身分標記 ui-2(?mark 三態/只描本機身體/殼材質不變式 depthWrite/maxGrow 夾制/背景是地板仍看得到=離屏回讀/fx=low 關)'],
   ['gauntlet',  '風壓手套 GLB 右手裝備 item-4b(載成/持風壓手套=戴右手/掛 avatar 手骨出拳貼手/無道具=隱藏)'],
   ['windblast', '風壓開火 3D 爆發 item-4e(發動幀生成/播完清除/FX_LOW 分級/純演出不改判定)'],

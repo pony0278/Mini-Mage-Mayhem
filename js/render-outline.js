@@ -23,8 +23,10 @@
 let _teams = ['#6fb7ff', '#ff6b6b'], _local = 0;
 export function setRimTeams(colors, local) { if (colors) _teams = colors; _local = local | 0; }
 
+// 標記模式四態:tri=頭頂倒三角只標本機(**預設**,ui-3 使用者拍板,參考百變恰吉)、
+// arrow=ui-1 的風箏箭頭(雙方都標、指 facing)、outline=本檔的反殼描邊、none=全關。
 const q = new URLSearchParams(location.search).get('mark');
-export const MARK_MODE = q === 'outline' || q === 'none' || q === 'arrow' ? q : 'arrow'; // 預設維持頭頂浮標(ui-1)
+export const MARK_MODE = q === 'outline' || q === 'none' || q === 'arrow' || q === 'tri' ? q : 'tri';
 export const RIM_ON = MARK_MODE === 'outline';
 
 // 旋鈕:width=**世界空間固定線寬**(px)、color=線色(null=用隊伍色)、alpha、maxGrow=薄片夾制。

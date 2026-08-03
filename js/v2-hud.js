@@ -23,44 +23,80 @@ const VW = hud.width, VH = hud.height; // 視圖尺寸(v2.html 的 16:9 畫布);
    ②**顏色/大小=身分**(本機大而實心+白邊、對手小而半透明)——暈眩(黃)/低穩定(橘)把血條變色時
    仍一眼分得出誰是你(舊環的設計目的,這裡保住)。首局(教學)才多一個「你」字,之後靠顏色。 */
 const HEAD_MK = { h: 30, lift: 14, bob: 2.4, bobRate: 3.2, me: 15, foe: 11 }; // 頭頂高/浮空距/呼吸幅度/大小(遠鏡頭 dist 630 下要夠大才讀得到)
+
+/* ui-3(使用者反饋 2026-08-03,附百變恰吉截圖:「在玩家操作的角色上面標註倒三角代表正在操作的人物,
+   我覺得更好,比起包裹人物輪廓」)——**預設標記=頭頂倒三角,而且只給本機**。
+   三件事跟著改,都是照參考做法走:
+   ① **形狀**:純倒三角(尖端朝下指著角色),不再是指向 facing 的風箏箭頭。
+   ② **只標一個**:對手不給標(舊版對手有半透明小箭頭)。1v1 下「只有一個人頭上有標」本身
+      就是最乾淨的身分訊號,不用比大小/透明度;畫面也少一個東西在動。
+   ③ **面向承諾的補償**:facing 被形狀拿掉了,但**持道具時**面向仍決定整發打去哪(按下當刻鎖方向),
+      所以拿著道具才在三角上方補一個小箭頭 = 平時乾淨、要瞄準時才有資訊(同 `?mark=outline` 的取捨)。
+   A/B 都留著:`?mark=arrow`=ui-1 的風箏箭頭(雙方都標)、`?mark=outline`=ui-2 反殼描邊、`?mark=none`=全關。 */
+const TRI = { w: 18, h: 16, lift: 23, bob: 2.4, bobRate: 3.2, aimS: 8, aimGap: 15 };
+
 function drawHeadMarker(f) {
   const isMe = f.pid === LOCAL;
-  // ui-2 `?mark=outline`(A/B):身分交給角色身上的邊緣光(render-outline)→ 浮標整組收掉。
-  // **只留一個例外**:本機玩家手上有道具時仍給小箭頭——出拳/施放有「面向承諾」(按下當刻鎖方向,
-  // 動畫播完才能轉),讀錯面向=整發打歪;沒道具時面向不影響任何判定,那時確實不用標。
+  // 模式閘:tri(預設)=只標本機;outline=身分交給角色身上的描邊,只在持道具時留小瞄準箭頭;none=全關。
   if (MARK_MODE === 'none') return;
   const itemAim = MARK_MODE === 'outline';
   if (itemAim && !(isMe && f.item)) return;
+  const tri = MARK_MODE === 'tri';
+  if (tri && !isMe) return;                                    // ui-3:對手不標(見上)
   const head = project(f.x, f.y, (f.r || 14) * 2.2 + HEAD_MK.h);
   if (head.behind) return;
   // 面向:投影一個「前方點」取螢幕方向(不能直接用 facing 的 sin/cos——45° 鏡頭下螢幕 y 是壓扁的)
   const ah = project(f.x + Math.cos(f.facing) * 40, f.y + Math.sin(f.facing) * 40, (f.r || 14) * 2.2 + HEAD_MK.h);
   let dx = ah.x - head.x, dy = ah.y - head.y;
   const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-  const bob = v2s.lowFlicker ? 0 : Math.sin(game.time * HEAD_MK.bobRate + f.pid * 2.1) * HEAD_MK.bob;
-  const cx = head.x, cy = head.y - HEAD_MK.lift + bob;
-  const S = (isMe ? HEAD_MK.me : HEAD_MK.foe) * (itemAim ? 0.72 : 1); // outline 模式的瞄準箭頭再縮一號
-  const px = -dy, py = dx;                                    // 螢幕空間法向
-  const tip = [cx + dx * S * 1.15, cy + dy * S * 1.15];       // 箭尖(朝面向)
-  const bl = [cx - dx * S * 0.75 + px * S * 0.85, cy - dy * S * 0.75 + py * S * 0.85];
-  const br = [cx - dx * S * 0.75 - px * S * 0.85, cy - dy * S * 0.75 - py * S * 0.85];
-  const tl = [cx - dx * S * 0.25, cy - dy * S * 0.25];        // 尾端內凹=風箏形(比純三角好認方向)
+  const MK = tri ? TRI : HEAD_MK;
+  const bob = v2s.lowFlicker ? 0 : Math.sin(game.time * MK.bobRate + f.pid * 2.1) * MK.bob;
+  const cx = head.x, cy = head.y - MK.lift + bob;
+  const S = tri ? TRI.h : (isMe ? HEAD_MK.me : HEAD_MK.foe) * (itemAim ? 0.72 : 1); // outline 模式的瞄準箭頭再縮一號
+  // 面向風箏箭頭(ui-1 形狀):tri 模式只在持道具時當「瞄準 pip」畫在三角上方
+  const kite = (kx, ky, k) => {
+    const px = -dy, py = dx;                                   // 螢幕空間法向
+    hctx.beginPath();
+    hctx.moveTo(kx + dx * k * 1.15, ky + dy * k * 1.15);       // 箭尖(朝面向)
+    hctx.lineTo(kx - dx * k * 0.75 + px * k * 0.85, ky - dy * k * 0.75 + py * k * 0.85);
+    hctx.lineTo(kx - dx * k * 0.25, ky - dy * k * 0.25);       // 尾端內凹=風箏形(比純三角好認方向)
+    hctx.lineTo(kx - dx * k * 0.75 - px * k * 0.85, ky - dy * k * 0.75 - py * k * 0.85);
+    hctx.closePath();
+  };
   hctx.save();
-  hctx.beginPath();
-  hctx.moveTo(tip[0], tip[1]); hctx.lineTo(bl[0], bl[1]); hctx.lineTo(tl[0], tl[1]); hctx.lineTo(br[0], br[1]); hctx.closePath();
-  hctx.globalAlpha = isMe ? 1 : 0.62;
-  hctx.fillStyle = COLORS[f.pid]; hctx.fill();
-  hctx.strokeStyle = isMe ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.5)'; // 本機=白邊(暗地板上也跳出來)
-  hctx.lineWidth = isMe ? 2.5 : 2; hctx.lineJoin = 'round'; hctx.stroke();
+  if (tri) {
+    // 倒三角:尖端朝下指著角色。深色描邊 + 白邊兩層——地板明暗都有(木地板/暗磚),單一邊色會有一邊糊掉。
+    const w = TRI.w, h = TRI.h;
+    hctx.beginPath();
+    hctx.moveTo(cx - w / 2, cy - h / 2); hctx.lineTo(cx + w / 2, cy - h / 2); hctx.lineTo(cx, cy + h / 2); hctx.closePath();
+    hctx.lineJoin = 'round';
+    hctx.strokeStyle = 'rgba(0,0,0,.55)'; hctx.lineWidth = 6; hctx.stroke();   // 外圈暗邊=亮地板上的對比
+    hctx.fillStyle = COLORS[f.pid]; hctx.fill();
+    hctx.strokeStyle = 'rgba(255,255,255,.95)'; hctx.lineWidth = 2.2; hctx.stroke();
+    if (f.item) {                                              // 持道具=面向決定打去哪 → 補瞄準箭頭
+      hctx.globalAlpha = 0.9;
+      kite(cx, cy - TRI.aimGap, TRI.aimS);
+      hctx.fillStyle = COLORS[f.pid]; hctx.fill();
+      hctx.strokeStyle = 'rgba(0,0,0,.5)'; hctx.lineWidth = 2; hctx.stroke();
+      hctx.globalAlpha = 1;
+    }
+  } else {
+    kite(cx, cy, S);
+    hctx.globalAlpha = isMe ? 1 : 0.62;
+    hctx.fillStyle = COLORS[f.pid]; hctx.fill();
+    hctx.strokeStyle = isMe ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.5)'; // 本機=白邊(暗地板上也跳出來)
+    hctx.lineWidth = isMe ? 2.5 : 2; hctx.lineJoin = 'round'; hctx.stroke();
+  }
   if (typeof window !== 'undefined') {                         // 測試 hook:標記螢幕位置/朝向 + 腳下位置(驗「不在腳下」)
     const foot = project(f.x, f.y, 2);
-    (window.__hudmk || (window.__hudmk = {}))[f.pid] = { x: Math.round(cx), y: Math.round(cy), dx: +dx.toFixed(2), dy: +dy.toFixed(2), s: S, footY: Math.round(foot.y), footX: Math.round(foot.x) };
+    (window.__hudmk || (window.__hudmk = {}))[f.pid] = { x: Math.round(cx), y: Math.round(cy), dx: +dx.toFixed(2), dy: +dy.toFixed(2), s: S, kind: tri ? 'tri' : 'arrow', aim: !!(tri && f.item), footY: Math.round(foot.y), footX: Math.round(foot.x) };
   }
   if (isMe && v2s.tutorial) {                                  // 首局才標字,之後靠顏色/大小
     hctx.globalAlpha = 1; hctx.textAlign = 'center';
     hctx.font = '900 11px system-ui, sans-serif'; hctx.fillStyle = COLORS[f.pid];
     hctx.strokeStyle = 'rgba(0,0,0,.7)'; hctx.lineWidth = 3;
-    hctx.strokeText('你', cx, cy - S - 4); hctx.fillText('你', cx, cy - S - 4);
+    const ty = cy - S - (tri && f.item ? TRI.aimGap + 2 : 4);
+    hctx.strokeText('你', cx, ty); hctx.fillText('你', cx, ty);
   }
   hctx.restore();
 }
@@ -480,7 +516,7 @@ export function drawHud() {
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
   drawRecordBeat();
   drawFinisherUi();
-  hctx.fillText('build: ui-2d', VW - 10, VH - 4);
+  hctx.fillText('build: ui-3', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====
