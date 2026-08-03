@@ -16,6 +16,48 @@ const hud = document.getElementById('hud');
 const hctx = hud.getContext('2d');
 const VW = hud.width, VH = hud.height; // 視圖尺寸(v2.html 的 16:9 畫布);世界座標一律走 project()
 
+/* ui-1(使用者反饋 2026-08-03:「角色底下的圈圈似乎會透視人物,能不能改到頭頂一個箭頭就好」)——
+   **身分+面向合併成一個頭頂浮標**。舊版是腳下橢圓環(+地面朝向箭頭+「你」字):HUD 是 2D 疊層、
+   **沒有深度測試**,所以環一定會壓在角色腿上=看起來「透視」;移到頭頂就沒有東西會被它蓋到。
+   一個箭頭同時扛兩件事:①**指向 facing**(面向=移動方向,也是道具瞄準方向,不能拿掉)
+   ②**顏色/大小=身分**(本機大而實心+白邊、對手小而半透明)——暈眩(黃)/低穩定(橘)把血條變色時
+   仍一眼分得出誰是你(舊環的設計目的,這裡保住)。首局(教學)才多一個「你」字,之後靠顏色。 */
+const HEAD_MK = { h: 30, lift: 14, bob: 2.4, bobRate: 3.2, me: 15, foe: 11 }; // 頭頂高/浮空距/呼吸幅度/大小(遠鏡頭 dist 630 下要夠大才讀得到)
+function drawHeadMarker(f) {
+  const isMe = f.pid === LOCAL;
+  const head = project(f.x, f.y, (f.r || 14) * 2.2 + HEAD_MK.h);
+  if (head.behind) return;
+  // 面向:投影一個「前方點」取螢幕方向(不能直接用 facing 的 sin/cos——45° 鏡頭下螢幕 y 是壓扁的)
+  const ah = project(f.x + Math.cos(f.facing) * 40, f.y + Math.sin(f.facing) * 40, (f.r || 14) * 2.2 + HEAD_MK.h);
+  let dx = ah.x - head.x, dy = ah.y - head.y;
+  const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+  const bob = v2s.lowFlicker ? 0 : Math.sin(game.time * HEAD_MK.bobRate + f.pid * 2.1) * HEAD_MK.bob;
+  const cx = head.x, cy = head.y - HEAD_MK.lift + bob;
+  const S = isMe ? HEAD_MK.me : HEAD_MK.foe;
+  const px = -dy, py = dx;                                    // 螢幕空間法向
+  const tip = [cx + dx * S * 1.15, cy + dy * S * 1.15];       // 箭尖(朝面向)
+  const bl = [cx - dx * S * 0.75 + px * S * 0.85, cy - dy * S * 0.75 + py * S * 0.85];
+  const br = [cx - dx * S * 0.75 - px * S * 0.85, cy - dy * S * 0.75 - py * S * 0.85];
+  const tl = [cx - dx * S * 0.25, cy - dy * S * 0.25];        // 尾端內凹=風箏形(比純三角好認方向)
+  hctx.save();
+  hctx.beginPath();
+  hctx.moveTo(tip[0], tip[1]); hctx.lineTo(bl[0], bl[1]); hctx.lineTo(tl[0], tl[1]); hctx.lineTo(br[0], br[1]); hctx.closePath();
+  hctx.globalAlpha = isMe ? 1 : 0.62;
+  hctx.fillStyle = COLORS[f.pid]; hctx.fill();
+  hctx.strokeStyle = isMe ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.5)'; // 本機=白邊(暗地板上也跳出來)
+  hctx.lineWidth = isMe ? 2.5 : 2; hctx.lineJoin = 'round'; hctx.stroke();
+  if (typeof window !== 'undefined') {                         // 測試 hook:標記螢幕位置/朝向 + 腳下位置(驗「不在腳下」)
+    const foot = project(f.x, f.y, 2);
+    (window.__hudmk || (window.__hudmk = {}))[f.pid] = { x: Math.round(cx), y: Math.round(cy), dx: +dx.toFixed(2), dy: +dy.toFixed(2), s: S, footY: Math.round(foot.y), footX: Math.round(foot.x) };
+  }
+  if (isMe && v2s.tutorial) {                                  // 首局才標字,之後靠顏色/大小
+    hctx.globalAlpha = 1; hctx.textAlign = 'center';
+    hctx.font = '900 11px system-ui, sans-serif'; hctx.fillStyle = COLORS[f.pid];
+    hctx.strokeStyle = 'rgba(0,0,0,.7)'; hctx.lineWidth = 3;
+    hctx.strokeText('你', cx, cy - S - 4); hctx.fillText('你', cx, cy - S - 4);
+  }
+  hctx.restore();
+}
 function drawContainHud() {
   // 實驗艙地面光環 + 穩定值小條 + 暈眩冒星 + 搬運掙脫條/交替指示
   const pulse = v2s.lowFlicker ? 0.5 : 0.6 + 0.4 * Math.sin(game.time * 5); // 減閃爍:艙環常亮
@@ -29,28 +71,7 @@ function drawContainHud() {
   }
   for (const f of fighters) {
     if (f.state !== 'alive') continue;
-    // 身分光環:每個角色腳下永遠畫「自身顏色」的環(本機更亮更粗＋朝向箭頭＋「你」),
-    // 這樣就算暈眩(黃)/低穩定(橘)把血條變色,誰是你也永遠一眼可辨。
-    const gc = project(f.x, f.y, 2), ge = project(f.x + (f.r || 14), f.y, 2);
-    if (!gc.behind) {
-      const gr = Math.max(10, Math.abs(ge.x - gc.x)), isMe = f.pid === LOCAL;
-      hctx.save();
-      hctx.strokeStyle = COLORS[f.pid]; hctx.globalAlpha = isMe ? 0.95 : 0.5; hctx.lineWidth = isMe ? 3 : 2;
-      hctx.beginPath(); hctx.ellipse(gc.x, gc.y, gr, gr * 0.5, 0, 0, Math.PI * 2); hctx.stroke();
-      if (isMe) { // 朝向箭頭(面向=移動方向,畫在地面橢圓上)＋「你」標
-        hctx.globalAlpha = 1;
-        const ax = Math.cos(f.facing), ay = Math.sin(f.facing) * 0.5;         // y 壓扁對齊橢圓地面
-        const al = Math.hypot(ax, ay) || 1, nx = ax / al, ny = ay / al;        // 單位方向
-        const tipX = gc.x + ax * (gr + 15), tipY = gc.y + ay * (gr + 15);      // 箭尖伸出環外
-        hctx.beginPath(); hctx.moveTo(gc.x + ax * gr * 0.5, gc.y + ay * gr * 0.5); hctx.lineTo(tipX - nx * 9, tipY - ny * 9); hctx.lineWidth = 4; hctx.stroke(); // 箭桿
-        const hw = 8, bx = tipX - nx * 13, by = tipY - ny * 13, px = -ny, py = nx; // 箭頭三角
-        hctx.beginPath(); hctx.moveTo(tipX, tipY); hctx.lineTo(bx + px * hw, by + py * hw); hctx.lineTo(bx - px * hw, by - py * hw); hctx.closePath();
-        hctx.fillStyle = COLORS[f.pid]; hctx.fill();
-        hctx.font = '900 12px system-ui, sans-serif'; hctx.textAlign = 'center';
-        hctx.fillText('你', gc.x, gc.y + gr * 0.5 + 13);
-      }
-      hctx.restore();
-    }
+    drawHeadMarker(f);   // ui-1:身分+面向=頭頂浮標(腳下光環退役,見函式註解)
     const s = project(f.x, f.y, (f.r || 14) * 2.2 + 16);
     if (s.behind) continue;
     const bw = 30;
@@ -453,7 +474,7 @@ export function drawHud() {
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
   drawRecordBeat();
   drawFinisherUi();
-  hctx.fillText('build: gaunt-4', VW - 10, VH - 4);
+  hctx.fillText('build: ui-1', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====
