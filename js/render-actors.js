@@ -3,6 +3,7 @@
 // updateActor(走路/三段拳/扛人/暈眩/flinch)、syncActors。人物比例/動作改這裡。
 // 外部請走 render.js 門面。
 import { W, H } from './constants.js';
+import { applyRimOutline } from './render-outline.js';
 import { game, mouse } from './state.js';
 import { ELEMENT_INFO } from './data.js';
 import { dashElement } from './sim.js';
@@ -206,6 +207,7 @@ import { buildBrawler, updateBrawler, BRAWLER_SPEC } from './actor-brawler.js';
     const tintHex = e.hurt > 0 ? 0xffffff : (e.slowTimer > 0 ? 0xd8fbff : null);
     // X 光閃現幀(shock-1):角色整組已換成剪影材質,tint 會把顏色寫回去 → 這幀跳過(updateBrawler 早於此行,旗是本幀的)
     if (!g.userData.xray && !g.userData.charred) for (const t of g.userData.tints) t.mesh.material.color.setHex(tintHex != null ? tintHex : t.base); // charred=燃燒鏈焦黑(burn-1):同 xray,材質已換共用指標,tint 會把顏色寫進 CHAR_MAT=全場一起變色
+    applyRimOutline(e, g);   // ui-2:?mark=outline 時把 fresnel 邊緣光注入角色材質(一次性,之後直接 return)
   }
 
   export function syncActors() {

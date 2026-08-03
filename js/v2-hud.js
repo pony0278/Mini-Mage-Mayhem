@@ -4,7 +4,7 @@
 
 import { clamp } from './utils.js';
 import { game, touchInput } from './state.js';
-import { project, FX_LOW, getPortrait } from './render.js';
+import { project, FX_LOW, getPortrait, MARK_MODE } from './render.js';
 import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
@@ -25,6 +25,12 @@ const VW = hud.width, VH = hud.height; // 視圖尺寸(v2.html 的 16:9 畫布);
 const HEAD_MK = { h: 30, lift: 14, bob: 2.4, bobRate: 3.2, me: 15, foe: 11 }; // 頭頂高/浮空距/呼吸幅度/大小(遠鏡頭 dist 630 下要夠大才讀得到)
 function drawHeadMarker(f) {
   const isMe = f.pid === LOCAL;
+  // ui-2 `?mark=outline`(A/B):身分交給角色身上的邊緣光(render-outline)→ 浮標整組收掉。
+  // **只留一個例外**:本機玩家手上有道具時仍給小箭頭——出拳/施放有「面向承諾」(按下當刻鎖方向,
+  // 動畫播完才能轉),讀錯面向=整發打歪;沒道具時面向不影響任何判定,那時確實不用標。
+  if (MARK_MODE === 'none') return;
+  const itemAim = MARK_MODE === 'outline';
+  if (itemAim && !(isMe && f.item)) return;
   const head = project(f.x, f.y, (f.r || 14) * 2.2 + HEAD_MK.h);
   if (head.behind) return;
   // 面向:投影一個「前方點」取螢幕方向(不能直接用 facing 的 sin/cos——45° 鏡頭下螢幕 y 是壓扁的)
@@ -33,7 +39,7 @@ function drawHeadMarker(f) {
   const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
   const bob = v2s.lowFlicker ? 0 : Math.sin(game.time * HEAD_MK.bobRate + f.pid * 2.1) * HEAD_MK.bob;
   const cx = head.x, cy = head.y - HEAD_MK.lift + bob;
-  const S = isMe ? HEAD_MK.me : HEAD_MK.foe;
+  const S = (isMe ? HEAD_MK.me : HEAD_MK.foe) * (itemAim ? 0.72 : 1); // outline 模式的瞄準箭頭再縮一號
   const px = -dy, py = dx;                                    // 螢幕空間法向
   const tip = [cx + dx * S * 1.15, cy + dy * S * 1.15];       // 箭尖(朝面向)
   const bl = [cx - dx * S * 0.75 + px * S * 0.85, cy - dy * S * 0.75 + py * S * 0.85];

@@ -9,7 +9,7 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
 import { updateDeathTheater, addText, addRing, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, setRimGeometry } from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, setRimGeometry, setRimTeams, setOutlineLow, FX_LOW} from './render.js';
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -625,6 +625,8 @@ function updateFinisherCam(dt) {
     }
   }
 }
+setRimTeams(COLORS, LOCAL);   // ui-2:輪廓線要的隊伍色/本機 pid(render 不 import v2-state,由 glue 注入)
+setOutlineLow(FX_LOW);        // ui-2:手機(FX_LOW)關掉描邊殼(+~20 draw call/角色)
 game.camTarget = (TERRAIN === 'flat' || TERRAIN === 'rim') ? camRig : fighters[0];
 game.occludeTarget = fighters[LOCAL]; // see-through walls aim at the REAL player, not the (clamped) camera rig
 game.enemies = fighters.slice();
