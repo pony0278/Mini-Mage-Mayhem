@@ -18,7 +18,7 @@ import {
   stations, STATION_WARN, ERUPT_PATCH_R, labSwitches, WIND_RANGE, WIND_CONE, FIRE_RANGE, FIRE_CONE, WATER_SLAM_DIST, WATER_R, LIGHTNING_RANGE,
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, BURN_LOB, LAND_SKID, lobZ, JUMP_LOB, DIVE_T, RUN_STICK,
-  camRig, CAMB, NAMES, AI_PROFILE, RECORD_TARGET, COLORS,
+  camRig, CAMB, NAMES, AI_PROFILE, RECORD_TARGET, COLORS, FATIGUE,
 } from './v2-state.js';
 import { TERRAIN, RIM, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall, resolveFall, updateFinisher, updateReject, pressFinisher } from './v2-combat.js';
@@ -202,6 +202,7 @@ function step(dt) {
   if (v2s.introT > INTRO_GO && (keys.size > 0 || (touchInput.enabled && touchInput.active))) v2s.introT = INTRO_GO; // 等不及的玩家按任何鍵=直接「開始!」
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
   if (v2s.localFlash > 0) v2s.localFlash -= dt;
+  if (v2s.recordCard) { v2s.recordCard.t += dt; if (v2s.recordCard.t >= v2s.recordCard.T) v2s.recordCard = null; } // flow-2 立案 beat:掛在 hitstop 閘之前=閃光/快門在頓點中照演(標點感)
   if (v2s.fallReasonT > 0) v2s.fallReasonT -= dt;
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   syncTouchLabels(); // 情境按鈕字(每幀,只在變動時寫 DOM)
@@ -222,6 +223,18 @@ function step(dt) {
       if (f.state === 'down') { f.respawn -= dt; if (f.respawn <= 0) { resetFighter(f); f.invuln = 1.8; } continue; } // 墜落重生短無敵(ring-1;同 softReintegrate 彈回)
       if (f.state === 'away') continue; // 實習生跑掉搬救兵(tier-1):場外待命,updateAiCall 排資深進場
       if (f._performing) { f.x = POD.x; f.y = POD.y; f.vx = 0; f.vy = 0; continue; } // 收容演出:被罩在艙心(掙扎/掃描由 render+HUD 演;stun 倒數也凍結=不會醒)
+      // flow-2 疲態:被記錄數 → 角色身上的持續狀態(render 讀 f.fatigue;0/1/2 檔,滿檔=聽牌)。
+      // 玩家反饋「不知不覺就被記 3 次」=資訊只在畫面邊緣的卡片上;搬到角色身體=對峙時一直看得到。
+      f.fatigue = Math.min(RECORD_TARGET - 1, roundWins[1 - f.pid]);
+      if (f.fatigue >= FATIGUE.sweat.at && f.state === 'alive' && !f.stunned && !f._performing) { // 冒汗:每 every 秒一滴(滿檔加倍),從頭頂落下
+        f._sweatT -= dt;
+        if (f._sweatT <= 0) {
+          f._sweatT = FATIGUE.sweat.every / (1 + (f.fatigue - 1) * 1.0);
+          const S = FATIGUE.sweat, a = Math.random() * Math.PI * 2;
+          game.particles.push({ x: f.x + Math.cos(a) * 5, y: f.y + Math.sin(a) * 5, vx: Math.cos(a) * S.spd, vy: Math.sin(a) * S.spd,
+            h: (f.z || 0) + 62, vh: 40, r: S.r, life: S.life, maxLife: S.life, color: S.color }); // vh→fx.updateParticles 帶重力(小拋物線:從頭甩出再落下)
+        }
+      }
       // cooldown timers
       if (f.punchCd > 0) f.punchCd -= dt;
       if (f.jumpCd > 0) f.jumpCd -= dt;

@@ -235,12 +235,20 @@ function drawItems() {
   }
 }
 // 「持有:」文字列已併入下方卡片(hud-1);補給座球/頭頂小球=空間資訊,留在世界裡。
+const _pipAt = [[], []];                        // flow-2:每幀記下三格的螢幕位置(立案 beat 的印章卡要飛進去)
 function drawPips(pid, x0, y0, size, gap, dir) { // 三格收容進度:填色=收容方式(hud-1 併入下方卡片)
   const mine = containLog.filter(c => c.winner === pid);
+  const C = v2s.recordCard, landing = C && C.w === pid && C.t > C.T * 0.72; // 卡飛到=該格亮一下
   for (let i = 0; i < WIN_TARGET; i++) {
     const px = dir === 1 ? x0 + i * (size + gap) : x0 - size - i * (size + gap);
+    _pipAt[pid][i] = { x: px + size / 2, y: y0 + size / 2 };
     hctx.fillStyle = mine[i] ? (METHOD_COL[mine[i].method] || COLORS[pid]) : 'rgba(255,255,255,.12)';
     hctx.fillRect(px, y0, size, size);
+    if (landing && i === C.n - 1) {               // 落格白閃(蓋在填色上,隨 beat 尾段淡出)
+      const q = 1 - clamp((C.t - C.T * 0.72) / (C.T * 0.28), 0, 1);
+      hctx.fillStyle = 'rgba(255,255,255,' + (0.85 * q).toFixed(3) + ')'; hctx.fillRect(px, y0, size, size);
+      hctx.strokeStyle = '#ffd36d'; hctx.lineWidth = 2.5; hctx.strokeRect(px - 2, y0 - 2, size + 4, size + 4);
+    }
     hctx.strokeStyle = COLORS[pid]; hctx.lineWidth = 1.5; hctx.strokeRect(px + 0.5, y0 + 0.5, size - 1, size - 1);
   }
 }
@@ -438,8 +446,9 @@ export function drawHud() {
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
+  drawRecordBeat();
   drawFinisherUi();
-  hctx.fillText('build: flow-1', VW - 10, VH - 4);
+  hctx.fillText('build: flow-2', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====
@@ -470,4 +479,52 @@ function drawFinisherUi() {
     hctx.fillStyle = 'rgba(255,255,255,' + Math.min(0.85, v2s.finFlash * 2.2).toFixed(3) + ')';
     hctx.fillRect(0, 0, VW, VH);
   }
+}
+
+// ===== flow-2 立案 beat(玩家反饋 2026-08-03「擊暈得分太不起眼,不知不覺就被記 3 次」)=====
+// 主題直譯:這是《魔法事故報告》,每一筆記錄就是實驗室**拍照存證**。
+// ①閃光燈打在受害者身上(0.14s)→ ②「事故記錄 #N」印章卡壓在他身上(蓋章:大→正,微傾)
+// → ③卡飛進記錄者的三格計分格(落格白閃在 drawPips)。全長 ~1s,事件驅動=不佔常駐畫面。
+// 位置:受害者世界座標經 project();專案慣例=鏡頭外/投影失敗就退到畫面中央上方。
+function drawRecordBeat() {
+  const C = v2s.recordCard; if (!C) return;
+  if (v2s.letterK > 0.3) return;                       // 終演鏡頭中不搶戲(同 coach line/banner 的壓制規則)
+  const k = clamp(C.t / C.T, 0, 1);
+  const s = project(C.x, C.y, 34);                     // ⚠ 慣例是 (世界x, 世界y, 高度),不是 (x,高,y)
+  const p = s.behind ? { x: VW / 2, y: VH * 0.3 } : s; // 鏡頭外=退到畫面中央上方(beat 不能整個消失)
+  const dst = _pipAt[C.w][C.n - 1] || { x: VW / 2, y: VH - 40 };
+  // ① 閃光燈:受害者身上一圈白光炸開(短、局部——不做全屏白閃,那是終演按下鍵的語言)
+  if (k < 0.2) {
+    const q = 1 - k / 0.2, r = 26 + (1 - q) * 92;
+    const g = hctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+    g.addColorStop(0, 'rgba(255,255,255,' + (0.75 * q).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    hctx.fillStyle = g; hctx.beginPath(); hctx.arc(p.x, p.y, r, 0, Math.PI * 2); hctx.fill();
+  }
+  // ②③ 印章卡:前 38% 蓋在受害者身上(scale 1.9→1 的壓章),之後加速飛向計分格並縮小
+  const HOLD = 0.38;
+  let cx, cy, sc, rot, al = 1;
+  if (k < HOLD) {
+    const q = k / HOLD;
+    cx = p.x; cy = p.y - 34;
+    sc = 1 + 0.9 * Math.pow(1 - Math.min(1, q * 3.2), 2);            // 壓章:前 1/3 由大砸到正
+    rot = -0.12 + 0.1 * Math.min(1, q * 3.2);
+  } else {
+    const q = (k - HOLD) / (1 - HOLD), e = q * q;                    // ease-in=被吸進格子
+    cx = p.x + (dst.x - p.x) * e; cy = (p.y - 34) + (dst.y - (p.y - 34)) * e;
+    sc = 1 - 0.72 * e; rot = -0.02 - 0.5 * e;
+    al = 1 - Math.max(0, (q - 0.75) / 0.25);
+  }
+  const W = 132, H = 40;
+  hctx.save();
+  hctx.globalAlpha = clamp(al, 0, 1);
+  hctx.translate(cx, cy); hctx.rotate(rot); hctx.scale(sc, sc);
+  hctx.fillStyle = 'rgba(12,16,24,.92)'; hctx.fillRect(-W / 2, -H / 2, W, H);
+  hctx.strokeStyle = '#ffd36d'; hctx.lineWidth = 2.5; hctx.strokeRect(-W / 2 + 1, -H / 2 + 1, W - 2, H - 2);
+  hctx.textAlign = 'center';
+  hctx.font = '900 15px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
+  hctx.fillText('事故記錄 #' + C.n, 0, -2);
+  hctx.font = '800 12px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
+  hctx.fillText(C.phrase, 0, 14);
+  hctx.restore();
 }

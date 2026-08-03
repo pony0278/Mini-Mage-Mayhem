@@ -59,6 +59,7 @@ export function updateParticles(dt) {
     p.y += p.vy * dt;
     p.vx *= Math.pow(0.05, dt);
     p.vy *= Math.pow(0.05, dt);
+    if (p.vh !== undefined) { p.h += p.vh * dt; p.vh -= 520 * dt; if (p.h < 2) { p.h = 2; p.vh = 0; } } // 選配的高度軸(flow-2 汗滴:從頭頂拋出後落地);沒帶 vh 的粒子維持貼地繪製
   }
   game.particles = game.particles.filter(p => p.life > 0);
 }

@@ -455,7 +455,7 @@ import { scene, sphereGeo, boxGeo, circleGeo, coneGeo, tetraGeo, torusGeo, octaG
       // non-additive so solid bits (rock/dust) read as their real colour instead of blowing out to white when they pile up
       const m = new THREE.Mesh(boxGeo, tmpMat(colorHex(pa.color), 0.92 * op, false));
       const s = Math.max(1.5, pa.r * 1.7);
-      m.position.set(pa.x, 9, pa.y); m.scale.set(s, s, s);
+      m.position.set(pa.x, pa.h ?? 9, pa.y); m.scale.set(s, s, s);   // pa.h=選配高度(flow-2 汗滴從頭頂落);其餘粒子維持貼地 9
       zoneGroup.add(m);
     }
   }

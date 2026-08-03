@@ -52,6 +52,7 @@ function noise({ dur = 0.2, gain = 0.5, type = 'lowpass', freq = 1200, q = 1, sw
 
 // --- event → sound map (punchy, retro, procedural) ---
 const SFX = {
+  shutter:   () => { noise({ dur: 0.035, gain: 0.30, type: 'bandpass', freq: 3200, sweepTo: 1200, q: 1.6 }); noise({ dur: 0.05, gain: 0.22, type: 'bandpass', freq: 1500, sweepTo: 700, q: 1.2, at: 0.045 }); tone({ freq: 2400, f1: 1800, type: 'square', dur: 0.02, gain: 0.10 }); }, // flow-2 立案 beat:相機快門「喀嚓」(前簾+後簾兩下)
   shoot:     () => tone({ freq: 760, f1: 360, type: 'triangle', dur: 0.08, gain: 0.30 }),
   melee:     () => { tone({ freq: 190, f1: 90, type: 'square', dur: 0.07, gain: 0.28 }); noise({ dur: 0.08, gain: 0.20, freq: 1900, sweepTo: 400 }); },
   hit:       () => tone({ freq: 1250, f1: 1550, type: 'square', dur: 0.025, gain: 0.13 }),

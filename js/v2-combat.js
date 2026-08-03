@@ -240,8 +240,12 @@ export function recordIncident(victim, method) {
   containLog.push({ winner: w, method, stage: v2s.stage });
   const lead = Math.max(roundWins[0], roundWins[1]);     // 階段對映改記錄數(0-1→普通/2→黃色警戒/滿→全面失控)
   applyStage(lead >= RECORD_TARGET ? 3 : lead >= 2 ? 2 : 1);
-  addText(victim.x, victim.y - 44, '事故記錄 #' + Math.min(roundWins[w], RECORD_TARGET) + ':' + (RECORD_PHRASE[method] || method), '#ffd36d');
+  // flow-2 立案 beat(玩家反饋 2026-08-03「擊暈得分太不起眼」):存證拍照——閃光燈打在受害者身上 +
+  // 快門聲 + 印章卡從他身上彈出、飛進自己的計分格。飄字保留當備援(HUD 被壓時仍讀得到)。
+  v2s.recordCard = { t: 0, T: 1.05, w, n: Math.min(roundWins[w], RECORD_TARGET), phrase: RECORD_PHRASE[method] || method, x: victim.x, y: victim.y };
   v2s.recordFlash = 0.6;
+  game.sfx.push('shutter'); addHitstop(0.1);           // 短頓點=「這一下有被記下來」的體感標點(輕於擊暈 0.26)
+  addText(victim.x, victim.y - 44, '事故記錄 #' + Math.min(roundWins[w], RECORD_TARGET) + ':' + (RECORD_PHRASE[method] || method), '#ffd36d');
   if (roundWins[w] === RECORD_TARGET) {                  // 剛集滿:收容指令下達(賽末點;艙發光=v2.js 脈動)
     v2s.bannerText = '⚠ 收容指令:對 ' + NAMES[victim.pid] + ' 執行收容封存'; v2s.winBannerT = 2.4;
     addRing(POD.x, POD.y, POD.r * 2.2, COLORS[w], 0.6, 6); game.sfx.push('upgrade');

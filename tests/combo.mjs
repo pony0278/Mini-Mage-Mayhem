@@ -127,7 +127,9 @@ R('收招承諾:impact 後仍鎖(不能跳/舉防)到 clip 播完,演完即放�
 // ---------- ⑧ 起手鎖腳(本機玩家按住方向鍵,x 不動;收招後恢復移動) ----------
 await page.keyboard.down('d');
 await page.evaluate(() => { const v = __v2; const f = v.fighters[0];
-  v.v2s.perform = null; f._performing = false; f._hidden = false; f.invuln = 0; // 清掉案例⑥殘留的收容演出(否則 f 被釘在艙心 x=480,鎖腳斷言讀錯人)
+  v.v2s.perform = null; v.v2s.reject = null; f._performing = false; f._hidden = false; f.invuln = 0; f.stunT = 0; // 清掉案例⑥殘留的收容演出/拒收吐回
+  // ⚠ 規格 G:中段入艙=**拒收**(updateReject 每幀把敗方釘在艙心 x=480)——只清 perform 不夠,
+  //   症狀就是鎖腳斷言讀到 x=480 兩次(以為沒動,其實是被釘住)。
   v.game.hitstop = 0; // 清累積頓幀:feel-3 加長後,rAF 節流下 0.1s hitstop ≈ 數秒實時的 sim 凍結,會吃光移動等待窗(陷阱 #10)
   v.fighters[1].x = 700; v.fighters[1].y = 200; // 把對手挪遠:⑦ 留他在 (300,540),收招那記 resolveStrike 會打中他=又生一段 hitstop 凍結
   f.stunned = false; f.fumbleT = 0; f.punchCd = 0; f.carrying = null; f.carryObj = null; f._dashT0 = -9; f._diveT0 = -9; f._jumpT = -9; f.z = 0; f.guarding = false; f._runT = 0; f.vx = 0; f.vy = 0;

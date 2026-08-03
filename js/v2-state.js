@@ -326,6 +326,20 @@ export const FINISHER_WINDOW = 2.5;                    // 賽末點打暈的延�
 export const FINISHER_AI_DELAY = 0.5;                  // AI 達成條件後的按鍵延遲(玩家看得懂發生什麼)
 export const REJECT_T = 1.4;                           // 中段被弄進艙的「拒收」演出時長(→北管道吐回)
 
+// ===== 規格 G / flow-2:疲態(玩家反饋 2026-08-03「擊暈得分太不起眼,不知不覺就被記 3 次了」)=====
+// 資訊搬到玩家真的在看的地方=角色身上。**綁被記錄數不綁穩定值**——穩定值每次回滿,記錄才是跨回合的真危險。
+// 純視覺不動任何數值(規格 G 的節奏剛量平)。三檔:0 筆=正常 / 1 筆=喘+微塌 / 2 筆(聽牌)=駝背+踉蹌+冒汗。
+export const FATIGUE = {
+  ease: 2.2,           // 檔位平滑速率(記錄瞬間不瞬跳,約半秒進入疲態=跟立案 beat 接得上)
+  breathRate: 0.55,    // 每檔呼吸加速比例(喘:0.55=滿檔 ×2.1 快)
+  breathAmp: 0.35,     // 每檔呼吸幅度加成(胸口起伏更明顯)
+  slump: 7.5,          // 每檔駝背角度(spine_x;暈眩的 slump 是 18=疲態明顯輕一階,兩者讀得出差別)
+  headDrop: 4.5,       // 每檔低頭角度
+  armDrop: 6,          // 每檔垂肩角度(aL_sx/aR_sx)
+  stagger: { at: 1.6, every: 3.4, T: 0.45, knee: 26, wob: 0.09 }, // 膝軟踉蹌:滿檔才有(at)/週期/時長/下沉量/晃動
+  sweat: { at: 0.9, every: 0.62, spd: 26, life: 0.5, r: 1.5, color: '#bfe8ff' }, // 汗滴:1 檔起,每 every 秒一滴(滿檔加倍)
+};
+
 // --- 垃圾瓶=戰鬥道具(四型元素瓶:砸人=冰凍/著火/電弧/毒地板;分類玩法凍結在 B 款=4c92837,docs/game-split.md)---
 export const GARBAGE_ELEMS = ['fire', 'ice', 'poison', 'lightning']; // 四型垃圾瓶(毒不換水——毒綠 vs 冰青可辨、水留給重錘)
 export const GARBAGE_NAME = { fire: '火焰廢料', ice: '冰霜廢料', poison: '黏液污染物', lightning: '帶電零件' };
@@ -356,6 +370,7 @@ export const v2s = {
   finisher: null,                            // 收容終演狀態機 {phase:'prompt'|'run'|'carry'|'throw', t, w, v}(規格 G §4)
   reject: null,                              // 拒收吐回 {t, loser}(中段進艙=玩具不提前贏)
   recordFlash: 0, finFlash: 0, letterK: 0,   // HUD:記錄章閃光 / 終演白閃 / letterbox 進度
+  recordCard: null,                          // flow-2 立案 beat:{ t,T,w,n,phrase,x,y }(存證拍照→印章卡飛進計分格)
   finCam: null,                              // 終演鏡頭:按下時存的 CAM 原值(結束 lerp 回)
   winnerPid: -1, winBannerT: 0, bannerText: '', // 階段/封存橫幅
   localFlash: 0,                             // 本機被打的紅屏脈衝
@@ -416,6 +431,8 @@ export function resetFighter(f) {
   f._counterFrom = null; f._counterAt = -9;              // 反擊拳:擋下後記攻擊者 + 反擊窗口開啟時刻(game.time+COUNTER_DELAY)
   f.guarding = false; f.guardStam = GUARD_STAM_MAX; f.guardLock = 0; f.guardRegenT = 0; // 按住防禦架式:是否舉防/耐力/破防鎖定/回充延遲計時
   f._performing = false; f._hidden = false;             // 收容演出:被罩在艙心(v2.js 迴圈凍結) / 壓縮後隱藏(render 不畫)
+  f.fatigue = 0; f._sweatT = 0;                         // flow-2 疲態:被記錄數(0~2,v2.js step 每幀寫;render 讀)+ 汗滴節拍
+  // ⚠ 跨回合不重置 fatigue 是刻意的——它就是「累積的危險」;restartMatch 清 roundWins 後下一幀自然歸零。
   if (f._lastItem === undefined) f._lastItem = null;     // 本場拿過的最後一種道具(演出分類字用;跨回合保留,restartMatch 清)
   f.item = null; f.itemUses = 0;                        // 道具型別 + 剩餘次數
   f.carryObj = null;                                    // 扛著的物件(廢料桶;與 carrying=扛人 互斥)

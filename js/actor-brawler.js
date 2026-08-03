@@ -74,6 +74,10 @@ export const ANIM = {
     lL_hy: 56, lL_hz: -30, lL_kx: 81, lL_ax: 60, lL_ty: -22, lL_scale: 1.09, lL_stretch: 1.09,
     lR_hx: 27, lR_hy: -67, lR_hz: 9, lR_kx: -11, lR_ax: 32,
   },
+  // flow-2 疲態(玩家反饋「不知不覺就被記 3 次」):數值全在 v2-state 的 FATIGUE 表,這裡只留 render 端讀不到 v2 常數時的退路。
+  // 讀 `e.fatigue`(0~2,sim 每幀寫)→ 呼吸變喘 + 駝背垂肩 + 滿檔週期性膝軟踉蹌。純疊加在既有站姿上。
+  fatigue: { ease: 2.2, breathRate: 0.55, breathAmp: 0.35, slump: 7.5, headDrop: 4.5, armDrop: 6,
+             stagger: { at: 1.6, every: 3.4, T: 0.45, knee: 26, wob: 0.09 } },
   flinch:  { window: 0.35, tip: 0.55, squashXZ: 0.15, squashY: 0.2, clipMul: 0.4, clipRate: 0.625 }, // clipMul=hit_flinch clip 播放時 overlay 降權(clip 已做軀幹後仰,免雙重受擊);
   // clipRate=hit_flinch 播放速率(feel-3 受擊演長:0.625=放慢 1.6×,0.23s clip 讀 0.37s;window 同步 0.22→0.35 配合 sim 側 flinch 時長 ×1.6)
 };
@@ -533,16 +537,36 @@ export function updateBrawler(e, g) {
       pose.root_py = Math.abs(Math.sin(u.ph)) * A.walk.bob * rbob * u.amp / BRAWLER_SPEC.PX;
       pose.spine_x += A.run.lean * u.runK; pose.head_x -= A.run.lean * 0.4 * u.runK;   // 前傾衝刺感(頭回抬看前方)
       pose.aL_ex += A.run.elbow * u.runK; pose.aR_ex += A.run.elbow * u.runK;          // 屈肘泵臂:肩擺(armMul)+肘彎=跑步臂,直臂大甩=走路感
+      // flow-2 疲態(被記錄數 0~2 由 sim 寫進 e.fatigue):喘得更快更大 + 駝背垂肩 + 滿檔膝軟踉蹌。
+      // 只掛在「走路/待機」這條分支=玩家在對峙時讀得到;舉防/扛人/暈眩各自的姿勢語言不被污染。
+      const F = A.fatigue;
+      u.fatK = (u.fatK || 0) + ((e.fatigue || 0) - (u.fatK || 0)) * (1 - Math.exp(-F.ease * dt));
+      if (u.fatK < 0.01) u.fatK = 0;
       // 待機呼吸:站著不走(rest 大)時膝蓋微彎↔伸直的慢正弦(auto 踩地→身體隨之起伏);走路(amp 大)時淡出。
       const rest = 1 - u.amp;
       if (rest > 0.01 && !e.stunned) {
-        const br = 0.5 - 0.5 * Math.cos(now * A.breath.rate + (e.pid || 0) * 2.1);   // 0..1 單向(直腿/直臂站姿也安全,不反折);兩名 fighter 相位錯開
-        pose.squat += br * A.breath.knee * rest;                                     // 腿:直→彎→直(squat 帶髖+膝,auto 踩地→身體下沉)
-        pose.aL_ex += br * A.breath.elbow * rest;                                    // 手臂:肘 直→彎→直(浮誇律動)
-        pose.aR_ex += br * A.breath.elbow * rest;
-        pose.aL_sz += br * A.breath.shoulder * rest;                                 // 肩微開(胸口擴張)
-        pose.aR_sz += br * A.breath.shoulder * rest;
-        pose.spine_x += br * A.breath.chest * rest;                                  // 下沉時含胸一點
+        const br = 0.5 - 0.5 * Math.cos(now * A.breath.rate * (1 + F.breathRate * u.fatK) + (e.pid || 0) * 2.1); // 0..1 單向(直腿/直臂站姿也安全,不反折);兩名 fighter 相位錯開;疲態=喘得更快
+        const bAmp = rest * (1 + F.breathAmp * u.fatK);                              // 疲態=胸口起伏更大(喘)
+        pose.squat += br * A.breath.knee * bAmp;                                     // 腿:直→彎→直(squat 帶髖+膝,auto 踩地→身體下沉)
+        pose.aL_ex += br * A.breath.elbow * bAmp;                                    // 手臂:肘 直→彎→直(浮誇律動)
+        pose.aR_ex += br * A.breath.elbow * bAmp;
+        pose.aL_sz += br * A.breath.shoulder * bAmp;                                 // 肩微開(胸口擴張)
+        pose.aR_sz += br * A.breath.shoulder * bAmp;
+        pose.spine_x += br * A.breath.chest * bAmp;                                  // 下沉時含胸一點
+      }
+      if (u.fatK > 0.01 && !e.stunned) {
+        pose.spine_x += F.slump * u.fatK;                                            // 駝背(暈眩 slump 18=疲態最多 15,讀得出是「累」不是「暈」)
+        pose.head_x -= F.headDrop * u.fatK;                                          // 低頭
+        pose.aL_sx += F.armDrop * u.fatK; pose.aR_sx += F.armDrop * u.fatK;          // 垂肩(手臂往下掛)
+        const S = F.stagger;                                                          // 膝軟踉蹌:聽牌檔才有,週期性半秒——不搶畫面但看久了一定看到
+        if (u.fatK >= S.at) {
+          const ph = (now + (e.pid || 0) * 1.7) % S.every;
+          if (ph < S.T) {
+            const q = Math.sin((ph / S.T) * Math.PI);                                 // 0→1→0 一次下沉
+            pose.squat += S.knee * q; pose.spine_x += S.knee * 0.35 * q;
+            wob += Math.sin(now * 13) * S.wob * q;
+          }
+        }
       }
     }
     if (e.stunned) {
