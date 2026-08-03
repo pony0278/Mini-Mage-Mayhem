@@ -95,40 +95,45 @@ export function makeFireHat() {
 }
 
 // ===== 風壓手套(item='wind' 戴右手)=====
-// 讀法(gaunt-2 重建,對照 GLB Azure Turbine Gauntlet 的三個訊息):①**有手指的拳**(手套=套在手上,
-// 不是綁在臂上的方塊)②**手背仰躺的大渦輪**(金環+青色扇葉+發光轂=招牌,面朝 +y)③喇叭袖口。
+// 讀法(gaunt-2 重建,對照 GLB Azure Turbine Gauntlet 的四個訊息):①**張開的手掌**(五指往 +z 伸,
+// 不是握拳——施法姿勢是「側掌外推」,玩家看到的就是這隻手掌)②**掌心正中的大圓噴口**(−y;風壓從這裡
+// 出去=攻擊方向的視覺依據,gaunt-3 使用者抓到「發射時的手掌不對」就是漏了它)③**手背仰躺的大渦輪**
+//(+y,金環+青扇+發光轂)④喇叭袖口。
 // ⚠ **軸系要照 GLB proto**:−z=袖口、+z=指節(指尖往 −y 垂)、+y=手背——掛載旋轉(WIND_CAL rot.x=90°)
 //   是照 GLB 軸系調的;第一版沿 y 軸搭=軸系錯位,戴上像一根綁在手臂上的管子(使用者抓到)。
 // ⚠ 剪影長寬比貼齊 GLB(實測 1.13×1.00×1.78,z=最長軸)——同火帽 protoW 教訓,差太多=尺寸感全錯。
 const WIND = { body: 0x1785b0, dark: 0x0d556f, trim: 0x2fa8cc, gold: 0xc08a2a, glow: 0x8fe8ff };
 export function makeWindGauntlet() {
   const g = new THREE.Group();
-  // 拳(主塊=手背+掌;+z 端)
-  g.add(part(box(0.74, 0.52, 0.72), WIND.body, 0, 0.02, 0.28));
-  // 四指(沿 x 排開,+z 前緣往 −y 垂;兩節=根+尖)
+  // 手(掌+手背,+z 端);−y=掌心面、+y=手背面
+  g.add(part(box(0.62, 0.52, 0.50), WIND.body, 0, 0, 0.16));
+  // **四指張開往 +z 伸**(不是握拳!GLB 是開掌推擊的手型,施法姿勢=側掌外推,掌心對著目標)
   for (let i = 0; i < 4; i++) {
-    const x = -0.27 + i * 0.18;
-    g.add(part(box(0.15, 0.32, 0.20), WIND.dark, x, -0.24, 0.70));         // 指根(垂下)
-    g.add(part(box(0.13, 0.16, 0.15), WIND.body, x, -0.44, 0.74));         // 指尖
-    g.add(part(box(0.14, 0.10, 0.07), WIND.gold, x, 0.00, 0.82));          // 指節金牌(GLB 招牌細節)
+    const x = -0.24 + i * 0.16;
+    g.add(part(box(0.14, 0.20, 0.22), WIND.dark, x, -0.10, 0.50));          // 指根
+    g.add(part(box(0.12, 0.17, 0.20), WIND.body, x, -0.16, 0.70));          // 指尖(略往下垂;伸足才貼 GLB 的 z/y≈1.78)
+    g.add(part(box(0.13, 0.06, 0.14), WIND.gold, x, 0.06, 0.48));           // 指節金牌
   }
-  // 拇指(−x 側貼著拳側)
-  g.add(part(box(0.18, 0.22, 0.32), WIND.dark, -0.48, -0.10, 0.26));
-  g.add(part(box(0.15, 0.18, 0.16), WIND.body, -0.50, -0.24, 0.44));
-  // 手背大渦輪(仰躺面朝 +y:金環 + 四葉青色扇 + 發光轂)
-  g.add(part(tor(0.30, 0.07), WIND.gold, 0, 0.34, 0.22, Math.PI / 2));     // 金屬環(環面朝上)
-  for (let i = 0; i < 4; i++) {                                             // 扇葉(躺平,繞 y 排)
-    const a = i * Math.PI / 2 + 0.5;
-    g.add(part(box(0.26, 0.05, 0.11), WIND.trim, Math.cos(a) * 0.14, 0.33, 0.22 + Math.sin(a) * 0.14, 0, -a, 0, WIND.glow, 0.8));
+  g.add(part(box(0.16, 0.19, 0.20), WIND.dark, -0.42, -0.08, 0.24));        // 拇指(−x 側外撇,同 GLB;貼太近會被手掌擋掉)
+  g.add(part(box(0.13, 0.16, 0.16), WIND.body, -0.48, -0.11, 0.40));
+  // **掌心噴口(−y)=風壓的出口**:這是「發射時看到的那一面」,GLB 的招牌大圓孔。
+  g.add(part(tor(0.21, 0.06), WIND.gold, 0, -0.28, 0.14, Math.PI / 2));     // 噴口金環
+  g.add(part(cyl(0.17, 0.17, 0.14, 10), WIND.dark, 0, -0.24, 0.14));        // 內膛(暗管;深一點才讀得出是「口」)
+  g.add(part(cyl(0.11, 0.11, 0.04, 10), WIND.glow, 0, -0.22, 0.14, 0, 0, 0, WIND.glow, 1.2)); // 蓄能光(縮進膛內,不蓋住暗環)
+  // 手背渦輪(+y):金環 + 八葉青扇 + 發光轂
+  g.add(part(tor(0.28, 0.06), WIND.gold, 0, 0.28, 0.14, Math.PI / 2));
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4 + 0.3;
+    g.add(part(box(0.24, 0.045, 0.10), WIND.trim, Math.cos(a) * 0.15, 0.27, 0.14 + Math.sin(a) * 0.15, 0, -a, 0, WIND.glow, 0.7));
   }
-  g.add(part(cyl(0.09, 0.09, 0.10, 8), WIND.gold, 0, 0.36, 0.22));          // 轂
-  g.add(part(sph(0.06), WIND.glow, 0, 0.42, 0.22, 0, 0, 0, WIND.glow, 1.5)); // 轂心(自發光)
+  g.add(part(cyl(0.085, 0.085, 0.10, 8), WIND.gold, 0, 0.30, 0.14));
+  g.add(part(sph(0.05), WIND.glow, 0, 0.33, 0.14, 0, 0, 0, WIND.glow, 1.5));
   // 腕橋 + 喇叭袖口(−z 端;沿 z 的錐筒=rx 90° 後 rBottom 端朝 −z=粗口在後)
-  g.add(part(cyl(0.26, 0.29, 0.24, 8), WIND.body, 0, 0.04, -0.18, Math.PI / 2));
-  g.add(part(cyl(0.28, 0.40, 0.42, 8), WIND.dark, 0, 0.06, -0.52, Math.PI / 2));
-  g.add(part(cyl(0.42, 0.42, 0.09, 8), WIND.gold, 0, 0.06, -0.76, Math.PI / 2)); // 袖口金箍
-  g.add(part(box(0.10, 0.24, 0.28), WIND.trim, 0.31, 0.06, -0.52, 0, 0, 0, WIND.glow, 0.5)); // 袖筒發光縱條 ×2(GLB 的青色格柵)
-  g.add(part(box(0.10, 0.24, 0.28), WIND.trim, -0.31, 0.06, -0.52, 0, 0, 0, WIND.glow, 0.5));
+  g.add(part(cyl(0.24, 0.26, 0.16, 8), WIND.body, 0, 0, -0.16, Math.PI / 2));
+  g.add(part(cyl(0.27, 0.40, 0.32, 8), WIND.dark, 0, 0, -0.36, Math.PI / 2));
+  g.add(part(cyl(0.42, 0.42, 0.07, 8), WIND.gold, 0, 0, -0.52, Math.PI / 2)); // 袖口金箍
+  g.add(part(box(0.09, 0.22, 0.22), WIND.trim, 0.29, 0, -0.36, 0, 0, 0, WIND.glow, 0.5)); // 袖筒發光縱條 ×2
+  g.add(part(box(0.09, 0.22, 0.22), WIND.trim, -0.29, 0, -0.36, 0, 0, 0, WIND.glow, 0.5));
   return normalize(g, 'center');
 }
 

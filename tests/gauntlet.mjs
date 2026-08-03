@@ -13,23 +13,31 @@ let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' 
 
 const ready = await page.waitForFunction('__lab.windGauntletReady && __lab.windGauntletReady() === true', { timeout: 20000 }).then(() => true).catch(() => false);
 R('風壓手套 GLB 載成(windGauntletReady)', ready);
-// gaunt-2 剪影契約(2026-08-03 使用者抓到「很不像手套」):程序化 proto 的軸系/長寬比要貼齊被取代的
-// GLB(1.13×1.00×1.78;−z 袖口/+z 指/+y 手背渦輪)——掛載旋轉照 GLB 軸系調,軸系跑掉=戴上像根管子。
+// gaunt-2/3 剪影+解剖契約(2026-08-03 使用者兩輪反饋:「很不像手套」→「發射時的手掌不對」):
+// 程序化 proto 要貼齊被取代的 GLB——①軸系(−z 袖口/+z 指尖/+y 手背渦輪/−y 掌心噴口)②長寬比
+// (1.13×1.00×1.78,z=最長軸)③**張開的手指**(不是握拳)④**掌心噴口**(施法姿勢=側掌外推,
+// 玩家在發射瞬間看到的就是掌心那面;漏了它=一塊空白藍方塊)。掛載旋轉是照 GLB 軸系調的,軸系跑掉=戴上像根管子。
 const sil = await page.evaluate(async () => {
   const M = await import('./js/render-core.js');
   const c = M.windGauntletClone(); c.updateMatrixWorld(true);
   const b = new THREE.Box3().setFromObject(c); const s = b.getSize(new THREE.Vector3());
-  let fingers = 0, glow = 0;
-  c.traverse(o => { if (o.isMesh) {
+  let fingers = 0, palmGlow = 0, backGlow = 0, cuff = 0;
+  c.traverse(o => { if (!o.isMesh) return;
     const p = o.getWorldPosition(new THREE.Vector3());
-    if (p.y < -0.1 && p.z > 0.3) fingers++;                            // 指區零件(+z 端往 −y 垂)
-    if (o.material && o.material.emissiveIntensity > 0.6) glow++;      // 渦輪扇葉/轂心自發光
-  } });
-  return { x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +s.z.toFixed(2), fingers, glow };
+    // ⚠ 別用 emissiveIntensity 判「有沒有發光」——MeshStandardMaterial **預設就是 1.0**(即使 emissive 是黑色),
+    //   會讓每個 mesh 都通過=斷言形同虛設。要看 emissive 顏色本身。
+    const emi = o.material && o.material.emissive && o.material.emissive.getHex() !== 0 && o.material.emissiveIntensity > 0.4;
+    if (p.z > 0.30) fingers++;                    // 指區零件(往 +z 伸出的手指/指節)
+    if (emi && p.y < -0.10) palmGlow++;           // 掌心噴口的蓄能光(−y)
+    if (emi && p.y > 0.10) backGlow++;            // 手背渦輪扇葉/轂心(+y)
+    if (p.z < -0.25) cuff++;                      // 袖口區(−z)
+  });
+  return { x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +s.z.toFixed(2), fingers, palmGlow, backGlow, cuff };
 });
-R('剪影貼齊 GLB(z=最長軸 1.5~2.0×高、寬 0.9~1.3×高)+有手指+渦輪發光',
-  sil.z / sil.y > 1.5 && sil.z / sil.y < 2.0 && sil.x / sil.y > 0.9 && sil.x / sil.y < 1.3 && sil.fingers >= 6 && sil.glow >= 3,
-  JSON.stringify(sil));
+R('剪影貼齊 GLB(z=最長軸 1.5~2.0×高、寬 0.9~1.3×高)',
+  sil.z / sil.y > 1.5 && sil.z / sil.y < 2.0 && sil.x / sil.y > 0.9 && sil.x / sil.y < 1.3, JSON.stringify(sil));
+R('解剖對位:張開手指(+z)+掌心噴口(−y 發光)+手背渦輪(+y 發光)+袖口(−z)',
+  sil.fingers >= 8 && sil.palmGlow >= 1 && sil.backGlow >= 4 && sil.cuff >= 2, JSON.stringify(sil));
 await page.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false; v.fighters[1].x = 100; v.fighters[1].y = 100; v.fighters[0].x = 480; v.fighters[0].y = 320; });
 
 // 可見 __gauntlet 計數(祖鏈全可見)
