@@ -26,6 +26,7 @@
 | [v2-onboarding-freeform-routes.md](v2-onboarding-freeform-routes.md) | **上手/自由路線+動態教學(使用者撰寫)**:兩路線(清運垃圾取工具 vs 直接速攻)、垃圾=資源(回收 or 武器)、動態教學隨行為切提示、首局示範者 AI、UI 三進度分開;已落地見文件頭 |
 | [v2-recycle-performance-design.md](v2-recycle-performance-design.md) | **回收演出設計(使用者撰寫)**:收容後的招牌喜劇演出——玻璃罩/掙扎/掃描/荒謬分類/三階段收尾(彈回/事故/壓縮清運);V0.8 最小版已落地(見文件頭實作狀態)|
 | [v2-spec-F-spells-items.md](v2-spec-F-spells-items.md) | **規格 F（法術系統再定義）**：撿即用道具取代升級樹；基礎動詞改「揮拳→擊暈→抓→搬→入倉」（陣風降為道具，取代 E §4）；道具 5 動詞框架 + 補給座/只拿1 + MVP 道具集（風/傳送/冰+爆桶）；**§2.5 回合模型：三階段收容升級（軟重整取代完全重置）**；報告吃道具故事 |
+| [v2-spec-G-records-finisher.md](v2-spec-G-records-finisher.md) | **規格 G(核心循環重排,2026-08-01 拍板)**:失能=事故記錄(得分,不重置場地)→ 記錄滿=收容指令 → 打暈+按 X=**收容終演**(相機特寫一鏡到底:自動抓/搬/拋/封存);回收從每回合雜務變一局一次的簽名演出;**取代規格 F §2.5 的三段收容回合模型** |
 | [magic-incident-report-concept.md](magic-incident-report-concept.md) | **概念原文**：魔法事故報告完整願景（世界觀/角色/收容/報告/圖鑑/挑戰碼/命名）— spec E 的來源 |
 | [magic-spell-item-concept.md](magic-spell-item-concept.md) | **概念原文**：法術與道具系統設計稿（撿即用/事故來源/道具表/五系終極/元素反應/事故能量）— spec F 的來源 |
 | [magic-containment-3-stage-concept.md](magic-containment-3-stage-concept.md) | **概念原文**：三階段收容勝利規則（先收 3 次；每次收容＝同一場事故升級，不完全重置；軟重整/警戒階段/三幕報告）— spec F §2.5 的來源 |
