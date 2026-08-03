@@ -35,7 +35,10 @@ export const IS_MOBILE = (navigator.maxTouchPoints || 0) > 0 &&
     renderer.setSize(VIEW_W, VIEW_H, false);
     renderer.shadowMap.enabled = false;
     gl3dOk = true;
-    window.__gl = { renderer, info: () => renderer.info }; // debug hook(headless 效能診斷用,比照 __v2/__lab;info=programs/calls/memory)
+    // debug hook(headless 效能診斷用,比照 __v2/__lab;info=programs/calls/memory)。
+    // ⚠ scene/camera 也掛上來:headless 要**驗畫面像素**時得自己開 WebGLRenderTarget 重畫一次
+    //   (主畫布 preserveDrawingBuffer:false,readPixels 讀不到)——同 render-portrait 的回讀路子。
+    window.__gl = { renderer, info: () => renderer.info, scene: () => scene, camera: () => camera };
   } catch (err) {
     console.warn('WebGL unavailable:', err);
   }

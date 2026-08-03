@@ -44,6 +44,7 @@ kill $SRV                                              # ⚠ 收尾**用 PID**,�
 | `gauntlet.mjs`(補註) | gaunt-2/3 剪影+解剖契約:程序化手套 proto 要照 GLB 的**軸系**(−z袖口/+z指尖/+y手背渦輪/**−y掌心噴口**)+長寬比(z=1.5~2×高、寬 0.9~1.3×高)+張開的手指+掌心噴口發光+手背渦輪發光。兩輪都是使用者抓到:只對長寬比不對軸系=戴上像管子;有軸系但做成沒噴口的方拳=**發射瞬間玩家看到的掌心那面是一塊空白**(施法 clip 側掌外推、鏡頭在角色後方,掌心正對玩家)。⚠ 判「有沒有發光」不能用 `emissiveIntensity`(MeshStandardMaterial 預設 1.0,黑 emissive 也通過=斷言失效),要看 `emissive.getHex() !== 0`。**gaunt-4 ②c 兩條掛載路等價**:`WIND_CAL`(box 腕)是 avatar 當預設時期的佔位值,ugc-6 翻預設後上線=掌心朝側面+大 26%;在 ?avatar=1 下兩個掛點同時存在,驗「box 腕套 WIND_CAL 的世界變換 ≡ avatar 手骨那條」。⚠ 量施法姿勢:turbo 下釘 `itemFx` 會量到待機(game.time 跳過 clip 尾),用 **`?clip=item_wind` 循環試播**;rig 要從 GAUNTLET 往上找祖先(traverse 全場會抓到閒置的對手);`getWorldQuaternion` 不含縮放,只比朝向會漏掉尺寸病 |
 | `frostbottle.mjs` | 冰霜瓶三狀態 + **ugc-5 道具風格契約**:程序化道具=**無 map** + roughness .85 + metalness 0 + 低多邊形(冰瓶 32 面,原 GLB 上萬);`?props=glb` A/B 路仍載得起來且守住「去圖別 prune 砍 UV」那個入庫坑。⚠ 改場上物件配色前先跑 `scratchpad/curve.mjs` 量 source→rendered:lab 是 ACES+曝光 1.16,亮色飽和度會被吃光(l .82 只留 14%),亮點只能靠 emissive |
 | `brawl.mjs`     | 爽鬥核心(A 款 brawl-1;docs/game-split.md):開局系統全醒(桶/補給座/瓶/拉桿)+charter 純量殘留清除、穩定值歸零=擊暈(無能量閘)、終結技=PUNCH_LAUNCH_LOB 打飛、完美格擋=反暈、搬進艙=+1 記錄+拒收(規格 G 中段;**前面的擊暈也各記一筆**——抓「containLog 長出 carry」別等 roundWins,不然舊斷言被 stun 記錄搶跑)、endMatch=事故報告 |
+| `outline.mjs`   | 輪廓線身分標記 ui-2(`?mark=outline` 反殼描邊):旗標三態(outline/none/預設 arrow 且不建殼)、只描本機的方塊人身體(裝備/特效/蒙皮跳過;殼歸戶用**世界座標找最近 fighter**——`actorMeshes` 是 render-actors 私有 Map,外面拿不到 rig)、殼材質不變式、放大率夾在 maxGrow、`?fx=low` 整組關,以及**像素回歸**(見下)。⚠ 這支存在的理由=ui-2d:`depthWrite:false`+`renderOrder:-1` 讓殼先畫又不留深度 → **之後畫的地板整條蓋掉**,而 `__outline()` 旗標全綠、結構斷言全過,只有像素看得出來(注入 bug 實測 on 89 = off 89,一個像素都沒多)。主畫布 `preserveDrawingBuffer:false` 讀不到 → 自開 `WebGLRenderTarget` 用 `__gl.scene()/.camera()` 重畫再 `readRenderTargetPixels`(同 render-portrait 回讀路子);判準用**開殼/關殼對照組**而非絕對門檻,取樣只框角色(地板符文/艙體一堆藍紫,掃全畫面底噪 458=沒鑑別力),且 `readRenderTargetPixels` 是**由下往上**的 row order。⚠ **鏡頭要每幀重釘+輪詢收斂**:`updateCamRig` 在 intro 結束那一幀做一次性 `Object.assign(CAM, CAM_FIGHT)`,會蓋掉測試寫的 dist/angle——單跑時序剛好過、CONC=3 下就踩在蓋回去之前=量到遠鏡頭、角色小到線次像素(實測 on 3 = off 3 的假 FAIL) |
 
 ## 提速(2026-07-20:全套 10min+ → ~3.5min)
 
@@ -110,7 +111,16 @@ kill $SRV                                              # ⚠ 收尾**用 PID**,�
    (實測 bottles/wind/oilfire 一起中槍,清乾淨後各 21/14/13 全過)——看到開頭幾支集體 goto timeout,
    先查殘留程序,別急著改測試。
 
+13. **測「畫面上真的看得到嗎」要回讀離屏 RT,而且鏡頭要釘住**(ui-2d 描邊線踩到):顏色/遮擋/繪製順序這種病
+   結構斷言全綠也照樣看不到(`__outline()` 四個旗標都對、線一個像素都沒畫出來)。主畫布是
+   `preserveDrawingBuffer:false`,`readPixels`/`toDataURL` 讀不到 → 用 `__gl.scene()/.camera()` 自開
+   `WebGLRenderTarget` 重畫再 `readRenderTargetPixels`(同 render-portrait 頭像回讀)。三條紀律:
+   ①判準用**對照組**(把待測物 `visible=false` 再拍一張)不用絕對門檻;②取樣**只框待測物**
+   (場景一堆同色系底噪,掃全畫面沒鑑別力:實測背景就吃掉 458 個「藍」像素);
+   ③RT 長寬比要對齊畫面(方形 RT 配 1000×700 視角 = 再壓一次解析度,細線容易掉到次像素)。
+   **外加**:改 `CAM` 要開 interval 每幀重釘 + 輪詢「角色在畫面上夠大」才取樣——`updateCamRig`
+   在 intro 結束那一幀會 `Object.assign(CAM, CAM_FIGHT)` 蓋掉你寫的值(單跑時序剛好過、CONC=3 假 FAIL)。
 
 ## Debug hooks(頁內 `window.*`)
 
-`__v2`(game/fighters/barrels/bottles/stations/castX/punch/…)、`__lab`(labGroup/floorFx)、`__avatars`、`__hands`、`__touch`。
+`__v2`(game/fighters/barrels/bottles/stations/castX/punch/…)、`__lab`(labGroup/floorFx)、`__avatars`、`__hands`、`__touch`、`__outline`、`__gl`(renderer/`scene()`/`camera()`/info)。

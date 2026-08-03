@@ -36,10 +36,12 @@ export const RIM_ON = MARK_MODE === 'outline';
 //      深色地板(所以不能用暗線)+ 淺色身體(所以不能用白線)→ **飽和的隊伍色**才兩邊都跳得出來。
 //   ③ **描邊材質要 `toneMapped = false`**:lab 是 ACES+曝光 1.16,飽和亮色會被 tone map 洗掉
 //      (ugc-5 量過:l .82 只剩 14% 飽和)。關掉 tone map 才是「所見即所填」的 UI 級純色。
-//   ④ 細肢只有 6px 寬,線寬 3.2 就等於半條腿=白霧;2 左右是「明顯但仍是線」的甜蜜點。
+//   ④ 線寬要照**實戰機位**(CAM 預設 dist 720、角色只有 ~90px 高)挑,不能照近鏡頭挑:ui-2d 量過同一
+//      場景四種寬度 —— 2.0 整隻糊成藍色板塊(軀幹殼跟手臂殼直接接在一起)、1.2 仍是塊、0.8 偏粗但已是線、
+//      **0.7 是「一眼看得到、身體顏色還在」的甜蜜點**。修好 depthWrite 之後線本來就活得下來,不必靠粗度硬撐。
 //   對手預設不描(width 0)——「只有你有線」這個不對稱本身就是最省事的身分訊號(恰吉即此路)。
 export const RIM = {
-  me: { width: 2.0, color: '#2f6bff', alpha: 1, maxGrow: 1.7 },   // 飽和藍:比地板亮、比身體濃
+  me: { width: 0.7, color: '#2f6bff', alpha: 1, maxGrow: 1.7 },   // 飽和藍:比地板亮、比身體濃
   foe: { width: 0, color: null, alpha: 0.6, maxGrow: 1.7 },
 };
 
@@ -50,7 +52,12 @@ function hullMat(hex, cfg) {
   const key = c + '|' + cfg.alpha;
   let m = _mats.get(key);
   if (!m) {
-    m = new THREE.MeshBasicMaterial({ color: c, side: THREE.BackSide, transparent: cfg.alpha < 1, opacity: cfg.alpha, depthWrite: false });
+    // ⚠⚠ **`depthWrite` 必須開**(ui-2d,使用者回報「線上看不到」的真兇):殼是不透明的,關掉 depthWrite
+    //   等於畫完不在深度緩衝留痕跡 → 之後才畫的**地板/場景會直接蓋掉它**。症狀極具迷惑性:只有
+    //   「背後是虛空」的部分(頭肩上緣)活得下來,截圖看起來像「有線但很淡」,實際在場上站著時
+    //   背後幾乎都是地板=整條線消失。半透明那條(對手)才維持 depthWrite:false(透明物的常規)。
+    const opaque = cfg.alpha >= 1;
+    m = new THREE.MeshBasicMaterial({ color: c, side: THREE.BackSide, transparent: !opaque, opacity: cfg.alpha, depthWrite: opaque });
     m.toneMapped = false;                       // ⚠ 見表頭 ③:不關掉的話 ACES 會把飽和線色洗成灰
     _mats.set(key, m);
   }

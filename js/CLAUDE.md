@@ -183,12 +183,20 @@
 >   「隊伍色」這個真正的身分訊號**。②改**反殼描邊**(同心放大子網格 + BackSide + MeshBasic):線寬是
 >   世界空間常數,遠鏡頭才活得下來。③**線寬不能用百分比**(scale×1.17):粗軀幹撐出 1.9px、細肢只有
 >   0.5px=次像素;要照父網格實際尺寸反算每軸放大率。④**薄片網格會爆炸**(厚度 0.02 的眼睛/腰帶被放大
->   千倍=畫面出現巨大白板)→ 夾 `maxGrow`。⑤細肢只有 6px 寬,線寬 3.2 就等於半條腿=白霧,2 左右
->   是「明顯但仍是線」的甜蜜點。⑥**線色**(ui-2b,使用者回報「輪廓線不太明顯」後修):第一版往白拉
+>   千倍=畫面出現巨大白板)→ 夾 `maxGrow`。⑤**線寬要照實戰機位挑**(ui-2d 量):同場景掃 2.0/1.2/0.8/0.5,
+>   2.0 整隻糊成藍色板塊(軀幹殼直接跟手臂殼接起來)、1.2 仍是塊、0.8 偏粗但已是線 → **0.7 定案**。
+>   ⑥**線色**(ui-2b,使用者回報「輪廓線不太明顯」後修):第一版往白拉
 >   85%,但**角色本身就是近白的淺藍**=線貼在身上沒對比。線畫在剪影外面,要同時贏過**深色地板**
 >   (不能用暗線)+**淺色身體**(不能用白線)→ **飽和的隊伍色**兩邊都跳得出來。
 >   ⑦⚠ **描邊材質要 `toneMapped = false`**:lab 是 ACES+曝光 1.16,飽和亮色會被 tone map 洗掉
 >   (ugc-5 量過 l .82 只剩 14% 飽和)——這是「顏色明明填了卻很淡」的隱形元兇,UI 級純色一律關 tone map。
+>   ⑧⚠⚠ **不透明的殼一定要 `depthWrite: true`**(ui-2d 真兇,使用者回報「線上完全看不到輪廓線」):
+>   第一版跟著 `renderOrder = -1` 一起關掉 depthWrite → 殼最先畫、又不在深度緩衝留痕跡,**之後畫的
+>   地板/場景直接蓋過去**。症狀極具迷惑性:只有「背後是虛空」的頭肩上緣活得下來,開發截圖看起來像
+>   「有線但淡」,實際站在場上=整條線消失。**診斷順序**:`__outline()` 全綠(mode/on/low/hulls 都對)
+>   卻看不到 → 不是旗標問題、是**深度/繪製順序**問題;驗收要用「角色背後全是地板」的高角度機位。
+>   半透明那條(對手 alpha<1)才維持 `depthWrite:false`(透明物常規)。回歸鉤=`tests/outline.mjs`
+>   的**像素斷言**(自開 WebGLRenderTarget 回讀,開殼/關殼對照;注入 bug 實測 on 89 = off 89)。
 > 現況:遠近都讀得到(近距離是 cel-shading 味的實線)。旋鈕 `RIM`(width/color/alpha/maxGrow)。
 > ⚠ avatar(蒙皮)不套(反殼要沿法線外推 + 複製骨架,成本跳一級);FX_LOW(手機)整組關。
 > ⚠ DAG:render 家族**不 import v2-state**(隊伍色/本機 pid 由 v2.js 開機 `setRimTeams` 注入)。
@@ -538,7 +546,13 @@
   把 `evalClip` 目標**直接寫進 `g.userData.pose`**(繞過節流下的慢 blend)→ 等 1-2 渲染幀(指骨/avatar 才消費)→
   量測並**比對目標值**才放行」——只釘時鐘不寫 pose 會量到收斂中途的值;寫了 pose 不等渲染幀會量到舊骨。
 - hooks:`__v2`(game/fighters/barrels/stations/labSwitch/castX/punch/endMatch…)、`__lab`(labGroup/`floorFx()`)、
-  `__hands`、`__avatars`、`__touch`、單機 `__game`。
+  `__hands`、`__avatars`、`__touch`、`__outline`、單機 `__game`。
+- **要驗「畫面上真的看得到嗎」**(顏色/遮擋/繪製順序這種結構斷言擋不住的病):主畫布是
+  `preserveDrawingBuffer:false`,`readPixels`/`toDataURL` 讀不到 → 用 `__gl.scene()/.camera()` + 自開
+  `WebGLRenderTarget` 重畫一次再 `readRenderTargetPixels`(同 render-portrait 頭像回讀)。紀律:
+  ①判準用**對照組**(把待測物 `visible=false` 再拍一張)不用絕對門檻;②取樣**只框待測物**
+  (場景本身一堆同色系底噪,掃全畫面沒鑑別力);③`readRenderTargetPixels` 是**由下往上**的 row order。
+  範例=`tests/outline.mjs`(ui-2d)。
 - 語法檢查:`cp js/x.js /tmp/_chk.mjs && node --check /tmp/_chk.mjs`(ESM 要 .mjs)。
 
 ## 常見任務食譜
