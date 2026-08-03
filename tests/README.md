@@ -15,8 +15,9 @@ npm test         # = node run-all.mjs:自動起 server → 併發跑套件 → �
 單跑一支(debug 時)——**server 一定從 repo root 起**:
 
 ```bash
-python3 -m http.server 8099      # 在 repo 根目錄(不是 tests/!)
-cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.exit(fail?1:0)
+python3 -m http.server 8099 >/dev/null 2>&1 & SRV=$!   # **在 repo 根目錄**(不是 tests/!)
+sleep 3 && cd tests && node bottles.mjs                # 各套件自帶 pass/fail 斷言 + process.exit(fail?1:0)
+kill $SRV                                              # ⚠ 收尾**用 PID**,別用 `pkill -f "http.server"`(陷阱 12:會殺到自己)
 ```
 
 ## 套件對照(對應各系統;新系統落地時 `run-all.mjs` 的 SUITES 加一行)
@@ -95,6 +96,20 @@ cd tests && node bottles.mjs     # 各套件自帶 pass/fail 斷言 + process.ex
    同行寫入的 `_itemCastType` 讀得到、`_itemCastAt > 0` 卻 false(= 負 time + delay 仍 < 0);相對比較
    全正常所以其他案照過=只有「絕對時戳 > 0」類斷言偶發炸。根因已修(v2.js/main.js dt 下夾 0);
    排程施放案仍保留重試×3 當環境保險。**寫新斷言別假設 game.time ≥ 0 以外的絕對值性質。**
+12. **`pkill -f "http.server"` 會殺到自己**(2026-08-03 連害兩次執行結果全失):`pkill -f` 是拿**整條命令列**
+   比對,而你那條複合指令的 shell 本身命令列裡就含 `http.server` → pkill 把自己的父 shell 一起殺掉,
+   後面的 `node xxx.mjs` 沒跑完、輸出檔留 0 bytes、任務標成 failed(看起來像「測試掛了」,其實根本沒跑)。
+   **單跑套件一律用 PID 管理 server**:
+   ```bash
+   python3 -m http.server 8099 >/dev/null 2>&1 & SRV=$!
+   sleep 3 && cd tests && node bottles.mjs
+   kill $SRV
+   ```
+   全套跑 `npm test` 不會踩到(run-all 自己 spawn/kill server)。**另一個連帶症狀**:探針留下的殘留
+   server 佔著 8099,下一輪 `npm test` 的 goto 會逾時=前幾支套件出現「(無匯總行)」的假 FAIL
+   (實測 bottles/wind/oilfire 一起中槍,清乾淨後各 21/14/13 全過)——看到開頭幾支集體 goto timeout,
+   先查殘留程序,別急著改測試。
+
 
 ## Debug hooks(頁內 `window.*`)
 
