@@ -175,6 +175,25 @@
 > 「你」字。旋鈕在 `HEAD_MK`;`window.__hudmk` 供測試(標記螢幕座標/朝向 + 腳底座標)。
 > ⚠ **測「腳下乾淨」要把角色挪離回收艙**(480,320 r46)——艙的地面光環會落進取樣框=假 FAIL。
 > ⚠ **別用「掃全畫布找隊伍色像素」驗**:教練線/艙環/道具標一堆青藍會混進來(第一版就這樣假 FAIL)。
+> **camp-1 闖關殼(規格 H §3):三鑰逃生的關卡狀態機**。`v2s.camp.phase` 八態:
+> `menu`(主選單)/ `fight`(戰鬥中)/ `keydrop`(掉鑰匙)/ `handoff`(下一位進場)/ `retry`(敗北重打本關)/
+> `escape`(三把湊齊)/ `clockout`(下班結局)/ **`free`(加班模式=舊的無限對戰:封存→事故報告)**。
+> 節拍長度在 `CAMP_T`,關卡對手表 `CAMP_TIER`(camp-1 先用現有 tier 佔位,camp-4 換三份 boss 檔案)。
+> ⚠ **四個關鍵設計**:
+>   ① **`free` 是舊行為的保留區,也是既有 40 支回歸的保命符**:沒有選單時(自動化/`?menu=0`/`?turbo`)
+>      一律進 `free`,封存照樣走 `endMatch`→事故報告。**闖關只在玩家真的從主選單按下開始後才接管**,
+>      所以 camp-1 沒有動到任何既有測試的行為。
+>   ② **封存接手用注入回呼**:`v2-combat` 不能 import `v2.js`(DAG 反向),所以 `finalSeal`/`fallSeal`
+>      改走 `sealOrCamp(w)`——`setSealHandler(fn)` 有塞東西且回 `true` 就由闖關接手,否則 `endMatch`。
+>      照 `setGroundMarkers`/`setRimTeams` 那套慣例。**回歸鉤必須跑真流程**(擊暈→按 X→演出→封存),
+>      只單元呼叫 `campSeal` 會漏掉「注入沒接上」這種病(`tests/campaign.mjs` ③)。
+>   ③ **危險等級改綁關卡**:`recordIncident` 裡那行 `applyStage(比分推)` 加了 `camp.phase === 'free'` 閘,
+>      闖關的 stage 由 `startLevel` 直接設(關 n → stage n)。**關卡索引是 `camp.level`,不是 `v2s.stage`**
+>      ——因果方向相反,共用名字會讓既有 stage 斷言用錯誤的理由通過(規格 H §3 命名地雷)。
+>   ④ **實習生逃跑在闖關退役**(boss 跑掉就拿不到鑰匙),`aiMove` 的 flee 分支加了 `free` 閘;
+>      逃跑戲留給加班模式。`updateAiCall` 那套排程器本身留著給 camp-4 當進場管線。
+> 敗北=`retry` 重打**本關**、**鑰匙不沒收**、`camp.deaths++`;`restartMatch` 在闖關中=重跑整輪(鑰匙歸零)。
+> 中離續玩:`mmm_camp_run` 存 `{level,keys,deaths}`,選單偵測到就把主鈕換成「繼續　關 N 🔑 k/3」+「重新開始」。
 > **camp-0 主選單 + 流水線工作循環(規格 H §14,使用者提案 2026-08-04)**:開機先停在
 > **`v2s.camp.phase === 'menu'`**——小人釘在流水線工作站循環幹活,DOM 疊層放標題/開始鈕
 >(`js/v2-menu.js`,零 import=無循環風險;容器 `pointer-events:none`、只有鈕 `auto`)。

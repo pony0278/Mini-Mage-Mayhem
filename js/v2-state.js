@@ -389,8 +389,19 @@ export const v2s = {
   // ⚠ **關卡索引故意不叫 `stage`**:`v2s.stage` 現在是「由比分導出的危險等級」(applyStage),
   //   因果方向與「第幾關」相反;共用同一個名字會讓既有的 stage 斷言用**錯誤的理由**通過(規格 H §3)。
   camp: { phase: 'menu', level: 1, keys: 0, deaths: 0 },
+  campT: 0,                                  // 過關/交接/重來的節拍倒數(見 CAMP_T)
   menuOut: 0,                                // 選單→遊戲的鏡頭混合倒數(>0=混合中;0=交還給 intro/戰鬥機位)
 };
+// --- 規格 H camp-1:闖關關卡表 + 節拍長度 ---
+// `camp.phase` 七態:menu(主選單)/ fight(戰鬥中)/ keydrop(掉鑰匙)/ handoff(下一位進場)/
+//   retry(敗北重打本關)/ escape(3把湊齊,走向大門)/ clockout(下班結局);另有 **free=加班模式**
+//   =舊的無限對戰(封存→事故報告),自動化測試也走這條,所以既有 40 支回歸完全不受闖關影響。
+export const CAMP_LEVELS = 3;
+export const CAMP_T = { keydrop: 1.6, handoff: 2.0, retry: 2.2, escape: 1.8 };
+// 每關的對手檔案。⚠ **camp-1 先用現有 tier 佔位**(老油條/領班/老闆三份 AI_PROFILE 是 camp-4 的工作);
+//   這裡先把「第幾關用哪個檔案」這條線接起來,camp-4 只要換掉這張表的內容。
+export const CAMP_TIER = ['intern', 'senior', 'senior'];
+export const CAMP_LEVEL_NAME = ['加班時間', '交接班', '頂樓辦公室'];   // 草案(規格 H §13 待拍板 #4)
 export function resetStage() { v2s.stage = 1; v2s.barrelRespawnCur = BARREL_RESPAWN; v2s.barrelFuseCur = BARREL_FUSE; v2s.padRespawnCur = PAD_RESPAWN; v2s.slideContainCur = SLIDE_CONTAIN_V; v2s.stationIntervalCur = STATION_INTERVAL; v2s.stationTimer = STATION_INTERVAL; v2s.lastStationIdx = -1; }
 export function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門檻)
   v2s.stage = s;

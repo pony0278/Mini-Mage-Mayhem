@@ -234,7 +234,7 @@ jumpChance / guard / comboDrop`。註解本來就寫著「之後領班/廠長=�
 | 步 | 內容 | 主要檔案 |
 |---|---|---|
 | ~~camp-0~~ **✅ 已落地** | 主選單 + 流水線工作循環(§14):`v2s.camp.phase` 兩態 / `CAM_MENU`+`MENU_FOCUS` / `buildMenuStation` 自擺輸送帶(rim 場一條都沒有)/ `js/v2-menu.js` DOM 疊層 / 開始遊戲交還既有開場。驗收 `tests/menu.mjs`(19 條) | `v2.js`, `v2-state.js`, `v2-hud.js`, `v2-menu.js`(新), `render-lab.js` |
-| **camp-1** | 闖關殼:`v2s.camp` 狀態機 / `finishPerform` 改接 keydrop / `retry` vs `restartMatch` / localStorage 進度 | `v2.js`, `v2-state.js`, `v2-combat.js` |
+| ~~camp-1~~ **✅ 已落地** | 闖關殼:`camp.phase` 八態狀態機 + `CAMP_T` 節拍 / `finalSeal`→**注入回呼** `sealOrCamp` / `retry` 重打本關(鑰匙保留)/ 危險等級綁關卡 / `mmm_camp_run` 中離續玩。**`free`=加班模式走舊路**=既有回歸的保命符。驗收 `tests/campaign.mjs`(21 條,含真流程封存) | `v2.js`, `v2-state.js`, `v2-combat.js`, `v2-menu.js` |
 | **camp-2** | 報告退役(§9 清單一次切乾淨)+ 受影響測試同步改 | `v2-report.js`(刪), `v2-hud.js`, `v2-touch.js` |
 | **camp-3** | 鑰匙:掉落 → 飛入 → `🔑 n/3` + 3/3 大門解鎖 | 新 `js/v2-key.js` 或併入 `v2-items.js`, `v2-hud.js` |
 | **camp-4** | 三 boss:`AI_PROFILE` 加列 + `nextTier` 鏈 + `applyStage` 綁關卡 + 進場台詞 | `v2-state.js`, `v2-combat.js` |

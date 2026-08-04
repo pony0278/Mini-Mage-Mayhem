@@ -10,7 +10,7 @@ import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
 import { updateDeathTheater, addText, addRing, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
 import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, setRimGeometry, setRimTeams, setOutlineLow, FX_LOW, setMenuScene, MENU_STATION } from './render.js';
-import { initMenu, setMenuVisible } from './v2-menu.js';   // camp-0 主選單 DOM 疊層(規格 H §14)
+import { initMenu, setMenuVisible, markCleared } from './v2-menu.js';   // camp-0 主選單 DOM 疊層(規格 H §14)
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -20,9 +20,11 @@ import {
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, BURN_LOB, LAND_SKID, lobZ, JUMP_LOB, AIR_HIT_LOB, DIVE_T, RUN_STICK,
   camRig, CAMB, NAMES, AI_PROFILE, RECORD_TARGET, COLORS, FATIGUE,
+  CAMP_LEVELS, CAMP_T, CAMP_TIER, CAMP_LEVEL_NAME, applyStage,
 } from './v2-state.js';
 import { TERRAIN, RIM, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
-import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall, resolveFall, updateFinisher, updateReject, pressFinisher } from './v2-combat.js';
+import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall, resolveFall, updateFinisher, updateReject, pressFinisher , setSealHandler,
+} from './v2-combat.js';
 import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
 import { generateReport } from './v2-report.js';
@@ -101,14 +103,101 @@ function stepMenu(dt) {
   updateCamRig(dt);
 }
 // 「開始遊戲」:收掉選單 → 對手歸位 → 交還給既有的開場帶場(introT),鏡頭由 menuOut 混過去。
-function startGame() {
+function startGame(opts = {}) {
   if (v2s.camp.phase !== 'menu') return;
-  v2s.camp.phase = 'play'; v2s.menuOut = MENU_OUT_T;
+  v2s.menuOut = MENU_OUT_T;
   setMenuVisible(false); setMenuScene(false);
   const me = fighters[LOCAL], o = fighters[1 - LOCAL];
   resetFighter(me); resetFighter(o);                   // 回各自出生點(順手清掉選單期的 invuln/面向)
-  v2s.introT = INTRO_T;
   unlockAudio();                                       // 這一下就是 WebAudio 要的使用者手勢(舊開場是啞的)
+  if (opts.overtime) {                                 // 加班模式=舊的無限對戰(封存→事故報告)
+    v2s.camp.phase = 'free'; clearMatchState(); applyAiTier('intern');
+    v2s.introT = INTRO_T; camRig.x = (me.x + o.x) / 2; camRig.y = (me.y + o.y) / 2;
+    return;
+  }
+  const run = opts.resume ? loadRun() : null;          // 中離續玩:回到當時那一關,鑰匙帶著
+  v2s.camp.keys = run ? run.keys : 0;
+  v2s.camp.deaths = run ? run.deaths : 0;
+  if (!run) clearRun();
+  v2s.camp.phase = 'fight';                            // startLevel 需要非 menu 才會存檔
+  startLevel(run ? run.level : 1);
+}
+
+// ===== 規格 H camp-1:闖關狀態機 =====
+// 一句話:**打贏擋路的人 → 拿鑰匙 → 開門下班**。單關的勝負規則完全沿用規格 G(記滿 3 筆 → 終演封存),
+// 這一層只負責「封存之後怎麼辦」:過關掉鑰匙 → 下一位進場;敗北就重打本關(鑰匙保留)。
+//
+// ⚠ **`free` 是舊行為的保留區**(加班模式 + 所有自動化測試):封存 → `endMatch` → 事故報告。
+//   闖關只在玩家真的從主選單按下「開始遊戲」後才接管,所以既有 40 支回歸完全不受影響。
+const RUN_KEY = 'mmm_camp_run';               // 中離續玩:{ level, keys, deaths }
+function saveRun() {
+  const c = v2s.camp;
+  try {
+    if (c.phase === 'free' || c.phase === 'menu') return;
+    localStorage.setItem(RUN_KEY, JSON.stringify({ level: c.level, keys: c.keys, deaths: c.deaths }));
+  } catch { /* 隱私模式沒有 storage 也能玩 */ }
+}
+function loadRun() {
+  try {
+    const r = JSON.parse(localStorage.getItem(RUN_KEY) || 'null');
+    if (!r || !(r.level >= 1 && r.level <= CAMP_LEVELS) || !(r.keys >= 0 && r.keys < CAMP_LEVELS)) return null;
+    return { level: r.level | 0, keys: r.keys | 0, deaths: r.deaths | 0 };
+  } catch { return null; }
+}
+function clearRun() { try { localStorage.removeItem(RUN_KEY); } catch { /* no storage */ } }
+
+// 開一關:場地/比分全清 → 危險等級綁關卡 → 換上這一關的對手 → 走既有的開場儀式。
+function startLevel(n) {
+  const c = v2s.camp;
+  c.level = Math.min(CAMP_LEVELS, Math.max(1, n)); c.phase = 'fight'; v2s.campT = 0;
+  clearMatchState();
+  applyStage(c.level);                                   // 規格 H §2:危險等級**綁關卡**,不再由比分推
+  applyAiTier(CAMP_TIER[c.level - 1]);                   // camp-4 換成三份 boss 檔案,這條線先接起來
+  v2s.introT = INTRO_T;
+  camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2;
+  saveRun();
+  dlog('CAMP level', c.level, 'keys', c.keys, 'tier', v2s.aiTier);
+}
+// 封存接手(v2-combat 的 finalSeal/fallSeal 注入這支)。回 true=闖關已接手,不要跑 endMatch。
+function campSeal(winner) {
+  const c = v2s.camp;
+  if (c.phase !== 'fight') return false;                 // free/加班模式:交還舊路(事故報告)
+  if (winner === LOCAL) {                                 // 過關:掉一把鑰匙
+    c.keys = Math.min(CAMP_LEVELS, c.keys + 1);
+    c.phase = 'keydrop'; v2s.campT = CAMP_T.keydrop;
+    v2s.bannerText = '🔑 鑰匙 ' + c.keys + '/' + CAMP_LEVELS + ' 到手'; v2s.winBannerT = 2.2;
+  } else {                                                // 敗北:今天不用下班了 → 重打本關
+    c.deaths++;
+    c.phase = 'retry'; v2s.campT = CAMP_T.retry;
+    v2s.bannerText = '今天不用下班了……'; v2s.winBannerT = 2.2;
+  }
+  saveRun();
+  return true;
+}
+// 節拍推進:掉鑰匙 → 下一位進場 / 三把湊齊 → 走向大門 → 打卡下班。
+function stepCamp(dt) {
+  const c = v2s.camp;
+  if (c.phase === 'fight' || c.phase === 'free' || c.phase === 'menu') return;
+  if (v2s.campT > 0) { v2s.campT -= dt; if (v2s.campT > 0) return; }
+  if (c.phase === 'keydrop') {
+    if (c.keys >= CAMP_LEVELS) {
+      c.phase = 'escape'; v2s.campT = CAMP_T.escape;
+      v2s.bannerText = '🔑 ' + CAMP_LEVELS + '/' + CAMP_LEVELS + '　大門解鎖'; v2s.winBannerT = 2.4;
+    } else {
+      c.phase = 'handoff'; v2s.campT = CAMP_T.handoff;
+      const nm = CAMP_LEVEL_NAME[c.level] || '';
+      v2s.bannerText = '關 ' + (c.level + 1) + ':' + nm; v2s.winBannerT = 2.0;
+    }
+  } else if (c.phase === 'handoff') {
+    startLevel(c.level + 1);
+  } else if (c.phase === 'retry') {
+    startLevel(c.level);                                  // 鑰匙保留(規格 H §3:敗北零沒收)
+  } else if (c.phase === 'escape') {
+    // camp-6 會把這裡換成「走到大門 → 打卡演出」;camp-1 先直接進結局,把整條線跑通。
+    c.phase = 'clockout'; v2s.matchOver = true; clearRun(); markCleared();
+    v2s.bannerText = '下班打卡成功。'; v2s.winBannerT = 4.0;
+    game.sfx.push('waveclear'); dlog('CAMP cleared, deaths', c.deaths);
+  }
 }
 
 // --- round / match orchestration ---
@@ -116,7 +205,9 @@ function resetRound() {
   resetBarrels(); resetBottles(); resetPads(); resetGroundItems(); resetStations(); resetFloor();
   for (const f of fighters) resetFighter(f);
 }
-function restartMatch() {
+// 一局/一關的殘態清除(比分、事故計數、演出、規格 G 殘態、鏡頭 snap)。
+// restartMatch(整輪重來)與 startLevel(闖關換關)共用——差別只在後續要不要重設 tier/關卡進度。
+function clearMatchState() {
   v2s.matchOver = false; v2s.report = null; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0];
   resetInc(); containLog.length = 0; v2s.bannerText = ''; v2s.winBannerT = 0; resetStage();
@@ -125,9 +216,18 @@ function restartMatch() {
   v2s.finisher = null; v2s.reject = null; v2s.recordFlash = 0; v2s.finFlash = 0; v2s.letterK = 0;
   v2s.recordCard = null; v2s.brinkT = 0; v2s.brinkShown = false;   // flow-2:立案 beat / 瀕界心跳+一次性提示
   if (v2s.finCam) { const C = v2s.finCam; CAM.dist = C.dist; CAM.angle = C.angle; CAM.lookY = C.lookY; CAM.azimuth = C.az; game.camTarget = C.target; v2s.finCam = null; }
-  v2s.aiCalled = false; v2s.aiCallAt = 0; v2s.aiCallPos = null; applyAiTier('intern'); // tier-1:再戰從實習生重新開始(逃跑戲重新武裝)
-  v2s.introT = INTRO_T; camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 再戰也走開場儀式(就位→開始!)
+  v2s.aiCalled = false; v2s.aiCallAt = 0; v2s.aiCallPos = null;
   resetRound();
+}
+function restartMatch() {
+  clearMatchState();
+  applyAiTier('intern');                       // tier-1:再戰從實習生重新開始(逃跑戲重新武裝)
+  // 闖關中按重來=重跑整輪(鑰匙歸零);加班模式維持 free
+  if (v2s.camp.phase !== 'free' && v2s.camp.phase !== 'menu') {
+    v2s.camp.keys = 0; v2s.camp.deaths = 0; v2s.campT = 0; clearRun();
+    startLevel(1); return;
+  }
+  v2s.introT = INTRO_T; camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 再戰也走開場儀式(就位→開始!)
 }
 
 // --- 有界跟隨(bounded follow):鏡頭跟一個「平滑 + 夾在內縮框裡」的代理點(camRig),
@@ -283,6 +383,7 @@ function step(dt) {
     return; // freeze gameplay while the incident report is up
   }
   if (v2s.camp.phase === 'menu') { stepMenu(dt); return; }   // camp-0:選單期不跑戰鬥,只演工作循環
+  stepCamp(dt);                                             // camp-1:過關/交接/重來的節拍(fight/free 直接 return)
   if (v2s.menuOut > 0) v2s.menuOut = Math.max(0, v2s.menuOut - dt);  // 選單→遊戲的鏡頭混合倒數
   if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
   if (v2s.introT > INTRO_GO && (keys.size > 0 || (touchInput.enabled && touchInput.active))) v2s.introT = INTRO_GO; // 等不及的玩家按任何鍵=直接「開始!」
@@ -546,7 +647,7 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning; v2s=可重賦值純量容器,測試歸零 introT 用)
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
-  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip, startGame, enterMenu,
+  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip, startGame, enterMenu, startLevel, campSeal,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, bottles, shatterBottle, roundWins, containLog, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
   punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, attackAction, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB, AIR_HIT_LOB,
   floorHazards, airborne, // 地板化學/空中判定:測試直接餵 dt 呼叫,不用去追跳躍弧線的時間窗(見 tests/jump.mjs ④)
@@ -561,7 +662,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
     brink: { shown: v2s.brinkShown, t: +v2s.brinkT.toFixed(2) },                  // flow-2c 瀕界:一次性提示旗 + 心跳節拍
     recordCard: v2s.recordCard ? { n: v2s.recordCard.n, w: v2s.recordCard.w, phrase: v2s.recordCard.phrase, t: +v2s.recordCard.t.toFixed(2) } : null,
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
-    camp: { ...v2s.camp }, menuOut: +v2s.menuOut.toFixed(2),   // camp-0 闖關/選單狀態
+    camp: { ...v2s.camp }, campT: +v2s.campT.toFixed(2), menuOut: +v2s.menuOut.toFixed(2),   // camp-0/1 闖關狀態
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
@@ -656,8 +757,11 @@ if (TERRAIN === 'isles') {
   { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'fight'; } // 爽鬥:紅方=AI 對手,開局即戰(小人不再搬瓶);B 鍵仍可切練習假人
   applyAiTier('intern'); // tier-1:對手從實習生起手(快輸=逃跑搬救兵→資深同事;AI_PROFILE 旋鈕表)
   // camp-0:預設先停在主選單(規格 H §14);自動化/試播旗走舊路=開機即開打(見 MENU_ON)
-  initMenu(startGame);
-  if (MENU_ON) { enterMenu(); } else { v2s.camp.phase = 'play'; setMenuVisible(false); }
+  setSealHandler(campSeal);                       // camp-1:封存完成後由闖關接手(free/加班模式回 false=走舊路)
+  initMenu(startGame, () => loadRun());
+  // ⚠ 沒有選單時一律進 **free**(=加班模式/舊行為:封存→事故報告)。這是既有 40 支回歸的保命符:
+  //   闖關只在玩家真的從主選單按下開始後才接管。
+  if (MENU_ON) { enterMenu(); } else { v2s.camp.phase = 'free'; setMenuVisible(false); }
   v2s.introT = MENU_ON ? 0 : INTRO_T;             // 開場目標字幕/鏡頭帶場(教學+老手都演一次,便宜且無害)
   camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 鏡頭開場=兩人中點(就位構圖;「開始!」後回玩家)
   setActorShadow(true);

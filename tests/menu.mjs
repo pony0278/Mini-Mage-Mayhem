@@ -54,11 +54,11 @@ async function load(url, waitMenu) {
 {
   const { page, errs } = await load('http://localhost:8099/v2.html?menu=1', true);
   await page.evaluate(() => __v2.startGame());
-  await page.waitForFunction('__v2.state().camp.phase === "play"', { timeout: 15000 });
+  await page.waitForFunction('__v2.state().camp.phase === "fight"', { timeout: 15000 });
   const st = await page.evaluate(() => { const s = __v2.state(), [a, b] = __v2.fighters;
     return { phase: s.camp.phase, introT: s.introT, menuOut: s.menuOut, shown: __menu().shown, scene: __lab.menuScene(),
              f0: { x: Math.round(a.x), y: Math.round(a.y), state: a.state }, f1: { x: Math.round(b.x), y: Math.round(b.y), state: b.state, hidden: !!b._hidden } }; });
-  R('開始遊戲 → 闖關態轉 play、選單收起、工作站移除', st.phase === 'play' && st.shown === false && st.scene === false, JSON.stringify(st));
+  R('開始遊戲 → 闖關態轉 fight、選單收起、工作站移除', st.phase === 'fight' && st.shown === false && st.scene === false, JSON.stringify(st));
   R('交還既有開場帶場(introT 起跳 + 鏡頭混合中)', st.introT > 1 && st.menuOut > 0, JSON.stringify({ introT: st.introT, menuOut: st.menuOut }));
   R('雙方歸位出生點、對手復活(選單的 away/_hidden 清乾淨)',
     st.f1.state === 'alive' && st.f1.hidden === false && st.f0.state === 'alive' && Math.abs(st.f0.x - st.f1.x) > 300, JSON.stringify(st));
@@ -71,18 +71,18 @@ async function load(url, waitMenu) {
 {
   const { page, errs } = await load('http://localhost:8099/v2.html', false);
   R('navigator.webdriver 為真(webdriver 那道訊號還在)', await page.evaluate(() => navigator.webdriver === true));
-  R('自動化下無旗標=直接開打(選單不擋回歸)', await page.evaluate(() => __v2.state().camp.phase === 'play' && !__menu().shown));
+  R('自動化下無旗標=直接開打 free 模式(選單不擋回歸)', await page.evaluate(() => __v2.state().camp.phase === 'free' && !__menu().shown));
   R('無旗標:無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
   await page.close();
 }
 {
   const { page } = await load('http://localhost:8099/v2.html?menu=0', false);
-  R('?menu=0 明示跳過', await page.evaluate(() => __v2.state().camp.phase === 'play'));
+  R('?menu=0 明示跳過', await page.evaluate(() => __v2.state().camp.phase === 'free'));
   await page.close();
 }
 {
   const { page } = await load('http://localhost:8099/v2.html?turbo=8', false);
-  R('?turbo 一律跳過(回歸套件標配)', await page.evaluate(() => __v2.state().camp.phase === 'play'));
+  R('?turbo 一律跳過(回歸套件標配)', await page.evaluate(() => __v2.state().camp.phase === 'free'));
   await page.close();
 }
 

@@ -13,7 +13,7 @@
 
 const CLEAR_KEY = 'mmm_camp_cleared';        // localStorage:通關過沒有(解鎖加班模式)
 
-let root = null, onStart = null, _shown = false;
+let root = null, onStart = null, _getRun = null, _shown = false;
 
 export function isCleared() {
   try { return localStorage.getItem(CLEAR_KEY) === '1'; } catch { return false; }
@@ -67,17 +67,32 @@ function build() {
   tagline.style.cssText = 'font:600 clamp(12px,1.9vh,18px) system-ui,sans-serif;color:#cfd8e6;opacity:.9;margin:10px 0 clamp(16px,3vh,30px)';
 
   const btns = document.createElement('div');
+  btns.id = 'v2menuBtns';
   btns.style.cssText = 'display:flex;flex-direction:column;gap:clamp(8px,1.4vh,14px)';
-  btns.appendChild(button('開始遊戲', '', true, () => { if (onStart) onStart(); }));
-  const cleared = isCleared();
-  btns.appendChild(button('加班模式', cleared ? '無限對戰' : '通關後解鎖', cleared, () => { if (onStart) onStart({ overtime: true }); }));
-
   root.append(kicker, title, tagline, btns);
   document.body.appendChild(root);
+  refreshMenu();
+}
+
+// camp-1:按鈕清單依「有沒有中離的進度」與「通關過沒有」重建。
+// 有進度 → 主鈕變「繼續」並顯示打到哪一關/幾把鑰匙,另給一顆「重新開始」。
+export function refreshMenu() {
+  if (!root) return;
+  const btns = root.querySelector('#v2menuBtns');
+  btns.innerHTML = '';
+  const run = _getRun ? _getRun() : null;
+  if (run) {
+    btns.appendChild(button('繼續', '關 ' + run.level + '　🔑 ' + run.keys + '/3', true, () => { if (onStart) onStart({ resume: true }); }));
+    btns.appendChild(button('重新開始', '從第 1 關', true, () => { if (onStart) onStart(); }));
+  } else {
+    btns.appendChild(button('開始遊戲', '', true, () => { if (onStart) onStart(); }));
+  }
+  const cleared = isCleared();
+  btns.appendChild(button('加班模式', cleared ? '無限對戰' : '通關後解鎖', cleared, () => { if (onStart) onStart({ overtime: true }); }));
 }
 
 // v2.js 開機呼叫:注入「開始」的回呼。
-export function initMenu(startFn) { onStart = startFn; if (!root) build(); }
+export function initMenu(startFn, getRun) { onStart = startFn; _getRun = getRun || null; if (!root) build(); else refreshMenu(); }
 
 export function setMenuVisible(v) {
   if (!root) return;

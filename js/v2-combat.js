@@ -235,11 +235,12 @@ const RECORD_PHRASE = { stun: '擊暈', fall: '墜入廢料井', carry: '塞進�
   reverse: '反向收容', wind: '被吹進回收口', ice: '滑進回收口', barrel: '被炸進回收口' };
 export function recordIncident(victim, method) {
   if (v2s.perform || v2s.matchOver || v2s.finisher || v2s.reject) return false;
+  if (v2s.camp.phase !== 'free' && v2s.camp.phase !== 'fight') return false;   // camp-1:掉鑰匙/交接/重來的空檔不計分
   const w = 1 - victim.pid;
   roundWins[w]++; v2s.winnerPid = w;
   containLog.push({ winner: w, method, stage: v2s.stage });
   const lead = Math.max(roundWins[0], roundWins[1]);     // 階段對映改記錄數(0-1→普通/2→黃色警戒/滿→全面失控)
-  applyStage(lead >= RECORD_TARGET ? 3 : lead >= 2 ? 2 : 1);
+  if (v2s.camp.phase === 'free') applyStage(lead >= RECORD_TARGET ? 3 : lead >= 2 ? 2 : 1); // 闖關模式的危險等級綁關卡(startLevel 設),不由比分推
   // flow-2 立案 beat(玩家反饋 2026-08-03「擊暈得分太不起眼」):存證拍照——閃光燈打在受害者身上 +
   // 快門聲 + 印章卡從他身上彈出、飛進自己的計分格。飄字保留當備援(HUD 被壓時仍讀得到)。
   v2s.recordCard = { t: 0, T: 1.05, w, n: Math.min(roundWins[w], RECORD_TARGET), phrase: RECORD_PHRASE[method] || method, x: victim.x, y: victim.y };
@@ -705,7 +706,7 @@ export function resolveFall(v) {
 export function fallSeal(w) { // 終局 by 墜落:廢料井封存(不開玻璃罩——人已經在下層了)
   v2s.bannerText = NAMES[w] + ' 獲勝!對手已由下層回收線清運'; v2s.winBannerT = 3.0;
   addShake(10); stopHit('seal'); game.sfx.push('waveclear'); game.sfx.push('upgrade');
-  endMatch(w);
+  sealOrCamp(w);
 }
 // --- 回收演出 V0.8(使用者演出設計文檔 2026-07;拍板:不鎖定勝方/不動 follow cam/艙口 LED 飄字)---
 // 時間軸(佔總長比例):捕捉 0-12% → 掙扎 12-30% → 掃描 30-62% → 分類 62-80% → 收尾 80-100%。
@@ -839,7 +840,7 @@ export function finalSeal(w) { // 第三次 = 最終封存儀式 → 事故報�
   addText(POD.x, POD.y - 48, '最終封存完成', COLORS[w]);
   addRing(POD.x, POD.y, POD.r * 3.2, COLORS[w], 0.7, 9); addRing(POD.x, POD.y, POD.r * 2.1, '#ffffff', 0.5, 6);
   addShake(12); stopHit('seal'); game.sfx.push('waveclear'); game.sfx.push('upgrade'); // 儀式感 0.4:feel-3 放開 fx 帽後首次真正生效
-  endMatch(w);
+  sealOrCamp(w);
 }
 export function softReintegrate(loser, total) { // 非第三次:被收容者出生點彈出+無敵, 場地不重置, 警戒升級
   const next = Math.min(3, total + 1); applyStage(next);
@@ -849,6 +850,13 @@ export function softReintegrate(loser, total) { // 非第三次:被收容者出�
   resetFighter(loser); loser.invuln = 1.8; // 彈回出生點 + 無敵(不能被抓/打)
 }
 export function endMatch(pid) { v2s.matchOver = true; v2s.report = generateReport(pid); game.sfx.push('upgrade'); dlog('MATCH OVER → report', v2s.report.level, v2s.report.name); } // 爽鬥回歸:事故報告=結算+分享引擎
+// --- 規格 H camp-1:封存接手點 ---
+// 闖關模式下「封存完成」不再是一局的終點,而是**過關**(掉鑰匙→下一關)或**敗北**(重打本關)。
+// v2-combat 不能 import v2.js(DAG 反向),所以照 setGroundMarkers/setRimTeams 那套**注入回呼**:
+// v2.js 開機塞一支進來;沒塞(或加班模式)就走舊路 endMatch=事故報告結算。
+let _sealHandler = null;
+export function setSealHandler(fn) { _sealHandler = fn; }
+function sealOrCamp(w) { if (_sealHandler && _sealHandler(w)) return; endMatch(w); }
 export function doAction(f) { // 情境動作鍵(j 鍵舊排;keys-1 後主鍵位=C 攻擊/X 互動/Z 道具,桶的撿/丟/放走 X=contextAction)
   if (f.state !== 'alive' || f.stunned || f.carriedBy || f.fumbleT > 0 || f.carryObj) return;
   if (f.carrying) { dropCarry(f); return; }
@@ -891,7 +899,7 @@ export function aiMove(f) {
     if (fd.x || fd.y) f.facing = Math.atan2(fd.y, fd.x);
     return fd;
   }
-  if (v2s.aiTier === 'intern' && !v2s.aiCalled && f.pid === 1 && f.state === 'alive' && !f.stunned && !f.carriedBy
+  if (v2s.camp.phase === 'free' && v2s.aiTier === 'intern' && !v2s.aiCalled && f.pid === 1 && f.state === 'alive'   // 逃跑搬救兵只留給加班模式(規格 H §4:闖關裡 boss 跑掉就拿不到鑰匙) && !f.stunned && !f.carriedBy
       && roundWins[1 - f.pid] >= WIN_TARGET - 1 && f.stability <= FLEE_STAB) {   // 快輸(你聽牌+他被打殘)=不戀戰
       // ⚠ f.pid===1:逃跑/搬救兵整組機械是為 pid1 對手寫的(updateAiCall 硬重置 fighters[1])——
       // 雙 AI 探針把 pid0 也開 AI 時,pid0 逃跑=away+_hidden 永遠回不來(tempo 探針 200s 卡死實測)。
