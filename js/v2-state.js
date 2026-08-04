@@ -402,6 +402,19 @@ export const CAMP_T = { keydrop: 1.6, handoff: 2.0, retry: 2.2, escape: 1.8 };
 //   這裡先把「第幾關用哪個檔案」這條線接起來,camp-4 只要換掉這張表的內容。
 export const CAMP_TIER = ['intern', 'senior', 'senior'];
 export const CAMP_LEVEL_NAME = ['加班時間', '交接班', '頂樓辦公室'];   // 草案(規格 H §13 待拍板 #4)
+// camp-5:每關對手的**顯示名**與台詞。⚠ 故意跟 `AI_PROFILE`(行為旋鈕)**分開**——名字是文案(camp-5),
+//   旋鈕是手感(camp-4);`startLevel` 套完 tier 之後直接覆寫 `NAMES[1]`,兩邊各自演進不互卡。
+export const CAMP_BOSS = ['老油條員工', '領班', '老闆'];
+export const CAMP_BOSS_IN = [                       // 進場台詞(擋你下班的理由)
+  '欸欸欸,還沒到六點吧?再幫我看一下這個。',
+  '鑰匙是公司財產。放下。',
+  '加班是福報。你不懂。',
+];
+export const CAMP_BOSS_OUT = [                      // 被丟進回收艙時的哀嚎
+  '我……我只是想找人聊天啊——',
+  '這個月的考績——',
+  '我不是垃圾——我是可回收物啊啊啊——',
+];
 export function resetStage() { v2s.stage = 1; v2s.barrelRespawnCur = BARREL_RESPAWN; v2s.barrelFuseCur = BARREL_FUSE; v2s.padRespawnCur = PAD_RESPAWN; v2s.slideContainCur = SLIDE_CONTAIN_V; v2s.stationIntervalCur = STATION_INTERVAL; v2s.stationTimer = STATION_INTERVAL; v2s.lastStationIdx = -1; }
 export function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門檻)
   v2s.stage = s;

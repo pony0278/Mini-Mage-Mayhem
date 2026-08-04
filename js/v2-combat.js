@@ -222,7 +222,7 @@ export function stunFighter(o) {
     if (roundWins[w] >= RECORD_TARGET && !v2s.finisher && !v2s.perform && !v2s.reject && !v2s.matchOver && o.state === 'alive') {
       v2s.finisher = { phase: 'prompt', t: 0, w, v: o.pid };
       o.stunT = Math.max(o.stunT, FINISHER_WINDOW);       // 取 max:燃燒鏈/觸電的長暈不縮短
-      addText(o.x, o.y - 56, '收容窗口！', COLORS[w]);
+      addText(o.x, o.y - 56, '就是現在！', COLORS[w]);
     }
   }
 }
@@ -247,7 +247,7 @@ export function recordIncident(victim, method) {
   game.sfx.push('shutter'); addHitstop(0.1);           // 短頓點=「這一下有被記下來」的體感標點(輕於擊暈 0.26)
   addText(victim.x, victim.y - 44, '事故記錄 #' + Math.min(roundWins[w], RECORD_TARGET) + ':' + (RECORD_PHRASE[method] || method), '#ffd36d');
   if (roundWins[w] === RECORD_TARGET) {                  // 剛集滿:收容指令下達(賽末點;艙發光=v2.js 脈動)
-    v2s.bannerText = '⚠ 收容指令:對 ' + NAMES[victim.pid] + ' 執行收容封存'; v2s.winBannerT = 2.4;
+    v2s.bannerText = '⚠ ' + NAMES[victim.pid] + ' 撐不住了!打暈他 → 按 X 丟進回收艙'; v2s.winBannerT = 2.4;
     addRing(POD.x, POD.y, POD.r * 2.2, COLORS[w], 0.6, 6); game.sfx.push('upgrade');
     dlog('SEAL ORDER →', NAMES[w]);
   }
@@ -698,12 +698,12 @@ export function resolveFall(v) {
     fallSeal(w);
   } else {
     recordIncident(v, 'fall');
-    v2s.bannerText = NAMES[w] + ' 記錄一筆！對手墜入廢料井'; v2s.winBannerT = 1.6;
+    v2s.bannerText = '對手掉進廢料井了'; v2s.winBannerT = 1.6;
     addHitstop(0.2);
   }
 }
 export function fallSeal(w) { // 終局 by 墜落:廢料井封存(不開玻璃罩——人已經在下層了)
-  v2s.bannerText = NAMES[w] + ' 獲勝!對手已由下層回收線清運'; v2s.winBannerT = 3.0;
+  v2s.bannerText = NAMES[w] + ' 獲勝!對方已由下層回收線清運'; v2s.winBannerT = 3.0;
   addShake(10); stopHit('seal'); game.sfx.push('waveclear'); game.sfx.push('upgrade');
   sealOrCamp(w);
 }
@@ -835,8 +835,8 @@ function finishPerform() {
   else { addRing(POD.x, POD.y, PERFORM_DOME_R * 1.6, '#4dffcf', 0.5, 5); softReintegrate(loser, p.total); } // 開罩彈回出生點
 }
 export function finalSeal(w) { // 第三次 = 最終封存儀式 → 事故報告
-  v2s.bannerText = NAMES[w] + ' 最終封存完成！'; v2s.winBannerT = 3.0;
-  addText(POD.x, POD.y - 48, '最終封存完成', COLORS[w]);
+  v2s.bannerText = '丟進去了!'; v2s.winBannerT = 3.0;
+  addText(POD.x, POD.y - 48, '丟進去了!', COLORS[w]);
   addRing(POD.x, POD.y, POD.r * 3.2, COLORS[w], 0.7, 9); addRing(POD.x, POD.y, POD.r * 2.1, '#ffffff', 0.5, 6);
   addShake(12); stopHit('seal'); game.sfx.push('waveclear'); game.sfx.push('upgrade'); // 儀式感 0.4:feel-3 放開 fx 帽後首次真正生效
   sealOrCamp(w);

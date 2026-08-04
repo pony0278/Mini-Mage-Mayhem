@@ -20,7 +20,7 @@ import {
   RESPAWN, STAB_MAX, STAB_REGEN, STUN_RECOVER, RESTUN_IMMUNE, CARRY_MASH_AI, CARRY_MASH_TAP, CARRY_ESCAPE_NEED, INTRO_T, INTRO_GO,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, BURN_LOB, LAND_SKID, lobZ, JUMP_LOB, AIR_HIT_LOB, DIVE_T, RUN_STICK,
   camRig, CAMB, NAMES, AI_PROFILE, RECORD_TARGET, COLORS, FATIGUE,
-  CAMP_LEVELS, CAMP_T, CAMP_TIER, CAMP_LEVEL_NAME, applyStage,
+  CAMP_LEVELS, CAMP_T, CAMP_TIER, CAMP_LEVEL_NAME, CAMP_BOSS, CAMP_BOSS_IN, CAMP_BOSS_OUT, applyStage,
 } from './v2-state.js';
 import { TERRAIN, RIM, ISLANDS, BRIDGES, onSolid, buildArena, buildFlatMap, buildFlatArena } from './v2-terrain.js';
 import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGuard, updateGuard, startCarry, dropCarry, throwCarried, launchCarried, inThrowFlight, breakFree, stunFighter, updateBurnChain, containByCarry, containByEnviron, endMatch, floorHazards, drainFloorEvents, onSlipperyIce, startPerform, updatePerform, jump, dive, jumping, airborne, applyAiTier, updateAiCall, resolveFall, updateFinisher, updateReject, pressFinisher , setSealHandler,
@@ -152,6 +152,7 @@ function startLevel(n) {
   clearMatchState(); v2s.keyFx = null;
   applyStage(c.level);                                   // 規格 H §2:危險等級**綁關卡**,不再由比分推
   applyAiTier(CAMP_TIER[c.level - 1]);                   // camp-4 換成三份 boss 檔案,這條線先接起來
+  NAMES[1] = CAMP_BOSS[c.level - 1];                     // camp-5:顯示名由關卡決定(與行為旋鈕分開)
   v2s.introT = INTRO_T;
   camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2;
   saveRun();
@@ -167,10 +168,11 @@ function campSeal(winner) {
     v2s.keyFx = { t: 0, T: CAMP_T.keydrop, n: c.keys };   // camp-3:艙口吐出鑰匙 → 飛進左上角計數格
     game.sfx.push('upgrade');
     v2s.bannerText = '🔑 鑰匙 ' + c.keys + '/' + CAMP_LEVELS + ' 到手'; v2s.winBannerT = 2.2;
+    addText(POD.x, POD.y - 62, CAMP_BOSS_OUT[c.level - 1] || '', COLORS[1]);   // camp-5:被丟進去時的哀嚎
   } else {                                                // 敗北:今天不用下班了 → 重打本關
     c.deaths++;
     c.phase = 'retry'; v2s.campT = CAMP_T.retry;
-    v2s.bannerText = '今天不用下班了……'; v2s.winBannerT = 2.2;
+    v2s.bannerText = '今天不用下班了……回去工作。'; v2s.winBannerT = 2.2;
   }
   saveRun();
   return true;
@@ -186,8 +188,7 @@ function stepCamp(dt) {
       v2s.bannerText = '🔑 ' + CAMP_LEVELS + '/' + CAMP_LEVELS + '　大門解鎖'; v2s.winBannerT = 2.4;
     } else {
       c.phase = 'handoff'; v2s.campT = CAMP_T.handoff;
-      const nm = CAMP_LEVEL_NAME[c.level] || '';
-      v2s.bannerText = '關 ' + (c.level + 1) + ':' + nm; v2s.winBannerT = 2.0;
+      v2s.bannerText = (CAMP_BOSS[c.level] || '下一位') + ' 擋住去路'; v2s.winBannerT = 2.0;
     }
   } else if (c.phase === 'handoff') {
     startLevel(c.level + 1);
@@ -782,7 +783,7 @@ function updateBrink(dt) {
   if (!brink) { v2s.brinkT = 0; return; }
   if (!v2s.brinkShown) {                              // 一次性因果說明(本場一次;restartMatch 清)
     v2s.brinkShown = true;
-    v2s.bannerText = '⚠ 再被記一筆,對方就能對你執行收容封存'; v2s.winBannerT = 2.6;
+    v2s.bannerText = '⚠ 再挨一次,今天就別想下班了'; v2s.winBannerT = 2.6;
     game.sfx.push('hurt');
   }
   v2s.brinkT -= dt;

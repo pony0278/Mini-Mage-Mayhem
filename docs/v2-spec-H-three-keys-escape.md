@@ -238,7 +238,7 @@ jumpChance / guard / comboDrop`。註解本來就寫著「之後領班/廠長=�
 | ~~camp-2~~ **✅ 已落地** | 報告退役(§9 清單一次切乾淨)+ `drawEndCard()` 極簡結算卡 + 五支測試的報告斷言同步改;順手修掉 camp-0 帶進來的「選單 DOM 卡在畫面上」bug | `v2-report.js`(刪), `v2-hud.js`, `v2-touch.js`, `v2-combat.js`, `v2.js`, `v2-menu.js` |
 | ~~camp-3~~ **✅ 已落地** | 鑰匙:艙口掉落 → 自動飛入 → 左上角 `🔑` 三格 + 3/3 解鎖脈動。**整段畫在 HUD**(錨 `project(POD…)`)而非 3D 物件——理由見 js/CLAUDE.md。驗收 `tests/magickey.mjs`(12 條,含可讀性像素驗收) | `v2-hud.js`, `v2-state.js`, `v2.js` |
 | **camp-4** | 三 boss:`AI_PROFILE` 加列 + `nextTier` 鏈 + `applyStage` 綁關卡 + 進場台詞 | `v2-state.js`, `v2-combat.js` |
-| **camp-5** | 文案全換(§8.1)+ HUD 層級重整(§7) | `v2-hud.js`, `v2.html` |
+| ~~camp-5~~ **✅ 已落地** | 文案全換(§8.1)+ HUD 層級重整(§7):標題列/第二行/教練行分兩級+去閃爍/開場改 boss 台詞/印章卡語意/終演提示;`CAMP_BOSS`+台詞表與 `AI_PROFILE` 分開。驗收 `tests/skin.mjs`(17 條,靠新的 `__hudtext` hook) | `v2-hud.js`, `v2-state.js`, `v2-combat.js`, `v2.js`, `v2.html` |
 | **camp-6** | 結局:打卡下班演出 + 通關結算 + 加班模式解鎖 | `v2.js`, `v2-hud.js` |
 
 ## 11. 測試遷移(掃描結果:40 支裡 10 支受影響)

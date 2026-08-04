@@ -99,7 +99,7 @@ R('對手瀕界不響心跳(心跳=自己的,不是場上音效)', foeBrink === 
 await page.evaluate(() => { const v = __v2; v.roundWins[0] = 0; v.roundWins[1] = 2; v.v2s.brinkShown = false; v.v2s.bannerText = ''; });
 await gwait(0.3);
 const warn = await page.evaluate(() => ({ shown: __v2.state().brink.shown, banner: __v2.v2s.bannerText, t: +__v2.v2s.winBannerT.toFixed(1) }));
-R('首次瀕界=一次性提示橫幅(把因果講白)', warn.shown && /收容封存/.test(warn.banner) && warn.t > 0, JSON.stringify(warn));
+R('首次瀕界=一次性提示橫幅(把因果講白)', warn.shown && /別想下班/.test(warn.banner) && warn.t > 0, JSON.stringify(warn));   // camp-5 換皮:舊文案是「再被記一筆…收容封存」
 const myBeats = await beats(3.2);
 R('本機瀕界=低頻心跳(約 1 秒一次)', myBeats >= 2, 'beats=' + myBeats);
 // 一次性:清掉橫幅後不再重播提示(但心跳繼續)

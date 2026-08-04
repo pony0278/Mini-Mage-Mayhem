@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   INTRO_T, INTRO_GO,
-  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, roundWins, FATIGUE, CAMP_LEVELS,
+  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, roundWins, FATIGUE, CAMP_LEVELS, CAMP_LEVEL_NAME, CAMP_BOSS_IN,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -233,6 +233,35 @@ function nearSwitch(f) { // 附近有未啟動的緊急拉桿(教學提示用;�
   for (const sw of labSwitches) if (Math.hypot(f.x - sw.x, f.y - sw.y) < PUNCH_RANGE + sw.r + 24) return true;
   return false;
 }
+/* camp-5 教練行分兩級(規格 H §7)——玩家說「提示很多但很亂」的另一半藥。
+   ①**動作提示**(掙脫/推開/可回收/撿東西…)有時效,照舊常駐。
+   ②**目標提示**(「打倒他,搶回鑰匙」)只在**第 1 關**出現;之後只有**卡關**才浮回來——
+     已經打過一關的人不需要被一直提醒遊戲怎麼玩。
+   卡關定義=距上一筆進度(記錄數變動)超過 GOAL.stuck 秒。 */
+// 測試 hook(同 __hudmk/__hud 慣例):把「這一幀實際畫出來的文字」露出去。
+// ⚠ 文案類斷言沒有這支就只能 OCR;而且 camp-2 的教訓是——**hook 要回報實況,不是意圖**,
+//   所以這些欄位一律在 fillText 的當下寫入,不是在決定要畫什麼的時候。
+const _hudText = { title: null, sub: null, coach: null, introLine: null, introHead: null, teach: null };
+if (typeof window !== 'undefined') window.__hudtext = () => ({ ..._hudText });
+const GOAL = { stuck: 30 };
+let _progN = -1, _progT = 0;
+function showGoal() {
+  const n = containLog.length;
+  if (n !== _progN) { _progN = n; _progT = game.time; }       // 有進度就重新計時
+  if (v2s.camp.phase === 'free' || v2s.camp.level <= 1) return true;
+  return game.time - _progT > GOAL.stuck;                      // 卡關了才把目標提示放回來
+}
+/* 去閃爍:原本每幀重挑最高優先那條,條件一抖(對手穩定值跨過門檻、剛命中旗翻面)文字就跳一次,
+   一整排提示看起來像在閃。改成**最短停留**——換句話要等 dwell 秒,期間維持上一句。
+   ⚠ 不能用「同一句 N 秒內不重播」那種寫法:狀態型訊息(你正被扛著)會被自己的規則消音。 */
+const COACH_DWELL = 0.8;
+let _coachMsg = '', _coachAt = -9;
+function holdCoach(msg) {
+  if (msg === _coachMsg) return msg;
+  if (game.time - _coachAt < COACH_DWELL && _coachMsg) return _coachMsg;
+  _coachMsg = msg; _coachAt = game.time;
+  return msg;
+}
 function drawCoachLine() {
   if (v2s.letterK > 0.3) return;   // 終演/封存=過場,壓掉教練線(規格 G §4.3)
   const me = fighters[LOCAL], o = fighters[1 - LOCAL];
@@ -249,9 +278,11 @@ function drawCoachLine() {
   else if (!me.item && !me.carryObj && nearPickup(me)) { msg = 'X 撿道具'; col = '#9ee6ff'; } // 手動撿(C 案):附近有補給座/掉落道具且空手
   else if (!me.carrying && !me.carryObj && nearBottle(me)) { msg = 'E 撿元素瓶 → 砸人（冰凍／著火／電擊／毒地板）'; col = '#9ee6ff'; }
   else if (nearSwitch(me)) { msg = '⚠ 揍拉桿＝四角元素站開始洩漏（高風險高娛樂）'; col = '#ffab5a'; }
-  else if (roundWins[0] >= WIN_TARGET) { msg = '⚠ 收容指令!打暈他 → 按 X 收容'; col = '#ffd36d'; }   // 規格 G 賽末點
-  else { msg = 'C 三連擊 → 記錄對手 ' + WIN_TARGET + ' 次事故（打暈／打下場）'; col = '#9ee6ff'; }
-  if (!msg) return;
+  else if (roundWins[0] >= WIN_TARGET) { msg = '⚠ 他撐不住了!打暈 → 按 X 丟進回收艙'; col = '#ffd36d'; }   // 規格 G 賽末點
+  else if (showGoal()) { msg = 'C 三連擊 → 打倒他,搶回鑰匙'; col = '#9ee6ff'; }
+  if (!msg) { _coachMsg = ''; _hudText.coach = null; return; }
+  msg = holdCoach(msg);                       // 去閃爍:見 holdCoach 註解
+  _hudText.coach = msg;
   const pk = v2s.lowFlicker ? 1 : 0.8 + 0.2 * Math.sin(game.time * 10);
   hctx.save();
   hctx.textAlign = 'center'; hctx.font = '900 24px system-ui, sans-serif';
@@ -424,20 +455,29 @@ function drawWindSpeedLines() {
 /* 開場目標字幕(使用者上手文檔:進場一頭霧水的頭號解法=一進場就把「怎麼贏」講清楚)。
    大字置中,最後 0.7s 淡出;鏡頭同時由 updateCamRig 帶場到對手再回玩家(看得到對手)。 */
 function drawIntro() {
-  if (v2s.introT <= 0) return;
+  if (v2s.introT <= 0) { _hudText.introLine = null; _hudText.introHead = null; return; }
   hctx.save(); hctx.textAlign = 'center';
   const cx = VW / 2, cy = VH * 0.32;
   if (v2s.introT > INTRO_GO) {              // 就位期:老闆訓話+目標字幕(按任何鍵直接開始)
-    hctx.fillStyle = 'rgba(6,12,18,.66)'; hctx.fillRect(0, cy - 76, VW, 132);
+    // camp-5:開場=**擋路的人說話**,不是制度說明。第 1 關才附一行怎麼玩(之後玩家已經懂了)。
+    const camping = v2s.camp.phase !== 'free' && v2s.camp.phase !== 'menu';
+    const lv = v2s.camp.level - 1;
+    const line = camping ? (CAMP_BOSS_IN[lv] || '') : '🧑‍💼 主管：都給我好好工作！';
+    const head = camping ? NAMES[1] + ' 擋住去路' : '打倒對手 ×' + WIN_TARGET + '　然後丟進回收艙';
+    const teach = !camping || v2s.camp.level <= 1;
+    hctx.fillStyle = 'rgba(6,12,18,.66)'; hctx.fillRect(0, cy - 76, VW, teach ? 132 : 100);
     hctx.font = '900 20px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
-    hctx.fillText('🧑‍💼 主管：都給我好好工作！', cx, cy - 46); // 老闆開場監督(世界觀留=喜劇土壤;開始後就消失)
+    hctx.fillText(line, cx, cy - 46);
     hctx.font = '900 34px system-ui, sans-serif'; hctx.lineWidth = 6; hctx.strokeStyle = 'rgba(6,12,18,.85)';
-    hctx.strokeText('打暈.打下場＝記錄事故 ×' + WIN_TARGET + '　然後收容封存他', cx, cy);
-    hctx.fillStyle = '#9affd0'; hctx.fillText('打暈.打下場＝記錄事故 ×' + WIN_TARGET + '　然後收容封存他', cx, cy);
-    hctx.font = '800 17px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.92)';
-    hctx.fillText('打暈 → 抓起 → 丟進去 · 元素瓶／爆桶／冰面 都能幫你收容他', cx, cy + 30);
+    hctx.strokeText(head, cx, cy);
+    hctx.fillStyle = '#9affd0'; hctx.fillText(head, cx, cy);
+    if (teach) {
+      hctx.font = '800 17px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.92)';
+      hctx.fillText('打暈 → 抓起 → 丟進回收艙 · 元素瓶／爆桶／冰面 都能幫你', cx, cy + 30);
+    }
     hctx.font = '700 13px system-ui, sans-serif'; hctx.fillStyle = 'rgba(200,235,255,.55)';
-    hctx.fillText('按任意鍵開始', cx, cy + 52);
+    hctx.fillText('按任意鍵開始', cx, cy + (teach ? 52 : 30));
+    _hudText.introLine = line; _hudText.introHead = head; _hudText.teach = teach;
   } else {                                   // 「開始!」:AI 從這一刻開工(到處回收垃圾=活教學),字放大彈出+淡出
     const k = 1 - v2s.introT / INTRO_GO;     // 0→1
     const a = Math.min(1, v2s.introT / 0.35), pop = 1 + 0.25 * Math.max(0, 1 - k * 5); // 前 20% 彈一下
@@ -486,12 +526,22 @@ export function drawHud() {
   // title
   hctx.font = '900 18px system-ui, sans-serif';
   hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 · 收容測試　階段 ' + v2s.stage + '：' + STAGE_NAME[v2s.stage - 1] + '　記錄 ' + WIN_TARGET + ' 筆 → 收容封存', VW / 2, 28);
-  // AI 狀態(練習模式)— 永遠可見,B 切換
-  const aiOn = fighters[1 - LOCAL].ai;
-  hctx.font = '800 13px system-ui, sans-serif';
-  hctx.fillStyle = aiOn ? 'rgba(255,140,140,.92)' : 'rgba(154,255,208,.96)';
-  hctx.fillText(aiOn ? '紅方：AI 同事　（按 B 關掉，練手感）' : '紅方：練習假人　（按 B 開 AI）', VW / 2, 48);
+  // camp-5 標題列(規格 H §7):**一個常駐目標 + 一個當前障礙**,不再解釋制度。
+  //   闖關=「關 n · 關卡名　　<對手> 擋住去路」;鑰匙進度在左上角自成一格(camp-3),這裡不重複。
+  //   加班模式維持舊語意(危險等級),因為那條路就是舊遊戲。
+  const camping = v2s.camp.phase !== 'free' && v2s.camp.phase !== 'menu';
+  const title = camping
+    ? '關 ' + v2s.camp.level + ' · ' + (CAMP_LEVEL_NAME[v2s.camp.level - 1] || '') + '　　' + NAMES[1] + ' 擋住去路'
+    : '加班模式 · 無限對戰　階段 ' + v2s.stage + '：' + STAGE_NAME[v2s.stage - 1];
+  hctx.fillText(title, VW / 2, 28);
+  _hudText.title = title; _hudText.sub = null;
+  // 第二行只在**練習模式**(關掉 AI)才出現——正式流程裡它是純雜訊(規格 H §7)。
+  if (!fighters[1 - LOCAL].ai) {
+    hctx.font = '800 13px system-ui, sans-serif';
+    hctx.fillStyle = 'rgba(154,255,208,.96)';
+    hctx.fillText('紅方：練習假人　（按 B 開 AI）', VW / 2, 48);
+    _hudText.sub = '紅方：練習假人';
+  }
   drawContainHud();
   drawItems();
   drawBursts(); // 漫畫打擊爆花:最上層蓋過角色(hitfx-1;白閃/集中線也在這層)
@@ -519,7 +569,7 @@ export function drawHud() {
 // build tag — 每次改動就 bump,線上硬重整後靠它確認載到新版(選單期也畫=診斷不斷線)
 function drawBuildTag() {
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: camp-3', VW - 10, VH - 4);
+  hctx.fillText('build: camp-5', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====
@@ -538,12 +588,12 @@ function drawFinisherUi() {
     hctx.font = '900 40px system-ui, sans-serif';
     hctx.globalAlpha = pk;
     hctx.strokeStyle = 'rgba(0,0,0,.75)'; hctx.lineWidth = 7;
-    hctx.strokeText('按 X 收容!', VW / 2, VH * 0.34);
-    hctx.fillStyle = '#ffd36d'; hctx.fillText('按 X 收容!', VW / 2, VH * 0.34);
+    hctx.strokeText('按 X 丟進回收艙!', VW / 2, VH * 0.34);
+    hctx.fillStyle = '#ffd36d'; hctx.fillText('按 X 丟進回收艙!', VW / 2, VH * 0.34);
     hctx.globalAlpha = 1;
     hctx.font = '700 16px system-ui, sans-serif';
     hctx.fillStyle = '#eafaff';
-    hctx.fillText('收容窗口開啟——錯過他就爬起來了', VW / 2, VH * 0.34 + 26);
+    hctx.fillText('趁現在——錯過他就爬起來了', VW / 2, VH * 0.34 + 26);
     hctx.restore();
   }
   if (v2s.finFlash > 0) {                                          // 按下瞬間白閃
@@ -677,7 +727,7 @@ function drawRecordBeat() {
   hctx.strokeStyle = '#ffd36d'; hctx.lineWidth = 2.5; hctx.strokeRect(-W / 2 + 1, -H / 2 + 1, W - 2, H - 2);
   hctx.textAlign = 'center';
   hctx.font = '900 15px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
-  hctx.fillText('事故記錄 #' + C.n, 0, -2);
+  hctx.fillText(C.n >= WIN_TARGET ? '撐不住了!' : '還能撐 ' + (WIN_TARGET - C.n) + ' 次', 0, -2);
   hctx.font = '800 12px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
   hctx.fillText(C.phrase, 0, 14);
   hctx.restore();
