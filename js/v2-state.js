@@ -316,7 +316,6 @@ export const POISON_BURST_R = 72, POISON_BURST_STAB = 45, POISON_BURST_FORCE = 2
 export const STAGE_NAME = ['普通', '黃色警戒', '全面失控'];
 export const STAGE_BANNER = ['臨時收容成功！樣本逃逸', '高危險樣本再收容！基地警戒升級'];
 export const METHOD_COL = { carry: '#8fb6ff', throw: '#ffd36d', wind: '#bfeaff', ice: '#9fd8ff', barrel: '#ff9a4a', fire: '#ff7a3a', reverse: '#c98cff', fall: '#9aa4af' };
-export const METHOD_ZH = { carry: '搬', throw: '拋', wind: '吹', ice: '滑', barrel: '爆', fire: '燒', reverse: '反向', fall: '墜' };
 export const WIN_TARGET = 3;
 // ===== 規格 G(flow-1):事故記錄計分 & 收容終演 =====
 // 失能(暈/墜落/被弄進艙)=對面 +1 記錄;記錄滿 RECORD_TARGET=收容指令(賽末點);
@@ -369,7 +368,7 @@ export const v2s = {
   padRespawnCur: PAD_RESPAWN, slideContainCur: SLIDE_CONTAIN_V,
   stationTimer: STATION_INTERVAL, stationIntervalCur: STATION_INTERVAL, lastStationIdx: -1, // 元素站輪替(隨機不連續)
   stationsArmed: false,                       // 總開關:開局平靜,揍左右任一緊急拉桿(labSwitches)才 arm 四站循環(單向)
-  matchOver: false, report: null,            // 對局結束旗標 + 事故報告物件
+  matchOver: false,                          // 對局結束旗標(⚠ 不只給結算畫面用:它還凍結 sim/擋計分/擋 pod pulse)
   finisher: null,                            // 收容終演狀態機 {phase:'prompt'|'run'|'carry'|'throw', t, w, v}(規格 G §4)
   reject: null,                              // 拒收吐回 {t, loser}(中段進艙=玩具不提前贏)
   recordFlash: 0, finFlash: 0, letterK: 0,   // HUD:記錄章閃光 / 終演白閃 / letterbox 進度

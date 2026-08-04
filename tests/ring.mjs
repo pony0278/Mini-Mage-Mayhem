@@ -51,7 +51,7 @@ await page.waitForFunction('__v2.fighters[0].state === "alive"', { timeout: 3000
 await page.evaluate(() => { const f = __v2.fighters[0]; f.invuln = 0; f.x = 480; f.y = 100; f.vx = 0; f.vy = -420; f.lastHitBy = 1; });
 await page.waitForFunction('__v2.state().matchOver', { timeout: 30000 }).then(() => true).catch(() => false);
 const fin = await page.evaluate(() => ({ over: __v2.state().matchOver, report: !!__v2.state().report, wins: [...__v2.roundWins], dome: __lab.domeVisible(), perform: !!__v2.state().perform }));
-R('賽末點再墜=廢料井封存(matchOver+報告、不開玻璃罩)', fin.over && fin.report && fin.wins[1] === 4 && !fin.dome && !fin.perform, JSON.stringify(fin));
+R('賽末點再墜=廢料井封存(matchOver、不開玻璃罩;camp-2 後不再產報告)', fin.over && !fin.report && fin.wins[1] === 4 && !fin.dome && !fin.perform, JSON.stringify(fin));
 
 // ---------- ⑥ AI 邊緣迴避 ----------
 await page.evaluate(() => { __v2.restartMatch(); __v2.v2s.introT = 0; });

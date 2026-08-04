@@ -175,6 +175,20 @@
 > 「你」字。旋鈕在 `HEAD_MK`;`window.__hudmk` 供測試(標記螢幕座標/朝向 + 腳底座標)。
 > ⚠ **測「腳下乾淨」要把角色挪離回收艙**(480,320 r46)——艙的地面光環會落進取樣框=假 FAIL。
 > ⚠ **別用「掃全畫布找隊伍色像素」驗**:教練線/艙環/道具標一堆青藍會混進來(第一版就這樣假 FAIL)。
+> **camp-2 事故報告退役(規格 H §9)**:使用者定調「再也沒有魔法事故報告了,那是舊的想法」。
+> `js/v2-report.js` **整檔刪除**,連同 S~E 等級 / 挑戰碼 / 分享文字 / `drawReport` / `複製`鈕 / `v2s.report`
+> / C 鍵複製 / `METHOD_ZH`。換成 `drawEndCard()`——一張極簡結算卡(闖關=下班打卡+通關時間+被丟回流水線幾次;
+> free/加班模式=勝者+用時+回收次數;都只留「按 R 再來一次」)。
+> ⚠ **三個東西看起來像報告專用、其實不是,務必留著**:
+>   ① **`v2s.matchOver`**——它還凍結 sim、擋計分、擋 pod pulse(`v2.js` step 開頭、`v2-combat` 三處守衛)。
+>   ② **`containLog`**——鑰匙進度與「被回收次數」都靠它,`drawPips` 也在用。
+>   ③ **`inc.matchT`**——報告死了它本來變死欄位,現在是**通關計時**(規格 H §6)。
+> `inc.types`(Set)在報告之前就沒人讀了=既有死碼,camp-2 沒動它(寫入點散在三個檔十處,清它零收益)。
+> ⚠ **camp-2 截圖抓到一個 camp-0 帶進來的真 bug**:`setMenuVisible` 有 `_shown === v` 早退保護,而 `_shown`
+>   初值就是 `false` → 開機那次 `setMenuVisible(false)` 直接 return、**從沒真的設過 `display`**,於是
+>   `?menu=0`/自動化/smokeroom 會整片選單卡在畫面上。修法=容器初值 `display:none`。
+>   **教訓:debug hook 回報「意圖」不等於回報「實況」**——`__menu().shown` 是內部旗標,測試照它斷言會綠得
+>   很安心;hook 因此多回一個 `display`(真的去讀 `getComputedStyle`),三處跳過選單的斷言全部改驗 DOM。
 > **camp-1 闖關殼(規格 H §3):三鑰逃生的關卡狀態機**。`v2s.camp.phase` 八態:
 > `menu`(主選單)/ `fight`(戰鬥中)/ `keydrop`(掉鑰匙)/ `handoff`(下一位進場)/ `retry`(敗北重打本關)/
 > `escape`(三把湊齊)/ `clockout`(下班結局)/ **`free`(加班模式=舊的無限對戰:封存→事故報告)**。

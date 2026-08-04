@@ -47,7 +47,11 @@ function build() {
   root = document.createElement('div');
   root.id = 'v2menu';
   // 容器不吃事件(見表頭);左側下三分之一放字,讓右邊的工作中小人露出來
-  root.style.cssText = 'position:fixed;inset:0;z-index:9990;pointer-events:none;display:flex;'
+  // ⚠ **初值必須 display:none**(camp-2 截圖抓到的 bug):`setMenuVisible` 有 `_shown === v` 的早退保護,
+  //   而 `_shown` 初值就是 false → 開機那次 `setMenuVisible(false)` 直接 return、從沒真的設過 display,
+  //   於是 `?menu=0`/自動化/smokeroom(都走「不顯示選單」那條)會**整片選單卡在畫面上**。
+  //   `__menu().shown` 只回報意圖不回報實況,所以測試當時也沒抓到——hook 現在多回一個 `display`。
+  root.style.cssText = 'position:fixed;inset:0;z-index:9990;pointer-events:none;display:none;'
     + 'flex-direction:column;justify-content:flex-end;align-items:flex-start;'
     + 'padding:0 0 clamp(28px,7vh,80px) clamp(28px,6vw,90px);'
     + 'background:linear-gradient(90deg,rgba(8,7,12,.78) 0%,rgba(8,7,12,.42) 42%,rgba(8,7,12,0) 72%)';
@@ -106,6 +110,7 @@ if (typeof window !== 'undefined') {
   window.__menu = () => ({
     built: !!root,
     shown: _shown,
+    display: root ? getComputedStyle(root).display : null,   // 真實 DOM 狀態(shown 只是意圖)
     cleared: isCleared(),
     title: root ? root.querySelector('#v2menuTitle').textContent : null,
     buttons: root ? [...root.querySelectorAll('.mmBtn')].map(b => ({

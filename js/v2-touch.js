@@ -112,7 +112,7 @@ export function syncLabels(punchLabel, contextLabel) {
 // 桌機靠鍵盤 R 再戰 / C 複製;觸控玩家沒鍵盤 → 打完一局會卡在報告畫面,這兩顆是保底出口。
 // 動作直接回呼 v2.js 給的閉包(restartMatch / 複製分享文字)——報告畫面 sim 已凍結,不走 step 輪詢。
 let reportEl = null, reportActions = null;
-export function setReportActions(a) { reportActions = a; } // v2.js 開機時注入 { rematch, copy }
+export function setReportActions(a) { reportActions = a; } // v2.js 開機時注入 { rematch }(camp-2:分享文字退役,「複製」鈕跟著拿掉)
 function buildReport() {
   reportEl = document.createElement('div');
   reportEl.id = 'touchReport';
@@ -131,7 +131,6 @@ function buildReport() {
     return b;
   };
   reportEl.appendChild(mk('再戰', true, a => a.rematch()));
-  reportEl.appendChild(mk('複製', false, a => a.copy()));
   document.body.appendChild(reportEl);
 }
 

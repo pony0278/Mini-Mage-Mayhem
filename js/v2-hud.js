@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   INTRO_T, INTRO_GO,
-  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, METHOD_ZH, roundWins, FATIGUE,
+  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, roundWins, FATIGUE,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -377,41 +377,36 @@ function drawCards() {
     ] };
   }
 }
-// 事故報告結算(分享引擎;規格 E 北極星「輸了也好笑」——分家後 A 款的招牌收尾,docs/game-split.md)
-const LEVEL_COL = { 'S+': '#ff5ce0', S: '#ff7b72', A: '#ffb14a', B: '#ffd36d', C: '#9fe7ff', D: '#bcd', E: '#9aa' };
-function drawReport() {
-  const r = v2s.report;
-  hctx.fillStyle = 'rgba(8,10,16,.62)'; hctx.fillRect(0, 0, VW, VH); // dim the frozen world
-  const pw = 640, ph = 446, px = (VW - pw) / 2, py = (VH - ph) / 2;
+/* camp-2:**事故報告退役**(規格 H §9)。使用者定調:「再也沒有魔法事故報告了,那是舊的想法。」
+   `js/v2-report.js` 整檔 + S~E 等級 + 挑戰碼 + 分享文字 + 複製鈕全部拿掉;
+   換成一張**極簡結算卡**——結局只回答三件事:結果、花多久、被回收幾次。
+   ⚠ 這張卡是 camp-2 的最小可玩收尾;闖關版的「打卡下班演出」是 camp-6 的工作。
+   ⚠ 保留 `containLog`(鑰匙進度 + 被回收次數)與 `inc.matchT`(通關計時)——報告死了但這兩個有新用途。*/
+function drawEndCard() {
+  const camp = v2s.camp.phase === 'clockout';
+  hctx.fillStyle = 'rgba(8,10,16,.66)'; hctx.fillRect(0, 0, VW, VH);   // 凍結畫面壓暗
+  const pw = 520, ph = camp ? 250 : 200, px = (VW - pw) / 2, py = (VH - ph) / 2;
   hctx.fillStyle = 'rgba(20,24,34,.97)'; hctx.fillRect(px, py, pw, ph);
-  hctx.strokeStyle = 'rgba(255,211,109,.5)'; hctx.lineWidth = 2; hctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
-  let y = py + 40; const cx = VW / 2;
+  hctx.strokeStyle = camp ? 'rgba(154,255,208,.55)' : 'rgba(255,211,109,.45)';
+  hctx.lineWidth = 2; hctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+  const cx = VW / 2; let y = py + 54;
   hctx.textAlign = 'center';
-  hctx.font = '900 24px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
-  hctx.fillText('魔法事故報告 #' + r.num, cx, y); y += 40;
-  // level badge
-  hctx.font = '900 52px system-ui, sans-serif'; hctx.fillStyle = LEVEL_COL[r.level] || '#fff';
-  hctx.fillText(r.level + ' 級', cx, y + 6); y += 50;
-  hctx.font = '800 22px system-ui, sans-serif'; hctx.fillStyle = '#ffd36d';
-  hctx.fillText(r.name, cx, y); y += 36;
-  hctx.font = '600 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
-  hctx.fillText(r.summary, cx, y); y += 34;
-  // stats line
-  hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
-  hctx.fillText(`勝者：${NAMES[r.winner]}　損害 ${r.damage}%　搬 ${inc.carries[0] + inc.carries[1]}·拋 ${inc.throwContains}·吹 ${inc.accidentContains.wind}·滑 ${inc.accidentContains.ice}·爆 ${inc.accidentContains.barrel}　反向 ${inc.reverseContains}　自傷 ${inc.itemBackfires}　主要道具 ${r.mostUsed}　${r.time.toFixed(0)}s`, cx, y); y += 30;
-  if (containLog.length) { // 三幕封存序列
-    hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
-    hctx.fillText('封存序列：' + containLog.map(c => NAMES[c.winner][0] + '·' + (METHOD_ZH[c.method] || c.method)).join('　→　'), cx, y); y += 30;
+  if (camp) {
+    hctx.font = '900 34px system-ui, sans-serif'; hctx.fillStyle = '#9affd0';
+    hctx.fillText('下班打卡成功', cx, y); y += 40;
+    hctx.font = '700 15px system-ui, sans-serif'; hctx.fillStyle = '#cfe0f0';
+    hctx.fillText('🔑 ' + v2s.camp.keys + '/3　　三個同事都回收了。', cx, y); y += 34;
+    hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
+    hctx.fillText('用時 ' + inc.matchT.toFixed(0) + ' 秒　·　被丟回流水線 ' + v2s.camp.deaths + ' 次', cx, y); y += 32;
+  } else {
+    const w = v2s.winnerPid >= 0 ? v2s.winnerPid : 0;
+    hctx.font = '900 30px system-ui, sans-serif'; hctx.fillStyle = COLORS[w];
+    hctx.fillText(NAMES[w] + ' 獲勝', cx, y); y += 38;
+    hctx.font = '700 14px system-ui, sans-serif'; hctx.fillStyle = '#9fb6cd';
+    hctx.fillText('用時 ' + inc.matchT.toFixed(0) + ' 秒　·　回收 ' + containLog.length + ' 次', cx, y); y += 32;
   }
-  hctx.font = '800 16px system-ui, sans-serif'; hctx.fillStyle = COLORS[r.winner];
-  hctx.fillText('稱號：' + r.title, cx, y); y += 34;
-  // committee comment (the share juice)
-  hctx.font = 'italic 700 17px system-ui, sans-serif'; hctx.fillStyle = '#9affd0';
-  hctx.fillText('「' + r.comment + '」', cx, y); y += 28;
-  hctx.font = '600 12px ui-monospace, monospace'; hctx.fillStyle = '#8a7d96';
-  hctx.fillText('挑戰碼 ' + r.code, cx, y); y += 30;
   hctx.font = '800 15px system-ui, sans-serif'; hctx.fillStyle = '#eafaff';
-  hctx.fillText('按 R 再來一場　·　按 C 複製分享文字', cx, py + ph - 18);
+  hctx.fillText('按 R 再來一次', cx, py + ph - 22);
 }
 // 風壓爆風:發射中從兩側邊緣往內掃的速度線(爆風 whoosh;強度=windFan 剩餘壽命)
 function drawWindSpeedLines() {
@@ -514,7 +509,7 @@ export function drawHud() {
   hctx.textAlign = 'center'; hctx.font = '700 13px system-ui, sans-serif';
   hctx.fillStyle = 'rgba(234,250,255,.7)';
   hctx.fillText('藍（你）：方向鍵／WASD 移動（＝跑，面向＝移動方向）· C＝攻擊（三連擊／跑久＝衝刺拳／空中＝下壓拳／扛著＝丟）· X＝抓／撿（裝備·瓶·桶）· Z＝道具 · Shift 按住＝防禦 · 空白＝跳　B：AI　L：減閃爍', VW / 2, VH - 18);
-  if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
+  if (v2s.matchOver) drawEndCard();              // camp-2:極簡結算卡(事故報告退役,規格 H §9)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
   drawRecordBeat();
   drawFinisherUi();
@@ -523,7 +518,7 @@ export function drawHud() {
 // build tag — 每次改動就 bump,線上硬重整後靠它確認載到新版(選單期也畫=診斷不斷線)
 function drawBuildTag() {
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: camp-1', VW - 10, VH - 4);
+  hctx.fillText('build: camp-2', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====

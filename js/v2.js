@@ -27,7 +27,6 @@ import { moveFighter, punch, resolveStrike, doAction, doGuard, doPushOff, canGua
 } from './v2-combat.js';
 import { updatePads, updateBarrels, updateBottles, updateStations, updateGroundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, castWind, castTeleport, castFire, castWater, castLightning, shatterBottle, explodeBarrel, barrelChargeColor, elemColor, grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel } from './v2-items.js';
 import { stepFloor, resetFloor } from './v2-floor.js';
-import { generateReport } from './v2-report.js';
 import { drawHud } from './v2-hud.js';
 import { CLIPS } from './brawler-clips.js';   // ?clip= 試播入口用(clip 名單+時長)
 
@@ -208,7 +207,7 @@ function resetRound() {
 // 一局/一關的殘態清除(比分、事故計數、演出、規格 G 殘態、鏡頭 snap)。
 // restartMatch(整輪重來)與 startLevel(闖關換關)共用——差別只在後續要不要重設 tier/關卡進度。
 function clearMatchState() {
-  v2s.matchOver = false; v2s.report = null; roundWins[0] = 0; roundWins[1] = 0;
+  v2s.matchOver = false; roundWins[0] = 0; roundWins[1] = 0;
   inc.falls = [0, 0]; inc.knockoffs = [0, 0]; inc.selfFalls = [0, 0];
   resetInc(); containLog.length = 0; v2s.bannerText = ''; v2s.winBannerT = 0; resetStage();
   v2s.perform = null; for (const f of fighters) { f._performing = false; f._hidden = false; f._lastItem = null; } // 回收演出殘留(分類記憶跨回合、不跨場)
@@ -359,7 +358,6 @@ function pollTouchGuard() {
   if (touchInput.press.guard) { touchInput.press.guard = false; doGuard(fighters[LOCAL]); }
 }
 // 結算畫面「複製」觸控鈕:等同鍵盤 C(把戰報分享文字寫進剪貼簿)。
-function copyShare() { if (v2s.report && navigator.clipboard) { navigator.clipboard.writeText(v2s.report.share); dlog('copied share text'); } }
 // 按鈕字依本機玩家情境變:扛人→揮拳鍵變「投擲」、情境鍵變「放下」;空手且有道具→「技能」,否則「抓」。
 let touchMod = null;
 function syncTouchLabels() {
@@ -649,11 +647,11 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
   grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip, startGame, enterMenu, startLevel, campSeal,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, bottles, shatterBottle, roundWins, containLog, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
-  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, attackAction, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB, AIR_HIT_LOB,
+  punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, attackAction, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, endMatch, jump, dive, JUMP_LOB, AIR_HIT_LOB,
   floorHazards, airborne, // 地板化學/空中判定:測試直接餵 dt 呼叫,不用去追跳躍弧線的時間窗(見 tests/jump.mjs ④)
   pressFinisher, // 規格 G 終演(tests/finisher.mjs:按鍵在 rAF 節流下會漏拍,測試直接按)
   NAMES, AI_PROFILE, applyAiTier, updateAiCall, // AI 階級(tier-1):檔案表+進場排程(測試/控制台)
-  state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, report: v2s.report, stage: v2s.stage,
+  state: () => ({ winnerPid: v2s.winnerPid, roundWins: [roundWins[0], roundWins[1]], matchOver: v2s.matchOver, stage: v2s.stage,
     perform: v2s.perform ? { n: v2s.perform.n, phase: v2s.perform.phase, t: +v2s.perform.t.toFixed(2), line: v2s.perform.line, final: v2s.perform.final } : null,
     finisher: v2s.finisher ? { phase: v2s.finisher.phase, w: v2s.finisher.w, t: +v2s.finisher.t.toFixed(2) } : null,   // 規格 G(測試讀)
     reject: v2s.reject ? { t: +v2s.reject.t.toFixed(2), loser: v2s.reject.loser } : null,
@@ -714,7 +712,6 @@ window.addEventListener('keydown', (e) => {
   if (k === 'k') cycleSlowmo(); // 慢動作觀察:1→0.5→0.25→0.1× 循環
   if (v2s.matchOver) { // incident report screen: R = rematch, C = copy share text
     if (k === 'r') restartMatch();
-    else if (k === 'c' && v2s.report && navigator.clipboard) { navigator.clipboard.writeText(v2s.report.share); dlog('copied share text'); }
   }
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -838,4 +835,4 @@ import('./actor-hands.js').then(m => m.preloadHands()).catch(e => console.warn('
 if (new URLSearchParams(location.search).has('tune')) import('./v2-tuning.js').catch(e => console.warn('[v2] tuning panel failed', e));
 
 // 手機觸控層(docs/mobile-touch.md)。Phase A:觸控偵測 + 橫向提示。桌機零影響。
-import('./v2-touch.js').then(m => { touchMod = m; m.initTouch(); m.setReportActions({ rematch: restartMatch, copy: copyShare }); }).catch(e => console.warn('[v2] touch layer failed', e));
+import('./v2-touch.js').then(m => { touchMod = m; m.initTouch(); m.setReportActions({ rematch: restartMatch }); }).catch(e => console.warn('[v2] touch layer failed', e));

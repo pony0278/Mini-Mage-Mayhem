@@ -55,7 +55,7 @@ R('壓縮:敗方隱藏(變包裝方塊)', s4a.hidden === true && s4a.enemies ===
 await page.waitForFunction('!__v2.state().perform', { timeout: 300000 });
 const domeDown = await page.waitForFunction('!__lab.domeVisible()', { timeout: 15000 }).then(() => true).catch(() => false);
 const s4b = await page.evaluate(() => ({ over: __v2.state().matchOver, report: !!__v2.state().report }));
-R('最終封存 → matchOver + 事故報告 + 罩收掉', s4b.over && s4b.report && domeDown, JSON.stringify(s4b));
+R('最終封存 → matchOver + 罩收掉(camp-2:事故報告退役)', s4b.over && !s4b.report && domeDown, JSON.stringify(s4b));
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);

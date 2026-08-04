@@ -78,7 +78,7 @@ R('拋入=完整封存演出(final n=3/終演交棒清空/敗方 snap 艙心)', 
   && s6c.loser.x === 480 && s6c.loser.y === 320, JSON.stringify(s6c));
 await page.waitForFunction('__v2.state().matchOver', { timeout: 300000 });
 const s6d = await page.evaluate(() => { const st = __v2.state(); return { over: st.matchOver, report: !!st.report }; });
-R('封存 → matchOver + 事故報告', s6d.over && s6d.report, JSON.stringify(s6d));
+R('封存 → matchOver(camp-2:事故報告退役,加班模式改極簡結算卡)', s6d.over && !s6d.report, JSON.stringify(s6d));
 
 // ---------- ⑧ restartMatch 清乾淨(終演/拒收/letterbox/比分/鏡頭還原) ----------
 const camBefore = await page.evaluate(() => ({ d: Math.round(__v2.CAM.dist) }));

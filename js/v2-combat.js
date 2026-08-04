@@ -24,7 +24,6 @@ import {
   FIRE_STAB_DPS, FIRE_BURN_DPS, POISON_STAB_DPS, POISON_BURST_R, POISON_BURST_STAB, POISON_BURST_FORCE,
 } from './v2-state.js';
 import { FREEFORM, RIMMED, KNOCK_FRICTION, KNOCK_CUTOFF, bridgeAssist, aiSafeDir } from './v2-terrain.js';
-import { generateReport } from './v2-report.js';
 import { stateAtPixel, floorEvents, FL } from './v2-floor.js';
 
 // camera-relative basis (mirrors main.js buildInput) so screen-up = forward at any azimuth
@@ -849,7 +848,9 @@ export function softReintegrate(loser, total) { // 非第三次:被收容者出�
   addHitstop(0.35); game.sfx.push('upgrade');
   resetFighter(loser); loser.invuln = 1.8; // 彈回出生點 + 無敵(不能被抓/打)
 }
-export function endMatch(pid) { v2s.matchOver = true; v2s.report = generateReport(pid); game.sfx.push('upgrade'); dlog('MATCH OVER → report', v2s.report.level, v2s.report.name); } // 爽鬥回歸:事故報告=結算+分享引擎
+// 一局結束(加班模式/自由對戰)。⚠ **`matchOver` 不是報告專用旗**——它還凍結 sim、擋計分、擋 pod pulse,
+// 所以規格 H 退役事故報告時只拿掉 `v2s.report`,這個旗留著(規格 H §3)。
+export function endMatch(pid) { v2s.matchOver = true; v2s.winnerPid = pid; game.sfx.push('upgrade'); dlog('MATCH OVER', NAMES[pid]); }
 // --- 規格 H camp-1:封存接手點 ---
 // 闖關模式下「封存完成」不再是一局的終點,而是**過關**(掉鑰匙→下一關)或**敗北**(重打本關)。
 // v2-combat 不能 import v2.js(DAG 反向),所以照 setGroundMarkers/setRimTeams 那套**注入回呼**:

@@ -95,7 +95,7 @@ const camp = (page) => page.evaluate(() => __v2.state().camp);
   R('自動化無旗標=free 模式(闖關不接管)', (await camp(page)).phase === 'free', JSON.stringify(await camp(page)));
   await page.evaluate(() => __v2.endMatch(0));
   const s = await page.evaluate(() => ({ over: __v2.state().matchOver, report: !!__v2.state().report, camp: __v2.state().camp.phase }));
-  R('free 模式封存 → 舊路 matchOver + 事故報告', s.over === true && s.report === true && s.camp === 'free', JSON.stringify(s));
+  R('free 模式封存 → 舊路 matchOver(camp-2 後結算卡取代事故報告)', s.over === true && s.report === false && s.camp === 'free', JSON.stringify(s));
   R('free:無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
   await page.close();
 }

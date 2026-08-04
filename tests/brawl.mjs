@@ -86,10 +86,10 @@ await page.waitForFunction(`__v2.containLog.length > ${base.logN}`, { timeout: 6
 const cont = await page.evaluate(() => { const s = __v2.state(); return { wins: s.roundWins, last: s.containLog.at(-1), reject: !!s.reject, perform: !!s.perform }; });
 R('搬進艙=+1 記錄(containLog 記「carry」)+拒收吐回不封存(規格 G 中段)', cont.wins[1] === base.wins[1] + 1 && cont.last.m === 'carry' && cont.last.w === 1 && cont.reject && !cont.perform, JSON.stringify({ base, cont }));
 
-// ---------- ⑥ endMatch=事故報告(分享引擎復活) ----------
+// ---------- ⑥ endMatch=一局結束(camp-2:事故報告退役,只剩凍結旗+勝方) ----------
 await page.evaluate(() => __v2.endMatch(1));
-const rep = await page.evaluate(() => { const s = __v2.state(); return { over: s.matchOver, level: s.report && s.report.level, name: s.report && s.report.name }; });
-R('endMatch → matchOver+事故報告(等級+標題)', rep.over && !!rep.level && !!rep.name, JSON.stringify(rep));
+const rep = await page.evaluate(() => { const s = __v2.state(); return { over: s.matchOver, winner: s.winnerPid, report: s.report }; });
+R('endMatch → matchOver + 勝方(報告已退役=state 不再有 report)', rep.over && rep.winner === 1 && rep.report === undefined, JSON.stringify(rep));
 
 R('無 page/console 錯誤', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`== ${pass} pass / ${fail} fail ==`);
