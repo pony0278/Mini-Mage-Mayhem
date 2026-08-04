@@ -389,6 +389,7 @@ export const v2s = {
   //   因果方向與「第幾關」相反;共用同一個名字會讓既有的 stage 斷言用**錯誤的理由**通過(規格 H §3)。
   camp: { phase: 'menu', level: 1, keys: 0, deaths: 0 },
   campT: 0,                                  // 過關/交接/重來的節拍倒數(見 CAMP_T)
+  keyFx: null,                               // camp-3 鑰匙掉落動畫 { t, T, n }(n=這是第幾把;HUD drawKeyDrop 消費)
   menuOut: 0,                                // 選單→遊戲的鏡頭混合倒數(>0=混合中;0=交還給 intro/戰鬥機位)
 };
 // --- 規格 H camp-1:闖關關卡表 + 節拍長度 ---

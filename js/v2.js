@@ -149,7 +149,7 @@ function clearRun() { try { localStorage.removeItem(RUN_KEY); } catch { /* no st
 function startLevel(n) {
   const c = v2s.camp;
   c.level = Math.min(CAMP_LEVELS, Math.max(1, n)); c.phase = 'fight'; v2s.campT = 0;
-  clearMatchState();
+  clearMatchState(); v2s.keyFx = null;
   applyStage(c.level);                                   // 規格 H §2:危險等級**綁關卡**,不再由比分推
   applyAiTier(CAMP_TIER[c.level - 1]);                   // camp-4 換成三份 boss 檔案,這條線先接起來
   v2s.introT = INTRO_T;
@@ -164,6 +164,8 @@ function campSeal(winner) {
   if (winner === LOCAL) {                                 // 過關:掉一把鑰匙
     c.keys = Math.min(CAMP_LEVELS, c.keys + 1);
     c.phase = 'keydrop'; v2s.campT = CAMP_T.keydrop;
+    v2s.keyFx = { t: 0, T: CAMP_T.keydrop, n: c.keys };   // camp-3:艙口吐出鑰匙 → 飛進左上角計數格
+    game.sfx.push('upgrade');
     v2s.bannerText = '🔑 鑰匙 ' + c.keys + '/' + CAMP_LEVELS + ' 到手'; v2s.winBannerT = 2.2;
   } else {                                                // 敗北:今天不用下班了 → 重打本關
     c.deaths++;
@@ -388,6 +390,7 @@ function step(dt) {
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
   if (v2s.localFlash > 0) v2s.localFlash -= dt;
   if (v2s.recordCard) { v2s.recordCard.t += dt; if (v2s.recordCard.t >= v2s.recordCard.T) v2s.recordCard = null; } // flow-2 立案 beat:掛在 hitstop 閘之前=閃光/快門在頓點中照演(標點感)
+  if (v2s.keyFx) { v2s.keyFx.t += dt; if (v2s.keyFx.t >= v2s.keyFx.T) v2s.keyFx = null; }   // camp-3 鑰匙掉落/飛入:同上,節拍不被頓點凍住
   if (v2s.fallReasonT > 0) v2s.fallReasonT -= dt;
   updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
   syncTouchLabels(); // 情境按鈕字(每幀,只在變動時寫 DOM)
@@ -661,6 +664,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
     recordCard: v2s.recordCard ? { n: v2s.recordCard.n, w: v2s.recordCard.w, phrase: v2s.recordCard.phrase, t: +v2s.recordCard.t.toFixed(2) } : null,
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
     camp: { ...v2s.camp }, campT: +v2s.campT.toFixed(2), menuOut: +v2s.menuOut.toFixed(2),   // camp-0/1 闖關狀態
+    keyFx: v2s.keyFx ? { n: v2s.keyFx.n, t: +v2s.keyFx.t.toFixed(2), T: v2s.keyFx.T } : null,   // camp-3 鑰匙動畫
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],

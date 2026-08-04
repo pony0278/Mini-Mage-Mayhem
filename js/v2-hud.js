@@ -9,7 +9,7 @@ import {
   v2s, fighters, LOCAL, COLORS, NAMES,
   POD, STAB_MAX, CARRY_ESCAPE_NEED, pads, PICKUP_R, groundItems, bottles, GRAB_RANGE, labSwitches, PUNCH_RANGE, ITEM_INFO, GUARD_STAM_MAX,
   INTRO_T, INTRO_GO,
-  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, roundWins, FATIGUE,
+  GARBAGE_NAME, inc, containLog, WIN_TARGET, STAGE_NAME, METHOD_COL, roundWins, FATIGUE, CAMP_LEVELS,
 } from './v2-state.js';
 
 const hud = document.getElementById('hud');
@@ -511,6 +511,7 @@ export function drawHud() {
   hctx.fillText('藍（你）：方向鍵／WASD 移動（＝跑，面向＝移動方向）· C＝攻擊（三連擊／跑久＝衝刺拳／空中＝下壓拳／扛著＝丟）· X＝抓／撿（裝備·瓶·桶）· Z＝道具 · Shift 按住＝防禦 · 空白＝跳　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver) drawEndCard();              // camp-2:極簡結算卡(事故報告退役,規格 H §9)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
+  drawKeyRow(); drawKeyDrop();          // camp-3:鑰匙格 → 掉落/飛入(順序不可換:飛入的終點由 drawKeyRow 填)
   drawRecordBeat();
   drawFinisherUi();
   drawBuildTag();
@@ -518,7 +519,7 @@ export function drawHud() {
 // build tag — 每次改動就 bump,線上硬重整後靠它確認載到新版(選單期也畫=診斷不斷線)
 function drawBuildTag() {
   hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
-  hctx.fillText('build: camp-2', VW - 10, VH - 4);
+  hctx.fillText('build: camp-3', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====
@@ -556,6 +557,89 @@ function drawFinisherUi() {
 // ①閃光燈打在受害者身上(0.14s)→ ②「事故記錄 #N」印章卡壓在他身上(蓋章:大→正,微傾)
 // → ③卡飛進記錄者的三格計分格(落格白閃在 drawPips)。全長 ~1s,事件驅動=不佔常駐畫面。
 // 位置:受害者世界座標經 project();專案慣例=鏡頭外/投影失敗就退到畫面中央上方。
+/* ===== camp-3 魔法鑰匙(規格 H §5)=====
+   使用者定調:「打贏回收 → 掉落魔法鑰匙(1/3)」。三把湊齊=開門下班。
+
+   **為什麼整段畫在 HUD 而不是做成 3D 物件**:①鑰匙的終點本來就是 HUD 計數器,做成世界物件還是得
+   接一段飛進 UI 的動畫;②ui-2d 的教訓——世界層的東西會被地板/罩子/色調映射吃掉,而「進度」是
+   絕對不能看不到的訊息;③flow-2b 的印章卡已經證明「錨在世界座標的 HUD 動畫」讀起來就像在場上。
+   起點用 `project(POD…)` 錨在回收艙口,所以它看起來確實是**從艙裡吐出來**的。
+
+   節拍(佔 keyFx.T 的比例;T = CAMP_T.keydrop):
+     0–30% 從艙口彈出(拋物線上升)→ 30–55% 落下+彈一下 → 55–70% 停在原地發亮(讓玩家看清楚)
+     → 70–100% 加速飛進左上角的鑰匙格 + 該格白閃。
+   **不用玩家撿**:規格 H §5——玩家的抱怨就是「東西太多、很亂」,再加一個必做步驟是逆向操作。 */
+const KEY_ROW = { x: 16, y: 12, size: 26, gap: 6 };
+const _keyAt = [];                                    // 每格螢幕座標(給飛入動畫當終點;同 _pipAt 慣例)
+function drawKeyRow() {
+  const ph = v2s.camp.phase;
+  if (ph === 'free' || ph === 'menu') return;         // 加班模式沒有鑰匙這回事
+  const K = v2s.keyFx;
+  const flying = !!(K && K.t < K.T * 0.88);           // 還在飛=該格先留空,等它落進去才點亮
+  const owned = v2s.camp.keys - (flying ? 1 : 0);
+  const done = v2s.camp.keys >= CAMP_LEVELS;
+  const pulse = done && !v2s.lowFlicker ? 0.5 + 0.5 * Math.sin(game.time * 6) : 0;
+  hctx.save();
+  hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
+  // ⚠ **整排要有一塊不透明底板**:計數格壓在場景左上角,那裡可能是黃色油桶也可能是暗地板——
+  //   第一版每格各自半透明,空格(alpha .18)疊在亮色機具上等於消失,只看得到已拿到的那一格。
+  //   進度是絕對不能看不到的訊息,所以底板先鋪滿,格子再畫上去。
+  const PW = CAMP_LEVELS * KEY_ROW.size + (CAMP_LEVELS - 1) * KEY_ROW.gap;
+  hctx.fillStyle = 'rgba(8,10,16,.78)';
+  hctx.fillRect(KEY_ROW.x - 7, KEY_ROW.y - 6, PW + 14, KEY_ROW.size + 12);
+  hctx.strokeStyle = 'rgba(255,211,109,.30)'; hctx.lineWidth = 1;
+  hctx.strokeRect(KEY_ROW.x - 6.5, KEY_ROW.y - 5.5, PW + 13, KEY_ROW.size + 11);
+  for (let i = 0; i < CAMP_LEVELS; i++) {
+    const x = KEY_ROW.x + i * (KEY_ROW.size + KEY_ROW.gap), y = KEY_ROW.y, S = KEY_ROW.size;
+    _keyAt[i] = { x: x + S / 2, y: y + S / 2 };
+    hctx.fillStyle = i < owned ? 'rgba(255,211,109,.14)' : 'rgba(255,255,255,.05)';
+    hctx.fillRect(x, y, S, S);
+    hctx.strokeStyle = i < owned ? 'rgba(255,211,109,.9)' : 'rgba(255,255,255,.34)';
+    hctx.lineWidth = 1.5; hctx.strokeRect(x + 0.5, y + 0.5, S - 1, S - 1);
+    hctx.globalAlpha = i < owned ? 1 : 0.3;
+    hctx.font = '700 15px system-ui, sans-serif';
+    hctx.fillStyle = '#ffd36d'; hctx.fillText('🔑', x + S / 2, y + S / 2 + 1);
+    hctx.globalAlpha = 1;
+    if (pulse > 0) {                                  // 三把湊齊:整排閃(大門解鎖的視覺回應)
+      hctx.strokeStyle = 'rgba(154,255,208,' + (0.35 + 0.55 * pulse).toFixed(3) + ')';
+      hctx.lineWidth = 2.5; hctx.strokeRect(x - 1.5, y - 1.5, S + 3, S + 3);
+    }
+  }
+  hctx.restore();
+}
+// 掉落 → 停留 → 飛進計數格。⚠ 一定要在 drawKeyRow 之後呼叫:終點座標由那支填 `_keyAt`(同 _pipAt 慣例)。
+function drawKeyDrop() {
+  const K = v2s.keyFx; if (!K) return;
+  const k = clamp(K.t / K.T, 0, 1);
+  const s = project(POD.x, POD.y, 20);                // ⚠ 慣例是 (世界x, 世界y, 高度)
+  const p = s.behind ? { x: VW / 2, y: VH * 0.42 } : s;
+  const dst = _keyAt[K.n - 1] || { x: KEY_ROW.x + 13, y: KEY_ROW.y + 13 };
+  let cx, cy, sc = 1, al = 1, glow = 0;
+  if (k < 0.55) {                                      // 彈出 → 落下(拋物線;0.30 處到頂)
+    const q = k / 0.55, hop = Math.sin(q * Math.PI) * 78;
+    cx = p.x; cy = p.y - 26 - hop;
+    sc = 0.85 + 0.35 * Math.sin(q * Math.PI);
+  } else if (k < 0.70) {                               // 停一下發亮(給玩家一拍看清楚「我拿到鑰匙了」)
+    cx = p.x; cy = p.y - 26; glow = 1 - (k - 0.55) / 0.15;
+  } else {                                             // 飛進計數格(ease-in=被吸過去)
+    const q = (k - 0.70) / 0.30, e = q * q;
+    cx = p.x + (dst.x - p.x) * e; cy = (p.y - 26) + (dst.y - (p.y - 26)) * e;
+    sc = 1 - 0.55 * e; al = 1 - Math.max(0, (q - 0.8) / 0.2);
+  }
+  hctx.save();
+  hctx.globalAlpha = clamp(al, 0, 1);
+  if (glow > 0) {                                      // 停留期的光暈
+    const g = hctx.createRadialGradient(cx, cy, 0, cx, cy, 40);
+    g.addColorStop(0, 'rgba(255,211,109,' + (0.5 * glow).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(255,211,109,0)');
+    hctx.fillStyle = g; hctx.beginPath(); hctx.arc(cx, cy, 40, 0, Math.PI * 2); hctx.fill();
+  }
+  hctx.translate(cx, cy); hctx.scale(sc, sc);
+  hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
+  hctx.font = '700 30px system-ui, sans-serif';
+  hctx.fillText('🔑', 0, 0);
+  hctx.restore();
+}
 function drawRecordBeat() {
   const C = v2s.recordCard; if (!C) return;
   if (v2s.letterK > 0.3) return;                       // 終演鏡頭中不搶戲(同 coach line/banner 的壓制規則)
