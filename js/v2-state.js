@@ -385,6 +385,11 @@ export const v2s = {
   perform: null,                             // 收容演出狀態機(v2-combat startPerform/updatePerform;null=沒在演)
   tutorial: false,                           // 首局教學旗標(v2.js 依 localStorage 設;示範者 AI + 容錯 + 完整教學提示)
   introT: 0,                                 // 開場目標字幕/鏡頭帶場的倒數(>0=演出中;v2.js step 遞減)
+  // --- 規格 H 闖關(camp-0 先落地 menu/play 兩態;關卡/鑰匙欄位由 camp-1 起真正驅動)---
+  // ⚠ **關卡索引故意不叫 `stage`**:`v2s.stage` 現在是「由比分導出的危險等級」(applyStage),
+  //   因果方向與「第幾關」相反;共用同一個名字會讓既有的 stage 斷言用**錯誤的理由**通過(規格 H §3)。
+  camp: { phase: 'menu', level: 1, keys: 0, deaths: 0 },
+  menuOut: 0,                                // 選單→遊戲的鏡頭混合倒數(>0=混合中;0=交還給 intro/戰鬥機位)
 };
 export function resetStage() { v2s.stage = 1; v2s.barrelRespawnCur = BARREL_RESPAWN; v2s.barrelFuseCur = BARREL_FUSE; v2s.padRespawnCur = PAD_RESPAWN; v2s.slideContainCur = SLIDE_CONTAIN_V; v2s.stationIntervalCur = STATION_INTERVAL; v2s.stationTimer = STATION_INTERVAL; v2s.lastStationIdx = -1; }
 export function applyStage(s) { // 危險升級:用現有爆桶+補給座+艙吸力(門檻)

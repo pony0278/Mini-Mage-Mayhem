@@ -233,7 +233,7 @@ jumpChance / guard / comboDrop`。註解本來就寫著「之後領班/廠長=�
 
 | 步 | 內容 | 主要檔案 |
 |---|---|---|
-| **camp-0** | **主選單 + 流水線工作循環**(§14):`CAM_MENU` 固定機位 / 小人在輸送帶前循環工作 / DOM 選單 overlay / 「開始遊戲」→ 解鎖 WebAudio + 鏡頭混進遊戲 | `v2.js`, `v2-state.js`, `v2-hud.js` 或新 `js/v2-menu.js` |
+| ~~camp-0~~ **✅ 已落地** | 主選單 + 流水線工作循環(§14):`v2s.camp.phase` 兩態 / `CAM_MENU`+`MENU_FOCUS` / `buildMenuStation` 自擺輸送帶(rim 場一條都沒有)/ `js/v2-menu.js` DOM 疊層 / 開始遊戲交還既有開場。驗收 `tests/menu.mjs`(19 條) | `v2.js`, `v2-state.js`, `v2-hud.js`, `v2-menu.js`(新), `render-lab.js` |
 | **camp-1** | 闖關殼:`v2s.camp` 狀態機 / `finishPerform` 改接 keydrop / `retry` vs `restartMatch` / localStorage 進度 | `v2.js`, `v2-state.js`, `v2-combat.js` |
 | **camp-2** | 報告退役(§9 清單一次切乾淨)+ 受影響測試同步改 | `v2-report.js`(刪), `v2-hud.js`, `v2-touch.js` |
 | **camp-3** | 鑰匙:掉落 → 飛入 → `🔑 n/3` + 3/3 大門解鎖 | 新 `js/v2-key.js` 或併入 `v2-items.js`, `v2-hud.js` |
@@ -310,9 +310,9 @@ jumpChance / guard / comboDrop`。註解本來就寫著「之後領班/廠長=�
 | 第三人稱機位 | `CAM` 就是六個數字;加 `CAM_MENU` 預設,選單→遊戲的過渡**複用 intro 的 smoothstep 混合**(`v2.js:79-95`) |
 | 選單 UI | DOM overlay 是既有慣例(報告的再戰/複製鈕、慢動作 pill) |
 
-> ⚠ **待查(camp-0 動工第一件事)**:`render-lab.js:1123` 那整塊圍場造景(含輸送帶)是
-> `if (!RIMI)` 閘住的=**rim 地形已退役**。要確認預設 rim 場上到底看不看得到輸送帶;
-> 看不到就得為選單單獨擺一條(`conveyorBelt()` 本身是通用 builder,直接呼叫即可)。
+> ✅ **已查證(camp-0)**:`render-lab.js:1123` 那塊圍場造景是 `if (!RIMI)` 閘住的,rim 已退役 →
+> **預設場上一條輸送帶都看不到**,而且那三條的座標本來就落在平台外的深淵上。
+> 選單因此自己擺一條(`buildMenuStation`/`setMenuScene`/`MENU_STATION`),開打前整組隱藏。
 
 ### 14.3 附送的技術紅利:WebAudio 解鎖
 

@@ -175,6 +175,26 @@
 > 「你」字。旋鈕在 `HEAD_MK`;`window.__hudmk` 供測試(標記螢幕座標/朝向 + 腳底座標)。
 > ⚠ **測「腳下乾淨」要把角色挪離回收艙**(480,320 r46)——艙的地面光環會落進取樣框=假 FAIL。
 > ⚠ **別用「掃全畫布找隊伍色像素」驗**:教練線/艙環/道具標一堆青藍會混進來(第一版就這樣假 FAIL)。
+> **camp-0 主選單 + 流水線工作循環(規格 H §14,使用者提案 2026-08-04)**:開機先停在
+> **`v2s.camp.phase === 'menu'`**——小人釘在流水線工作站循環幹活,DOM 疊層放標題/開始鈕
+>(`js/v2-menu.js`,零 import=無循環風險;容器 `pointer-events:none`、只有鈕 `auto`)。
+> 「開始遊戲」→ `startGame()`:收選單 → `resetFighter` 雙方歸位 → `introT = INTRO_T` 交還既有開場。
+> ⚠ **四個必須知道的點**:
+>   ① **MENU_ON 是多重訊號**(`?menu=0/1` / `?turbo` / `?clip` / `navigator.webdriver` / smokeroom 路徑
+>      任一成立就跳過)。理由:40 支 headless 回歸全都假設「開機即開打」,選單擋前面會**一次全紅**;
+>      單一訊號太脆(**6 支套件沒帶 `?turbo`**)。那 6 支另外明寫了 `?menu=0` 當第二層保險。
+>      要**看得到**選單必須明寫 `?menu=1`。回歸鉤=`tests/menu.mjs` 最後三段。
+>   ② **`MENU_ON` 的 IIFE 自己讀 URL,不引用 `TEST_CLIP`/`TURBO`**——那兩個 const 宣告在檔案後面,
+>      立即執行會踩 TDZ(第一版就炸)。
+>   ③ **`CAM_MENU` 的鍵組必須跟 `CAM_FIGHT` 一模一樣**:混合迴圈是 `for (const k in CAM_FIGHT)`,
+>      少一鍵就不會被混到。要讓角色偏畫面右側**不要動 `panX`**(它不在鍵組裡),改成把鏡頭的
+>      **目標點**往左移(`MENU_FOCUS`)——等效、且交接回戰鬥機位時自然 lerp 回去。
+>   ④ **rim 預設場一條輸送帶都沒有**:`render-lab.js` 那三條全在 `if (!RIMI)` 圍場區塊裡(rim 已退役),
+>      而且座標都在平台外的深淵上。選單自己擺一條(`buildMenuStation`/`setMenuScene`,`MENU_STATION`)。
+> 工作動作=**重複播 `overhand` 的零成本佔位**(讀成「敲打輸送帶上的貨」);無縫循環要對 **`lastKeyT`**
+> 重蓋時戳而不是 `dur`(prepClip 會補一段回待機的尾巴,照 dur 播會先鬆回待機=一頓一頓)。
+> 要更像就用 punch-studio 編一支 `menu_work` 貼進 `CLIPS`(`CLIPS` 是可變物件,`playClip` 依名字查表)。
+> **build tag 抽成 `drawBuildTag()`**:選單期 HUD 整層收掉但 tag 照畫=線上診斷不斷線。
 > **ui-3 預設標記=頭頂倒三角(使用者 2026-08-03 附百變恰吉截圖拍板:「在玩家操作的角色上面標註倒三角
 > 代表正在操作的人物,我覺得更好,比起包裹人物輪廓」)**:`MARK_MODE` 預設從 `arrow` 改成 **`tri`**,
 > 三件事照參考做法收斂:①**形狀=純倒三角**(尖端朝下指著角色),不再指 facing;②**只標本機**——

@@ -1461,10 +1461,41 @@ export function setPodPerform(p) {
   if (p.phase === 'scan') _scanRing.position.y = (DOME_R * 0.9 * (1 - p.pk) + 4) / Math.max(0.05, sy); // 掃描環頭→腳(除以 sy 抵銷 group 縮放)
 }
 
-window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, frostBottleReady: () => frostBottleReady(), barrelReady: () => barrelReady(), fireHatReady: () => fireHatReady(), windGauntletReady: () => windGauntletReady(), domeVisible: () => _domeShown, fxLow: () => FX_LOW, rimOn: () => rimGeometryOn() }; // debug hook(headless 測試用)
+window.__lab = { labGroup, labAnimated, flicker: () => LOW_FLICKER, floorFx: () => floorFxGroup, stationsPowered: () => stationsPowered, podGlbReady: () => _podGlbReady, frostBottleReady: () => frostBottleReady(), barrelReady: () => barrelReady(), fireHatReady: () => fireHatReady(), windGauntletReady: () => windGauntletReady(), domeVisible: () => _domeShown, fxLow: () => FX_LOW, rimOn: () => rimGeometryOn(), menuScene: () => !!(_menuGrp && _menuGrp.visible) }; // debug hook(headless 測試用)
 let _lastT = 0;
 export function updateLabScene(t) {
   const dt = Math.min(Math.max(t - _lastT, 0), 0.05); _lastT = t;
   const ta = LOW_FLICKER ? 1.7 : t; // 凍結的動畫時鐘(任選相位)
   for (const a of labAnimated) a.update(ta, dt);
+}
+
+/* ===== camp-0 主選單場景:流水線工作站(規格 H §14)=====
+   使用者提案:「主選單的背景就是玩家小人用第三人稱視角,不停在流水線上辛苦地工作」。
+   ⚠ 為什麼要另外擺一條:`buildLabProps` 裡那三條輸送帶全在 `if (!RIMI)` 圍場區塊內
+     ——rim(正式地形)已經把兩側造景整組退役,**預設場上一條都看不到**。
+   擺位鐵則:①要在 rim 平台的**實心地面**上(角色站得住,不會掉進廢料井)②離回收艙夠遠
+     (艙在場中央 (480,320) r46,構圖會打架)③開打前要能整組隱藏=不干擾玩法場地。
+   單位:place() 吃 lab 單位(1 unit = 1 tile = 32px),原點=場地中心 → 世界 (480+x*32, 320+z*32)。 */
+export const MENU_STATION = { x: 604, y: 470, beltY: 424 };   // 世界座標:角色站位 / 輸送帶中心(偏東=左側留給標題文字;南於帶=背對鏡頭)
+let _menuGrp = null;
+function buildMenuStation() {
+  const g = new THREE.Group();
+  const belt = conveyorBelt(9, 0xd8a12f);
+  // ⚠ 抬高到腰際:conveyorBelt 的工作面只有 ~0.63u(≈20px),角色站高 ~78px → 貼地擺會在小腿邊,
+  //   看起來不像在「工作」而像跨過去。0.42u ≈ 13px 墊高後帶面落在大腿上緣;再高就變成胸前的欄杆。
+  belt.position.set((MENU_STATION.x - 480) / LAB_SCALE, 0.42, (MENU_STATION.beltY - 320) / LAB_SCALE);
+  g.add(belt);
+  // 工作台旁的料箱堆(給構圖一點層次;純裝飾,不進 game.props=不參與碰撞)
+  const BX = (MENU_STATION.x - 480) / LAB_SCALE;
+  const crate = (x, z, s, c) => g.add(mesh(new THREE.BoxGeometry(s, s, s), M.stone(c), BX + x, s / 2, z, false));
+  crate(-3.4, (MENU_STATION.beltY - 320) / LAB_SCALE + 1.5, 0.9, 0x4a5150);
+  crate(-3.0, (MENU_STATION.beltY - 320) / LAB_SCALE + 2.3, 0.7, 0x3e4544);
+  crate(3.6, (MENU_STATION.beltY - 320) / LAB_SCALE + 1.7, 1.0, 0x454b46);
+  g.visible = false;
+  labGroup.add(g);
+  return g;
+}
+export function setMenuScene(on) {
+  if (on && !_menuGrp) _menuGrp = buildMenuStation();
+  if (_menuGrp) _menuGrp.visible = !!on;
 }

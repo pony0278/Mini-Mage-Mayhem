@@ -9,7 +9,7 @@ const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, arg
 const page = await B.newPage();
 const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
 await page.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
-await page.goto('http://localhost:8099/v2.html?avatar=1', { waitUntil: 'networkidle0' });   // ugc-6:方塊人是預設,avatar 功能測試要明確 opt-in(?avatar=1)
+await page.goto('http://localhost:8099/v2.html?menu=0&avatar=1', { waitUntil: 'networkidle0' });   // ugc-6:方塊人是預設,avatar 功能測試要明確 opt-in(?avatar=1)
 await page.waitForFunction('window.__v2 && window.__lab && __gl', { timeout: 20000 });
 let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };
 

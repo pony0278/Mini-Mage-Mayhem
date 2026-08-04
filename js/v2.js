@@ -9,7 +9,8 @@
 import { W, H } from './constants.js';
 import { game, keys, CAM, touchInput } from './state.js';
 import { updateDeathTheater, addText, addRing, updateParticles, updateRings, updateFloatingTexts } from './fx.js';
-import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, setRimGeometry, setRimTeams, setOutlineLow, FX_LOW} from './render.js';
+import { render3D, drawPanicFaces, setIslandMode, setIslandShapes, setWallFade, setFloorParams, setActorShadow, setVividFx, setGroundMarkers, setRichFloor, setLabTheme, setLabFlicker, setApron, setStationsPowered, setPodPerform, setRimGeometry, setRimTeams, setOutlineLow, FX_LOW, setMenuScene, MENU_STATION } from './render.js';
+import { initMenu, setMenuVisible } from './v2-menu.js';   // camp-0 主選單 DOM 疊層(規格 H §14)
 import { playSfx, unlock as unlockAudio } from './audio.js';
 import {
   v2s, fighters, LOCAL, dlog, inc, resetInc, roundWins, containLog,
@@ -35,6 +36,23 @@ let _armedShown = false;       // 四角站通電光環的上次同步值(step �
 // 正常玩法要先揍暈才抓;開這旗只放寬本機玩家的抓取條件,其餘(冷卻/被抓/範圍)照舊。
 const GRAB_ANY = new URLSearchParams(location.search).get('grabany') === '1';
 
+// ===== camp-0 主選單(規格 H §14):開機先停在「小人在流水線上幹活」的畫面 =====
+// ⚠ **為什麼要多重旗標判斷**:40 支 headless 回歸全都假設「開機即開打」,選單擋在前面會一次全紅。
+//   單一訊號太脆(6 支套件沒帶 ?turbo),所以四道獨立訊號任一成立就跳過,再對那 6 支明寫 ?menu=0:
+//   ①`?menu=0/1` 明示覆蓋 ②`?turbo`(回歸專用)③`?clip`(動作試播)④`navigator.webdriver`(自動化)
+//   ⑤ smokeroom(道具測試間也載 v2.js,不該被選單擋)。
+const MENU_ON = (() => {
+  const q = new URLSearchParams(location.search).get('menu');
+  if (q === '1') return true;
+  if (q === '0') return false;
+  // ⚠ 自己讀 URL,不引用 TEST_CLIP/TURBO——那兩個 const 宣告在本檔後面,IIFE 立即執行會踩 TDZ。
+  const p = new URLSearchParams(location.search);
+  if (p.get('clip') || parseInt(p.get('turbo')) > 1) return false;
+  if (typeof navigator !== 'undefined' && navigator.webdriver) return false;
+  if (/smokeroom/.test(location.pathname)) return false;
+  return true;
+})();
+
 // 測試旗 ?clip=名字:任意動作 clip 在本機角色上循環試播(WYSIWYG 驗證:studio 編完貼進 CLIPS 直接看,
 // 不用先綁玩法頻道)。走 itemClip 頻道(free 時生效;扛人/被扛時讓位給 carry 動畫);對手 AI 凍結免干擾。
 // 程式亦可 __v2.playClip(name) 播一次(回傳 clip 秒長,查無名字回 0)。
@@ -46,6 +64,51 @@ function playClip(name, f = fighters[LOCAL]) {
   if (!c) { console.warn('[v2] playClip: 無此 clip「' + name + '」;可用:', Object.keys(CLIPS).join(', ')); return 0; }
   f.itemFx = game.time; f.itemClip = name;
   return c.dur;
+}
+
+// ===== camp-0 主選單狀態(規格 H §14)=====
+// 使用者提案:「主選單的背景就是玩家小人用第三人稱視角,不停在流水線上辛苦地工作;
+// 開始遊戲的時候才會跑、準備逃跑下班。」→ 按下開始那一刻=他決定不幹了,動機完全不用文字解釋。
+//
+// 工作循環怎麼做:**零新動畫**——重複播現有的 `overhand`(下劈)當「敲打/蓋章輸送帶上的貨」。
+// ⚠ 無縫循環要對 **`lastKeyT`** 重蓋時戳,不是 `dur`:prepClip 會自動補一段回待機的尾巴
+//   (`dur > lastKeyT`),照 dur 重播會先鬆回待機再起手=一頓一頓的。
+const MENU_CLIP = 'overhand', MENU_CLIP_GAP = 0.55;   // 每下之間留長一點的喘息=疲憊的重複勞動,不是戰鬥節奏
+// ⚠ 這只是**零成本佔位**:overhand(下劈)拿來當「敲打/蓋章輸送帶上的貨」讀得過去,但不是真的工作動作。
+//   要更像,走 punch-studio 編一支 `menu_work` 貼進 CLIPS 即可(CLIPS 是可變物件,playClip 依名字查表)。
+function enterMenu() {
+  v2s.camp.phase = 'menu'; v2s.menuOut = 0; v2s.introT = 0;
+  setMenuScene(true); setMenuVisible(true);
+  const me = fighters[LOCAL], o = fighters[1 - LOCAL];
+  me.x = MENU_STATION.x; me.y = MENU_STATION.y; me.facing = -Math.PI / 2;  // 面向 −Y=北,背對鏡頭=第三人稱
+  me.vx = me.vy = 0; me.stunned = false; me.invuln = 99;
+  o.state = 'away'; o._hidden = true;                  // 對手退場(沿用逃跑那套隱藏旗),選單只有你一個人
+  camRig.x = MENU_FOCUS.x; camRig.y = MENU_FOCUS.y;
+  game.camTarget = camRig;
+}
+let _menuClipT = 0;
+function stepMenu(dt) {
+  game.time += dt;
+  const me = fighters[LOCAL];
+  me.x = MENU_STATION.x; me.y = MENU_STATION.y; me.facing = -Math.PI / 2;
+  me.vx = me.vy = 0; me.running = false;
+  if (game.time >= _menuClipT) {
+    const c = CLIPS[MENU_CLIP];
+    _menuClipT = game.time + (c ? (c.lastKeyT ?? c.dur) : 1) + MENU_CLIP_GAP;
+    playClip(MENU_CLIP, me);
+  }
+  updateParticles(dt); updateRings(dt); updateFloatingTexts(dt);
+  updateCamRig(dt);
+}
+// 「開始遊戲」:收掉選單 → 對手歸位 → 交還給既有的開場帶場(introT),鏡頭由 menuOut 混過去。
+function startGame() {
+  if (v2s.camp.phase !== 'menu') return;
+  v2s.camp.phase = 'play'; v2s.menuOut = MENU_OUT_T;
+  setMenuVisible(false); setMenuScene(false);
+  const me = fighters[LOCAL], o = fighters[1 - LOCAL];
+  resetFighter(me); resetFighter(o);                   // 回各自出生點(順手清掉選單期的 invuln/面向)
+  v2s.introT = INTRO_T;
+  unlockAudio();                                       // 這一下就是 WebAudio 要的使用者手勢(舊開場是啞的)
 }
 
 // --- round / match orchestration ---
@@ -75,10 +138,30 @@ function restartMatch() {
 // intro 期間整組參數 smoothstep 混合(fov 由 render.js 偵測變化自動 updateProjectionMatrix)。
 const CAM_FIGHT = { fov: 27, angle: 30, dist: 630, lookY: 14 }; // GetAmped 式中俯角(使用者 2026-07-21 對照截圖定案;37→31→30 微調放平)
 const CAM_INTRO = { fov: 32, angle: 44, dist: 780, lookY: 14 };
+// camp-0 主選單機位(規格 H §14):貼近的第三人稱,看小人在流水線上幹活。
+// ⚠ **鍵組必須跟 CAM_FIGHT 一模一樣**——混合迴圈是 `for (const k in CAM_FIGHT)`,少一鍵就不會被混到。
+const CAM_MENU = { fov: 26, angle: 22, dist: 470, lookY: 24 };
+// 鏡頭**看向角色左邊一點**=角色落在畫面右側,左三分之一空出來給標題(等同 panX 的效果,
+// 但不用動 panX——CAM_MENU 的鍵組必須跟 CAM_FIGHT 一致,多一鍵不會被混合迴圈碰到)。
+const MENU_FOCUS = { x: MENU_STATION.x - 96, y: MENU_STATION.y - 8 };
+const MENU_OUT_T = 0.9;                  // 選單機位 → 開場機位的混合秒數
 let _camBlending = false; // intro 混合中旗標(結束時一次性歸位戰鬥值,之後不再碰=不干擾 ?tune 調參)
 function updateCamRig(dt) {
   const lf = fighters[LOCAL];
   let tx = Math.min(Math.max(lf.x, CAMB.ix), W - CAMB.ix), ty = Math.min(Math.max(lf.y, CAMB.ny), CAMB.sy);
+  // camp-0:選單期固定框住工作站;按下開始後 menuOut 秒內混回開場/戰鬥機位。
+  // 手法照 intro 那條(移動**目標點**+整組參數 smoothstep),不換 camTarget → 交接零跳動。
+  if (v2s.camp.phase === 'menu' || v2s.menuOut > 0) {
+    _camBlending = true;
+    const inMenu = v2s.camp.phase === 'menu';
+    const e = inMenu ? 0 : (() => { const k = 1 - Math.min(1, v2s.menuOut / MENU_OUT_T); return k * k * (3 - 2 * k); })();
+    tx = MENU_FOCUS.x + (tx - MENU_FOCUS.x) * e;
+    ty = MENU_FOCUS.y + (ty - MENU_FOCUS.y) * e;
+    for (const k in CAM_FIGHT) CAM[k] = CAM_MENU[k] + (CAM_INTRO[k] - CAM_MENU[k]) * e;
+    const ee = Math.min(1, dt * CAMB.ease);
+    camRig.x += (tx - camRig.x) * ee; camRig.y += (ty - camRig.y) * ee;
+    return;
+  }
   // 開場帶場(使用者拍板 2026-07:雙方就位靜止,鏡頭框住「兩人」+高視角拉遠 →「開始!」後平滑回玩家;
   // 不再飛去對手那邊——AI 一開工到處回收垃圾,玩家看著就懂)。
   if (v2s.introT > 0) {
@@ -199,6 +282,8 @@ function step(dt) {
     if (v2s.tutorial) { v2s.tutorial = false; try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* 隱私模式 */ } } // 首局打完 → 記「玩過」,下次不再教學
     return; // freeze gameplay while the incident report is up
   }
+  if (v2s.camp.phase === 'menu') { stepMenu(dt); return; }   // camp-0:選單期不跑戰鬥,只演工作循環
+  if (v2s.menuOut > 0) v2s.menuOut = Math.max(0, v2s.menuOut - dt);  // 選單→遊戲的鏡頭混合倒數
   if (v2s.introT > 0) v2s.introT -= dt;          // 開場目標字幕/鏡頭帶場倒數
   if (v2s.introT > INTRO_GO && (keys.size > 0 || (touchInput.enabled && touchInput.active))) v2s.introT = INTRO_GO; // 等不及的玩家按任何鍵=直接「開始!」
   if (v2s.winBannerT > 0) v2s.winBannerT -= dt;
@@ -461,7 +546,7 @@ function frame(now) {
 window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / headless-test hook (CAM for live camera tuning; v2s=可重賦值純量容器,測試歸零 introT 用)
   restartMatch,
   POD, barrels, explodeBarrel, stations, updateStations, labSwitches, CAMB, camRig,
-  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip,
+  grabbableBarrel, pickUpBarrel, dropBarrel, throwBarrel, launchBarrel, playClip, startGame, enterMenu,
   PERSON_LOB, BARREL_LOB, PUNCH_LAUNCH_LOB, WIND_CARRY_LOB, BOTTLE_LOB, bottles, shatterBottle, roundWins, containLog, // 彈道 tuning(物件可變:控制台改即時生效;?tune=1 滑桿同源)+ 場上瓶(測試用)
   punch, resolveStrike, doGuard, canGuard, updateGuard, startCarry, stunFighter, throwCarried, launchCarried, dropCarry, breakFree, pads, groundItems, pickupItem, dropLooseItem, useItem, resolveItemCast, attackAction, contextAction, castWind, castTeleport, castFire, castWater, castLightning, inc, generateReport, endMatch, jump, dive, JUMP_LOB, AIR_HIT_LOB,
   floorHazards, airborne, // 地板化學/空中判定:測試直接餵 dt 呼叫,不用去追跳躍弧線的時間窗(見 tests/jump.mjs ④)
@@ -476,6 +561,7 @@ window.__v2 = { game, fighters, CAM, v2s, onSolid, ISLANDS, BRIDGES, // debug / 
     brink: { shown: v2s.brinkShown, t: +v2s.brinkT.toFixed(2) },                  // flow-2c 瀕界:一次性提示旗 + 心跳節拍
     recordCard: v2s.recordCard ? { n: v2s.recordCard.n, w: v2s.recordCard.w, phrase: v2s.recordCard.phrase, t: +v2s.recordCard.t.toFixed(2) } : null,
     tutorial: v2s.tutorial, introT: +v2s.introT.toFixed(2), aiMode: fighters[1 - LOCAL]._aiMode,
+    camp: { ...v2s.camp }, menuOut: +v2s.menuOut.toFixed(2),   // camp-0 闖關/選單狀態
     containLog: containLog.map(c => ({ w: c.winner, m: c.method, s: c.stage })),
     invuln: [+fighters[0].invuln.toFixed(2), +fighters[1].invuln.toFixed(2)],
     stability: [Math.round(fighters[0].stability), Math.round(fighters[1].stability)],
@@ -521,6 +607,7 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase(); // 跑=預設(brawl-2):雙擊偵測退役;'shift'=防禦、' '=跳(pollGuard/pollJump 每幀讀 keys)
   keys.add(k);
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '/'].includes(k)) e.preventDefault();
+  if (v2s.camp.phase === 'menu') { if (k === 'enter' || k === ' ') startGame(); return; } // camp-0:選單期只收「開始」
   if (k === 'b') toggleAI(); // 切換 AI / 練習模式
   if (k === 'l') toggleFlicker(); // 減閃爍開關
   if (k === 'k') cycleSlowmo(); // 慢動作觀察:1→0.5→0.25→0.1× 循環
@@ -568,7 +655,10 @@ if (TERRAIN === 'isles') {
   try { v2s.tutorial = localStorage.getItem('mmm_v2_played') !== '1'; } catch { v2s.tutorial = true; }
   { const o = fighters[1 - LOCAL]; o.ai = true; o._aiMode = 'fight'; } // 爽鬥:紅方=AI 對手,開局即戰(小人不再搬瓶);B 鍵仍可切練習假人
   applyAiTier('intern'); // tier-1:對手從實習生起手(快輸=逃跑搬救兵→資深同事;AI_PROFILE 旋鈕表)
-  v2s.introT = INTRO_T;                          // 開場目標字幕/鏡頭帶場(教學+老手都演一次,便宜且無害)
+  // camp-0:預設先停在主選單(規格 H §14);自動化/試播旗走舊路=開機即開打(見 MENU_ON)
+  initMenu(startGame);
+  if (MENU_ON) { enterMenu(); } else { v2s.camp.phase = 'play'; setMenuVisible(false); }
+  v2s.introT = MENU_ON ? 0 : INTRO_T;             // 開場目標字幕/鏡頭帶場(教學+老手都演一次,便宜且無害)
   camRig.x = (fighters[0].x + fighters[1].x) / 2; camRig.y = (fighters[0].y + fighters[1].y) / 2; // 鏡頭開場=兩人中點(就位構圖;「開始!」後回玩家)
   setActorShadow(true);
   setVividFx(true);

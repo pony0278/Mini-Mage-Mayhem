@@ -8,7 +8,7 @@ const B = await puppeteer.launch({ headless: 'new', protocolTimeout: 180000, arg
 const page = await B.newPage();
 const errs = []; page.on('pageerror', e => errs.push('PAGE ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('CON ' + m.text()); });
 await page.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
-await page.goto('http://localhost:8099/v2.html', { waitUntil: 'networkidle0' });
+await page.goto('http://localhost:8099/v2.html?menu=0', { waitUntil: 'networkidle0' });
 await page.waitForFunction('window.__v2 && window.__lab && __gl', { timeout: 20000 });
 let pass = 0, fail = 0; const R = (n, ok, e = '') => { console.log((ok ? 'PASS' : 'FAIL') + ' ' + n + (e ? ' [' + e + ']' : '')); ok ? pass++ : fail++; };
 
@@ -41,7 +41,7 @@ R('ugc-5 風格契約:無貼圖 + 霧面非金屬 + 低多邊形(與角色同語
 // 程序化是預設,但 GLB 那條路留著當 A/B;它的入庫規範坑(prune 砍 UV → 渲成素色)照樣要有人守。
 const pg = await B.newPage();
 await pg.evaluateOnNewDocument(() => { try { localStorage.setItem('mmm_v2_played', '1'); } catch { /* privacy */ } });
-await pg.goto('http://localhost:8099/v2.html?props=glb', { waitUntil: 'networkidle0' });
+await pg.goto('http://localhost:8099/v2.html?menu=0&props=glb', { waitUntil: 'networkidle0' });
 await pg.waitForFunction('window.__v2 && window.__lab', { timeout: 20000 });
 const glbReady = await pg.waitForFunction('__lab.frostBottleReady() === true', { timeout: 25000 }).then(() => true).catch(() => false);
 await pg.evaluate(() => { const v = __v2; v.v2s.introT = 0; v.fighters[1].ai = false;

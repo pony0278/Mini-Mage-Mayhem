@@ -475,6 +475,9 @@ function drawPerformLED() {
 
 export function drawHud() {
   hctx.clearRect(0, 0, VW, VH);
+  // camp-0:主選單期整層 HUD 收掉(標題/教練行/狀態卡/操作說明全部是戰鬥用的,壓在選單上=最吵的雜訊)。
+  // 只留右下角 build tag——線上診斷靠它確認載到新版。
+  if (v2s.camp.phase === 'menu') { drawBuildTag(); return; }
   drawWindSpeedLines();
   // red edge pulse when YOU get knocked — so a hit is never invisible
   if (v2s.localFlash > 0) {
@@ -513,10 +516,14 @@ export function drawHud() {
   hctx.fillText('藍（你）：方向鍵／WASD 移動（＝跑，面向＝移動方向）· C＝攻擊（三連擊／跑久＝衝刺拳／空中＝下壓拳／扛著＝丟）· X＝抓／撿（裝備·瓶·桶）· Z＝道具 · Shift 按住＝防禦 · 空白＝跳　B：AI　L：減閃爍', VW / 2, VH - 18);
   if (v2s.matchOver && v2s.report) drawReport(); // 結算:事故報告全屏卡(分享引擎)
   // build tag — bump on each gameplay change so you can confirm a fresh deploy loaded (hard-refresh if it's old)
-  hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
   drawRecordBeat();
   drawFinisherUi();
-  hctx.fillText('build: ui-3', VW - 10, VH - 4);
+  drawBuildTag();
+}
+// build tag — 每次改動就 bump,線上硬重整後靠它確認載到新版(選單期也畫=診斷不斷線)
+function drawBuildTag() {
+  hctx.textAlign = 'right'; hctx.font = '700 11px ui-monospace, monospace'; hctx.fillStyle = 'rgba(234,250,255,.5)';
+  hctx.fillText('build: camp-0', VW - 10, VH - 4);
 }
 
 // ===== 規格 G §4.3/§5:終演 UI——letterbox(上下黑邊)+ 收容窗口提示 + 按下白閃 =====

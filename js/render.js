@@ -12,6 +12,7 @@ export { setStationsPowered } from './render-lab.js'; // 四角站通電光環(�
 export { setRimGeometry } from './render-lab.js'; // ring-1 廢料井邊帶視覺(開放邊緣;v2.js rim 模式 boot 呼叫)
 export { setPodPerform } from './render-lab.js'; // 收容演出玻璃罩+掃描環(v2.js 每幀依 v2s.perform 驅動)
 export { FX_LOW } from './render-lab.js'; // 低效能旗(手機自動/?fx= 覆蓋;v2-hud 用來砍爆花速度線/集中線)
+export { setMenuScene, MENU_STATION } from './render-lab.js'; // camp-0 主選單流水線工作站(規格 H §14;開打前整組隱藏)
 import { syncActors } from './render-actors.js';
 import { syncProps, syncProjectiles, syncZones } from './render-entities.js';
 import { updateWindBlasts } from './render-wind-blast.js';
